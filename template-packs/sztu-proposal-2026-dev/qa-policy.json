@@ -1,0 +1,38 @@
+{
+  "policy_version": "1.0",
+  "required_fonts": [],
+  "checks": [
+    {
+      "check_id": "proposal.structure",
+      "gate": "structure",
+      "required": true,
+      "mode": "automatic",
+      "notes": "Validate the strict proposal 0.2 contract before rendering."
+    },
+    {
+      "check_id": "proposal.cjk-glyph",
+      "gate": "cjk_glyph",
+      "required": true,
+      "mode": "automatic",
+      "notes": "Render at 150 DPI or higher and run the repository CJK glyph validator."
+    },
+    {
+      "check_id": "proposal.full-page-layout",
+      "gate": "full_page_layout",
+      "required": true,
+      "mode": "manual",
+      "notes": "Inspect Chinese-dense pages at 100% scale; contact sheets are navigation only."
+    },
+    {
+      "check_id": "proposal.target-editor",
+      "gate": "target_editor",
+      "required": true,
+      "mode": "target-editor",
+      "notes": "Final Office acceptance requires Microsoft Word or WPS Office."
+    }
+  ],
+  "target_editors": [
+    {"name": "Microsoft Word", "platforms": ["macos", "windows"], "required": true},
+    {"name": "WPS Office", "platforms": ["macos", "windows", "linux"], "required": true}
+  ]
+}

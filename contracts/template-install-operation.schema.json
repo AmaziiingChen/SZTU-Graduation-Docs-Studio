@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sztu-docs.local/contracts/template-install-operation.schema.json",
+  "title": "Offline template-pack installation operation",
+  "$defs": {
+    "params": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_directory", "document_type"],
+      "properties": {
+        "source_directory": {"type": "string", "minLength": 1, "maxLength": 4096},
+        "document_type": {"enum": ["proposal", "midterm"]}
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "template_id", "version", "pack_sha256", "installed_at"],
+      "properties": {
+        "status": {"enum": ["installed", "already_installed"]},
+        "template_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "version": {"type": "string", "minLength": 1, "maxLength": 64},
+        "pack_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "installed_at": {"type": "string", "format": "date-time"}
+      }
+    }
+  }
+}

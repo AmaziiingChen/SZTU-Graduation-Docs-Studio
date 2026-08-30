@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 私密安全报告
+    url: https://github.com/security
+    about: 请通过目标仓库 Security 页面的 Report a vulnerability 入口私下报告；此链接仅提供 GitHub Security 功能说明入口。

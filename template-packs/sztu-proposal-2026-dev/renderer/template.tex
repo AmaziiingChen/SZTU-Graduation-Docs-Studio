@@ -1,0 +1,26 @@
+% Synthetic development renderer. This is not an official university layout.
+\documentclass[UTF8,a4paper,12pt]{ctexart}
+\usepackage[margin=2.5cm]{geometry}
+\setlength{\parindent}{2em}
+\begin{document}
+\begin{center}
+  {\Large 本科毕业论文（设计）开题报告（开发模板）}
+\end{center}
+
+% The M4 renderer replaces the following named tokens from a validated proposal 0.2 object.
+题目：\texttt{PROPOSAL\_TITLE}\\
+学生：\texttt{STUDENT\_NAME}（\texttt{STUDENT\_ID}）\\
+学院与专业：\texttt{COLLEGE}，\texttt{MAJOR}\\
+指导教师：\texttt{ADVISOR}
+
+\section*{选题意义与研究现状}
+\texttt{SIGNIFICANCE\_AND\_STATUS}
+\section*{研究内容}
+\texttt{RESEARCH\_CONTENT}
+\section*{研究方法与手段}
+\texttt{METHODS\_AND\_MEANS}
+\section*{研究步骤}
+\texttt{RESEARCH\_STEPS}
+\section*{参考文献}
+\texttt{REFERENCES}
+\end{document}

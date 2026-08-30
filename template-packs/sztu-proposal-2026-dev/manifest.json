@@ -1,0 +1,82 @@
+{
+  "manifest_version": "1.0",
+  "template_id": "sztu.proposal.2026.dev",
+  "name": "SZTU 2026 proposal synthetic development pack",
+  "school": "深圳技术大学（名称仅用于开发目标标识）",
+  "document_type": "proposal",
+  "academic_year": 2026,
+  "version": "0.1.0-dev.1",
+  "contract_versions": {
+    "app_contract": "1.0",
+    "document_schema": "0.2"
+  },
+  "renderers": ["latex"],
+  "renderer_versions": {
+    "latex": "0.1.0-dev.1"
+  },
+  "entrypoints": {
+    "latex": "renderer/template.tex"
+  },
+  "qa_policy": "qa-policy.json",
+  "files": [
+    {
+      "path": "NOTICE.md",
+      "sha256": "a8170ee3144b40e0c8b21ecaab301887edf9992cf7b802061d32d91c821014bb",
+      "media_type": "text/markdown",
+      "role": "notice"
+    },
+    {
+      "path": "qa-policy.json",
+      "sha256": "c2493da38283d29534d5cd3defbeab9c7296e87567ca4c2cb83980f1d29fd1d3",
+      "media_type": "application/json",
+      "role": "qa_policy"
+    },
+    {
+      "path": "renderer/template.tex",
+      "sha256": "c95d98c144b6332f9ff81d8731444075d7541453fe999c7111973779ea5d8cdb",
+      "media_type": "application/x-tex",
+      "role": "entrypoint"
+    },
+    {
+      "path": "fixtures/short.json",
+      "sha256": "869db537da3a654cc09257a410356b1c76497f202420751c0450ea2c0b0010c6",
+      "media_type": "application/json",
+      "role": "fixture"
+    },
+    {
+      "path": "fixtures/normal.json",
+      "sha256": "449587869ce6d5edd8ec139a4bb2b13165a793afe999ac7a080cbe0778dc71c4",
+      "media_type": "application/json",
+      "role": "fixture"
+    },
+    {
+      "path": "fixtures/long.json",
+      "sha256": "7eb658104e99b9dd84e42f31c08b8b0daf205d7efb9abeb61b2354cfa516fde9",
+      "media_type": "application/json",
+      "role": "fixture"
+    },
+    {
+      "path": "fixtures/layout_stress.json",
+      "sha256": "881faeca18937bdc2f702f2ddd3261b86d1d71b0d58e5bd27e4a315792c7dc2d",
+      "media_type": "application/json",
+      "role": "fixture"
+    },
+    {
+      "path": "fixtures/expected-checks.json",
+      "sha256": "d6dd3a33dfec5bc256fb7bee26d917c0d32121e05e27d1cc7c701d515f4d84b6",
+      "media_type": "application/json",
+      "role": "fixture_expectation"
+    }
+  ],
+  "provenance": {
+    "source_kind": "synthetic",
+    "license": "GPL-3.0-only",
+    "redistribution": "allowed",
+    "sources": [
+      {
+        "description": "Created from scratch as a development fixture; not copied from an official university document.",
+        "revision": "0.1.0-dev.1"
+      }
+    ]
+  }
+}

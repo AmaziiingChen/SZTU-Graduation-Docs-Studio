@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sztu-docs.local/contracts/qa-record-operation.schema.json",
+  "title": "Manual export QA record operation",
+  "$defs": {
+    "params": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["gate", "status", "message"],
+      "properties": {
+        "export_id": {"type": "string", "pattern": "^[a-f0-9]{32}$"},
+        "artifact_id": {
+          "oneOf": [
+            {"type": "string", "pattern": "^[a-f0-9]{32}$"},
+            {"type": "null"}
+          ]
+        },
+        "gate": {"enum": ["full_page_layout", "target_editor"]},
+        "status": {"enum": ["pass", "fail"]},
+        "editor": {"enum": ["word", "wps"]},
+        "message": {"type": "string", "minLength": 1, "maxLength": 1000}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"gate": {"const": "target_editor"}}, "required": ["gate"]},
+          "then": {"required": ["artifact_id", "editor"]}
+        },
+        {
+          "if": {"properties": {"gate": {"const": "full_page_layout"}}, "required": ["gate"]},
+          "then": {
+            "required": ["export_id"],
+            "not": {"required": ["editor"]}
+          }
+        }
+      ]
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["record_id", "export_id", "artifact_id", "check", "recorded_at"],
+      "properties": {
+        "record_id": {"type": "string", "pattern": "^[a-f0-9]{32}$"},
+        "export_id": {"type": "string", "pattern": "^[a-f0-9]{32}$"},
+        "artifact_id": {
+          "oneOf": [
+            {"type": "string", "pattern": "^[a-f0-9]{32}$"},
+            {"type": "null"}
+          ]
+        },
+        "check": {"$ref": "check-result.schema.json"},
+        "recorded_at": {"type": "string", "format": "date-time"}
+      }
+    }
+  }
+}

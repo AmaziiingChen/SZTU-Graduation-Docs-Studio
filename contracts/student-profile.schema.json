@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sztu-docs.local/contracts/student-profile.schema.json",
+  "title": "Student profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "profile_id", "student", "created_at", "updated_at"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "profile_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
+    "student": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "student_id", "college", "major"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1, "maxLength": 20},
+        "student_id": {"type": "string", "minLength": 1, "maxLength": 30},
+        "college": {"type": "string", "minLength": 1, "maxLength": 50},
+        "major": {"type": "string", "minLength": 1, "maxLength": 40},
+        "class_name": {"type": "string", "maxLength": 50},
+        "phone": {"type": "string", "maxLength": 30},
+        "email": {"type": "string", "maxLength": 254}
+      }
+    },
+    "advisor": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string", "maxLength": 30},
+        "title": {"type": "string", "maxLength": 40}
+      }
+    },
+    "created_at": {"type": "string", "format": "date-time"},
+    "updated_at": {"type": "string", "format": "date-time"}
+  }
+}

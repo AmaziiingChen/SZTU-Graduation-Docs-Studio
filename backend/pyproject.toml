@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sztu-graduation-docs-backend"
+version = "0.1.0"
+description = "Local JSONL sidecar for SZTU Graduation Docs Studio"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "GPL-3.0-only"
+authors = [
+  {name = "SZTU Graduation Docs Studio contributors"}
+]
+dependencies = [
+  "Pillow>=10,<13",
+  "python-docx>=1.1,<2",
+]
+
+[project.scripts]
+sztu-docs-backend = "sztu_docs_backend.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

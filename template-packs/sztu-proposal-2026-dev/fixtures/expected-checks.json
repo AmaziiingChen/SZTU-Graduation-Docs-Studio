@@ -1,0 +1,9 @@
+{
+  "schema_version": "1.0",
+  "fixtures": {
+    "short.json": {"strict_contract": "pass", "structure": "not_checked", "cjk_glyph": "not_checked", "full_page_layout": "not_checked", "target_editor": "not_checked"},
+    "normal.json": {"strict_contract": "pass", "structure": "not_checked", "cjk_glyph": "not_checked", "full_page_layout": "not_checked", "target_editor": "not_checked"},
+    "long.json": {"strict_contract": "pass", "structure": "not_checked", "cjk_glyph": "not_checked", "full_page_layout": "not_checked", "target_editor": "not_checked"},
+    "layout_stress.json": {"strict_contract": "pass", "structure": "not_checked", "cjk_glyph": "not_checked", "full_page_layout": "not_checked", "target_editor": "not_checked"}
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "sztu-graduation-docs-studio",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@11.19.0",
+  "scripts": {
+    "dev": "pnpm --filter @sztu-docs/desktop dev",
+    "build": "pnpm --filter @sztu-docs/desktop build",
+    "lint": "pnpm --filter @sztu-docs/desktop lint",
+    "test": "pnpm --filter @sztu-docs/desktop test",
+    "test:backend": "python scripts/run_backend_tests.py",
+    "verify": "pnpm lint && pnpm test && pnpm test:backend && pnpm build"
+  }
+}

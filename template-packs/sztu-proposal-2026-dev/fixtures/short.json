@@ -1,0 +1,18 @@
+{
+  "schema_version": "0.2",
+  "metadata": {
+    "title": "合成短文本排版测试",
+    "student_name": "测试学生甲",
+    "student_id": "TEST-2026-0001",
+    "major": "测试工程",
+    "college": "虚构学院",
+    "advisor": "测试教师甲"
+  },
+  "sections": {
+    "significance_and_status": ["本段仅用于验证最小合法结构。", "本段确认该测试数据不对应真实研究或学生。"],
+    "research_content": ["验证短文本字段映射。"],
+    "methods_and_means": ["使用合成数据执行合同测试。"],
+    "research_steps": ["第一步：验证；第二步：记录。"],
+    "references": ["[1] 虚构作者. 合成测试文献[M]. 测试出版社, 2026."]
+  }
+}

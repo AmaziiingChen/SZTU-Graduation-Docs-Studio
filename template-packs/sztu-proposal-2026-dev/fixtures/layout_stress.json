@@ -1,0 +1,18 @@
+{
+  "schema_version": "0.2",
+  "metadata": {
+    "title": "中英文Mixed-Content、超长标识符与上下标X2-H2O布局压力测试",
+    "student_name": "测试学生丁",
+    "student_id": "TEST-2026-VERY-LONG-0004",
+    "major": "测试工程（中英文混排方向）",
+    "college": "虚构超长学院名称用于边界测试",
+    "advisor": "测试教师丁"
+  },
+  "sections": {
+    "significance_and_status": ["布局压力项包括：中文标点，English words，数字1234567890，括号（测试），破折号——测试，以及URL-like-token-example.invalid/very/long/path。", "第二段用于满足严格合同并测试连续字符ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789是否导致溢出。"],
+    "research_content": ["项目符号模拟：一、短项；二、包含 H2O、CO2、x2 与 E=mc2 的项；三、包含 test@example.invalid 的项。", "重复内容用于换页边界。重复内容用于换页边界。重复内容用于换页边界。重复内容用于换页边界。重复内容用于换页边界。"],
+    "methods_and_means": ["在不缩小字号的前提下观察长标题、长学号、长学院名、连续英文字符和多段落是否出现裁切。"],
+    "research_steps": ["阶段一（2026-09）：结构；阶段二（2026-10）：字形；阶段三（2026-11）：逐页；阶段四（2026-12）：Word/WPS。"],
+    "references": ["[1] Verylongsyntheticauthorname. An Extremely Long Synthetic Reference Title for Line Wrapping Validation Only[J]. Fictional Journal, 2026, 99(99): 999-1000."]
+  }
+}

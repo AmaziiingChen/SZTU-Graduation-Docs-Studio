@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sztu-docs.local/contracts/qa-policy.schema.json",
+  "title": "Template pack QA policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["policy_version", "required_fonts", "checks", "target_editors"],
+  "properties": {
+    "policy_version": {"const": "1.0"},
+    "required_fonts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["family", "required", "distribution"],
+        "properties": {
+          "family": {"type": "string", "minLength": 1, "maxLength": 200},
+          "required": {"type": "boolean"},
+          "distribution": {"enum": ["bundled-open", "system", "user-supplied"]}
+        }
+      }
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 4,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["check_id", "gate", "required", "mode"],
+        "properties": {
+          "check_id": {"type": "string", "pattern": "^[a-z][a-z0-9._-]{1,127}$"},
+          "gate": {"enum": ["structure", "cjk_glyph", "full_page_layout", "target_editor", "content"]},
+          "required": {"type": "boolean"},
+          "mode": {"enum": ["automatic", "manual", "target-editor"]},
+          "command": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1},
+          "notes": {"type": "string", "maxLength": 1000}
+        }
+      }
+    },
+    "target_editors": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "platforms", "required"],
+        "properties": {
+          "name": {"enum": ["Microsoft Word", "WPS Office", "TeXstudio", "Texifier"]},
+          "platforms": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["macos", "windows", "linux"]}},
+          "required": {"type": "boolean"}
+        }
+      }
+    }
+  }
+}

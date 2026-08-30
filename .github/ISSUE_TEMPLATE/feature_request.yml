@@ -1,0 +1,39 @@
+name: 功能建议
+description: 提议新的工作流、模板能力或工程改进
+title: "feat: "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 要解决的问题
+      description: 描述用户任务和当前阻碍，不要只描述界面样式。
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 建议方案
+      description: 说明流程、数据、验证和隐私影响。
+    validations:
+      required: true
+  - type: dropdown
+    id: scope
+    attributes:
+      label: 主要范围
+      options:
+        - 桌面工作台
+        - Python 文档引擎
+        - 数据合同或模板包
+        - 文档质量与验收
+        - 打包与发布
+        - 文档与治理
+    validations:
+      required: true
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: 约束确认
+      options:
+        - label: 前端建议可使用默认 shadcn 组件完成，或已说明组件 gap。
+        - label: 我已说明是否涉及官方模板、字体、私人材料或新的第三方依赖。

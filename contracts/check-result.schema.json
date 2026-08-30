@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sztu-docs.local/contracts/check-result.schema.json",
+  "title": "Document quality check result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "check_id", "gate", "status", "blocking", "message"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "check_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "gate": {"enum": ["structure", "cjk_glyph", "full_page_layout", "target_editor", "content", "template_integrity", "environment"]},
+    "status": {"enum": ["not_checked", "running", "pass", "warn", "fail", "blocked"]},
+    "blocking": {"type": "boolean"},
+    "message": {"type": "string", "minLength": 1, "maxLength": 1000},
+    "code": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]{1,63}$"},
+    "details": {"type": "object"},
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "value"],
+        "properties": {
+          "kind": {"enum": ["file", "hash", "command", "manual_note"]},
+          "value": {"type": "string", "minLength": 1, "maxLength": 2048}
+        }
+      }
+    },
+    "checked_at": {"type": ["string", "null"], "format": "date-time"}
+  }
+}

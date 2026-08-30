@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sztu-docs.local/contracts/export-receipt.schema.json",
+  "title": "Document export receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "export_id", "request_id", "status", "template", "input_sha256", "artifacts", "checks", "generated_at"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "export_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "request_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "status": {"enum": ["succeeded", "partial", "failed"]},
+    "template": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["template_id", "version", "pack_sha256"],
+      "properties": {
+        "template_id": {"type": "string", "minLength": 1},
+        "version": {"type": "string", "minLength": 1},
+        "pack_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      }
+    },
+    "input_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["format", "path", "sha256", "size_bytes"],
+        "properties": {
+          "format": {"enum": ["docx", "tex", "pdf"]},
+          "path": {"type": "string", "minLength": 1, "maxLength": 4096},
+          "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "size_bytes": {"type": "integer", "minimum": 0}
+        }
+      }
+    },
+    "checks": {
+      "type": "array",
+      "items": {"$ref": "check-result.schema.json"}
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message"],
+        "properties": {
+          "code": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]{1,63}$"},
+          "message": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "generated_at": {"type": "string", "format": "date-time"}
+  }
+}

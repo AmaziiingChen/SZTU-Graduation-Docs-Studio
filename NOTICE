@@ -1,0 +1,40 @@
+SZTU Graduation Docs Studio
+Open-source notices and source provenance
+
+1. Project license
+
+This repository is distributed under the GNU General Public License, version 3.
+The complete license text is in LICENSE. The GPL-3.0 text was copied verbatim
+from the source template repository listed below; the canonical license text is
+published by the Free Software Foundation at https://www.gnu.org/licenses/gpl-3.0.txt.
+
+2. Template lineage
+
+The application is designed to consume versioned template packages derived from
+or informed by the following open-source project:
+
+  Project: SZTU Thesis LaTeX Template
+  Upstream: https://github.com/SZTU-ACM/SZTU-Thesis-Latex-Template
+  Working fork: https://github.com/AmaziiingChen/SZTU-Thesis-Latex-Template
+  Source snapshot observed for repository bootstrap:
+    4dccad34af4f6318988201a39a59c6db003cfc10
+  License observed in the working fork: GNU GPL v3
+
+No template package, official school document, font file, or student document is
+included merely by naming these sources. Each distributed template package must
+carry its own NOTICE with the exact upstream commit, modifications, file hashes,
+copyright notices, and license review result.
+
+3. Distribution boundary
+
+The following must not be committed or distributed until their redistribution
+rights are confirmed and documented:
+
+- official school DOCX/PDF files and seals;
+- commercial or system font files;
+- real student data, signatures, supervisor comments, or private samples;
+- credentials, signing certificates, notarization materials, and tokens.
+
+Third-party dependencies and bundled assets must retain their own notices and
+licenses. A generated third-party license inventory will be required before a
+release is described as publishable.
