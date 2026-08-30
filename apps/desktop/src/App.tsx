@@ -1,29 +1,27 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import {
   AppWindowIcon,
-  BookOpenIcon,
   BracesIcon,
   CheckCircle2Icon,
   ChevronDownIcon,
   CircleDashedIcon,
-  ClipboardCheckIcon,
   FileCheck2Icon,
   FileClockIcon,
-  FilePenLineIcon,
   FileTextIcon,
   FolderOpenIcon,
   FolderCheckIcon,
-  GraduationCapIcon,
   HistoryIcon,
   LoaderCircleIcon,
   PackageCheckIcon,
+  PanelRightOpenIcon,
   RefreshCwIcon,
   SaveIcon,
-  SettingsIcon,
   TriangleAlertIcon,
   UserRoundIcon,
 } from "lucide-react"
 
+import { AppSidebar } from "@/components/workbench/app-sidebar"
+import { SiteHeader } from "@/components/workbench/site-header"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -59,24 +57,19 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarHeader,
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
+import {
   SidebarInset,
-  SidebarMenu,
-  SidebarMenuBadge,
-  SidebarMenuButton,
-  SidebarMenuItem,
   SidebarProvider,
-  SidebarRail,
-  SidebarTrigger,
 } from "@/components/ui/sidebar"
 import { Toaster } from "@/components/ui/sonner"
 import { Textarea } from "@/components/ui/textarea"
+import { useIsMobile } from "@/hooks/use-mobile"
 import { toast } from "sonner"
 
 import type {
@@ -498,19 +491,6 @@ function profileFromDraft(
   }
 }
 
-const documentItems: Array<{
-  type?: DocumentType
-  label: string
-  icon: typeof FilePenLineIcon
-  badge?: string
-  disabled?: boolean
-}> = [
-  { type: "proposal", label: "开题报告", icon: FilePenLineIcon, badge: "稳定" },
-  { label: "任务书", icon: FileTextIcon, disabled: true },
-  { type: "midterm", label: "中期检查", icon: ClipboardCheckIcon, badge: "新增" },
-  { label: "毕业论文", icon: GraduationCapIcon, disabled: true },
-]
-
 const checkIcons: Record<string, typeof BracesIcon> = {
   python: BracesIcon,
   temporary_directory: FolderCheckIcon,
@@ -596,110 +576,6 @@ function ParagraphField({
   )
 }
 
-function NavigationSidebar({
-  profileActive,
-  activeDocumentType,
-  onSelectProfile,
-  onSelectDocumentType,
-  disabled,
-}: {
-  profileActive: boolean
-  activeDocumentType: DocumentType
-  onSelectProfile: () => void
-  onSelectDocumentType: (documentType: DocumentType) => void
-  disabled: boolean
-}) {
-  return (
-    <Sidebar collapsible="icon">
-      <SidebarHeader>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton size="lg" tooltip="毕业设计文档工作台">
-              <BookOpenIcon />
-              <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-medium">SZTU 文档工作台</span>
-                <span className="truncate text-xs text-muted-foreground">
-                  本地工程原型
-                </span>
-              </div>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarHeader>
-      <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>学生</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  tooltip="学生档案"
-                  isActive={profileActive}
-                  disabled={disabled}
-                  onClick={onSelectProfile}
-                >
-                  <UserRoundIcon />
-                  <span>学生档案</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-        <SidebarGroup>
-          <SidebarGroupLabel>毕业设计文档</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {documentItems.map((item) => (
-                <SidebarMenuItem key={item.label}>
-                  <SidebarMenuButton
-                    tooltip={item.disabled ? `${item.label}尚未开放` : item.label}
-                    isActive={!profileActive && item.type === activeDocumentType}
-                    disabled={item.disabled || disabled}
-                    onClick={() => {
-                      if (item.type) onSelectDocumentType(item.type)
-                    }}
-                  >
-                    <item.icon />
-                    <span>{item.label}</span>
-                  </SidebarMenuButton>
-                  {item.badge ? (
-                    <SidebarMenuBadge>{item.badge}</SidebarMenuBadge>
-                  ) : null}
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-        <SidebarGroup>
-          <SidebarGroupLabel>工作台</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton tooltip="最近导出">
-                  <HistoryIcon />
-                  <span>最近导出</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton tooltip="设置">
-                  <SettingsIcon />
-                  <span>设置</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-      </SidebarContent>
-      <SidebarFooter>
-        <div className="px-2 text-xs text-muted-foreground">
-          数据默认仅保存在本机
-        </div>
-      </SidebarFooter>
-      <SidebarRail />
-    </Sidebar>
-  )
-}
-
 function StudentProfileEditor({
   draft,
   onChange,
@@ -715,12 +591,9 @@ function StudentProfileEditor({
   return (
     <ScrollArea className="h-full">
       <div className="mx-auto grid max-w-4xl gap-6 p-6">
-        <div className="grid gap-1">
-          <h1 className="text-xl font-semibold">学生档案</h1>
-          <p className="text-sm text-muted-foreground">
-            基础信息只在这里维护一次，开题报告、中期检查和后续过程文档导出时统一读取。
-          </p>
-        </div>
+        <p className="text-sm text-muted-foreground">
+          基础信息只在这里维护一次，开题报告、中期检查和后续过程文档导出时统一读取。
+        </p>
 
         {workspace.status === "loading" ? (
           <Alert>
@@ -1425,8 +1298,10 @@ function InspectionPanel({
 }
 
 export default function App() {
+  const isMobile = useIsMobile()
   const [draft, setDraft] = useState(emptyDraft)
   const [activePane, setActivePane] = useState<ActivePane>("document")
+  const [inspectionOpen, setInspectionOpen] = useState(false)
   const [mode, setMode] = useState<WorkspaceMode>("persistent")
   const [profile, setProfile] = useState<StudentProfile | null>(null)
   const [document, setDocument] = useState<DocumentRecord | null>(null)
@@ -1979,9 +1854,58 @@ export default function App() {
     !draftIsExportReady(draft, activeDocumentType) ||
     exportState.status === "exporting"
 
+  const editor =
+    activePane === "profile" ? (
+      <StudentProfileEditor
+        draft={draft}
+        onChange={updateDraft}
+        disabled={workspaceDisabled}
+        workspace={workspace}
+      />
+    ) : (
+      <DocumentEditor
+        documentType={activeDocumentType}
+        draft={draft}
+        onChange={updateDraft}
+        disabled={workspaceDisabled}
+        mode={mode}
+        workspace={workspace}
+        saveState={saveState}
+        onRetryLoad={() => void openWorkspace(mode)}
+        onRetrySave={() => void saveNow("manual")}
+      />
+    )
+
+  const inspectionPanel = (
+    <InspectionPanel
+      environment={environment}
+      onRefresh={refreshEnvironment}
+      onInstallTemplate={() => void installTemplate()}
+      templateInstalling={templateInstalling}
+      checks={qualityChecks}
+      exportState={exportState}
+      onCancelExport={() => void cancelExport()}
+      history={history}
+      onRefreshHistory={() => void refreshHistory()}
+      onOpenArtifact={(artifactId) => void openArtifact(artifactId)}
+      onRecordQa={(artifact) => {
+        setQaNotes("")
+        setQaTarget({ artifact })
+      }}
+    />
+  )
+
   return (
-    <SidebarProvider>
-      <NavigationSidebar
+    <SidebarProvider
+      style={
+        {
+          "--sidebar-width": "calc(var(--spacing) * 72)",
+          "--header-height": "calc(var(--spacing) * 12)",
+        } as React.CSSProperties
+      }
+    >
+      <AppSidebar
+        variant="inset"
         profileActive={activePane === "profile"}
         activeDocumentType={activeDocumentType}
         onSelectProfile={() => setActivePane("profile")}
@@ -1989,53 +1913,63 @@ export default function App() {
         disabled={workspaceDisabled || exportState.status === "exporting"}
       />
       <SidebarInset className="h-svh overflow-hidden">
-        <header className="flex h-12 shrink-0 items-center justify-between gap-3 border-b px-4">
-          <div className="flex min-w-0 items-center gap-2">
-            <SidebarTrigger />
-            <Separator orientation="vertical" className="h-4" />
-            <span className="truncate text-sm font-medium">
-              {activePane === "profile"
-                ? "学生档案"
-                : activeDocumentType === "midterm"
-                  ? "中期检查工作台"
-                  : "开题报告工作台"}
-            </span>
-            <Badge variant="secondary">工程原型</Badge>
-          </div>
-          <div className="flex items-center gap-2">
+        <SiteHeader
+          title={
+            activePane === "profile"
+              ? "学生档案"
+              : activeDocumentType === "midterm"
+                ? isMobile
+                  ? "中期检查"
+                  : "中期检查工作台"
+                : isMobile
+                  ? "开题报告"
+                  : "开题报告工作台"
+          }
+          status={
+            <>
+              <Badge className="hidden sm:inline-flex" variant="secondary">
+                本地工作台
+              </Badge>
+              {mode === "temporary" ? <Badge variant="outline">临时模式</Badge> : null}
+              <Badge
+                aria-label={`保存状态：${saveLabels[saveState]}`}
+                variant={
+                  saveState === "error" || saveState === "conflict"
+                    ? "destructive"
+                    : saveState === "dirty" || saveState === "saving"
+                      ? "outline"
+                      : "secondary"
+                }
+              >
+                {saveState === "loading" || saveState === "saving" ? (
+                  <LoaderCircleIcon className="animate-spin" />
+                ) : saveState === "error" || saveState === "conflict" ? (
+                  <TriangleAlertIcon />
+                ) : (
+                  <SaveIcon />
+                )}
+                {saveLabels[saveState]}
+              </Badge>
+            </>
+          }
+          actions={
+            isMobile ? (
+              <Button
+                variant="outline"
+                size="icon-sm"
+                aria-label="检查与导出"
+                title="检查与导出"
+                onClick={() => setInspectionOpen(true)}
+              >
+                <PanelRightOpenIcon />
+              </Button>
+            ) : null
+          }
+        />
+
+        {activePane === "document" ? (
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-b px-4 py-2 lg:px-6">
             {mode === "temporary" ? (
-              <Badge variant="outline">临时模式</Badge>
-            ) : null}
-            <Badge
-              aria-label={`保存状态：${saveLabels[saveState]}`}
-              variant={
-                saveState === "error" || saveState === "conflict"
-                  ? "destructive"
-                  : saveState === "dirty" || saveState === "saving"
-                    ? "outline"
-                    : "secondary"
-              }
-            >
-              {saveState === "loading" || saveState === "saving" ? (
-                <LoaderCircleIcon className="animate-spin" />
-              ) : saveState === "error" || saveState === "conflict" ? (
-                <TriangleAlertIcon />
-              ) : (
-                <SaveIcon />
-              )}
-              {saveLabels[saveState]}
-            </Badge>
-            {activePane === "document" ? (
-              <>
-                <Button
-                  variant="outline"
-                  onClick={() => void restorePrevious()}
-                  disabled={saveState !== "saved" || revision < 2 || workspaceDisabled}
-                >
-                  <HistoryIcon />
-                  恢复上一版
-                </Button>
-                {mode === "temporary" ? (
               <Dialog>
                 <DialogTrigger
                   render={
@@ -2072,30 +2006,38 @@ export default function App() {
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
-                ) : (
-                  <Button
-                    variant="outline"
-                    onClick={() => void enterTemporaryMode()}
-                    disabled={workspaceDisabled || saveState === "saving"}
-                  >
-                    临时模式
-                  </Button>
-                )}
-                <Button
-                  variant="outline"
-                  onClick={() => void checkContent()}
-                  disabled={
-                    workspaceDisabled ||
-                    !document ||
-                    saveState === "loading" ||
-                    saveState === "saving" ||
-                    exportState.status === "exporting"
-                  }
-                >
-                  <FileCheck2Icon />
-                  检查内容
-                </Button>
-                <DropdownMenu>
+            ) : (
+              <Button
+                variant="outline"
+                onClick={() => void enterTemporaryMode()}
+                disabled={workspaceDisabled || saveState === "saving"}
+              >
+                临时模式
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              onClick={() => void restorePrevious()}
+              disabled={saveState !== "saved" || revision < 2 || workspaceDisabled}
+            >
+              <HistoryIcon />
+              恢复上一版
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => void checkContent()}
+              disabled={
+                workspaceDisabled ||
+                !document ||
+                saveState === "loading" ||
+                saveState === "saving" ||
+                exportState.status === "exporting"
+              }
+            >
+              <FileCheck2Icon />
+              检查内容
+            </Button>
+            <DropdownMenu>
               <DropdownMenuTrigger
                 render={
                   <Button
@@ -2132,55 +2074,39 @@ export default function App() {
                   同时导出 Word 和 PDF
                 </DropdownMenuItem>
               </DropdownMenuContent>
-                </DropdownMenu>
-              </>
-            ) : null}
+            </DropdownMenu>
           </div>
-        </header>
-        <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
-          <ResizablePanel defaultSize="68%" minSize="52%">
-            {activePane === "profile" ? (
-              <StudentProfileEditor
-                draft={draft}
-                onChange={updateDraft}
-                disabled={workspaceDisabled}
-                workspace={workspace}
-              />
+        ) : null}
+
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="@container/main flex min-h-0 flex-1 flex-col gap-2">
+            {isMobile ? (
+              <div className="min-h-0 flex-1">{editor}</div>
             ) : (
-              <DocumentEditor
-                documentType={activeDocumentType}
-                draft={draft}
-                onChange={updateDraft}
-                disabled={workspaceDisabled}
-                mode={mode}
-                workspace={workspace}
-                saveState={saveState}
-                onRetryLoad={() => void openWorkspace(mode)}
-                onRetrySave={() => void saveNow("manual")}
-              />
+              <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
+                <ResizablePanel defaultSize="68%" minSize="52%">
+                  {editor}
+                </ResizablePanel>
+                <ResizableHandle withHandle />
+                <ResizablePanel defaultSize="32%" minSize="24%" maxSize="48%">
+                  {inspectionPanel}
+                </ResizablePanel>
+              </ResizablePanelGroup>
             )}
-          </ResizablePanel>
-          <ResizableHandle withHandle />
-          <ResizablePanel defaultSize="32%" minSize="24%" maxSize="48%">
-            <InspectionPanel
-              environment={environment}
-              onRefresh={refreshEnvironment}
-              onInstallTemplate={() => void installTemplate()}
-              templateInstalling={templateInstalling}
-              checks={qualityChecks}
-              exportState={exportState}
-              onCancelExport={() => void cancelExport()}
-              history={history}
-              onRefreshHistory={() => void refreshHistory()}
-              onOpenArtifact={(artifactId) => void openArtifact(artifactId)}
-              onRecordQa={(artifact) => {
-                setQaNotes("")
-                setQaTarget({ artifact })
-              }}
-            />
-          </ResizablePanel>
-        </ResizablePanelGroup>
+          </div>
+        </div>
       </SidebarInset>
+      <Sheet open={inspectionOpen} onOpenChange={setInspectionOpen}>
+        <SheetContent className="gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-md">
+          <SheetHeader className="border-b pr-12">
+            <SheetTitle>检查与导出</SheetTitle>
+            <SheetDescription>
+              环境、质量门禁、导出状态和历史记录保持相互独立。
+            </SheetDescription>
+          </SheetHeader>
+          <div className="min-h-0 flex-1">{isMobile ? inspectionPanel : null}</div>
+        </SheetContent>
+      </Sheet>
       <Dialog
         open={pendingExport !== null}
         onOpenChange={(open) => {

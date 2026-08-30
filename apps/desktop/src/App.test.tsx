@@ -320,6 +320,10 @@ describe("M3 workbench persistence", () => {
   afterEach(() => {
     cleanup()
     vi.useRealTimers()
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 1024,
+    })
     delete (window as Window & { sztuDesktop?: SztuDesktopApi }).sztuDesktop
   })
 
@@ -332,6 +336,38 @@ describe("M3 workbench persistence", () => {
     expect(screen.getByText("开发模板包可用。")).toBeInTheDocument()
     expect(screen.getByText("结构检查")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "导出" })).toBeEnabled()
+  })
+
+  it("uses the official dashboard shell composition", async () => {
+    const { container } = renderApp()
+
+    expect(await screen.findByDisplayValue("合成开题报告")).toBeInTheDocument()
+    expect(container.querySelector('[data-slot="sidebar"]')).toHaveAttribute(
+      "data-variant",
+      "inset",
+    )
+    expect(container.querySelector('[data-slot="sidebar-inset"]')).toBeInTheDocument()
+    expect(
+      screen.getByRole("heading", { level: 1, name: "开题报告工作台" }),
+    ).toBeInTheDocument()
+  })
+
+  it("moves inspection and export into a Sheet on narrow windows", async () => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 600,
+    })
+    renderApp()
+
+    const inspectionButton = await screen.findByRole("button", {
+      name: "检查与导出",
+    })
+    fireEvent.click(inspectionButton)
+
+    expect(await screen.findByText("环境、质量门禁、导出状态和历史记录保持相互独立。"))
+      .toBeInTheDocument()
+    expect(screen.getByText("本机环境")).toBeInTheDocument()
+    expect(screen.getByText("文档质量")).toBeInTheDocument()
   })
 
   it("creates an unnamed proposal when no active document exists", async () => {

@@ -34,13 +34,13 @@
 - **确定性排版**：AI 只能提供候选结构化内容，不能直接修改 DOCX、OOXML 或 LaTeX 模板。
 - **证据分层**：成功生成文件不等于排版验收通过，Word/WPS 是 Office 文档最终验收依据。
 - **模板可追溯**：模板包记录来源、版本、许可证与文件哈希。
-- **默认 shadcn**：前端只组合默认 `shadcn/ui` 组件，不建立自定义视觉系统或 UI 基础组件库。
+- **官方 Blocks 优先**：前端以官方 `dashboard-01` Block 为页面骨架，只组合默认 `shadcn/ui` 组件，不建立自定义视觉系统或 UI 基础组件库。
 - **隐私与许可优先**：商业字体、真实学生材料、签名、密钥和未经确认可再分发的学校文件不得进入仓库或 Release。
 
 ## 技术路线
 
 - Electron + React + TypeScript + Vite；
-- 默认 `shadcn/ui` 与 Tailwind CSS；
+- 默认 `shadcn/ui`、官方 `dashboard-01` Blocks 结构与 Tailwind CSS；
 - Python 文档引擎，以版本化 JSONL IPC 连接 Electron 主进程；
 - SQLite 本地存储；
 - JSON Schema 数据合同；
@@ -83,7 +83,8 @@ pnpm dev
 [M2/M3 验收记录](docs/evidence/M2_M3_ACCEPTANCE.md)和
 [M5 首条导出闭环记录](docs/evidence/M5_PROPOSAL_EXPORT_SLICE.md)、
 [M5 导出加固与目标编辑器验收记录](docs/evidence/M5_EXPORT_HARDENING_TARGET_EDITOR_QA.md)和
-[M6 中期检查集成记录](docs/evidence/M6_MIDTERM_INTEGRATION.md)。
+[M6 中期检查集成记录](docs/evidence/M6_MIDTERM_INTEGRATION.md)、
+[M6 shadcn 官方 Blocks 工作台迁移记录](docs/evidence/M6_SHADCN_BLOCKS_MIGRATION.md)。
 
 ## 参与贡献
 

@@ -42,12 +42,16 @@ These rules apply to every frontend prototype, screenshot, and production page i
 1. Use the default `shadcn/ui` design system and its generated theme tokens.
    - Keep the installer-selected default color system, typography, radii, spacing, focus treatment, and light/dark behavior.
    - Do not introduce a custom brand palette, custom font family, gradients, decorative backgrounds, glass effects, bespoke shadows, or ornamental motion.
+   - Start page-level work from an official shadcn Block. The workbench baseline is the official `dashboard-01` composition, not a hand-designed shell.
 2. Do not create custom UI primitives or a parallel component library.
    - Use an existing `shadcn/ui` component whenever one covers the interaction.
    - Business components may compose `shadcn/ui` components, but may not establish new visual primitives, styling conventions, or design tokens.
    - Do not copy a third-party component into the repository and restyle it to look custom. If shadcn has no adequate component, document the gap and request explicit approval before adding another frontend dependency or primitive.
 3. Do not hand-design pages outside the agreed workbench structure.
-   - Use the standard workbench layout: application sidebar, document editor main area, validation/export side panel, and a restrained top action bar.
+   - Preserve the official `dashboard-01` hierarchy: `SidebarProvider`, inset `AppSidebar`, `SidebarInset`, `SiteHeader`, then the business content container.
+   - Keep Block-derived page composition in `components/workbench/` and default generated primitives in `components/ui/`; never mix business code into a forked primitive.
+   - Use the standard workbench layout: application sidebar, document editor main area, validation/export side panel, and a restrained top action bar. On narrow windows, the validation/export panel uses the default shadcn `Sheet`.
+   - Do not import a Block's demo-only charts, tables, sample records, drag-and-drop libraries, or account controls unless the product has the corresponding real workflow.
    - Prefer `Sidebar`, `Resizable`, `Tabs`, `Form`, `Input`, `Textarea`, `Select`, `Button`, `Card`, `Table`, `ScrollArea`, `Alert`, `Badge`, `Dialog`, `Sheet`, `DropdownMenu`, `Progress`, `Separator`, `Tooltip`, and `Sonner` from `shadcn/ui` as applicable.
 4. Avoid custom CSS when Tailwind utilities and shadcn theme tokens are sufficient.
    - Do not use arbitrary color values or one-off pixel styling for visual polish.

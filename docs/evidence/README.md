@@ -10,4 +10,4 @@
 - 文档质量分别记录内容提取、字形有效、逐页检查和 Word/WPS 验收；
 - 模板包和发布证据同时记录来源、许可证和再分发检查。
 
-M0 使用 [M0_REPOSITORY_GOVERNANCE_TEMPLATE.md](M0_REPOSITORY_GOVERNANCE_TEMPLATE.md)。当前记录包括 [M0/M1 工程基线](M0_M1_ACCEPTANCE.md)、[M2/M3 合同与本地数据闭环](M2_M3_ACCEPTANCE.md)、[M5 首条导出闭环](M5_PROPOSAL_EXPORT_SLICE.md)、[M5 导出加固与目标编辑器验收](M5_EXPORT_HARDENING_TARGET_EDITOR_QA.md)和 [M6 中期检查集成](M6_MIDTERM_INTEGRATION.md)。后续里程碑可复制相同结构并按适用门禁扩展。
+M0 使用 [M0_REPOSITORY_GOVERNANCE_TEMPLATE.md](M0_REPOSITORY_GOVERNANCE_TEMPLATE.md)。当前记录包括 [M0/M1 工程基线](M0_M1_ACCEPTANCE.md)、[M2/M3 合同与本地数据闭环](M2_M3_ACCEPTANCE.md)、[M5 首条导出闭环](M5_PROPOSAL_EXPORT_SLICE.md)、[M5 导出加固与目标编辑器验收](M5_EXPORT_HARDENING_TARGET_EDITOR_QA.md)、[M6 中期检查集成](M6_MIDTERM_INTEGRATION.md)和 [M6 shadcn 官方 Blocks 工作台迁移](M6_SHADCN_BLOCKS_MIGRATION.md)。后续里程碑可复制相同结构并按适用门禁扩展。
