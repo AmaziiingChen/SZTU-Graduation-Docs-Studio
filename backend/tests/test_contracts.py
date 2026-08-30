@@ -70,9 +70,11 @@ class ContractTests(unittest.TestCase):
                 "ipc-envelope.schema.json",
                 "midterm.schema.json",
                 "proposal.schema.json",
+                "preview-operation.schema.json",
                 "qa-policy.schema.json",
                 "qa-record-operation.schema.json",
                 "student-profile.schema.json",
+                "task-book.schema.json",
                 "template-install-operation.schema.json",
                 "template-manifest.schema.json",
             },
@@ -91,7 +93,15 @@ class ContractTests(unittest.TestCase):
         imported = CONTRACTS / "proposal.schema.json"
         self.assertEqual(
             hashlib.sha256(imported.read_bytes()).hexdigest(),
-            "914a9117723c7448635993edc81e9fab7e79d8d4cce0544b50527be60fe9530e",
+            "3dbaf3fb9af5467cfa8403fb15185477d6090bc9806c3e4691265ef1e15e3df3",
+        )
+        source_form = imported.read_text(encoding="utf-8").replace(
+            "content-block.schema.json#",
+            "../../common/schema/content-block.schema.json#",
+        )
+        self.assertEqual(
+            hashlib.sha256(source_form.encode("utf-8")).hexdigest(),
+            "555275e6e4a6058beeddf4031651f419b03c31566f4ed83807cb3a67c3f8c5cc",
         )
         thesis_root = os.environ.get("SZTU_THESIS_ROOT")
         if thesis_root:
@@ -102,14 +112,14 @@ class ContractTests(unittest.TestCase):
                 / "schema"
                 / "proposal.schema.json"
             )
-            self.assertEqual(imported.read_bytes(), source.read_bytes())
+            self.assertEqual(source_form.encode("utf-8"), source.read_bytes())
 
     def test_midterm_schema_and_common_blocks_match_recorded_source_contract(self) -> None:
         common = CONTRACTS / "content-block.schema.json"
         midterm = CONTRACTS / "midterm.schema.json"
         self.assertEqual(
             hashlib.sha256(common.read_bytes()).hexdigest(),
-            "6c766db71640843a8eaa86d9398e6a02b3b9b0d11edfd24b512e27c8caef0562",
+            "b43829110464ec8623129557534a0fcaa72bb5033ead36d93251959042588eca",
         )
         self.assertEqual(
             hashlib.sha256(midterm.read_bytes()).hexdigest(),
@@ -135,24 +145,176 @@ class ContractTests(unittest.TestCase):
                 (source_root / "midterm/schema/midterm.schema.json").read_bytes(),
             )
 
+    def test_common_lists_are_explicit_trees_capped_at_four_levels(self) -> None:
+        common = load_json(CONTRACTS / "content-block.schema.json")["$defs"]
+        self.assertEqual(
+            common["orderedList"]["allOf"],
+            [
+                {"$ref": "#/$defs/listLevel1"},
+                {"properties": {"type": {"const": "ordered_list"}}},
+            ],
+        )
+        self.assertEqual(
+            common["unorderedList"]["allOf"],
+            [
+                {"$ref": "#/$defs/listLevel1"},
+                {"properties": {"type": {"const": "unordered_list"}}},
+            ],
+        )
+        self.assertEqual(
+            common["textContentBlock"]["oneOf"],
+            [
+                {"$ref": "#/$defs/paragraph"},
+                {"$ref": "#/$defs/listBlock"},
+            ],
+        )
+        for level in range(1, 5):
+            list_level = common[f"listLevel{level}"]
+            item = list_level["properties"]["items"]["items"]["properties"]
+            self.assertIn("marker", item)
+            self.assertEqual(
+                list_level["allOf"][0]["then"]["properties"]["items"]["items"],
+                {"not": {"required": ["marker"]}},
+            )
+            if level < 4:
+                self.assertEqual(
+                    item["children"]["$ref"], f"#/$defs/listLevel{level + 1}"
+                )
+            else:
+                self.assertNotIn("children", item)
+
+    def test_proposal_only_enables_lists_in_three_body_sections(self) -> None:
+        proposal = load_json(CONTRACTS / "proposal.schema.json")
+        properties = proposal["properties"]["sections"]["properties"]
+        for name in ("research_content", "methods_and_means", "research_steps"):
+            self.assertEqual(properties[name]["$ref"], "#/$defs/textContentBlocks")
+        self.assertEqual(
+            proposal["$defs"]["textContentBlock"]["$ref"],
+            "content-block.schema.json#/$defs/textContentBlock",
+        )
+        self.assertEqual(
+            properties["significance_and_status"]["$ref"],
+            "#/$defs/significanceParagraphs",
+        )
+        self.assertEqual(
+            properties["references"]["$ref"], "#/$defs/referenceParagraphs"
+        )
+
+    def test_task_book_schema_matches_submitted_source_contract(self) -> None:
+        task_book = CONTRACTS / "task-book.schema.json"
+        self.assertEqual(
+            hashlib.sha256(task_book.read_bytes()).hexdigest(),
+            "9e9326b4332d3c6c04dcceb97f3e280f3f93666426484b98e483b19630d5e1ce",
+        )
+        source_form = task_book.read_text(encoding="utf-8").replace(
+            "content-block.schema.json#",
+            "../../common/schema/content-block.schema.json#",
+        )
+        self.assertEqual(
+            hashlib.sha256(source_form.encode("utf-8")).hexdigest(),
+            "16cfd7b8071c7164e356663fd4c5239cb10c4a738414a72882017129d1582ae4",
+        )
+        thesis_root = os.environ.get("SZTU_THESIS_ROOT")
+        if thesis_root:
+            source = (
+                Path(thesis_root)
+                / "templates/task-book/schema/task-book.schema.json"
+            )
+            self.assertEqual(source_form.encode("utf-8"), source.read_bytes())
+
     def test_draft_is_incomplete_but_export_uses_strict_proposal(self) -> None:
         draft = load_json(CONTRACTS / "document-draft.schema.json")
         incomplete = draft["$defs"]["incompleteProposal"]
         self.assertNotIn("required", incomplete)
         self.assertNotIn("required", incomplete["properties"]["metadata"])
         self.assertNotIn("required", incomplete["properties"]["sections"])
+        self.assertEqual(
+            draft["properties"]["document_type"]["enum"],
+            ["proposal", "midterm", "task_book"],
+        )
+        self.assertIn("incompleteTaskBook", draft["$defs"])
+        self.assertNotIn("required", draft["$defs"]["incompleteTaskBook"])
+        proposal_sections = incomplete["properties"]["sections"]["properties"]
+        for name in ("research_content", "methods_and_means", "research_steps"):
+            self.assertEqual(
+                proposal_sections[name]["$ref"],
+                "#/$defs/textContentBlocks",
+            )
+        self.assertEqual(
+            draft["$defs"]["textContentBlock"]["oneOf"],
+            [
+                {"$ref": "#/$defs/paragraph"},
+                {"$ref": "#/$defs/draftListLevel1"},
+            ],
+        )
+        self.assertEqual(
+            draft["$defs"]["paragraph"]["oneOf"][0],
+            {"type": "string", "maxLength": 5000},
+        )
+        for level in range(1, 5):
+            properties = draft["$defs"][f"draftListLevel{level}"]["properties"]
+            content = properties["items"]["items"]["properties"]
+            self.assertEqual(content["content"]["$ref"], "#/$defs/paragraph")
+            if level < 4:
+                self.assertEqual(
+                    content["children"]["$ref"],
+                    f"#/$defs/draftListLevel{level + 1}",
+                )
+            else:
+                self.assertNotIn("children", content)
+        self.assertEqual(
+            proposal_sections["significance_and_status"]["$ref"],
+            "#/$defs/paragraphs",
+        )
+        self.assertEqual(
+            proposal_sections["references"]["$ref"],
+            "#/$defs/paragraphs",
+        )
+        for section_name in ("main_research_content", "progress"):
+            self.assertEqual(
+                draft["$defs"]["incompleteMidterm"]["properties"]["sections"]
+                ["properties"][section_name]["$ref"],
+                "#/$defs/textContentBlocks",
+            )
+        for section_name in (
+            "basic_content_and_requirements",
+            "required_materials",
+        ):
+            self.assertEqual(
+                draft["$defs"]["incompleteTaskBook"]["properties"]["sections"]
+                ["properties"][section_name]["$ref"],
+                "#/$defs/textContentBlocks",
+            )
         export = load_json(CONTRACTS / "export-request.schema.json")
         self.assertEqual(
             export["properties"]["document"]["oneOf"],
             [
                 {"$ref": "proposal.schema.json"},
                 {"$ref": "midterm.schema.json"},
+                {"$ref": "task-book.schema.json"},
             ],
         )
         strict = load_json(CONTRACTS / "proposal.schema.json")
         self.assertEqual(strict["required"], ["schema_version", "metadata", "sections"])
         midterm = load_json(CONTRACTS / "midterm.schema.json")
         self.assertEqual(midterm["required"], ["schema_version", "metadata", "sections"])
+        task_book = load_json(CONTRACTS / "task-book.schema.json")
+        self.assertEqual(task_book["required"], ["schema_version", "metadata", "sections"])
+
+    def test_student_profile_contract_adds_optional_shared_fields(self) -> None:
+        profile = load_json(CONTRACTS / "student-profile.schema.json")
+        self.assertEqual(profile["properties"]["schema_version"]["const"], "1.2")
+        student = profile["properties"]["student"]
+        advisor = profile["properties"]["advisor"]
+        self.assertIn("graduation_cohort", student["properties"])
+        self.assertIn("advisor_title", advisor["properties"])
+        self.assertIn("thesis_title", profile["properties"])
+        self.assertEqual(
+            profile["properties"]["thesis_title"]["oneOf"][1]["maxItems"],
+            1,
+        )
+        self.assertNotIn("graduation_cohort", student["required"])
+        self.assertTrue(advisor["properties"]["title"]["deprecated"])
 
     def test_ipc_identifiers_are_uuid_strings_and_progress_is_distinct(self) -> None:
         envelope = load_json(CONTRACTS / "ipc-envelope.schema.json")
@@ -176,11 +338,20 @@ class ContractTests(unittest.TestCase):
                 self.assertTrue((CONTRACTS / target).is_file(), f"missing $ref {ref} from {path.name}")
 
     def test_template_install_operation_selects_a_supported_document_type(self) -> None:
-        params = load_json(CONTRACTS / "template-install-operation.schema.json")["$defs"]["params"]
+        operation = load_json(CONTRACTS / "template-install-operation.schema.json")["$defs"]
+        params = operation["params"]
         self.assertEqual(params["required"], ["source_directory", "document_type"])
         self.assertEqual(
             params["properties"]["document_type"]["enum"],
-            ["proposal", "midterm"],
+            ["proposal", "midterm", "task_book"],
+        )
+        self.assertEqual(
+            operation["result"]["properties"]["status"]["enum"],
+            ["linked", "updated", "already_current"],
+        )
+        self.assertEqual(
+            operation["result"]["properties"]["source"]["const"],
+            "linked-workspace",
         )
 
     def test_export_operation_fragments_are_explicit_and_closed(self) -> None:

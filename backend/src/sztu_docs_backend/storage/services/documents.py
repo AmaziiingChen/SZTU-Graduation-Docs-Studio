@@ -1,4 +1,4 @@
-"""Document and bounded draft-revision services."""
+"""Document storage with one current autosaved draft per document."""
 
 from __future__ import annotations
 
@@ -10,15 +10,12 @@ from ..database import Database, utc_now
 from ..errors import NotFoundError, RevisionConflictError, ValidationError
 from .common import decode_json, encode_json, new_id, require_text
 
-SAVE_REASONS = frozenset({"auto", "manual", "restore", "import"})
+SAVE_REASONS = frozenset({"auto", "manual", "import"})
 
 
 class DocumentService:
-    def __init__(self, database: Database, *, revision_limit: int = 20) -> None:
-        if revision_limit < 2:
-            raise ValueError("revision_limit must keep at least two revisions")
+    def __init__(self, database: Database) -> None:
         self.database = database
-        self.revision_limit = revision_limit
 
     def create(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         profile_id = payload.get("profile_id")
@@ -226,13 +223,9 @@ class DocumentService:
             connection.execute(
                 """
                 DELETE FROM draft_revisions
-                WHERE document_id = ? AND revision_number NOT IN (
-                    SELECT revision_number FROM draft_revisions
-                    WHERE document_id = ?
-                    ORDER BY revision_number DESC LIMIT ?
-                )
+                WHERE document_id = ? AND revision_number <> ?
                 """,
-                (document_id, document_id, self.revision_limit),
+                (document_id, new_revision),
             )
         return {
             "document_id": document_id,
@@ -240,38 +233,6 @@ class DocumentService:
             "save_reason": reason,
             "saved_at": now,
         }
-
-    def restore_previous(
-        self, document_id: str, expected_revision: int
-    ) -> dict[str, Any]:
-        if not isinstance(expected_revision, int) or isinstance(expected_revision, bool):
-            raise ValidationError("expected_revision", "must_be_integer")
-        current = self.database.connection.execute(
-            "SELECT current_revision FROM documents WHERE id = ?", (document_id,)
-        ).fetchone()
-        if current is None:
-            raise NotFoundError("document", document_id)
-        actual = int(current["current_revision"])
-        if actual != expected_revision:
-            raise RevisionConflictError(document_id, expected_revision, actual)
-        previous = self.database.connection.execute(
-            """
-            SELECT content_json, revision_number FROM draft_revisions
-            WHERE document_id = ? AND revision_number < ?
-            ORDER BY revision_number DESC LIMIT 1
-            """,
-            (document_id, actual),
-        ).fetchone()
-        if previous is None:
-            raise NotFoundError("previous_revision", document_id)
-        result = self._append_revision(
-            document_id,
-            previous["content_json"],
-            expected_revision,
-            reason="restore",
-        )
-        result["restored_from_revision"] = int(previous["revision_number"])
-        return result
 
     def close_temporary(self, document_id: str) -> dict[str, Any]:
         with self.database.transaction(immediate=True) as connection:

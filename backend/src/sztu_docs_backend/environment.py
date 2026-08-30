@@ -11,7 +11,12 @@ from importlib.util import find_spec
 from pathlib import Path
 from typing import Any
 
-from .exporter import ExportError, resolve_engine
+from .exporter import (
+    TASK_BOOK_CHECKBOX_FONT_FILENAMES,
+    ExportError,
+    _find_task_book_checkbox_font,
+    resolve_engine,
+)
 from .template_catalog import discover_trusted_template_packs
 
 
@@ -59,12 +64,12 @@ def _check_xelatex() -> dict[str, Any]:
     executable = shutil.which("xelatex")
     return {
         "id": "xelatex",
-        "required": False,
-        "status": "pass" if executable else "warn",
+        "required": True,
+        "status": "pass" if executable else "fail",
         "message": (
             "XeLaTeX is available."
             if executable
-            else "XeLaTeX was not found; PDF export will be unavailable."
+            else "未找到 XeLaTeX；分页预览和 PDF 导出不可用。"
         ),
         "details": {"executable": executable},
     }
@@ -78,14 +83,31 @@ def _check_document_dependencies() -> dict[str, Any]:
     available = all(dependencies.values())
     return {
         "id": "document_dependencies",
-        "required": False,
-        "status": "pass" if available else "warn",
+        "required": True,
+        "status": "pass" if available else "fail",
         "message": (
             "Word 与中文字形检查所需 Python 依赖可用。"
             if available
-            else "缺少 Word 或中文字形检查依赖；部分导出不可用。"
+            else "缺少 python-docx 或 Pillow；请运行 corepack pnpm setup:backend 后重启工作台。"
         ),
         "details": dependencies,
+    }
+
+
+def _check_pdf_tools() -> dict[str, Any]:
+    names = ("pdfinfo", "pdffonts", "pdftoppm", "pdftotext", "pdftocairo")
+    tools = {name: shutil.which(name) for name in names}
+    available = all(tools.values())
+    return {
+        "id": "pdf_tools",
+        "required": True,
+        "status": "pass" if available else "fail",
+        "message": (
+            "PDF 分页与中文字形检查工具可用。"
+            if available
+            else "缺少 Poppler PDF 工具；分页预览不可用。"
+        ),
+        "details": tools,
     }
 
 
@@ -100,14 +122,25 @@ def _check_proposal_engine() -> dict[str, Any]:
             "message": exc.message,
             "details": {"code": exc.code},
         }
+    live_workspace = engine.source in {
+        "development-workspace",
+        "environment-workspace",
+        "linked-workspace",
+    }
     return {
         "id": "proposal_engine",
         "required": False,
         "status": "pass",
-        "message": "已提交版本的开题报告 Word/PDF 引擎可用。",
+        "message": (
+            "开题报告本地模板工程已实时同步为导出快照。"
+            if live_workspace
+            else "已提交版本的开题报告 Word/PDF 引擎可用。"
+        ),
         "details": {
-            "version": "0.2+a0799ee",
+            "version": engine.version,
             "pack_sha256": engine.pack_sha256,
+            "source": engine.source,
+            "live_workspace": live_workspace,
         },
     }
 
@@ -123,15 +156,94 @@ def _check_midterm_engine() -> dict[str, Any]:
             "message": exc.message,
             "details": {"code": exc.code},
         }
+    live_workspace = engine.source in {
+        "development-workspace",
+        "environment-workspace",
+        "linked-workspace",
+    }
     return {
         "id": "midterm_engine",
         "required": False,
         "status": "pass",
-        "message": "受信任的中期检查 Word/PDF/LaTeX 引擎可用。",
+        "message": (
+            "中期检查本地模板工程已实时同步为导出快照。"
+            if live_workspace
+            else "受信任的中期检查 Word/PDF/LaTeX 引擎可用。"
+        ),
         "details": {
             "version": engine.version,
             "pack_sha256": engine.pack_sha256,
             "source": engine.source,
+            "live_workspace": live_workspace,
+        },
+    }
+
+
+def _check_task_book_engine() -> dict[str, Any]:
+    try:
+        engine = resolve_engine("task_book")
+    except ExportError as exc:
+        return {
+            "id": "task_book_engine",
+            "required": False,
+            "status": "warn",
+            "message": exc.message,
+            "details": {"code": exc.code},
+        }
+    live_workspace = engine.source in {
+        "development-workspace",
+        "environment-workspace",
+        "linked-workspace",
+    }
+    return {
+        "id": "task_book_engine",
+        "required": False,
+        "status": "pass",
+        "message": (
+            "任务书本地模板工程已实时同步为导出快照。"
+            if live_workspace
+            else "已提交版本的任务书 Word/PDF/LaTeX 引擎可用。"
+        ),
+        "details": {
+            "version": engine.version,
+            "pack_sha256": engine.pack_sha256,
+            "source": engine.source,
+            "live_workspace": live_workspace,
+        },
+    }
+
+
+def _check_task_book_docx_font() -> dict[str, Any]:
+    try:
+        engine = resolve_engine("task_book")
+    except ExportError as exc:
+        return {
+            "id": "task_book_docx_font",
+            "required": False,
+            "status": "warn",
+            "message": "任务书模板尚不可用，暂时无法检查 Word 勾选框字体。",
+            "details": {
+                "code": exc.code,
+                "document_type": "task_book",
+                "format": "docx",
+            },
+        }
+    found = _find_task_book_checkbox_font(engine)
+    return {
+        "id": "task_book_docx_font",
+        "required": False,
+        "status": "pass" if found is not None else "warn",
+        "message": (
+            "任务书 Word 勾选框字体 Wingdings 2 可用。"
+            if found is not None
+            else "未找到任务书 Word 勾选框字体 Wingdings 2；仅 Word 导出不可用，PDF 和 LaTeX 不受影响。"
+        ),
+        "details": {
+            "document_type": "task_book",
+            "format": "docx",
+            "font_family": "Wingdings 2",
+            "found": found is not None,
+            "candidates": list(TASK_BOOK_CHECKBOX_FONT_FILENAMES),
         },
     }
 
@@ -214,10 +326,13 @@ def check_environment() -> dict[str, Any]:
         _check_temp_directory(),
         _check_document_dependencies(),
         _check_xelatex(),
+        _check_pdf_tools(),
         _check_office_editor(),
         _check_template_packs(),
         _check_proposal_engine(),
         _check_midterm_engine(),
+        _check_task_book_engine(),
+        _check_task_book_docx_font(),
     ]
     ready = not any(
         check["required"] and check["status"] == "fail" for check in checks

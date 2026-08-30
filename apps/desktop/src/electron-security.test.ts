@@ -39,12 +39,13 @@ describe("Electron security boundary", () => {
       "getAppInfo",
       "checkEnvironment",
       "openWorkspace",
+      "saveProfileDraft",
       "saveProfile",
       "createDocument",
       "saveDraft",
-      "restorePrevious",
       "closeTemporary",
       "checkDocument",
+      "generatePreview",
       "chooseExportDirectory",
       "preflightExport",
       "exportDocument",
@@ -56,6 +57,7 @@ describe("Electron security boundary", () => {
     ]) {
       expect(preloadSource).toContain(method)
     }
+    expect(preloadSource).not.toContain("restorePrevious")
     expect(preloadSource).not.toMatch(/\b(?:exec|spawn|readFile|writeFile)\b/)
     expect(preloadSource).not.toContain("requestSidecar")
   })
@@ -63,12 +65,13 @@ describe("Electron security boundary", () => {
   it("maps every workspace action to a dedicated IPC channel and validates the sender", () => {
     for (const channel of [
       "sztu:workspace-open",
+      "sztu:workspace-save-profile-draft",
       "sztu:workspace-save-profile",
       "sztu:workspace-create-document",
       "sztu:workspace-save-draft",
-      "sztu:workspace-restore-previous",
       "sztu:workspace-close-temporary",
       "sztu:document-check",
+      "sztu:preview-generate",
       "sztu:choose-export-directory",
       "sztu:export-preflight",
       "sztu:export-document",
@@ -80,9 +83,35 @@ describe("Electron security boundary", () => {
     ]) {
       expect(mainSource).toContain(`ipcMain.handle("${channel}"`)
     }
+    expect(mainSource).not.toContain("sztu:workspace-restore-previous")
+    expect(sidecarSource).not.toContain("workspace.restorePrevious")
     expect(mainSource.match(/assertTrustedSender\(event\)/g)?.length).toBeGreaterThanOrEqual(17)
     expect(mainSource).toContain("assertExactKeys")
     expect(mainSource).toContain("assertJsonValue")
+  })
+
+  it("allows the shared advisor title and graduation cohort through profile IPC validation", () => {
+    expect(mainSource).toContain('"advisor_title"')
+    expect(mainSource).toContain('"graduation_cohort"')
+    expect(mainSource).toContain(
+      'assertText(value.advisor_title, "profile.advisor_title", 100, false)',
+    )
+    expect(mainSource).toContain(
+      'assertText(value.graduation_cohort, "profile.graduation_cohort", 20, false)',
+    )
+    expect(sidecarSource).toContain('"workspace.saveProfileDraft"')
+  })
+
+  it("allows the task-book document type without widening the renderer bridge", () => {
+    expect(mainSource).toContain('value.document_type !== "task_book"')
+    expect(mainSource).toContain('documentType !== "task_book"')
+    expect(mainSource).toContain("关联包含任务书模板的本地工程")
+    expect(mainSource).toContain(
+      '{ source_directory: sourceDirectory, document_type: documentType }',
+    )
+    expect(preloadSource).toContain(
+      'installTemplatePack: (documentType: unknown) => invoke("sztu:template-install", documentType)',
+    )
   })
 
   it("wraps the environment sidecar response in the preload bridge envelope", () => {
@@ -91,9 +120,50 @@ describe("Electron security boundary", () => {
     )
   })
 
-  it("pins the sidecar template root from the main process and never logs request data", () => {
+  it("pins the sidecar template root and explicitly allowlists its inherited environment", () => {
     expect(sidecarSource).toContain("SZTU_DOCS_TEMPLATE_PACKS_DIR")
+    expect(sidecarSource).toContain("SZTU_DOCS_TASK_BOOK_ENGINE_DIR")
+    expect(sidecarSource).toContain("SZTU_DOCS_MIDTERM_ENGINE_DIR")
+    expect(sidecarSource).toContain("SZTU_STXINGKAI_FONT")
     expect(sidecarSource).toContain('path.resolve(this.backendRoot, "../template-packs")')
+    expect(sidecarSource).toContain('path.join(repositoryRoot, ".venv", "bin", "python")')
+    expect(sidecarSource).toContain('path.join(repositoryRoot, ".venv", "Scripts", "python.exe")')
+    const spawnEnvironment = sidecarSource.match(
+      /env: \{([\s\S]*?)\n\s*\},\n\s*shell: false/,
+    )?.[1]
+    expect(spawnEnvironment).toBeDefined()
+    expect(
+      [...(spawnEnvironment?.matchAll(/process\.env\.([A-Z0-9_]+)/g) ?? [])]
+        .map((match) => match[1])
+        .sort(),
+    ).toEqual(
+      [
+        "COMSPEC",
+        "HOME",
+        "LANG",
+        "LC_ALL",
+        "PATH",
+        "PATHEXT",
+        "SYSTEMROOT",
+        "SZTU_DOCS_CJK_VALIDATOR",
+        "SZTU_DOCS_MIDTERM_ENGINE_DIR",
+        "SZTU_DOCS_PROPOSAL_ENGINE_DIR",
+        "SZTU_DOCS_TASK_BOOK_ENGINE_DIR",
+        "SZTU_FONT_DIR",
+        "SZTU_FZXIAOBIAOSONG_FONT",
+        "SZTU_SIMHEI_FONT",
+        "SZTU_SIMSUN_FONT",
+        "SZTU_STXINGKAI_FONT",
+        "SZTU_TIMES_BOLD_FONT",
+        "SZTU_TIMES_BOLD_ITALIC_FONT",
+        "SZTU_TIMES_ITALIC_FONT",
+        "SZTU_TIMES_REGULAR_FONT",
+        "TEMP",
+        "TMP",
+        "USERPROFILE",
+        "WINDIR",
+      ].sort(),
+    )
     expect(sidecarSource).not.toContain("console.log")
   })
 

@@ -23,6 +23,16 @@ MIDTERM_SAFE_SOURCE_FILES = (
     "midterm-fonts.tex",
     "midterm-typography.tex",
 )
+TASK_BOOK_SAFE_SOURCE_FILES = (
+    "main.tex",
+    "task-book-data.tex",
+    "task-book-fixed.tex",
+    "task-book-fonts.tex",
+    "task-book-typography.tex",
+)
+TASK_BOOK_ASSET_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".pdf"})
+TASK_BOOK_MAX_ASSETS = 32
+TASK_BOOK_MAX_ASSET_BYTES = 32 * 1024 * 1024
 FORBIDDEN_SUFFIXES = {
     ".doc",
     ".docx",
@@ -126,6 +136,66 @@ MIDTERM_README_TEXT = """# 中期检查表 LaTeX 源码包
 `midterm.json` 是本次导出的冻结输入快照；编辑字段后需要使用工作台重新导出，
 不要直接编辑生成的 `midterm-data.tex`。
 """
+TASK_BOOK_PORTABLE_FONTS_TEX = r"""% Generated portable configuration; font binaries are not bundled.
+% You may place legally obtained STXingkai.ttf, SimHei.ttf and simsun.ttf in ./fonts/.
+\IfFileExists{fonts/STXingkai.ttf}{
+  \newCJKfontfamily\schoolmark[Path=fonts/,AutoFakeBold=3]{STXingkai.ttf}
+}{
+  \IfFontExistsTF{STXingkai}{
+    \newCJKfontfamily\schoolmark[AutoFakeBold=3]{STXingkai}
+  }{
+    \newCJKfontfamily\schoolmark[AutoFakeBold=3]{华文行楷}
+  }
+}
+\IfFileExists{fonts/SimHei.ttf}{
+  \setCJKsansfont[Path=fonts/]{SimHei.ttf}
+  \newCJKfontfamily\heiti[Path=fonts/,AutoFakeBold=3]{SimHei.ttf}
+  \newCJKfontfamily\heitiBold[Path=fonts/,AutoFakeBold=3]{SimHei.ttf}
+  \newfontfamily\heitiLatin[Path=fonts/,AutoFakeBold=3]{SimHei.ttf}
+}{
+  \IfFontExistsTF{SimHei}{
+    \setCJKsansfont{SimHei}
+    \newCJKfontfamily\heiti[AutoFakeBold=3]{SimHei}
+    \newCJKfontfamily\heitiBold[AutoFakeBold=3]{SimHei}
+    \newfontfamily\heitiLatin[AutoFakeBold=3]{SimHei}
+  }{
+    \setCJKsansfont{黑体}
+    \newCJKfontfamily\heiti[AutoFakeBold=3]{黑体}
+    \newCJKfontfamily\heitiBold[AutoFakeBold=3]{黑体}
+    \newfontfamily\heitiLatin{Times New Roman}
+  }
+}
+\IfFileExists{fonts/simsun.ttf}{
+  \setCJKmainfont[Path=fonts/]{simsun.ttf}
+  \newCJKfontfamily\songti[Path=fonts/,AutoFakeBold=3]{simsun.ttf}
+  \newCJKfontfamily\songtiBold[Path=fonts/,AutoFakeBold=3]{simsun.ttf}
+}{
+  \IfFontExistsTF{SimSun}{
+    \setCJKmainfont{SimSun}
+    \newCJKfontfamily\songti[AutoFakeBold=3]{SimSun}
+    \newCJKfontfamily\songtiBold[AutoFakeBold=3]{SimSun}
+  }{
+    \setCJKmainfont{宋体}
+    \newCJKfontfamily\songti[AutoFakeBold=3]{宋体}
+    \newCJKfontfamily\songtiBold[AutoFakeBold=3]{宋体}
+  }
+}
+\setmainfont[
+  BoldFont={Times New Roman Bold},
+  ItalicFont={Times New Roman Italic},
+  BoldItalicFont={Times New Roman Bold Italic}
+]{Times New Roman}
+"""
+TASK_BOOK_README_TEXT = """# 任务书 LaTeX 源码包
+
+使用 XeLaTeX 编译 `main.tex`。本包不包含字体或官方 Office 模板。
+编译前请合法安装华文行楷（STXingkai）、黑体（SimHei）、宋体（SimSun）和
+Times New Roman；也可以在 `fonts/` 中放入合法取得的对应字体文件。
+字体文件不会被工作台打包。
+
+`task-book.json` 是本次导出的冻结输入快照；编辑字段后需要使用工作台重新导出，
+不要直接编辑生成的 `task-book-data.tex`。
+"""
 
 
 class LatexBundleError(Exception):
@@ -159,6 +229,22 @@ def _safe_archive_name(name: str) -> str:
         _raise("LATEX_BUNDLE_UNSAFE_PATH", "LaTeX 源码包包含不安全路径。")
     if path.suffix.casefold() in FORBIDDEN_SUFFIXES:
         _raise("LATEX_BUNDLE_FORBIDDEN_FILE", "LaTeX 源码包不得包含模板、字体或成品文件。")
+    return path.as_posix()
+
+
+def _safe_task_book_asset_name(name: str) -> str:
+    normalized = unicodedata.normalize("NFC", name)
+    path = PurePosixPath(normalized)
+    if (
+        "\\" in normalized
+        or path.is_absolute()
+        or len(path.parts) != 2
+        or path.parts[0] != "assets"
+        or any(part in {"", ".", ".."} for part in path.parts)
+        or path.suffix.casefold() not in TASK_BOOK_ASSET_SUFFIXES
+        or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,191}", path.name) is None
+    ):
+        _raise("LATEX_BUNDLE_UNSAFE_PATH", "任务书图片资源路径无效。")
     return path.as_posix()
 
 
@@ -197,7 +283,7 @@ def build_latex_bundle(
     but font files and its absolute font paths are never copied into the archive.
     """
 
-    if document_type not in {"proposal", "midterm"}:
+    if document_type not in {"proposal", "midterm", "task_book"}:
         _raise("LATEX_BUNDLE_INVALID_INPUT", "当前文档类型没有 LaTeX 源码包配置。")
     generated = _validate_input_path(latex_dir, kind="latex_dir")
     proposal = _validate_input_path(proposal_json, kind="proposal_json")
@@ -237,13 +323,31 @@ def build_latex_bundle(
 
     try:
         files: dict[str, bytes] = {}
-        source_files = MIDTERM_SAFE_SOURCE_FILES if document_type == "midterm" else SAFE_SOURCE_FILES
-        font_config_name = "midterm-fonts.tex" if document_type == "midterm" else "proposal-fonts.tex"
-        input_name = "midterm.json" if document_type == "midterm" else "proposal.json"
-        readme = MIDTERM_README_TEXT if document_type == "midterm" else README_TEXT
-        portable_fonts = (
-            MIDTERM_PORTABLE_FONTS_TEX if document_type == "midterm" else PORTABLE_FONTS_TEX
-        )
+        source_files = {
+            "proposal": SAFE_SOURCE_FILES,
+            "midterm": MIDTERM_SAFE_SOURCE_FILES,
+            "task_book": TASK_BOOK_SAFE_SOURCE_FILES,
+        }[document_type]
+        font_config_name = {
+            "proposal": "proposal-fonts.tex",
+            "midterm": "midterm-fonts.tex",
+            "task_book": "task-book-fonts.tex",
+        }[document_type]
+        input_name = {
+            "proposal": "proposal.json",
+            "midterm": "midterm.json",
+            "task_book": "task-book.json",
+        }[document_type]
+        readme = {
+            "proposal": README_TEXT,
+            "midterm": MIDTERM_README_TEXT,
+            "task_book": TASK_BOOK_README_TEXT,
+        }[document_type]
+        portable_fonts = {
+            "proposal": PORTABLE_FONTS_TEX,
+            "midterm": MIDTERM_PORTABLE_FONTS_TEX,
+            "task_book": TASK_BOOK_PORTABLE_FONTS_TEX,
+        }[document_type]
         for raw_name in source_files:
             name = _safe_archive_name(raw_name)
             source = generated / raw_name
@@ -259,6 +363,24 @@ def build_latex_bundle(
                 payload = source.read_bytes()
             _check_content(name, payload)
             files[name] = payload
+        if document_type == "task_book":
+            assets_dir = generated / "assets"
+            if assets_dir.exists():
+                if assets_dir.is_symlink() or not assets_dir.is_dir():
+                    _raise("LATEX_BUNDLE_UNSAFE_PATH", "任务书图片资源目录无效。")
+                assets = sorted(assets_dir.iterdir(), key=lambda item: item.name)
+                if len(assets) > TASK_BOOK_MAX_ASSETS:
+                    _raise("LATEX_BUNDLE_ASSET_LIMIT", "任务书图片资源数量超过安全限制。")
+                total_asset_bytes = 0
+                for asset in assets:
+                    name = _safe_task_book_asset_name(f"assets/{asset.name}")
+                    if asset.is_symlink() or not asset.is_file():
+                        _raise("LATEX_BUNDLE_UNSAFE_PATH", "任务书图片资源文件无效。")
+                    payload = asset.read_bytes()
+                    total_asset_bytes += len(payload)
+                    if total_asset_bytes > TASK_BOOK_MAX_ASSET_BYTES:
+                        _raise("LATEX_BUNDLE_ASSET_LIMIT", "任务书图片资源超过安全大小限制。")
+                    files[name] = payload
         _check_content(input_name, proposal_payload)
         files[input_name] = proposal_payload
         files["README.md"] = readme.encode("utf-8")
@@ -269,6 +391,7 @@ def build_latex_bundle(
             "entrypoint": "main.tex",
             "input_sha256": proposal_digest,
             **({"proposal_sha256": proposal_digest} if document_type == "proposal" else {}),
+            **({"task_book_sha256": proposal_digest} if document_type == "task_book" else {}),
             "document_type": document_type,
             "fonts_embedded": False,
             "official_office_template_embedded": False,

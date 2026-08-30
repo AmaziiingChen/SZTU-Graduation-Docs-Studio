@@ -11,6 +11,7 @@ from ..errors import NotFoundError, StorageError, ValidationError
 from .common import decode_json
 from .documents import DocumentService
 from .exports import ExportService
+from .profile_drafts import PROFILE_DRAFT_FIELDS, ProfileDraftService
 from .profiles import ProfileService
 from .settings import SettingsService
 
@@ -25,6 +26,7 @@ SNAPSHOT_TABLES = (
 )
 
 JSON_COLUMNS = {
+    "student_profiles": {"thesis_title_json": "thesis_title"},
     "draft_revisions": {"content_json": "content"},
     "export_jobs": {
         "requested_formats_json": "requested_formats",
@@ -59,11 +61,12 @@ def _without_absolute_host_paths(value: Any) -> Any:
 class Workspace:
     """High-level storage API; methods return protocol-ready dictionaries."""
 
-    def __init__(self, database: Database, *, revision_limit: int = 20) -> None:
+    def __init__(self, database: Database) -> None:
         self.database = database
         self.profiles = ProfileService(database)
-        self.documents = DocumentService(database, revision_limit=revision_limit)
+        self.documents = DocumentService(database)
         self.settings = SettingsService(database)
+        self.profile_drafts = ProfileDraftService(self.settings)
         self.exports = ExportService(database)
         if not database.temporary:
             self.exports.recover_interrupted()
@@ -72,23 +75,36 @@ class Workspace:
     def open_persistent(
         cls,
         data_dir: str | Path | None = None,
-        *,
-        revision_limit: int = 20,
     ) -> Workspace:
-        return cls(
-            Database.open_persistent(data_dir), revision_limit=revision_limit
-        )
+        return cls(Database.open_persistent(data_dir))
 
     @classmethod
-    def create_temporary(cls, *, revision_limit: int = 20) -> Workspace:
-        return cls(Database.open_temporary(), revision_limit=revision_limit)
+    def create_temporary(cls) -> Workspace:
+        return cls(Database.open_temporary())
 
     @property
     def is_temporary(self) -> bool:
         return self.database.temporary
 
     def save_profile(self, payload: Mapping[str, Any]) -> dict[str, Any]:
-        return self.profiles.save(payload)
+        profile = self.profiles.save(payload)
+        self.profile_drafts.save(
+            {
+                field_name: (
+                    profile.get(field_name)
+                    if field_name == "thesis_title"
+                    else profile.get(field_name) or ""
+                )
+                for field_name in PROFILE_DRAFT_FIELDS
+            }
+        )
+        return profile
+
+    def save_profile_draft(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        return self.profile_drafts.save(payload)
+
+    def load_profile_draft(self) -> dict[str, Any] | None:
+        return self.profile_drafts.get()
 
     def get_profile(self, profile_id: str) -> dict[str, Any]:
         return self.profiles.get(profile_id)
@@ -121,11 +137,6 @@ class Workspace:
         return self.documents.save_draft(
             document_id, content, expected_revision, reason=reason
         )
-
-    def restore_previous(
-        self, document_id: str, expected_revision: int
-    ) -> dict[str, Any]:
-        return self.documents.restore_previous(document_id, expected_revision)
 
     def close_temporary_document(self, document_id: str) -> dict[str, Any]:
         return self.documents.close_temporary(document_id)

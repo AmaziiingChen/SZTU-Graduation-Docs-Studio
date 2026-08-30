@@ -9,19 +9,20 @@
       "required": ["source_directory", "document_type"],
       "properties": {
         "source_directory": {"type": "string", "minLength": 1, "maxLength": 4096},
-        "document_type": {"enum": ["proposal", "midterm"]}
+        "document_type": {"enum": ["proposal", "midterm", "task_book"]}
       }
     },
     "result": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["status", "template_id", "version", "pack_sha256", "installed_at"],
+      "required": ["status", "template_id", "version", "pack_sha256", "installed_at", "source"],
       "properties": {
-        "status": {"enum": ["installed", "already_installed"]},
+        "status": {"enum": ["linked", "updated", "already_current"]},
         "template_id": {"type": "string", "minLength": 1, "maxLength": 128},
         "version": {"type": "string", "minLength": 1, "maxLength": 64},
         "pack_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
-        "installed_at": {"type": "string", "format": "date-time"}
+        "installed_at": {"type": "string", "format": "date-time"},
+        "source": {"const": "linked-workspace"}
       }
     }
   }

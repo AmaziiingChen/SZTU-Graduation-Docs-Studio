@@ -10,8 +10,156 @@ from typing import Literal, NotRequired, TypedDict
 
 
 ExportFormat = Literal["docx", "pdf", "tex"]
+DocumentType = Literal["proposal", "midterm", "task_book"]
 ExportJobStatus = Literal["queued", "running", "completed", "failed", "cancelled"]
 ManualQaStatus = Literal["pass", "fail"]
+
+
+class StudentProfileInput(TypedDict):
+    id: NotRequired[str]
+    full_name: str
+    student_number: str
+    college: str
+    major: str
+    class_name: NotRequired[str | None]
+    advisor_name: NotRequired[str | None]
+    advisor_title: NotRequired[str | None]
+    graduation_cohort: NotRequired[str | None]
+    thesis_title: NotRequired[list[str | dict[str, object]] | None]
+
+
+class StudentProfile(TypedDict):
+    id: str
+    full_name: str
+    student_number: str
+    college: str
+    major: str
+    class_name: str | None
+    advisor_name: str | None
+    advisor_title: str | None
+    graduation_cohort: str | None
+    thesis_title: list[str | dict[str, object]] | None
+    created_at: str
+    updated_at: str
+
+
+class ProfileDraft(TypedDict):
+    full_name: str
+    student_number: str
+    college: str
+    major: str
+    class_name: str
+    advisor_name: str
+    advisor_title: str
+    graduation_cohort: str
+    thesis_title: list[str | dict[str, object]] | None
+
+
+class RichRun(TypedDict):
+    text: str
+    script: NotRequired[Literal["normal", "sub", "super"]]
+    italic: NotRequired[bool]
+    bold: NotRequired[bool]
+
+
+class RichParagraph(TypedDict):
+    type: NotRequired[Literal["paragraph"]]
+    runs: list[RichRun]
+
+
+ParagraphInput = str | RichParagraph
+
+
+class OrderedListItem(TypedDict):
+    marker: NotRequired[str]
+    content: ParagraphInput
+    children: NotRequired[ListBlock]
+
+
+class OrderedListBlock(TypedDict):
+    type: Literal["ordered_list"]
+    items: list[OrderedListItem]
+
+
+class UnorderedListItem(TypedDict):
+    content: ParagraphInput
+    children: NotRequired[ListBlock]
+
+
+class UnorderedListBlock(TypedDict):
+    type: Literal["unordered_list"]
+    items: list[UnorderedListItem]
+
+
+ListBlock = OrderedListBlock | UnorderedListBlock
+
+
+class ImageBlock(TypedDict):
+    type: Literal["image"]
+    path: str
+    alt: str
+    width_mm: NotRequired[float]
+    caption: NotRequired[ParagraphInput]
+
+
+TextContentBlock = ParagraphInput | ListBlock
+ContentBlock = TextContentBlock | ImageBlock
+TaskBookContentBlock = ContentBlock
+
+
+class TaskBookScheduleEntry(TypedDict):
+    period: str
+    content: ParagraphInput
+
+
+class TaskBookResearchProject(TypedDict):
+    level: Literal["national", "provincial_ministerial", "other"]
+    project_number: str
+    other_level: NotRequired[str]
+
+
+class TaskBookResearchSource(TypedDict):
+    type: Literal["research_project"]
+    research_project: TaskBookResearchProject
+
+
+class TaskBookPracticeSource(TypedDict):
+    type: Literal["practice_project"]
+
+
+class TaskBookSelfProposedSource(TypedDict):
+    type: Literal["self_proposed"]
+    self_proposed_by: Literal["teacher", "student", "teacher_student_joint"]
+
+
+class TaskBookTopicInformation(TypedDict):
+    nature: Literal["graduation_design", "graduation_thesis"]
+    source: TaskBookResearchSource | TaskBookPracticeSource | TaskBookSelfProposedSource
+
+
+class TaskBookMetadata(TypedDict):
+    graduation_year: int
+    title: ParagraphInput
+    student_name: str
+    student_id: str
+    college: str
+    major: str
+    class_name: str
+    advisor: str
+
+
+class TaskBookSections(TypedDict):
+    basic_content_and_requirements: list[TaskBookContentBlock]
+    schedule: list[TaskBookScheduleEntry]
+    required_materials: list[TaskBookContentBlock]
+    references: list[ParagraphInput]
+    topic_information: TaskBookTopicInformation
+
+
+class TaskBookDocument(TypedDict):
+    schema_version: Literal["0.1"]
+    metadata: TaskBookMetadata
+    sections: TaskBookSections
 
 
 class CheckEvidence(TypedDict):
@@ -97,6 +245,30 @@ class ExportCancelResult(TypedDict):
     cancel_requested_at: str | None
 
 
+class PreviewGenerateParams(TypedDict):
+    request_id: str
+    document_id: str
+
+
+class PreviewPage(TypedDict):
+    page_number: int
+    sha256: str
+    size_bytes: int
+    data_url: str
+
+
+class PreviewResult(TypedDict):
+    schema_version: Literal["1.0"]
+    preview_id: str
+    document_id: str
+    document_revision: int
+    input_sha256: str
+    template: TemplateDescriptor
+    pages: list[PreviewPage]
+    checks: list[CheckResult]
+    generated_at: str
+
+
 class ExportHistoryParams(TypedDict):
     document_id: str
     limit: NotRequired[int]
@@ -154,14 +326,16 @@ class OpenArtifactResult(TypedDict):
 
 class TemplateInstallParams(TypedDict):
     source_directory: str
+    document_type: DocumentType
 
 
 class TemplateInstallResult(TypedDict):
-    status: Literal["installed", "already_installed"]
+    status: Literal["linked", "updated", "already_current"]
     template_id: str
     version: str
     pack_sha256: str
     installed_at: str
+    source: Literal["linked-workspace"]
 
 
 class QaRecordParams(TypedDict):

@@ -73,7 +73,63 @@ def _write_midterm_sources(directory: Path) -> Path:
     return midterm
 
 
+def _write_task_book_sources(directory: Path) -> Path:
+    directory.mkdir()
+    for name, content in {
+        "main.tex": "\\input{task-book-fonts.tex}\n\\input{task-book-data.tex}\n",
+        "task-book-data.tex": "\\def\\TaskTitle{虚构任务书课题}\n",
+        "task-book-fixed.tex": "\\def\\TaskFixedTitle{任务书}\n",
+        "task-book-fonts.tex": "\\newCJKfontfamily\\schoolmark[Path={/Users/example/Fonts/}]{STXingkai.ttf}\n",
+        "task-book-typography.tex": "\\newcommand{\\TaskBodySize}{\\zihao{-4}}\n",
+    }.items():
+        (directory / name).write_text(content, encoding="utf-8")
+    assets = directory / "assets"
+    assets.mkdir()
+    (assets / "workflow-a1b2c3d4e5f6.png").write_bytes(b"synthetic-png")
+    task_book = directory.parent / "task-book.json"
+    task_book.write_text(
+        json.dumps(
+            {
+                "schema_version": "0.1",
+                "metadata": {"title": "虚构任务书课题"},
+                "sections": {},
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    return task_book
+
+
 class LatexBundleTests(unittest.TestCase):
+    def test_task_book_bundle_is_portable_and_keeps_hashed_local_assets(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="latex-bundle-test-") as root:
+            root_path = Path(root)
+            source = root_path / "generated"
+            task_book = _write_task_book_sources(source)
+            first = root_path / "task-book-first.zip"
+            second = root_path / "task-book-second.zip"
+            result = build_latex_bundle(
+                source, task_book, first, document_type="task_book"
+            )
+            build_latex_bundle(
+                source, task_book, second, document_type="task_book"
+            )
+            self.assertEqual(first.read_bytes(), second.read_bytes())
+            with zipfile.ZipFile(first) as archive:
+                names = archive.namelist()
+                manifest = json.loads(archive.read("bundle-manifest.json"))
+                font_config = archive.read("task-book-fonts.tex")
+            self.assertIn("assets/workflow-a1b2c3d4e5f6.png", names)
+            self.assertIn("task-book.json", names)
+            self.assertEqual(manifest["document_type"], "task_book")
+            self.assertEqual(
+                manifest["task_book_sha256"], manifest["input_sha256"]
+            )
+            self.assertNotIn(b"/Users/", font_config)
+            self.assertIn(b"STXingkai", font_config)
+            self.assertFalse(result["details"]["fonts_embedded"])
+
     def test_midterm_bundle_is_portable_and_uses_a_frozen_midterm_snapshot(self) -> None:
         with tempfile.TemporaryDirectory(prefix="latex-bundle-test-") as root:
             root_path = Path(root)

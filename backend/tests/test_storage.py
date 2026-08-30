@@ -20,14 +20,18 @@ from sztu_docs_backend.storage import (
 )
 from sztu_docs_backend.storage.database import BACKUP_PREFIX, DATABASE_FILENAME, Database
 from sztu_docs_backend.storage.migrations import DEFAULT_MIGRATIONS, Migration
-from sztu_docs_backend.storage.migrations import v0002_export_pipeline
+from sztu_docs_backend.storage.migrations import (
+    v0002_export_pipeline,
+    v0003_student_profile_shared_fields,
+    v0004_student_profile_thesis_title,
+)
 from sztu_docs_backend.storage.paths import DATA_DIR_ENV
 
 
 SYNTHETIC_SHA256 = "a" * 64
 
 
-def synthetic_profile(number: str = "SYN-0001") -> dict[str, str]:
+def synthetic_profile(number: str = "SYN-0001") -> dict[str, object]:
     return {
         "full_name": "合成学生甲",
         "student_number": number,
@@ -35,6 +39,11 @@ def synthetic_profile(number: str = "SYN-0001") -> dict[str, str]:
         "major": "示例专业",
         "class_name": "示例班",
         "advisor_name": "合成教师乙",
+        "advisor_title": "副教授",
+        "graduation_cohort": "2026届",
+        "thesis_title": [
+            {"runs": [{"text": "合成", "bold": True}, {"text": "论文题目"}]}
+        ],
     }
 
 
@@ -46,6 +55,22 @@ def synthetic_document(profile_id: str | None = None) -> dict[str, str | None]:
         "schema_version": "fixture-1",
         "title": "合成开题报告",
     }
+
+
+def synthetic_profile_draft(**updates: object) -> dict[str, object]:
+    draft = {
+        "full_name": "",
+        "student_number": "",
+        "college": "",
+        "major": "",
+        "class_name": "",
+        "advisor_name": "",
+        "advisor_title": "",
+        "graduation_cohort": "",
+        "thesis_title": None,
+    }
+    draft.update(updates)
+    return draft
 
 
 class StorageTests(unittest.TestCase):
@@ -79,7 +104,7 @@ class StorageTests(unittest.TestCase):
             version = database.connection.execute(
                 "SELECT MAX(version) FROM schema_migrations"
             ).fetchone()[0]
-            self.assertEqual(version, 2)
+            self.assertEqual(version, 4)
 
     def test_environment_variable_supplies_persistent_data_directory(self) -> None:
         with patch.dict(os.environ, {DATA_DIR_ENV: str(self.data_dir)}):
@@ -114,6 +139,35 @@ class StorageTests(unittest.TestCase):
             restored = reopened.get_profile(profile_id)
             self.assertEqual(restored["student_number"], "SYN-0001")
             self.assertEqual(restored["major"], "更新后的示例专业")
+            self.assertEqual(restored["advisor_title"], "副教授")
+            self.assertEqual(restored["graduation_cohort"], "2026届")
+            self.assertEqual(restored["thesis_title"], synthetic_profile()["thesis_title"])
+
+    def test_legacy_profile_update_preserves_new_optional_fields(self) -> None:
+        with Workspace.open_persistent(self.data_dir) as workspace:
+            created = workspace.save_profile(synthetic_profile())
+            legacy_payload = {
+                key: value
+                for key, value in synthetic_profile().items()
+                if key not in {"advisor_title", "graduation_cohort", "thesis_title"}
+            }
+            legacy_payload["id"] = created["id"]
+            updated = workspace.save_profile(legacy_payload)
+            self.assertEqual(updated["advisor_title"], "副教授")
+            self.assertEqual(updated["graduation_cohort"], "2026届")
+            self.assertEqual(updated["thesis_title"], synthetic_profile()["thesis_title"])
+
+            legacy_payload.update(
+                {
+                    "advisor_title": None,
+                    "graduation_cohort": None,
+                    "thesis_title": None,
+                }
+            )
+            cleared = workspace.save_profile(legacy_payload)
+            self.assertIsNone(cleared["advisor_title"])
+            self.assertIsNone(cleared["graduation_cohort"])
+            self.assertIsNone(cleared["thesis_title"])
 
     def test_lists_and_active_selection_discover_records_after_restart(self) -> None:
         with Workspace.open_persistent(self.data_dir) as workspace:
@@ -197,8 +251,8 @@ class StorageTests(unittest.TestCase):
                     second.save_draft(document["id"], {"body": "后保存"}, 0)
                 self.assertEqual(caught.exception.details["actual_revision"], 1)
 
-    def test_revision_history_is_bounded_and_previous_can_be_restored(self) -> None:
-        with Workspace.open_persistent(self.data_dir, revision_limit=3) as workspace:
+    def test_autosave_keeps_only_the_current_draft(self) -> None:
+        with Workspace.open_persistent(self.data_dir) as workspace:
             document = workspace.create_document(synthetic_document())
             document_id = document["id"]
             for expected in range(4):
@@ -215,22 +269,10 @@ class StorageTests(unittest.TestCase):
                     (document_id,),
                 )
             ]
-            self.assertEqual(revisions, [2, 3, 4])
-
-            restored = workspace.restore_previous(document_id, 4)
-            self.assertEqual(restored["revision"], 5)
-            self.assertEqual(restored["restored_from_revision"], 3)
+            self.assertEqual(revisions, [4])
             current = workspace.get_document(document_id)
-            self.assertEqual(current["content"], {"sequence": 3})
-            self.assertEqual(current["save_reason"], "restore")
-
-    def test_restore_without_previous_revision_is_not_found(self) -> None:
-        with Workspace.open_persistent(self.data_dir) as workspace:
-            document = workspace.create_document(synthetic_document())
-            workspace.save_draft(document["id"], {"sequence": 1}, 0)
-            with self.assertRaises(NotFoundError) as caught:
-                workspace.restore_previous(document["id"], 1)
-            self.assertEqual(caught.exception.code, "NOT_FOUND")
+            self.assertEqual(current["content"], {"sequence": 4})
+            self.assertEqual(current["save_reason"], "auto")
 
     def test_temporary_workspace_never_creates_a_database_and_close_clears_it(self) -> None:
         with patch.dict(os.environ, {DATA_DIR_ENV: str(self.data_dir)}):
@@ -265,6 +307,55 @@ class StorageTests(unittest.TestCase):
                 {"enabled": True},
             )
 
+    def test_incomplete_profile_draft_round_trips_without_document_revision(self) -> None:
+        with Workspace.open_persistent(self.data_dir) as workspace:
+            expected = synthetic_profile_draft(
+                full_name="只填写到姓名",
+                graduation_cohort="2028届",
+            )
+            self.assertEqual(
+                workspace.save_profile_draft(
+                    {"full_name": "只填写到姓名", "graduation_cohort": "2028届"}
+                ),
+                expected,
+            )
+            revision_count = workspace.database.connection.execute(
+                "SELECT COUNT(*) FROM draft_revisions"
+            ).fetchone()[0]
+            self.assertEqual(revision_count, 0)
+
+        with Workspace.open_persistent(self.data_dir) as reopened:
+            self.assertEqual(reopened.load_profile_draft(), expected)
+            cleared = reopened.save_profile_draft(synthetic_profile_draft())
+            self.assertEqual(cleared, synthetic_profile_draft())
+
+        with Workspace.open_persistent(self.data_dir) as reopened:
+            self.assertEqual(reopened.load_profile_draft(), synthetic_profile_draft())
+
+    def test_complete_profile_save_synchronizes_profile_input_draft(self) -> None:
+        with Workspace.open_persistent(self.data_dir) as workspace:
+            workspace.save_profile_draft(
+                synthetic_profile_draft(full_name="不应覆盖正式档案")
+            )
+            profile = workspace.save_profile(synthetic_profile())
+            self.assertEqual(
+                workspace.load_profile_draft(),
+                {
+                    field: profile.get(field) or ""
+                    for field in synthetic_profile_draft()
+                },
+            )
+
+    def test_incomplete_profile_draft_does_not_relax_complete_profile(self) -> None:
+        with Workspace.open_persistent(self.data_dir) as workspace:
+            workspace.save_profile_draft({"full_name": "尚未填完"})
+            with self.assertRaises(ValidationError) as caught:
+                workspace.save_profile({"full_name": "尚未填完"})
+            self.assertEqual(caught.exception.details["field"], "student_number")
+            self.assertEqual(
+                workspace.load_profile_draft()["full_name"], "尚未填完"
+            )
+
     def test_export_snapshot_is_json_and_omits_host_output_path(self) -> None:
         forbidden_path = "/synthetic/private/export"
         with Workspace.open_persistent(self.data_dir) as workspace:
@@ -288,6 +379,14 @@ class StorageTests(unittest.TestCase):
             self.assertEqual(snapshot["export_jobs"][0]["requested_formats"], ["docx"])
             self.assertIsNone(snapshot["export_jobs"][0]["snapshot"])
             self.assertIsNone(snapshot["export_jobs"][0]["receipt"])
+            self.assertEqual(snapshot["student_profiles"][0]["advisor_title"], "副教授")
+            self.assertEqual(
+                snapshot["student_profiles"][0]["graduation_cohort"], "2026届"
+            )
+            self.assertEqual(
+                snapshot["student_profiles"][0]["thesis_title"],
+                synthetic_profile()["thesis_title"],
+            )
 
     def test_export_pipeline_migration_is_idempotent(self) -> None:
         with Database.open_persistent(self.data_dir) as database:
@@ -315,6 +414,34 @@ class StorageTests(unittest.TestCase):
             }
             self.assertIn("idx_export_jobs_request_id", indexes)
             self.assertIn("idx_export_jobs_active_document", indexes)
+
+    def test_student_profile_shared_fields_migration_is_idempotent(self) -> None:
+        with Database.open_persistent(self.data_dir) as database:
+            with database.transaction(immediate=True) as connection:
+                v0003_student_profile_shared_fields.apply(connection)
+                v0003_student_profile_shared_fields.apply(connection)
+            columns = [
+                row["name"]
+                for row in database.connection.execute(
+                    "PRAGMA table_info(student_profiles)"
+                )
+            ]
+            self.assertEqual(len(columns), len(set(columns)))
+            self.assertTrue({"advisor_title", "graduation_cohort"} <= set(columns))
+
+    def test_student_profile_thesis_title_migration_is_idempotent(self) -> None:
+        with Database.open_persistent(self.data_dir) as database:
+            with database.transaction(immediate=True) as connection:
+                v0004_student_profile_thesis_title.apply(connection)
+                v0004_student_profile_thesis_title.apply(connection)
+            columns = [
+                row["name"]
+                for row in database.connection.execute(
+                    "PRAGMA table_info(student_profiles)"
+                )
+            ]
+            self.assertEqual(len(columns), len(set(columns)))
+            self.assertIn("thesis_title_json", columns)
 
     def test_v1_active_job_is_recovered_during_v2_migration(self) -> None:
         v1_only = (DEFAULT_MIGRATIONS[0],)
@@ -362,12 +489,21 @@ class StorageTests(unittest.TestCase):
             version = migrated.connection.execute(
                 "SELECT MAX(version) FROM schema_migrations"
             ).fetchone()[0]
-            self.assertEqual(version, 2)
+            self.assertEqual(version, 4)
             self.assertEqual(row["status"], "failed")
             self.assertEqual(row["progress"], 100)
             self.assertEqual(row["error_code"], "EXPORT_INTERRUPTED")
             self.assertIsNotNone(row["completed_at"])
             self.assertIsNotNone(migrated.last_backup)
+            profile = migrated.connection.execute(
+                """
+                SELECT advisor_title, graduation_cohort, thesis_title_json
+                FROM student_profiles WHERE id = 'profile-v1'
+                """
+            ).fetchone()
+            self.assertIsNone(profile["advisor_title"])
+            self.assertIsNone(profile["graduation_cohort"])
+            self.assertIsNone(profile["thesis_title_json"])
 
     def test_export_job_unique_active_constraint_and_history(self) -> None:
         with Workspace.open_persistent(self.data_dir) as workspace:
@@ -556,7 +692,7 @@ class StorageTests(unittest.TestCase):
             raise RuntimeError("synthetic migration failure")
 
         plan = DEFAULT_MIGRATIONS + (
-            Migration(3, "synthetic_failure", failing_migration),
+            Migration(5, "synthetic_failure", failing_migration),
         )
         with self.assertRaises(MigrationError) as caught:
             Database.open_persistent(self.data_dir, migrations=plan)
@@ -575,7 +711,7 @@ class StorageTests(unittest.TestCase):
             raw.close()
         self.assertEqual(major, "示例专业")
         self.assertIsNone(partial)
-        self.assertEqual(version, 2)
+        self.assertEqual(version, 4)
 
         backups = list((self.data_dir / "backups").glob(f"{BACKUP_PREFIX}*.sqlite3"))
         self.assertEqual(len(backups), 1)

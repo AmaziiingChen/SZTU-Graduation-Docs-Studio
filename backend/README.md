@@ -1,18 +1,24 @@
 # Python sidecar
 
-The backend is a dependency-free Python 3.11+ JSONL process. It is intentionally
-small so it can run on Python 3.14 without waiting for third-party packages.
+The protocol, storage, and orchestration layer is a small Python 3.11+ JSONL
+process. Document rendering additionally requires the dependencies declared in
+`pyproject.toml`: `python-docx` and `Pillow`.
 
-Runtime and tests use only the Python standard library. Building or installing a
-wheel from `pyproject.toml` additionally requires `setuptools>=75`; it is not
-installed in the current Python 3.14 environment, and is not needed for local
-development or the Electron sidecar invocation shown below.
+From the repository root, `pnpm setup:backend` creates an ignored, repository-local
+`.venv` and installs those dependencies. Electron automatically prefers that
+runtime over a global `python3`; `pnpm dev` and `pnpm verify` prepare and use the
+same runtime so environment checks and real rendering tests cannot silently run
+under different Python installations.
 
 Run it from this directory:
 
 ```sh
 PYTHONPATH=src python3 -m sztu_docs_backend
 ```
+
+When invoking the sidecar manually for document rendering, use the repository
+runtime instead: `.venv/bin/python -m sztu_docs_backend` on macOS/Linux or
+`.venv\\Scripts\\python.exe -m sztu_docs_backend` on Windows.
 
 Example request:
 
@@ -53,7 +59,6 @@ workspace.list_profiles(limit=100)
 workspace.create_document(document_payload)
 workspace.list_documents(profile_id=profile_id, limit=100)
 workspace.save_draft(document_id, content, expected_revision, reason="auto")
-workspace.restore_previous(document_id, expected_revision)
 workspace.save_active(profile_id=profile_id, document_id=document_id)
 workspace.load_active()
 workspace.export_snapshot()
@@ -86,7 +91,6 @@ Workspace calls are stateful within that process:
 | `workspace.saveProfile` | `{"profile":{...}}` | saved profile |
 | `workspace.createDocument` | `{"document":{...}}` | created document |
 | `workspace.saveDraft` | `document_id`, `content`, `expected_revision`, optional `reason` | full saved document |
-| `workspace.restorePrevious` | `document_id`, `expected_revision` | full restored document |
 | `workspace.closeTemporary` | `document_id` | discards in-memory data and reopens persistent selection |
 | `workspace.close` | `{}` | closed mode receipt |
 
@@ -95,9 +99,37 @@ and closes the persistent connection first. Returning from temporary mode uses
 `workspace.closeTemporary`; calling `workspace.open` cannot silently discard an
 already-open temporary workspace.
 
+Draft input is automatically saved, but the workbench is not a writing-version
+manager. Each document retains only its current draft content; the monotonically
+increasing revision number is used solely for stale-write and concurrency
+protection. Export input snapshots and export history remain separate records.
+
+`preview.generate` is available only in a persistent workspace. It clones the
+current profile and draft into an in-memory workspace, resolves the current
+trusted template snapshot, runs the same PDF renderer used by `export.run`, and
+creates 150 DPI PNG pages in the private application data directory. The preview
+does not create a persistent export job. The sidecar returns internal paths only
+to Electron main; preload exposes only pages that main has confined, type-checked,
+size-checked, and SHA-256 verified.
+
 In addition to the base protocol errors, the stateful layer can return
 `MESSAGE_TOO_LARGE`, `DUPLICATE_REQUEST_ID`, `WORKSPACE_NOT_OPEN`,
 `WORKSPACE_ALREADY_OPEN`, `NOT_FOUND`, `REVISION_CONFLICT`, `VALIDATION`,
 `MIGRATION_FAILED`, or `STORAGE_ERROR`. Storage error messages and details are
 allowlisted so a rejected request cannot reflect a name, student number, draft
 body, or full filesystem path.
+
+## Live template workspace
+
+`template.install` links a local template project rather than copying it into a
+mutable installed directory. For proposal, task-book, and midterm documents,
+select the project root that contains `templates/`, `scripts/`, and their shared
+template dependencies. The task-book protocol type is `task_book`; its strict
+document Schema remains `0.1`.
+
+Each `environment.check`, export preflight, and export request re-reads the
+allowlisted template files. The backend validates path and symlink boundaries,
+computes a combined SHA-256, and renders from a private content-addressed
+snapshot. This lets local template work continue without weakening the
+immutable template identity recorded in export receipts. Fixed published
+template packs still use their declared file hashes and reject drift.

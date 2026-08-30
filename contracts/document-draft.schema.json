@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://sztu-docs.local/contracts/document-draft.schema.json",
-  "title": "Incomplete proposal draft",
+  "title": "Incomplete process-document draft",
   "description": "Persistence contract for a work in progress. Passing this schema never means the document is export-ready.",
   "type": "object",
   "additionalProperties": false,
@@ -10,14 +10,14 @@
     "schema_version": {"const": "1.0"},
     "draft_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
     "profile_id": {"type": ["string", "null"], "maxLength": 128},
-    "document_type": {"const": "proposal"},
+    "document_type": {"enum": ["proposal", "midterm", "task_book"]},
     "document_schema": {
       "type": "object",
       "additionalProperties": false,
       "required": ["id", "version"],
       "properties": {
-        "id": {"const": "proposal"},
-        "version": {"const": "0.2"}
+        "id": {"enum": ["proposal", "midterm", "task_book"]},
+        "version": {"enum": ["0.1", "0.2"]}
       }
     },
     "template": {
@@ -29,28 +29,268 @@
         "version": {"type": "string", "minLength": 1, "maxLength": 64}
       }
     },
-    "payload": {"$ref": "#/$defs/incompleteProposal"},
+    "payload": {"type": "object"},
     "state": {"enum": ["draft", "ready", "archived"]},
     "revision": {"type": "integer", "minimum": 0},
     "created_at": {"type": "string", "format": "date-time"},
     "updated_at": {"type": "string", "format": "date-time"}
   },
+  "allOf": [
+    {
+      "if": {"properties": {"document_type": {"const": "proposal"}}},
+      "then": {
+        "properties": {
+          "document_schema": {
+            "properties": {"id": {"const": "proposal"}, "version": {"const": "0.2"}}
+          },
+          "payload": {"$ref": "#/$defs/incompleteProposal"}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"document_type": {"const": "midterm"}}},
+      "then": {
+        "properties": {
+          "document_schema": {
+            "properties": {"id": {"const": "midterm"}, "version": {"const": "0.1"}}
+          },
+          "payload": {"$ref": "#/$defs/incompleteMidterm"}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"document_type": {"const": "task_book"}}},
+      "then": {
+        "properties": {
+          "document_schema": {
+            "properties": {"id": {"const": "task_book"}, "version": {"const": "0.1"}}
+          },
+          "payload": {"$ref": "#/$defs/incompleteTaskBook"}
+        }
+      }
+    }
+  ],
   "$defs": {
     "text": {"type": "string", "maxLength": 5000},
+    "richParagraph": {
+      "$ref": "content-block.schema.json#/$defs/richParagraph"
+    },
+    "draftRichParagraph": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runs"],
+      "properties": {
+        "type": {"const": "paragraph"},
+        "runs": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {"$ref": "content-block.schema.json#/$defs/run"}
+        }
+      }
+    },
+    "paragraph": {
+      "oneOf": [
+        {"type": "string", "maxLength": 5000},
+        {"$ref": "#/$defs/draftRichParagraph"}
+      ]
+    },
+    "draftOutlineItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "level": {"type": "integer", "minimum": 1, "maximum": 4},
+        "number": {"type": "string", "maxLength": 20},
+        "title": {"$ref": "#/$defs/paragraph"}
+      }
+    },
+    "draftScheduleEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "period": {"type": "string", "maxLength": 50},
+        "content": {
+          "oneOf": [
+            {"type": "string", "maxLength": 1500},
+            {"$ref": "#/$defs/draftRichParagraph"}
+          ]
+        }
+      }
+    },
+    "draftListLevel4": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "items"],
+      "properties": {
+        "type": {"enum": ["ordered_list", "unordered_list"]},
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["content"],
+            "properties": {
+              "marker": {"type": "string", "minLength": 1, "maxLength": 20},
+              "content": {"$ref": "#/$defs/paragraph"}
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"type": {"const": "unordered_list"}}},
+          "then": {"properties": {"items": {"items": {"not": {"required": ["marker"]}}}}}
+        }
+      ]
+    },
+    "draftListLevel3": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "items"],
+      "properties": {
+        "type": {"enum": ["ordered_list", "unordered_list"]},
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["content"],
+            "properties": {
+              "marker": {"type": "string", "minLength": 1, "maxLength": 20},
+              "content": {"$ref": "#/$defs/paragraph"},
+              "children": {"$ref": "#/$defs/draftListLevel4"}
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"type": {"const": "unordered_list"}}},
+          "then": {"properties": {"items": {"items": {"not": {"required": ["marker"]}}}}}
+        }
+      ]
+    },
+    "draftListLevel2": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "items"],
+      "properties": {
+        "type": {"enum": ["ordered_list", "unordered_list"]},
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["content"],
+            "properties": {
+              "marker": {"type": "string", "minLength": 1, "maxLength": 20},
+              "content": {"$ref": "#/$defs/paragraph"},
+              "children": {"$ref": "#/$defs/draftListLevel3"}
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"type": {"const": "unordered_list"}}},
+          "then": {"properties": {"items": {"items": {"not": {"required": ["marker"]}}}}}
+        }
+      ]
+    },
+    "draftListLevel1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "items"],
+      "properties": {
+        "type": {"enum": ["ordered_list", "unordered_list"]},
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["content"],
+            "properties": {
+              "marker": {"type": "string", "minLength": 1, "maxLength": 20},
+              "content": {"$ref": "#/$defs/paragraph"},
+              "children": {"$ref": "#/$defs/draftListLevel2"}
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"type": {"const": "unordered_list"}}},
+          "then": {"properties": {"items": {"items": {"not": {"required": ["marker"]}}}}}
+        }
+      ]
+    },
+    "textContentBlock": {
+      "oneOf": [
+        {"$ref": "#/$defs/paragraph"},
+        {"$ref": "#/$defs/draftListLevel1"}
+      ]
+    },
     "paragraphs": {
       "type": "array",
-      "maxItems": 50,
-      "items": {"$ref": "#/$defs/text"}
+      "maxItems": 100,
+      "items": {"$ref": "#/$defs/paragraph"}
+    },
+    "textContentBlocks": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {"$ref": "#/$defs/textContentBlock"}
+    },
+    "editorState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bibliography"],
+      "properties": {
+        "bibliography": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["source_format", "source_text", "parse_status", "entry_count"],
+          "properties": {
+            "source_format": {"const": "bibtex"},
+            "source_text": {"type": "string", "minLength": 1, "maxLength": 500000},
+            "parse_status": {"enum": ["valid", "invalid"]},
+            "entry_count": {"type": "integer", "minimum": 0, "maximum": 100}
+          }
+        }
+      }
     },
     "incompleteProposal": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "editor_state": {
+          "allOf": [
+            {"$ref": "#/$defs/editorState"},
+            {
+              "properties": {
+                "bibliography": {
+                  "properties": {"entry_count": {"maximum": 50}}
+                }
+              }
+            }
+          ]
+        },
         "metadata": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "title": {"type": "string", "maxLength": 80},
+            "title": {
+              "oneOf": [
+                {"type": "string", "maxLength": 80},
+                {"$ref": "#/$defs/richParagraph"}
+              ]
+            },
             "student_name": {"type": "string", "maxLength": 20},
             "student_id": {"type": "string", "maxLength": 30},
             "major": {"type": "string", "maxLength": 40},
@@ -62,11 +302,79 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "significance_and_status": {"$ref": "#/$defs/paragraphs"},
-            "research_content": {"$ref": "#/$defs/paragraphs"},
-            "methods_and_means": {"$ref": "#/$defs/paragraphs"},
-            "research_steps": {"$ref": "#/$defs/paragraphs"},
-            "references": {"$ref": "#/$defs/paragraphs"}
+            "significance_and_status": {"$ref": "#/$defs/paragraphs", "maxItems": 50},
+            "research_content": {"$ref": "#/$defs/textContentBlocks", "maxItems": 50},
+            "methods_and_means": {"$ref": "#/$defs/textContentBlocks", "maxItems": 50},
+            "research_steps": {"$ref": "#/$defs/textContentBlocks", "maxItems": 50},
+            "references": {"$ref": "#/$defs/paragraphs", "maxItems": 50}
+          }
+        }
+      }
+    },
+    "incompleteMidterm": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "metadata": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "title": {"type": ["string", "object"]},
+            "student_name": {"$ref": "#/$defs/text"},
+            "college": {"$ref": "#/$defs/text"},
+            "major": {"$ref": "#/$defs/text"},
+            "class_name": {"$ref": "#/$defs/text"},
+            "advisor": {"$ref": "#/$defs/text"},
+            "check_date": {"type": "string", "maxLength": 10}
+          }
+        },
+        "sections": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "directory": {
+              "type": "array",
+              "maxItems": 150,
+              "items": {"$ref": "#/$defs/draftOutlineItem"}
+            },
+            "main_research_content": {"$ref": "#/$defs/textContentBlocks", "maxItems": 80},
+            "progress": {"$ref": "#/$defs/textContentBlocks", "maxItems": 80}
+          }
+        }
+      }
+    },
+    "incompleteTaskBook": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "editor_state": {"$ref": "#/$defs/editorState"},
+        "metadata": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "graduation_year": {"type": ["integer", "null"], "minimum": 2000, "maximum": 2100},
+            "title": {"type": ["string", "object"]},
+            "student_name": {"$ref": "#/$defs/text"},
+            "student_id": {"$ref": "#/$defs/text"},
+            "college": {"$ref": "#/$defs/text"},
+            "major": {"$ref": "#/$defs/text"},
+            "class_name": {"$ref": "#/$defs/text"},
+            "advisor": {"$ref": "#/$defs/text"}
+          }
+        },
+        "sections": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "basic_content_and_requirements": {"$ref": "#/$defs/textContentBlocks", "maxItems": 80},
+            "schedule": {
+              "type": "array",
+              "maxItems": 60,
+              "items": {"$ref": "#/$defs/draftScheduleEntry"}
+            },
+            "required_materials": {"$ref": "#/$defs/textContentBlocks", "maxItems": 50},
+            "references": {"$ref": "#/$defs/paragraphs", "maxItems": 100},
+            "topic_information": {"type": "object"}
           }
         }
       }

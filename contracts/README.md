@@ -9,11 +9,12 @@ Draft 2020-12，并以稳定 `$id` 作为跨语言标识。
 | 文件 | 版本字段 | 用途 |
 | --- | --- | --- |
 | `ipc-envelope.schema.json` | `protocol=1.0` | JSONL 请求与响应信封 |
-| `student-profile.schema.json` | `schema_version=1.0` | 学生档案 |
-| `document-draft.schema.json` | `schema_version=1.0` | 允许不完整的开题报告草稿 |
+| `student-profile.schema.json` | `schema_version=1.2` | 学生档案（1.2 新增所有过程文档共用的结构化论文题目） |
+| `document-draft.schema.json` | `schema_version=1.0` | 允许不完整的过程文档草稿 |
 | `proposal.schema.json` | `schema_version=0.2` | 严格、可导出的开题报告数据 |
 | `content-block.schema.json` | 独立 `$defs` | 过程文档共用富文本、列表和图片内容块 |
 | `midterm.schema.json` | `schema_version=0.1` | 严格、可导出的中期检查表数据 |
+| `task-book.schema.json` | `schema_version=0.1` | 严格、可导出的毕业论文任务书数据 |
 | `environment-check-result.schema.json` | IPC 协议版本承载 | 本地环境状态 |
 | `check-result.schema.json` | `schema_version=1.0` | 独立质量门禁结果 |
 | `export-request.schema.json` | `schema_version=1.0` | 已通过严格文档 Schema 的导出请求 |
@@ -36,8 +37,8 @@ Python 静态类型镜像位于 `python_contract_types.py`；它不能替代运�
 
 `document-draft` 明确允许字段尚未填写、段落数组为空，用于自动保存。通过草稿 Schema
 只说明数据可持久化，**不表示可导出**。`export-request.document` 直接引用严格的
-`proposal.schema.json`；中期检查工作台在导出前构造并验证严格的
-`midterm.schema.json`。缺失学生信息或正文的草稿不能误入正式导出。
+`proposal.schema.json`、`midterm.schema.json` 或 `task-book.schema.json`。缺失学生信息、
+毕业届别、任务书选题信息或正文的草稿不能误入正式导出。
 
 ## JSONL transport
 
@@ -50,15 +51,23 @@ JSON 响应。stdout 仅用于协议；诊断和 traceback 写 stderr。协议�
 
 - 导入时源路径：`templates/proposal/schema/proposal.schema.json`
 - 源 SHA-256：
-  `914a9117723c7448635993edc81e9fab7e79d8d4cce0544b50527be60fe9530e`
+  `555275e6e4a6058beeddf4031651f419b03c31566f4ed83807cb3a67c3f8c5cc`
 - 导入日期：`2026-08-30`
 
 该源仓库仅是开发期 provenance，不是运行时依赖。更新必须显式重新导入、记录新摘要并
-审查 Schema diff。这里不导入官方 DOCX、商业字体、生成文档或私人学生材料。
+审查 Schema diff。为使应用合同目录可独立解析，导入时仅把 proposal 指向
+`templates/common` 的相对 `$ref` 改为同目录 `content-block.schema.json`。这里不导入
+官方 DOCX、商业字体、生成文档或私人学生材料。
 
 `midterm.schema.json` 与 `content-block.schema.json` 导入自同一模板工作树快照。为使
 应用合同目录可独立解析，仅把中期合同中指向 `templates/common` 的相对 `$ref` 改为同目录
 `content-block.schema.json`；字段、约束和语义未改动。源 SHA-256 分别为
 `17924cfa9daf2e1a56e29ab883bbe5fd93482c2a3afa88591f0ad3a355707d58` 和
-`6c766db71640843a8eaa86d9398e6a02b3b9b0d11edfd24b512e27c8caef0562`，导入日期为
+`b43829110464ec8623129557534a0fcaa72bb5033ead36d93251959042588eca`，导入日期为
 `2026-08-30`。来源仍是未提交工作树快照，不代表已发布模板包。
+
+`task-book.schema.json` 导入自模板仓库提交 `46b6d97` 的
+`templates/task-book/schema/task-book.schema.json`。为使应用合同目录可独立解析，仅把
+指向公共内容块的相对 `$ref` 改为同目录 `content-block.schema.json`；源 Schema SHA-256
+为 `16cfd7b8071c7164e356663fd4c5239cb10c4a738414a72882017129d1582ae4`，导入日期为
+`2026-08-30`。未复制官方 Word 模板、商业字体、示例图片或生成文件。

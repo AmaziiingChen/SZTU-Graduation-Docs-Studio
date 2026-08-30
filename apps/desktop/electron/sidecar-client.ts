@@ -1,5 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process"
 import { randomUUID } from "node:crypto"
+import { existsSync } from "node:fs"
 import path from "node:path"
 
 type RequestId = string
@@ -9,13 +10,14 @@ export type SidecarMethod =
   | "system.version"
   | "environment.check"
   | "workspace.open"
+  | "workspace.saveProfileDraft"
   | "workspace.saveProfile"
   | "workspace.createDocument"
   | "workspace.selectDocument"
   | "workspace.saveDraft"
-  | "workspace.restorePrevious"
   | "workspace.closeTemporary"
   | "document.check"
+  | "preview.generate"
   | "export.preflight"
   | "export.run"
   | "export.history"
@@ -33,13 +35,14 @@ const ALLOWED_METHODS = new Set<SidecarMethod>([
   "system.version",
   "environment.check",
   "workspace.open",
+  "workspace.saveProfileDraft",
   "workspace.saveProfile",
   "workspace.createDocument",
   "workspace.selectDocument",
   "workspace.saveDraft",
-  "workspace.restorePrevious",
   "workspace.closeTemporary",
   "document.check",
+  "preview.generate",
   "export.preflight",
   "export.run",
   "export.history",
@@ -47,6 +50,20 @@ const ALLOWED_METHODS = new Set<SidecarMethod>([
   "template.install",
   "qa.record",
 ])
+
+export function resolveSidecarPython(
+  backendRoot: string,
+  configured = process.env.SZTU_DOCS_PYTHON,
+  platform = process.platform,
+): string {
+  if (configured) return configured
+  const repositoryRoot = path.resolve(backendRoot, "..")
+  const virtualenvPython =
+    platform === "win32"
+      ? path.join(repositoryRoot, ".venv", "Scripts", "python.exe")
+      : path.join(repositoryRoot, ".venv", "bin", "python")
+  return existsSync(virtualenvPython) ? virtualenvPython : "python3"
+}
 
 type SuccessEnvelope<T> = {
   protocol: "1.0"
@@ -151,12 +168,16 @@ export class SidecarClient {
   private generation = 0
   private readonly pending = new Map<RequestId, PendingRequest>()
   private readonly settledIds = new Set<RequestId>()
+  private readonly pythonExecutable: string
 
   constructor(
     private readonly backendRoot: string,
     private readonly dataRoot: string,
-    private readonly pythonExecutable = process.env.SZTU_DOCS_PYTHON || "python3",
-  ) {}
+    pythonExecutable?: string,
+  ) {
+    this.pythonExecutable =
+      pythonExecutable ?? resolveSidecarPython(backendRoot)
+  }
 
   request<T>(
     method: SidecarMethod,
@@ -227,6 +248,7 @@ export class SidecarClient {
         HOME: process.env.HOME,
         USERPROFILE: process.env.USERPROFILE,
         SYSTEMROOT: process.env.SYSTEMROOT,
+        WINDIR: process.env.WINDIR,
         COMSPEC: process.env.COMSPEC,
         PATHEXT: process.env.PATHEXT,
         TEMP: process.env.TEMP,
@@ -235,7 +257,18 @@ export class SidecarClient {
         SZTU_DOCS_DATA_DIR: this.dataRoot,
         SZTU_DOCS_TEMPLATE_PACKS_DIR: path.resolve(this.backendRoot, "../template-packs"),
         SZTU_DOCS_PROPOSAL_ENGINE_DIR: process.env.SZTU_DOCS_PROPOSAL_ENGINE_DIR,
+        SZTU_DOCS_TASK_BOOK_ENGINE_DIR: process.env.SZTU_DOCS_TASK_BOOK_ENGINE_DIR,
+        SZTU_DOCS_MIDTERM_ENGINE_DIR: process.env.SZTU_DOCS_MIDTERM_ENGINE_DIR,
         SZTU_DOCS_CJK_VALIDATOR: process.env.SZTU_DOCS_CJK_VALIDATOR,
+        SZTU_FONT_DIR: process.env.SZTU_FONT_DIR,
+        SZTU_FZXIAOBIAOSONG_FONT: process.env.SZTU_FZXIAOBIAOSONG_FONT,
+        SZTU_STXINGKAI_FONT: process.env.SZTU_STXINGKAI_FONT,
+        SZTU_SIMSUN_FONT: process.env.SZTU_SIMSUN_FONT,
+        SZTU_SIMHEI_FONT: process.env.SZTU_SIMHEI_FONT,
+        SZTU_TIMES_REGULAR_FONT: process.env.SZTU_TIMES_REGULAR_FONT,
+        SZTU_TIMES_BOLD_FONT: process.env.SZTU_TIMES_BOLD_FONT,
+        SZTU_TIMES_ITALIC_FONT: process.env.SZTU_TIMES_ITALIC_FONT,
+        SZTU_TIMES_BOLD_ITALIC_FONT: process.env.SZTU_TIMES_BOLD_ITALIC_FONT,
       },
       shell: false,
       stdio: ["pipe", "pipe", "pipe"],

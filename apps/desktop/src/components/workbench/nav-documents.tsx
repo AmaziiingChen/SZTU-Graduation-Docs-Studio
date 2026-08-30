@@ -9,7 +9,6 @@ import {
   SidebarGroup,
   SidebarGroupLabel,
   SidebarMenu,
-  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
@@ -19,22 +18,23 @@ const items: Array<{
   type?: DocumentType
   label: string
   icon: typeof FilePenLineIcon
-  badge: string
   disabled?: boolean
 }> = [
-  { type: "proposal", label: "开题报告", icon: FilePenLineIcon, badge: "可用" },
-  { label: "任务书", icon: FileTextIcon, badge: "待接入", disabled: true },
-  { type: "midterm", label: "中期检查", icon: ClipboardCheckIcon, badge: "可用" },
-  { label: "毕业论文", icon: GraduationCapIcon, badge: "待接入", disabled: true },
+  { type: "proposal", label: "开题报告", icon: FilePenLineIcon },
+  { type: "task_book", label: "任务书", icon: FileTextIcon },
+  { type: "midterm", label: "中期检查", icon: ClipboardCheckIcon },
+  { label: "毕业论文", icon: GraduationCapIcon, disabled: true },
 ]
 
 export function NavDocuments({
   profileActive,
+  inspectionActive,
   activeDocumentType,
   disabled,
   onSelectDocumentType,
 }: {
   profileActive: boolean
+  inspectionActive: boolean
   activeDocumentType: DocumentType
   disabled: boolean
   onSelectDocumentType: (documentType: DocumentType) => void
@@ -47,16 +47,23 @@ export function NavDocuments({
           <SidebarMenuItem key={item.label}>
             <SidebarMenuButton
               tooltip={item.disabled ? `${item.label}尚未开放` : item.label}
-              isActive={!profileActive && item.type === activeDocumentType}
+              className={item.disabled ? "text-muted-foreground" : undefined}
+              aria-disabled={item.disabled || disabled}
+              isActive={
+                !profileActive && !inspectionActive && item.type === activeDocumentType
+              }
               disabled={item.disabled || disabled}
-              onClick={() => {
-                if (item.type) onSelectDocumentType(item.type)
-              }}
+              onClick={
+                item.disabled
+                  ? undefined
+                  : () => {
+                      if (item.type) onSelectDocumentType(item.type)
+                    }
+              }
             >
               <item.icon />
               <span>{item.label}</span>
             </SidebarMenuButton>
-            <SidebarMenuBadge>{item.badge}</SidebarMenuBadge>
           </SidebarMenuItem>
         ))}
       </SidebarMenu>

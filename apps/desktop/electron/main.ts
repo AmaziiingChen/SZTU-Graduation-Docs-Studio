@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url"
-import { mkdir, unlink, writeFile } from "node:fs/promises"
+import { createHash } from "node:crypto"
+import { lstat, mkdir, readFile, realpath, unlink, writeFile } from "node:fs/promises"
 import path from "node:path"
 import {
   app,
@@ -25,6 +26,7 @@ let mainWindow: BrowserWindow | undefined
 let sidecar: SidecarClient | undefined
 const approvedExportDirectories = new Set<string>()
 const activeCancellationFiles = new Map<string, string>()
+const activePreviewCancellationFiles = new Map<string, string>()
 
 type JsonValue = string | number | boolean | null | JsonObject | JsonValue[]
 type JsonObject = { [key: string]: JsonValue }
@@ -105,6 +107,63 @@ async function removeCancellationMarker(marker: string): Promise<void> {
   }
 }
 
+async function readVerifiedPreviewPage(
+  absolutePath: string,
+  expectedRoot: string,
+  expectedSha256: string,
+  expectedSize: number,
+): Promise<string> {
+  const target = path.resolve(absolutePath)
+  if (target !== absolutePath || target === expectedRoot || !target.startsWith(`${expectedRoot}${path.sep}`)) {
+    throw new SidecarError("INVALID_SIDECAR_RESULT", "Sidecar preview path is outside the private cache.")
+  }
+  const stat = await lstat(target)
+  if (!stat.isFile() || stat.isSymbolicLink() || stat.size !== expectedSize || stat.size > 12_000_000) {
+    throw new SidecarError("INVALID_SIDECAR_RESULT", "Sidecar preview page metadata is invalid.")
+  }
+  const resolved = await realpath(target)
+  if (resolved !== target || !resolved.startsWith(`${expectedRoot}${path.sep}`)) {
+    throw new SidecarError("INVALID_SIDECAR_RESULT", "Sidecar preview page failed path verification.")
+  }
+  const bytes = await readFile(target)
+  if (
+    bytes.length !== expectedSize ||
+    bytes.length < 8 ||
+    !bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) ||
+    createHash("sha256").update(bytes).digest("hex") !== expectedSha256
+  ) {
+    throw new SidecarError("INVALID_SIDECAR_RESULT", "Sidecar preview page failed content verification.")
+  }
+  return `data:image/png;base64,${bytes.toString("base64")}`
+}
+
+async function verifyPreviewPdf(
+  absolutePath: string,
+  expectedRoot: string,
+  expectedSha256: string,
+  expectedSize: number,
+): Promise<void> {
+  const target = path.resolve(absolutePath)
+  if (target !== absolutePath || target === expectedRoot || !target.startsWith(`${expectedRoot}${path.sep}`)) {
+    throw new SidecarError("INVALID_SIDECAR_RESULT", "Sidecar preview PDF is outside the private cache.")
+  }
+  const stat = await lstat(target)
+  if (!stat.isFile() || stat.isSymbolicLink() || stat.size !== expectedSize || stat.size > 50_000_000) {
+    throw new SidecarError("INVALID_SIDECAR_RESULT", "Sidecar preview PDF metadata is invalid.")
+  }
+  const resolved = await realpath(target)
+  const bytes = await readFile(target)
+  if (
+    resolved !== target ||
+    !resolved.startsWith(`${expectedRoot}${path.sep}`) ||
+    bytes.length !== expectedSize ||
+    bytes.subarray(0, 5).toString("ascii") !== "%PDF-" ||
+    createHash("sha256").update(bytes).digest("hex") !== expectedSha256
+  ) {
+    throw new SidecarError("INVALID_SIDECAR_RESULT", "Sidecar preview PDF failed content verification.")
+  }
+}
+
 function assertJsonValue(value: unknown, depth = 0): asserts value is JsonValue {
   if (depth > MAX_JSON_DEPTH) {
     throw new IpcValidationError("content 嵌套层级过深。")
@@ -130,12 +189,33 @@ function assertJsonValue(value: unknown, depth = 0): asserts value is JsonValue 
   }
 }
 
+function assertThesisTitle(
+  value: unknown,
+  field: string,
+): asserts value is JsonValue[] | null {
+  if (value === null) return
+  if (!Array.isArray(value) || value.length > 1) {
+    throw new IpcValidationError(`${field} 必须是至多一个段落的结构化题目。`)
+  }
+  assertJsonValue(value)
+  if (JSON.stringify(value).length > 20_000) {
+    throw new IpcValidationError(`${field} 内容过长。`)
+  }
+}
+
 function assertProfile(value: unknown): asserts value is Record<string, unknown> {
   if (!isRecord(value)) throw new IpcValidationError("profile 必须是对象。")
   assertExactKeys(
     value,
     ["full_name", "student_number", "college", "major"],
-    ["id", "class_name", "advisor_name"],
+    [
+      "id",
+      "class_name",
+      "advisor_name",
+      "advisor_title",
+      "graduation_cohort",
+      "thesis_title",
+    ],
   )
   if (value.id !== undefined) assertResourceId(value.id, "profile.id")
   assertText(value.full_name, "profile.full_name", 100)
@@ -144,6 +224,36 @@ function assertProfile(value: unknown): asserts value is Record<string, unknown>
   assertText(value.major, "profile.major", 200)
   assertText(value.class_name, "profile.class_name", 100, false)
   assertText(value.advisor_name, "profile.advisor_name", 100, false)
+  assertText(value.advisor_title, "profile.advisor_title", 100, false)
+  assertText(value.graduation_cohort, "profile.graduation_cohort", 20, false)
+  if (value.thesis_title !== undefined && value.thesis_title !== null) {
+    assertThesisTitle(value.thesis_title, "profile.thesis_title")
+  }
+}
+
+function assertProfileDraft(value: unknown): asserts value is Record<string, unknown> {
+  if (!isRecord(value)) throw new IpcValidationError("profile draft 必须是对象。")
+  const fields = [
+    ["full_name", 100],
+    ["student_number", 64],
+    ["college", 200],
+    ["major", 200],
+    ["class_name", 100],
+    ["advisor_name", 100],
+    ["advisor_title", 100],
+    ["graduation_cohort", 20],
+  ] as const
+  assertExactKeys(
+    value,
+    [...fields.map(([field]) => field), "thesis_title"],
+  )
+  for (const [field, maximum] of fields) {
+    const fieldValue = value[field]
+    if (typeof fieldValue !== "string" || fieldValue.length > maximum) {
+      throw new IpcValidationError(`profile draft.${field} 格式无效。`)
+    }
+  }
+  assertThesisTitle(value.thesis_title, "profile draft.thesis_title")
 }
 
 function assertDocument(value: unknown): asserts value is Record<string, unknown> {
@@ -156,7 +266,11 @@ function assertDocument(value: unknown): asserts value is Record<string, unknown
   if (value.profile_id !== undefined && value.profile_id !== null) {
     assertResourceId(value.profile_id, "document.profile_id")
   }
-  if (value.document_type !== "proposal" && value.document_type !== "midterm") {
+  if (
+    value.document_type !== "proposal" &&
+    value.document_type !== "task_book" &&
+    value.document_type !== "midterm"
+  ) {
     throw new IpcValidationError("document.document_type 暂不支持。")
   }
   assertText(value.template_version, "document.template_version", 64)
@@ -322,6 +436,14 @@ function registerIpc(): void {
     })
   })
 
+  ipcMain.handle("sztu:workspace-save-profile-draft", async (event, profile: unknown) => {
+      assertTrustedSender(event)
+      return runBridge(() => {
+        assertProfileDraft(profile)
+        return requestSidecar("workspace.saveProfileDraft", { profile })
+      })
+    })
+
   ipcMain.handle("sztu:workspace-create-document", async (event, document: unknown) => {
     assertTrustedSender(event)
     return runBridge(() => {
@@ -378,22 +500,6 @@ function registerIpc(): void {
     })
   })
 
-  ipcMain.handle("sztu:workspace-restore-previous", async (event, input: unknown) => {
-    assertTrustedSender(event)
-    return runBridge(() => {
-      if (!isRecord(input)) throw new IpcValidationError("恢复参数必须是对象。")
-      assertExactKeys(input, ["documentId", "expectedRevision"])
-      assertResourceId(input.documentId)
-      if (!Number.isInteger(input.expectedRevision) || (input.expectedRevision as number) < 0) {
-        throw new IpcValidationError("expectedRevision 必须是非负整数。")
-      }
-      return requestSidecar("workspace.restorePrevious", {
-        document_id: input.documentId,
-        expected_revision: input.expectedRevision,
-      })
-    })
-  })
-
   ipcMain.handle("sztu:workspace-close-temporary", async (event, documentId: unknown) => {
     assertTrustedSender(event)
     return runBridge(() => {
@@ -407,6 +513,151 @@ function registerIpc(): void {
     return runBridge(() => {
       assertResourceId(documentId)
       return requestSidecar("document.check", { document_id: documentId })
+    })
+  })
+
+  ipcMain.handle("sztu:preview-generate", async (event, input: unknown) => {
+    assertTrustedSender(event)
+    return runBridge(async () => {
+      if (!isRecord(input)) throw new IpcValidationError("预览参数必须是对象。")
+      assertExactKeys(input, ["requestId", "documentId"])
+      assertRequestId(input.requestId)
+      assertResourceId(input.documentId)
+      if (activePreviewCancellationFiles.has(input.requestId)) {
+        throw new IpcValidationError("同一 requestId 已有预览任务正在运行。")
+      }
+      const marker = cancellationPath(input.requestId)
+      await mkdir(path.dirname(marker), { recursive: true, mode: 0o700 })
+      await removeCancellationMarker(marker)
+      activePreviewCancellationFiles.set(input.requestId, marker)
+      try {
+        const result = await requestSidecar<unknown>(
+          "preview.generate",
+          {
+            request_id: input.requestId,
+            document_id: input.documentId,
+            cancellation_file: marker,
+            app_version: app.getVersion(),
+          },
+          120_000,
+        )
+        if (!isRecord(result)) {
+          throw new SidecarError("INVALID_SIDECAR_RESULT", "Sidecar returned an invalid preview.")
+        }
+        assertExactKeys(result, [
+          "schema_version",
+          "preview_id",
+          "document_id",
+          "document_revision",
+          "input_sha256",
+          "template",
+          "pdf",
+          "pages",
+          "checks",
+          "generated_at",
+        ])
+        if (result.schema_version !== "1.0" || result.document_id !== input.documentId) {
+          throw new SidecarError("INVALID_SIDECAR_RESULT", "Sidecar preview identity is invalid.")
+        }
+        assertResourceId(result.preview_id, "result.preview_id")
+        if (!Number.isInteger(result.document_revision) || (result.document_revision as number) < 1) {
+          throw new SidecarError("INVALID_SIDECAR_RESULT", "Sidecar preview revision is invalid.")
+        }
+        if (typeof result.input_sha256 !== "string" || !SHA256_PATTERN.test(result.input_sha256)) {
+          throw new SidecarError("INVALID_SIDECAR_RESULT", "Sidecar preview input hash is invalid.")
+        }
+        if (!isRecord(result.template)) {
+          throw new SidecarError("INVALID_SIDECAR_RESULT", "Sidecar preview template is invalid.")
+        }
+        assertExactKeys(result.template, ["template_id", "version", "pack_sha256"])
+        assertText(result.template.template_id, "result.template.template_id", 128)
+        assertText(result.template.version, "result.template.version", 128)
+        if (typeof result.template.pack_sha256 !== "string" || !SHA256_PATTERN.test(result.template.pack_sha256)) {
+          throw new SidecarError("INVALID_SIDECAR_RESULT", "Sidecar preview template hash is invalid.")
+        }
+        assertText(result.generated_at, "result.generated_at", 100)
+        assertJsonValue(result.checks)
+        if (!Array.isArray(result.checks) || !isRecord(result.pdf) || !Array.isArray(result.pages)) {
+          throw new SidecarError("INVALID_SIDECAR_RESULT", "Sidecar preview artifacts are invalid.")
+        }
+        if (result.pages.length < 1 || result.pages.length > 80) {
+          throw new SidecarError("INVALID_SIDECAR_RESULT", "Sidecar preview page count is invalid.")
+        }
+        const previewRoot = path.resolve(
+          app.getPath("userData"),
+          "previews",
+          input.documentId,
+          result.preview_id,
+        )
+        assertExactKeys(result.pdf, ["absolute_path", "sha256", "size_bytes"])
+        assertText(result.pdf.absolute_path, "result.pdf.absolute_path", 4096)
+        if (
+          typeof result.pdf.sha256 !== "string" ||
+          !SHA256_PATTERN.test(result.pdf.sha256) ||
+          !Number.isInteger(result.pdf.size_bytes) ||
+          (result.pdf.size_bytes as number) < 1
+        ) {
+          throw new SidecarError("INVALID_SIDECAR_RESULT", "Sidecar preview PDF descriptor is invalid.")
+        }
+        await verifyPreviewPdf(
+          result.pdf.absolute_path as string,
+          previewRoot,
+          result.pdf.sha256,
+          result.pdf.size_bytes as number,
+        )
+        const pages: Array<{
+          page_number: number
+          sha256: string
+          size_bytes: number
+          data_url: string
+        }> = []
+        let totalSize = 0
+        for (const [index, rawPage] of result.pages.entries()) {
+          if (!isRecord(rawPage)) {
+            throw new SidecarError("INVALID_SIDECAR_RESULT", "Sidecar preview page is invalid.")
+          }
+          assertExactKeys(rawPage, ["page_number", "absolute_path", "sha256", "size_bytes"])
+          assertText(rawPage.absolute_path, "result.pages.absolute_path", 4096)
+          if (
+            rawPage.page_number !== index + 1 ||
+            typeof rawPage.sha256 !== "string" ||
+            !SHA256_PATTERN.test(rawPage.sha256) ||
+            !Number.isInteger(rawPage.size_bytes) ||
+            (rawPage.size_bytes as number) < 1
+          ) {
+            throw new SidecarError("INVALID_SIDECAR_RESULT", "Sidecar preview page descriptor is invalid.")
+          }
+          totalSize += rawPage.size_bytes as number
+          if (totalSize > 80_000_000) {
+            throw new SidecarError("INVALID_SIDECAR_RESULT", "Sidecar preview pages exceed the size limit.")
+          }
+          pages.push({
+            page_number: rawPage.page_number as number,
+            sha256: rawPage.sha256,
+            size_bytes: rawPage.size_bytes as number,
+            data_url: await readVerifiedPreviewPage(
+              rawPage.absolute_path as string,
+              previewRoot,
+              rawPage.sha256,
+              rawPage.size_bytes as number,
+            ),
+          })
+        }
+        return {
+          schema_version: "1.0" as const,
+          preview_id: result.preview_id,
+          document_id: result.document_id,
+          document_revision: result.document_revision,
+          input_sha256: result.input_sha256,
+          template: result.template,
+          pages,
+          checks: result.checks,
+          generated_at: result.generated_at,
+        }
+      } finally {
+        activePreviewCancellationFiles.delete(input.requestId)
+        await removeCancellationMarker(marker)
+      }
     })
   })
 
@@ -592,15 +843,23 @@ function registerIpc(): void {
   ipcMain.handle("sztu:template-install", async (event, documentType: unknown) => {
     assertTrustedSender(event)
     return runBridge(async () => {
-      if (documentType !== "proposal" && documentType !== "midterm") {
-        throw new IpcValidationError("documentType 必须是 proposal 或 midterm。")
+      if (
+        documentType !== "proposal" &&
+        documentType !== "task_book" &&
+        documentType !== "midterm"
+      ) {
+        throw new IpcValidationError(
+          "documentType 必须是 proposal、task_book 或 midterm。",
+        )
       }
       const options: OpenDialogOptions = {
         title:
-          documentType === "midterm"
-            ? "选择包含中期检查模板的项目根目录"
-            : "选择受信任开题报告模板引擎目录",
-        buttonLabel: "验证并安装",
+          documentType === "task_book"
+            ? "关联包含任务书模板的本地工程"
+            : documentType === "midterm"
+              ? "关联包含中期检查模板的本地工程"
+              : "关联包含开题报告模板的本地工程",
+        buttonLabel: "关联并同步",
         properties: ["openDirectory"],
       }
       const result = mainWindow

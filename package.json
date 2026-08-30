@@ -4,11 +4,13 @@
   "version": "0.1.0",
   "packageManager": "pnpm@11.19.0",
   "scripts": {
+    "setup:backend": "python scripts/setup_backend_runtime.py",
+    "predev": "pnpm setup:backend",
     "dev": "pnpm --filter @sztu-docs/desktop dev",
     "build": "pnpm --filter @sztu-docs/desktop build",
     "lint": "pnpm --filter @sztu-docs/desktop lint",
     "test": "pnpm --filter @sztu-docs/desktop test",
-    "test:backend": "python scripts/run_backend_tests.py",
+    "test:backend": "pnpm setup:backend && python scripts/run_backend_tests.py",
     "verify": "pnpm lint && pnpm test && pnpm test:backend && pnpm build"
   }
 }

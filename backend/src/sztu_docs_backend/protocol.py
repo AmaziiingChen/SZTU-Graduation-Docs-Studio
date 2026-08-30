@@ -16,6 +16,8 @@ from .exporter import (
     build_export_document,
     ExportError,
     content_check,
+    failed_content_check,
+    generate_preview,
     list_export_history,
     preflight_export,
     record_qa,
@@ -220,7 +222,16 @@ def _safe_storage_details(details: Mapping[str, Any]) -> dict[str, Any]:
         "field": {
             "id",
             "data_dir",
+            "profile",
+            "full_name",
             "student_number",
+            "college",
+            "major",
+            "class_name",
+            "advisor_name",
+            "advisor_title",
+            "graduation_cohort",
+            "thesis_title",
             "document",
             "document_id",
             "profile_id",
@@ -311,13 +322,14 @@ class ProtocolSession:
             "workspace.open": self._workspace_open,
             "workspace.load": self._workspace_load,
             "workspace.close": self._workspace_close,
+            "workspace.saveProfileDraft": self._save_profile_draft,
             "workspace.saveProfile": self._save_profile,
             "workspace.createDocument": self._create_document,
             "workspace.selectDocument": self._select_document,
             "workspace.saveDraft": self._save_draft,
-            "workspace.restorePrevious": self._restore_previous,
             "workspace.closeTemporary": self._close_temporary,
             "document.check": self._check_document,
+            "preview.generate": self._generate_preview,
             "export.preflight": self._preflight_export,
             "export.run": self._run_export,
             "export.history": self._export_history,
@@ -339,6 +351,25 @@ class ProtocolSession:
                 "Open a persistent or temporary workspace before this method.",
             )
         return self.workspace
+
+    @staticmethod
+    def _bind_unassigned_documents(
+        workspace: Workspace, profile_id: str
+    ) -> dict[str, dict[str, Any]]:
+        """Attach pre-profile drafts to the shared student profile.
+
+        The workbench exposes one shared profile. Documents may be created before
+        that profile is first saved, so repair every still-unassigned document as
+        soon as a profile becomes active. Existing one-way assignments are never
+        changed.
+        """
+
+        assigned: dict[str, dict[str, Any]] = {}
+        for document in workspace.list_documents(limit=500):
+            if document.get("profile_id") is None:
+                bound = workspace.assign_profile(document["id"], profile_id)
+                assigned[bound["id"]] = bound
+        return assigned
 
     def _workspace_open(self, params: dict[str, Any]) -> dict[str, Any]:
         _shape_params(params, required={"mode"})
@@ -386,6 +417,7 @@ class ProtocolSession:
         _shape_params(params, required={"profile"})
         workspace = self._require_workspace()
         profile = workspace.save_profile(_object_param(params, "profile"))
+        self._bind_unassigned_documents(workspace, profile["id"])
         active = workspace.load_active()
         active_document = active.get("document")
         document_id = None
@@ -401,12 +433,18 @@ class ProtocolSession:
         workspace.save_active(profile_id=profile["id"], document_id=document_id)
         return profile
 
+    def _save_profile_draft(self, params: dict[str, Any]) -> dict[str, Any]:
+        _shape_params(params, required={"profile"})
+        return self._require_workspace().save_profile_draft(
+            _object_param(params, "profile")
+        )
+
     def _create_document(self, params: dict[str, Any]) -> dict[str, Any]:
         _shape_params(params, required={"document"})
         workspace = self._require_workspace()
         payload = _object_param(params, "document")
         document_type = payload.get("document_type")
-        if document_type not in {"proposal", "midterm"}:
+        if document_type not in {"proposal", "midterm", "task_book"}:
             raise ProtocolError(
                 INVALID_PARAMS,
                 "Document type is not supported.",
@@ -430,6 +468,7 @@ class ProtocolSession:
             active_profile = active.get("profile")
             if isinstance(active_profile, dict):
                 profile = active_profile
+                document = workspace.assign_profile(document["id"], profile["id"])
         workspace.save_active(
             profile_id=profile.get("id") if isinstance(profile, dict) else None,
             document_id=document["id"],
@@ -465,18 +504,6 @@ class ProtocolSession:
         )
         return document
 
-    def _restore_previous(self, params: dict[str, Any]) -> dict[str, Any]:
-        _shape_params(params, required={"document_id", "expected_revision"})
-        workspace = self._require_workspace()
-        document_id = _string_param(params, "document_id")
-        expected_revision = _integer_param(params, "expected_revision")
-        workspace.restore_previous(document_id, expected_revision)
-        document = workspace.get_document(document_id)
-        workspace.save_active(
-            profile_id=document["profile_id"], document_id=document["id"]
-        )
-        return document
-
     def _close_temporary(self, params: dict[str, Any]) -> dict[str, Any]:
         _shape_params(params, required={"document_id"})
         workspace = self._require_workspace()
@@ -499,8 +526,50 @@ class ProtocolSession:
         _shape_params(params, required={"document_id"})
         workspace = self._require_workspace()
         document = workspace.get_document(_string_param(params, "document_id"))
-        proposal: Any = build_export_document(workspace, document)
+        try:
+            proposal: Any = build_export_document(workspace, document)
+        except ExportError as exc:
+            return {
+                "checks": [
+                    failed_content_check(exc, str(document["document_type"]))
+                ]
+            }
         return {"checks": [content_check(proposal, document["document_type"])]}
+
+    def _generate_preview(self, params: dict[str, Any]) -> dict[str, Any]:
+        _shape_params(
+            params,
+            required={
+                "document_id",
+                "request_id",
+                "cancellation_file",
+                "app_version",
+            },
+        )
+        workspace = self._require_workspace()
+        request_id = _string_param(params, "request_id")
+        if canonical_request_id(request_id) is None:
+            raise ProtocolError(
+                INVALID_PARAMS,
+                "Preview request id must be a UUID.",
+                {"field": "request_id"},
+            )
+        app_version = _string_param(params, "app_version")
+        if len(app_version) > 64 or re.fullmatch(
+            r"[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?", app_version
+        ) is None:
+            raise ProtocolError(
+                INVALID_PARAMS,
+                "Application version is invalid.",
+                {"field": "app_version"},
+            )
+        return generate_preview(
+            workspace,
+            document_id=_string_param(params, "document_id"),
+            request_id=request_id,
+            cancellation_file=_string_param(params, "cancellation_file"),
+            app_version=app_version,
+        )
 
     def _run_export(self, params: dict[str, Any]) -> dict[str, Any]:
         _shape_params(
@@ -735,7 +804,7 @@ class ProtocolSession:
     def _install_template(self, params: dict[str, Any]) -> dict[str, Any]:
         _shape_params(params, required={"source_directory", "document_type"})
         document_type = _string_param(params, "document_type")
-        if document_type not in {"proposal", "midterm"}:
+        if document_type not in {"proposal", "midterm", "task_book"}:
             raise ProtocolError(INVALID_PARAMS, "Document type is not supported.")
         return install_engine(
             self._require_workspace(),
@@ -810,6 +879,10 @@ class ProtocolSession:
         if profile is None and isinstance(document, dict) and document.get("profile_id"):
             profile = workspace.get_profile(document["profile_id"])
         profile_id = profile.get("id") if isinstance(profile, dict) else None
+        if profile_id is not None:
+            assigned = self._bind_unassigned_documents(workspace, profile_id)
+            if isinstance(document, dict) and document.get("id") in assigned:
+                document = assigned[document["id"]]
         documents = workspace.list_documents(profile_id=profile_id, limit=100)
         if not documents and profile_id is not None:
             documents = workspace.list_documents(limit=100)
@@ -821,6 +894,7 @@ class ProtocolSession:
         return {
             "mode": self.mode,
             "profile": profile,
+            "profile_draft": workspace.load_profile_draft(),
             "document": document,
             "documents": documents,
         }

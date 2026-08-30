@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 from sztu_docs_backend.protocol import ProtocolSession, dispatch
 from sztu_docs_backend.storage import Workspace
+from sztu_docs_backend.template_engine import EngineDescriptor
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -28,6 +29,8 @@ def profile_payload(number: str = "PROTO-0001") -> dict[str, str]:
         "student_number": number,
         "college": "协议示例学院",
         "major": "协议示例专业",
+        "advisor_title": "教授",
+        "graduation_cohort": "2027届",
     }
 
 
@@ -39,6 +42,47 @@ def document_payload(profile_id: str | None = None) -> dict[str, str | None]:
         "schema_version": "fixture-1",
         "title": "协议合成开题报告",
     }
+
+
+def profile_draft_payload(**updates: object) -> dict[str, object]:
+    draft = {
+        "full_name": "",
+        "student_number": "",
+        "college": "",
+        "major": "",
+        "class_name": "",
+        "advisor_name": "",
+        "advisor_title": "",
+        "graduation_cohort": "",
+        "thesis_title": None,
+    }
+    draft.update(updates)
+    return draft
+
+
+def write_task_book_layout(engine_root: Path) -> None:
+    layout_path = engine_root / "spec" / "layout.json"
+    sizes_path = (
+        engine_root.parent / "common" / "typography" / "chinese-sizes.json"
+    )
+    layout_path.parent.mkdir(parents=True, exist_ok=True)
+    sizes_path.parent.mkdir(parents=True, exist_ok=True)
+    layout_path.write_text(
+        json.dumps(
+            {
+                "typography": {"cover_title_value": {"size": "三号"}},
+                "cover": {
+                    "title_underline_width_mm": 128.0,
+                    "title_max_lines": 2,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    sizes_path.write_text(
+        json.dumps({"sizes": {"三号": {"pt": 16.0}}}),
+        encoding="utf-8",
+    )
 
 
 class ProtocolTests(unittest.TestCase):
@@ -97,6 +141,11 @@ class ProtocolTests(unittest.TestCase):
 
     def test_unknown_method_has_stable_error(self) -> None:
         response = self.request("document.teleport")
+        self.assertFalse(response["ok"])
+        self.assertEqual(response["error"]["code"], "METHOD_NOT_FOUND")
+
+    def test_removed_draft_restore_method_is_not_available(self) -> None:
+        response = self.request("workspace.restorePrevious")
         self.assertFalse(response["ok"])
         self.assertEqual(response["error"]["code"], "METHOD_NOT_FOUND")
 
@@ -180,6 +229,149 @@ class ProtocolTests(unittest.TestCase):
 
         self.assertTrue(response["ok"])
         self.assertEqual(response["result"]["checks"][0]["status"], "pass")
+
+    def test_task_book_document_check_uses_profile_cohort_and_strict_contract(self) -> None:
+        self.open()
+        profile = self.request(
+            "workspace.saveProfile",
+            {
+                "profile": {
+                    **profile_payload("TASK-PROTOCOL-2027"),
+                    "class_name": "新能源一班",
+                    "advisor_name": "示例教师",
+                }
+            },
+        )["result"]
+        document = self.request(
+            "workspace.createDocument",
+            {
+                "document": {
+                    "profile_id": profile["id"],
+                    "document_type": "task_book",
+                    "template_version": "0.1+46b6d97",
+                    "schema_version": "0.1",
+                    "title": "协议合成任务书",
+                }
+            },
+        )["result"]
+        content = {
+            "metadata": {
+                "graduation_year": 2026,
+                "title": "协议合成任务书课题",
+                "student_name": "旧姓名",
+                "student_id": "OLD-ID",
+                "college": "旧学院",
+                "major": "旧专业",
+                "class_name": "旧班级",
+                "advisor": "旧教师",
+            },
+            "sections": {
+                "basic_content_and_requirements": ["完成虚构设计与验证。"],
+                "schedule": [{"period": "第1—16周", "content": "完成全部工作。"}],
+                "required_materials": [],
+                "references": ["[1] 虚构参考文献。"],
+                "topic_information": {
+                    "nature": "graduation_design",
+                    "source": {"type": "practice_project"},
+                },
+            },
+        }
+        self.request(
+            "workspace.saveDraft",
+            {
+                "document_id": document["id"],
+                "content": content,
+                "expected_revision": 0,
+            },
+        )
+
+        engine_root = self.data_dir.parent / "synthetic-task-book-engine"
+        write_task_book_layout(engine_root)
+        engine = EngineDescriptor(
+            root=engine_root,
+            validator=self.data_dir.parent / "synthetic-validator.py",
+            pack_sha256="a" * 64,
+            source="synthetic",
+            document_type="task_book",
+            template_id="sztu.task-book.synthetic",
+            version="0.1-test",
+        )
+        with patch(
+            "sztu_docs_backend.exporter.resolve_engine", return_value=engine
+        ):
+            response = self.request(
+                "document.check", {"document_id": document["id"]}
+            )
+
+            self.assertTrue(response["ok"])
+            check = response["result"]["checks"][0]
+            self.assertEqual(check["status"], "pass")
+            self.assertEqual(check["check_id"], "task_book-content")
+
+            content["metadata"]["title"] = "任" * 46
+            self.request(
+                "workspace.saveDraft",
+                {
+                    "document_id": document["id"],
+                    "content": content,
+                    "expected_revision": 1,
+                },
+            )
+            response = self.request(
+                "document.check", {"document_id": document["id"]}
+            )
+
+        self.assertTrue(response["ok"])
+        check = response["result"]["checks"][0]
+        self.assertEqual(check["status"], "fail")
+        self.assertTrue(check["blocking"])
+        self.assertEqual(check["code"], "DOCUMENT_NOT_READY")
+        self.assertEqual(check["details"]["field"], "metadata.title")
+        self.assertEqual(
+            check["details"]["reason"], "template_capacity_exceeded"
+        )
+
+    def test_preview_generation_is_dispatched_with_private_artifacts(self) -> None:
+        self.open()
+        document = self.request(
+            "workspace.createDocument", {"document": document_payload()}
+        )["result"]
+        preview_result = {
+            "schema_version": "1.0",
+            "preview_id": "a" * 32,
+            "document_id": document["id"],
+            "document_revision": 1,
+            "input_sha256": "b" * 64,
+            "template": {
+                "template_id": "fixture",
+                "version": "fixture-1",
+                "pack_sha256": "c" * 64,
+            },
+            "pdf": {
+                "absolute_path": str(self.data_dir / "previews" / "preview.pdf"),
+                "sha256": "d" * 64,
+                "size_bytes": 10,
+            },
+            "pages": [],
+            "checks": [],
+            "generated_at": "2026-08-30T00:00:00Z",
+        }
+        with patch(
+            "sztu_docs_backend.protocol.generate_preview",
+            return_value=preview_result,
+        ) as generate:
+            response = self.request(
+                "preview.generate",
+                {
+                    "request_id": str(uuid.uuid4()),
+                    "document_id": document["id"],
+                    "cancellation_file": str(self.data_dir / "cancellations" / "preview.cancel"),
+                    "app_version": "0.1.0",
+                },
+            )
+        self.assertTrue(response["ok"])
+        self.assertEqual(response["result"], preview_result)
+        generate.assert_called_once()
 
     def test_export_run_is_dispatched_without_echoing_document_content(self) -> None:
         self.open()
@@ -308,7 +500,13 @@ class ProtocolTests(unittest.TestCase):
                     ],
                     "created_at": "2026-08-30T12:00:00Z",
                     "completed_at": "2026-08-30T12:00:01Z",
-                    "snapshot_json": {"proposal": {"body": "must not pass"}},
+                    "snapshot_json": {
+                        "proposal": {"body": "must not pass"},
+                        "student_profile": {
+                            "advisor_title": "私密职称不得透传",
+                            "graduation_cohort": "私密届别不得透传",
+                        },
+                    },
                     "output_directory": "/private/output",
                 }
             ],
@@ -325,6 +523,8 @@ class ProtocolTests(unittest.TestCase):
         self.assertNotIn("/private/output", encoded)
         self.assertNotIn("snapshot_json", encoded)
         self.assertNotIn("private_content", encoded)
+        self.assertNotIn("私密职称不得透传", encoded)
+        self.assertNotIn("私密届别不得透传", encoded)
         artifact = response["result"]["history"][0]["artifacts"][0]
         self.assertEqual(artifact["display_name"], "开题报告.docx")
 
@@ -344,10 +544,103 @@ class ProtocolTests(unittest.TestCase):
         response = self.request("workspace.load")
         self.assertEqual(response["error"]["code"], "WORKSPACE_NOT_OPEN")
 
-    def test_persistent_profile_document_and_draft_restore_after_restart(self) -> None:
+    def test_partial_profile_input_draft_survives_restart(self) -> None:
+        self.open()
+        expected = profile_draft_payload(
+            full_name="尚未填写完整的学生档案",
+            graduation_cohort="2028届",
+        )
+        saved = self.request(
+            "workspace.saveProfileDraft",
+            {
+                "profile": {
+                    "full_name": "尚未填写完整的学生档案",
+                    "graduation_cohort": "2028届",
+                }
+            },
+        )["result"]
+        self.assertEqual(saved, expected)
+
+        self.session.close()
+        self.session = ProtocolSession()
+        reopened = self.open()["result"]
+        self.assertIsNone(reopened["profile"])
+        self.assertEqual(reopened["profile_draft"], expected)
+
+    def test_explicitly_cleared_profile_input_draft_stays_blank(self) -> None:
+        self.open()
+        self.request(
+            "workspace.saveProfileDraft",
+            {"profile": profile_draft_payload(full_name="即将清空")},
+        )
+        cleared = self.request(
+            "workspace.saveProfileDraft",
+            {"profile": profile_draft_payload()},
+        )["result"]
+        self.assertEqual(cleared, profile_draft_payload())
+
+        self.session.close()
+        self.session = ProtocolSession()
+        self.assertEqual(
+            self.open()["result"]["profile_draft"], profile_draft_payload()
+        )
+
+    def test_complete_profile_save_replaces_stale_profile_input_draft(self) -> None:
+        self.open()
+        self.request(
+            "workspace.saveProfileDraft",
+            {"profile": profile_draft_payload(full_name="旧的未完成内容")},
+        )
+        profile = self.request(
+            "workspace.saveProfile", {"profile": profile_payload()}
+        )["result"]
+        loaded = self.request("workspace.load")["result"]
+        self.assertEqual(
+            loaded["profile_draft"],
+            {
+                field: (
+                    profile.get(field)
+                    if field == "thesis_title"
+                    else profile.get(field) or ""
+                )
+                for field in profile_draft_payload()
+            },
+        )
+
+    def test_profile_input_draft_validation_and_history_do_not_leak_content(self) -> None:
+        self.open()
+        secret = "不应进入日志或导出历史的档案草稿"
+        with self.assertNoLogs("sztu_docs_backend.protocol", level="ERROR"):
+            invalid = self.request(
+                "workspace.saveProfileDraft",
+                {"profile": {"full_name": secret, "major": {"secret": secret}}},
+            )
+        encoded_invalid = json.dumps(invalid, ensure_ascii=False)
+        self.assertEqual(invalid["error"]["code"], "VALIDATION")
+        self.assertNotIn(secret, encoded_invalid)
+
+        self.request(
+            "workspace.saveProfileDraft",
+            {"profile": profile_draft_payload(full_name=secret)},
+        )
+        document_id = uuid.uuid4().hex
+        with patch(
+            "sztu_docs_backend.protocol.list_export_history",
+            return_value={"schema_version": "1.0", "history": []},
+        ):
+            history = self.request(
+                "export.history", {"document_id": document_id, "limit": 10}
+            )
+        self.assertNotIn(secret, json.dumps(history, ensure_ascii=False))
+
+    def test_persistent_profile_and_current_draft_survive_restart(self) -> None:
         opened = self.open()
         self.assertEqual(opened["result"], {
-            "mode": "persistent", "profile": None, "document": None, "documents": []
+            "mode": "persistent",
+            "profile": None,
+            "profile_draft": None,
+            "document": None,
+            "documents": [],
         })
         profile = self.request(
             "workspace.saveProfile", {"profile": profile_payload()}
@@ -375,19 +668,15 @@ class ProtocolTests(unittest.TestCase):
             },
         )["result"]
         self.assertEqual(second["current_revision"], 2)
-        restored = self.request(
-            "workspace.restorePrevious",
-            {"document_id": document["id"], "expected_revision": 2},
-        )["result"]
-        self.assertEqual(restored["current_revision"], 3)
-        self.assertEqual(restored["content"], {"body": "第一版合成正文"})
 
         self.session.close()
         self.session = ProtocolSession()
         reopened = self.open()["result"]
         self.assertEqual(reopened["profile"]["id"], profile["id"])
+        self.assertEqual(reopened["profile"]["advisor_title"], "教授")
+        self.assertEqual(reopened["profile"]["graduation_cohort"], "2027届")
         self.assertEqual(reopened["document"]["id"], document["id"])
-        self.assertEqual(reopened["document"]["content"], {"body": "第一版合成正文"})
+        self.assertEqual(reopened["document"]["content"], {"body": "第二版合成正文"})
 
     def test_open_falls_back_to_most_recent_records_without_active_setting(self) -> None:
         with Workspace.open_persistent(self.data_dir) as direct:
@@ -452,6 +741,40 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(reopened["document"]["id"], document["id"])
         self.assertEqual(reopened["document"]["profile_id"], profile["id"])
         self.assertEqual(reopened["document"]["content"], {"first_run": "已绑定"})
+
+    def test_first_profile_binds_all_preexisting_process_documents(self) -> None:
+        self.open()
+        task_book_payload = document_payload()
+        task_book_payload.update(
+            {
+                "document_type": "task_book",
+                "template_version": "0.1+46b6d97",
+                "schema_version": "0.1",
+                "title": "协议合成任务书",
+            }
+        )
+        task_book = self.request(
+            "workspace.createDocument", {"document": task_book_payload}
+        )["result"]
+        proposal = self.request(
+            "workspace.createDocument", {"document": document_payload()}
+        )["result"]
+        self.assertIsNone(task_book["profile_id"])
+        self.assertIsNone(proposal["profile_id"])
+
+        profile = self.request(
+            "workspace.saveProfile", {"profile": profile_payload()}
+        )["result"]
+        loaded = self.request("workspace.load")["result"]
+        documents = {item["id"]: item for item in loaded["documents"]}
+        self.assertEqual(documents[task_book["id"]]["profile_id"], profile["id"])
+        self.assertEqual(documents[proposal["id"]]["profile_id"], profile["id"])
+
+        selected = self.request(
+            "workspace.selectDocument", {"document_id": task_book["id"]}
+        )
+        self.assertNotIn("error", selected)
+        self.assertEqual(selected["result"]["document"]["profile_id"], profile["id"])
 
     def test_untrusted_record_id_is_not_reflected_in_storage_error(self) -> None:
         self.open()

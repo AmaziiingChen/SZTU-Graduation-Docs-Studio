@@ -50,7 +50,11 @@ These rules apply to every frontend prototype, screenshot, and production page i
 3. Do not hand-design pages outside the agreed workbench structure.
    - Preserve the official `dashboard-01` hierarchy: `SidebarProvider`, inset `AppSidebar`, `SidebarInset`, `SiteHeader`, then the business content container.
    - Keep Block-derived page composition in `components/workbench/` and default generated primitives in `components/ui/`; never mix business code into a forked primitive.
-   - Use the standard workbench layout: application sidebar, document editor main area, validation/export side panel, and a restrained top action bar. On narrow windows, the validation/export panel uses the default shadcn `Sheet`.
+   - Use the standard workbench layout: application sidebar, document editor main area, explicit paginated-preview side panel, and a restrained top action bar. The top action bar carries content check, preview generation, and export without adding a second toolbar row. Environment checks, quality gates, export status, history, and related explanations reuse one `InspectionPanel`, reached from `检查与导出` at the bottom of `SidebarFooter` and displayed in the main content area; never duplicate the paginated preview or these utilities in a business `Sheet` or drawer.
+   - At narrow widths, use the official Sidebar mobile mechanism and keep the main content plus the same paginated-preview component in a vertical `Resizable` composition. Do not add a separate business Sheet, drawer, or duplicate preview implementation.
+   - Never render a preview on every keystroke. The user must explicitly click `生成排版预览`; the application then saves and checks the current input, runs the same trusted PDF pipeline used by export, and displays its pages in the right panel.
+   - Editing the document, changing the shared profile, or changing the template after preview generation must mark the preview stale. Export remains unavailable until a fresh preview matches both the current input hash and template snapshot hash.
+   - A generated PDF preview is internal review evidence only. It must not imply that the corresponding DOCX has passed full-page inspection or Word/WPS verification.
    - Do not import a Block's demo-only charts, tables, sample records, drag-and-drop libraries, or account controls unless the product has the corresponding real workflow.
    - Prefer `Sidebar`, `Resizable`, `Tabs`, `Form`, `Input`, `Textarea`, `Select`, `Button`, `Card`, `Table`, `ScrollArea`, `Alert`, `Badge`, `Dialog`, `Sheet`, `DropdownMenu`, `Progress`, `Separator`, `Tooltip`, and `Sonner` from `shadcn/ui` as applicable.
 4. Avoid custom CSS when Tailwind utilities and shadcn theme tokens are sufficient.
@@ -62,6 +66,12 @@ These rules apply to every frontend prototype, screenshot, and production page i
    - Empty, loading, saving, exporting, failed, and completed states must be explicit.
    - Chinese interface copy should use plain task language such as `保存草稿`, `检查内容`, `导出 Word`, and `在 WPS 中打开`.
 6. The frontend must never imply document acceptance from a successful render alone. Keep `结构检查通过`, `中文字形有效`, `逐页版式已检查`, and `Word/WPS 已验证` as separate statuses wherever document quality is shown.
+7. Keep structured authoring restricted and contract-backed.
+   - The approved rich-content surface is one headless, schema-restricted ProseMirror/Tiptap editing engine inside `components/workbench/`. It is an editing engine only: its toolbar, status, dialogs, buttons, and surrounding layout must continue to compose default shadcn/ui components and theme tokens. Do not add a second visual component library or expose a general-purpose WYSIWYG feature set.
+   - Enable only capabilities that the shared document contract and every active renderer support. The initial allowlist is paragraphs, ordered lists, unordered lists, list nesting up to four levels, bold, italic, inline subscript or superscript, undo, and redo. Do not advertise headings, tables, task lists, arbitrary equations, images, links, colors, fonts, arbitrary alignment, or executable HTML as exportable features unless their contracts, renderers, and regression gates are added first.
+   - Persist the repository-owned structured content contract as the canonical value. Tiptap/ProseMirror JSON and HTML are adapter or view state only; Word, PDF, and LaTeX renderers must never consume raw HTML, raw Markdown, or editor-private state as their canonical document contract.
+   - Treat a thesis directory as structured outline data (`level`, optional `number`, and rich-text `title`), not as whitespace or a body list. Indentation and numbering controls must update semantic fields, and directory input must reject skipped levels instead of guessing hierarchy from leading spaces.
+   - Existing Markdown text may be imported through an allowlisted parser for compatibility. Unsupported syntax must produce an actionable error and preserve the last valid structure; it must never be silently dropped.
 
 ## Architecture and security boundaries
 
@@ -71,4 +81,5 @@ These rules apply to every frontend prototype, screenshot, and production page i
 - Python sidecar stdout is reserved for versioned JSONL protocol messages; logs go to stderr or a controlled log file.
 - Student-facing errors use stable codes and actionable Chinese messages; raw tracebacks remain in sanitized development logs.
 - Validate all paths, template manifests, hashes, schemas, IPC messages, and external application requests at their trust boundary.
+- Keep mutable template development and immutable release trust separate. A user-selected or adjacent local template workspace may be re-read during development only after every allowlisted file and path is validated, fingerprinted, and copied into a private content-addressed snapshot. Render from the snapshot, record its hash/version, and retain fixed-hash verification for committed or released templates.
 - Cleanup features must enumerate and preview exact generated targets. They must never interpret Git ignored status as permission to delete a file.

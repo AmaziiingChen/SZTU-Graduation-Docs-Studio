@@ -1,5 +1,5 @@
 import type * as React from "react"
-import { BookOpenIcon, ShieldCheckIcon } from "lucide-react"
+import { BookOpenIcon, ClipboardCheckIcon } from "lucide-react"
 
 import { NavDocuments } from "@/components/workbench/nav-documents"
 import { NavMain } from "@/components/workbench/nav-main"
@@ -11,23 +11,36 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from "@/components/ui/sidebar"
 import type { DocumentType } from "@/types/desktop-api"
 
 export function AppSidebar({
   profileActive,
+  inspectionActive,
   activeDocumentType,
   onSelectProfile,
+  onSelectInspection,
   onSelectDocumentType,
   disabled,
+  inspectionDisabled,
   ...props
 }: React.ComponentProps<typeof Sidebar> & {
   profileActive: boolean
+  inspectionActive: boolean
   activeDocumentType: DocumentType
   onSelectProfile: () => void
+  onSelectInspection: () => void
   onSelectDocumentType: (documentType: DocumentType) => void
   disabled: boolean
+  inspectionDisabled: boolean
 }) {
+  const { isMobile, setOpenMobile } = useSidebar()
+  const finishNavigation = (navigate: () => void) => {
+    navigate()
+    if (isMobile) setOpenMobile(false)
+  }
+
   return (
     <Sidebar collapsible="offcanvas" {...props}>
       <SidebarHeader>
@@ -53,21 +66,29 @@ export function AppSidebar({
         <NavMain
           profileActive={profileActive}
           disabled={disabled}
-          onSelectProfile={onSelectProfile}
+          onSelectProfile={() => finishNavigation(onSelectProfile)}
         />
         <NavDocuments
           profileActive={profileActive}
+          inspectionActive={inspectionActive}
           activeDocumentType={activeDocumentType}
           disabled={disabled}
-          onSelectDocumentType={onSelectDocumentType}
+          onSelectDocumentType={(documentType) =>
+            finishNavigation(() => onSelectDocumentType(documentType))
+          }
         />
       </SidebarContent>
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton tooltip="数据默认仅保存在本机" disabled>
-              <ShieldCheckIcon />
-              <span>数据默认仅保存在本机</span>
+            <SidebarMenuButton
+              tooltip="检查与导出"
+              isActive={inspectionActive}
+              disabled={inspectionDisabled}
+              onClick={() => finishNavigation(onSelectInspection)}
+            >
+              <ClipboardCheckIcon />
+              <span>检查与导出</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

@@ -10,7 +10,11 @@
 
 ## 决策
 
-使用默认 `shadcn/ui` 主题和组件，并采用官方 `dashboard-01` Block 作为页面级骨架。固定层级为 `SidebarProvider`、inset `AppSidebar`、`SidebarInset`、`SiteHeader` 和业务内容容器；业务区由文档编辑主区、检查/导出侧栏及克制的顶部操作栏组成。窄窗口下检查/导出区使用默认 `Sheet`，不复制第二套页面。
+使用默认 `shadcn/ui` 主题和组件，并采用官方 `dashboard-01` Block 作为页面级骨架。固定层级为 `SidebarProvider`、inset `AppSidebar`、`SidebarInset`、`SiteHeader` 和业务内容容器；业务区由文档编辑主区、显式分页预览侧栏及克制的顶部操作区组成。内容检查、预览生成和导出集中在 `SiteHeader` 右侧，不再占用第二行工具栏。环境检查、质量门禁、导出状态、历史记录和相关说明复用同一个 `InspectionPanel`，通过 `SidebarFooter` 底部的“检查与导出”入口在主内容区显示；分页预览始终留在工作区，不放入业务 `Sheet` 或抽屉。
+
+窄窗口只使用官方 Sidebar 自身的移动端机制，主内容和同一个分页预览组件改为纵向 `Resizable` 排列，不复制检查或预览业务实现。
+
+预览不随输入实时变化。用户点击“生成排版预览”后，工作台保存并检查当前输入，使用与正式 PDF 导出相同的受信任模板快照生成 150 DPI 分页图；继续编辑后旧预览立即标记为过期。详细一致性和安全边界见 ADR 0007。
 
 Block 作为经过官方维护的结构基线，不等于原样安装全部演示功能。图表、拖拽数据表、示例用户和示例记录与当前文档工作流无关，因此不引入其依赖。项目只保留实际业务需要的 Block 文件边界：`AppSidebar`、`NavMain`、`NavDocuments` 和 `SiteHeader`。
 
@@ -27,7 +31,7 @@ Block 作为经过官方维护的结构基线，不等于原样安装全部演�
 
 ## 验证
 
-依赖与源码检查不得发现第二套 UI 目录、自定义设计 token、任意颜色或未经批准的基础组件；组件测试必须断言 inset Sidebar、SidebarInset、一级 SiteHeader 和窄窗口 Sheet 路径存在。端到端测试继续覆盖键盘焦点、字段错误及空白/加载/保存/导出/失败/完成状态。
+依赖与源码检查不得发现第二套 UI 目录、自定义设计 token、任意颜色或未经批准的基础组件；组件测试必须断言 inset Sidebar、SidebarInset、一级 SiteHeader、顶部操作入口、显式预览生成、编辑后过期、SidebarFooter 检查入口和窄窗口纵向工作区存在，并确认不存在重复业务 Sheet。端到端测试继续覆盖键盘焦点、字段错误及空白/加载/保存/预览/导出/失败/完成状态。
 
 结构来源：
 

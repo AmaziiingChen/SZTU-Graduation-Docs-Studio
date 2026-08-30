@@ -6,7 +6,12 @@ import sqlite3
 from dataclasses import dataclass
 from typing import Callable
 
-from . import v0001_initial, v0002_export_pipeline
+from . import (
+    v0001_initial,
+    v0002_export_pipeline,
+    v0003_student_profile_shared_fields,
+    v0004_student_profile_thesis_title,
+)
 
 MigrationFunction = Callable[[sqlite3.Connection], None]
 
@@ -21,6 +26,16 @@ class Migration:
 DEFAULT_MIGRATIONS = (
     Migration(1, "initial_local_workspace", v0001_initial.apply),
     Migration(2, "trusted_engine_and_export_pipeline", v0002_export_pipeline.apply),
+    Migration(
+        3,
+        "student_profile_shared_fields",
+        v0003_student_profile_shared_fields.apply,
+    ),
+    Migration(
+        4,
+        "student_profile_thesis_title",
+        v0004_student_profile_thesis_title.apply,
+    ),
 )
 
 

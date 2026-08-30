@@ -1,3 +1,5 @@
+import type { StructuredBodyValue } from "@/types/structured-content"
+
 export type JsonPrimitive = string | number | boolean | null
 export type JsonValue = JsonPrimitive | JsonObject | JsonValue[]
 export type JsonObject = { [key: string]: JsonValue }
@@ -28,7 +30,7 @@ export type AppInfo = {
 }
 
 export type WorkspaceMode = "persistent" | "temporary"
-export type DocumentType = "proposal" | "midterm"
+export type DocumentType = "proposal" | "task_book" | "midterm"
 
 export type StudentProfileInput = {
   id?: string
@@ -38,6 +40,9 @@ export type StudentProfileInput = {
   major: string
   class_name?: string | null
   advisor_name?: string | null
+  advisor_title?: string | null
+  graduation_cohort?: string | null
+  thesis_title?: StructuredBodyValue | null
 }
 
 export type StudentProfile = {
@@ -48,8 +53,23 @@ export type StudentProfile = {
   major: string
   class_name: string | null
   advisor_name: string | null
+  advisor_title: string | null
+  graduation_cohort: string | null
+  thesis_title: StructuredBodyValue | null
   created_at: string
   updated_at: string
+}
+
+export type StudentProfileDraft = {
+  full_name: string
+  student_number: string
+  college: string
+  major: string
+  class_name: string
+  advisor_name: string
+  advisor_title: string
+  graduation_cohort: string
+  thesis_title: StructuredBodyValue | null
 }
 
 export type DocumentInput = {
@@ -81,6 +101,7 @@ export type DocumentRecord = {
 export type WorkspaceState = {
   mode: WorkspaceMode
   profile: StudentProfile | null
+  profile_draft: StudentProfileDraft | null
   document: DocumentRecord | null
   documents: DocumentRecord[]
 }
@@ -97,11 +118,6 @@ export type SaveDraftResult = {
   revision: number
   save_reason: "auto" | "manual"
   saved_at: string
-}
-
-export type RestorePreviousInput = {
-  documentId: string
-  expectedRevision: number
 }
 
 export type ExportFormat = "docx" | "pdf" | "tex"
@@ -127,6 +143,34 @@ export type CheckResult = {
 
 export type DocumentCheckResult = {
   checks: CheckResult[]
+}
+
+export type PreviewGenerateInput = {
+  requestId: string
+  documentId: string
+}
+
+export type PreviewPage = {
+  page_number: number
+  sha256: string
+  size_bytes: number
+  data_url: string
+}
+
+export type PreviewResult = {
+  schema_version: "1.0"
+  preview_id: string
+  document_id: string
+  document_revision: number
+  input_sha256: string
+  template: {
+    template_id: string
+    version: string
+    pack_sha256: string
+  }
+  pages: PreviewPage[]
+  checks: CheckResult[]
+  generated_at: string
 }
 
 export type ExportArtifact = {
@@ -246,11 +290,12 @@ export type OpenArtifactResult = {
 }
 
 export type TemplateInstallResult = {
-  status: "installed" | "already_installed"
+  status: "linked" | "updated" | "already_current"
   template_id: string
   version: string
   pack_sha256: string
   installed_at: string
+  source: "linked-workspace"
 }
 
 export type RecordQaInput =
@@ -281,13 +326,14 @@ export type SztuDesktopApi = {
   getAppInfo: () => Promise<AppInfo>
   checkEnvironment: () => Promise<EnvironmentResult>
   openWorkspace: (mode: WorkspaceMode) => Promise<WorkspaceState>
+  saveProfileDraft: (profile: StudentProfileDraft) => Promise<StudentProfileDraft>
   saveProfile: (profile: StudentProfileInput) => Promise<StudentProfile>
   createDocument: (document: DocumentInput) => Promise<DocumentRecord>
   selectDocument: (documentId: string) => Promise<WorkspaceState>
   saveDraft: (input: SaveDraftInput) => Promise<SaveDraftResult>
-  restorePrevious: (input: RestorePreviousInput) => Promise<DocumentRecord>
   closeTemporary: (documentId: string) => Promise<WorkspaceState>
   checkDocument: (documentId: string) => Promise<DocumentCheckResult>
+  generatePreview: (input: PreviewGenerateInput) => Promise<PreviewResult>
   chooseExportDirectory: () => Promise<string | null>
   preflightExport: (input: ExportPreflightInput) => Promise<ExportPreflightResult>
   exportDocument: (input: ExportDocumentInput) => Promise<ExportReceipt>

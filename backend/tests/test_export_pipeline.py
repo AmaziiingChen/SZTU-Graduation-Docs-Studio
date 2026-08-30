@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import sys
 import tempfile
 import unittest
 import uuid
@@ -11,6 +13,7 @@ from unittest.mock import patch
 from sztu_docs_backend import template_engine
 from sztu_docs_backend.exporter import (
     ExportError,
+    _run,
     build_export_document,
     list_export_history,
     preflight_export,
@@ -21,7 +24,6 @@ from sztu_docs_backend.template_engine import (
     EngineDescriptor,
     TemplateEngineError,
     install_engine,
-    installed_engine_root,
 )
 
 
@@ -51,6 +53,31 @@ def deep_docx_check() -> dict[str, object]:
     }
 
 
+def write_task_book_layout(engine_root: Path) -> None:
+    layout_path = engine_root / "spec" / "layout.json"
+    sizes_path = (
+        engine_root.parent / "common" / "typography" / "chinese-sizes.json"
+    )
+    layout_path.parent.mkdir(parents=True, exist_ok=True)
+    sizes_path.parent.mkdir(parents=True, exist_ok=True)
+    layout_path.write_text(
+        json.dumps(
+            {
+                "typography": {"cover_title_value": {"size": "三号"}},
+                "cover": {
+                    "title_underline_width_mm": 128.0,
+                    "title_max_lines": 2,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    sizes_path.write_text(
+        json.dumps({"sizes": {"三号": {"pt": 16.0}}}),
+        encoding="utf-8",
+    )
+
+
 class ExportPipelineTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary_directory = tempfile.TemporaryDirectory()
@@ -67,6 +94,8 @@ class ExportPipelineTests(unittest.TestCase):
                 "college": self.proposal["metadata"]["college"],
                 "major": self.proposal["metadata"]["major"],
                 "advisor_name": self.proposal["metadata"]["advisor"],
+                "advisor_title": "副教授",
+                "graduation_cohort": "2026届",
             }
         )
         self.profile_id = profile["id"]
@@ -107,8 +136,9 @@ class ExportPipelineTests(unittest.TestCase):
         cwd: Path,
         timeout: int = 90,
         cancellation_file: Path | None = None,
+        environment: dict[str, str] | None = None,
     ) -> str:
-        del cwd, timeout, cancellation_file
+        del cwd, timeout, cancellation_file, environment
         if "--output" in command:
             output = Path(command[command.index("--output") + 1])
             output.write_bytes(b"synthetic-docx-render-v2")
@@ -161,6 +191,11 @@ class ExportPipelineTests(unittest.TestCase):
                 "major": "统一档案专业",
                 "class_name": "统一档案班级",
                 "advisor_name": "统一档案教师",
+                "advisor_title": "教授",
+                "graduation_cohort": "2027届",
+                "thesis_title": [
+                    {"runs": [{"text": "统一", "bold": True}, {"text": "论文题目"}]}
+                ],
             }
         )
         record = self.workspace.get_document(self.document_id)
@@ -177,8 +212,46 @@ class ExportPipelineTests(unittest.TestCase):
                 "college": "统一档案学院",
                 "major": "统一档案专业",
                 "advisor": "统一档案教师",
+                "title": {
+                    "runs": [
+                        {"text": "统一", "bold": True},
+                        {"text": "论文题目"},
+                    ]
+                },
             },
         )
+
+    def test_export_input_discards_empty_editor_paragraphs_without_mutating_draft(self) -> None:
+        record = self.workspace.get_document(self.document_id)
+        original_sections = record["content"]["sections"]
+        for section_name in (
+            "significance_and_status",
+            "research_content",
+            "methods_and_means",
+            "research_steps",
+            "references",
+        ):
+            original_sections[section_name].extend(
+                ["", "   ", {"type": "paragraph", "runs": []}]
+            )
+
+        merged = build_export_document(self.workspace, record)
+
+        for section_name in (
+            "significance_and_status",
+            "research_content",
+            "methods_and_means",
+            "research_steps",
+            "references",
+        ):
+            self.assertEqual(
+                merged["sections"][section_name],
+                self.proposal["sections"][section_name],
+            )
+            self.assertEqual(
+                len(original_sections[section_name]),
+                len(merged["sections"][section_name]) + 3,
+            )
 
     def test_export_input_without_a_linked_profile_cannot_reuse_legacy_identity(self) -> None:
         document = self.workspace.create_document(
@@ -278,6 +351,214 @@ class ExportPipelineTests(unittest.TestCase):
         )
         self.assertEqual(result["template"]["template_id"], "sztu.midterm.synthetic")
 
+    def test_task_book_uses_shared_cohort_and_complete_export_pipeline(self) -> None:
+        task_book = {
+            "schema_version": "0.1",
+            "metadata": {
+                "graduation_year": 2025,
+                "title": "虚构任务书课题",
+                "student_name": "旧姓名",
+                "student_id": "OLD-ID",
+                "college": "旧学院",
+                "major": "旧专业",
+                "class_name": "旧班级",
+                "advisor": "旧教师",
+            },
+            "sections": {
+                "basic_content_and_requirements": ["完成虚构课题的设计与验证。"],
+                "schedule": [{"period": "第1—16周", "content": "完成全部工作。"}],
+                "required_materials": [],
+                "references": ["[1] 虚构参考文献。"],
+                "topic_information": {
+                    "nature": "graduation_design",
+                    "source": {"type": "practice_project"},
+                },
+            },
+        }
+        profile = self.workspace.save_profile(
+            {
+                "full_name": "统一档案姓名",
+                "student_number": "TASK-PROFILE-2027",
+                "college": "统一档案学院",
+                "major": "统一档案专业",
+                "class_name": "新能源一班",
+                "advisor_name": "统一档案教师",
+                "advisor_title": "副教授",
+                "graduation_cohort": "2027届",
+            }
+        )
+        document = self.workspace.create_document(
+            {
+                "profile_id": profile["id"],
+                "document_type": "task_book",
+                "template_version": "0.1+46b6d97",
+                "schema_version": "0.1",
+                "title": "任务书",
+            }
+        )
+        self.workspace.save_draft(
+            document["id"],
+            {"metadata": task_book["metadata"], "sections": task_book["sections"]},
+            0,
+            reason="manual",
+        )
+        engine_root = self.root / "synthetic-task-book-engine"
+        write_task_book_layout(engine_root)
+        font_directory = self.root / "synthetic-task-book-fonts"
+        font_directory.mkdir()
+        checkbox_font = font_directory / "Wingdng2.ttf"
+        checkbox_font.write_bytes(b"synthetic licensed-font placeholder")
+        engine = EngineDescriptor(
+            root=engine_root,
+            validator=self.root / "synthetic-validator.py",
+            pack_sha256="a" * 64,
+            source="synthetic",
+            document_type="task_book",
+            template_id="sztu.task-book.synthetic",
+            version="0.1-test",
+            font_directories=(font_directory,),
+        )
+
+        merged = build_export_document(
+            self.workspace, self.workspace.get_document(document["id"])
+        )
+        self.assertEqual(
+            merged["metadata"],
+            {
+                **task_book["metadata"],
+                "graduation_year": 2027,
+                "student_name": "统一档案姓名",
+                "student_id": "TASK-PROFILE-2027",
+                "college": "统一档案学院",
+                "major": "统一档案专业",
+                "class_name": "新能源一班",
+                "advisor": "统一档案教师",
+            },
+        )
+        with patch(
+            "sztu_docs_backend.exporter._task_book_font_roots",
+            return_value=[font_directory],
+        ):
+            preflight = preflight_export(
+                self.workspace,
+                document_id=document["id"],
+                output_directory=str(self.output),
+                formats=["tex", "docx", "pdf"],
+                engine=engine,
+            )
+        targets = next(
+            check
+            for check in preflight["checks"]
+            if check["check_id"] == "output-targets"
+        )["details"]["targets"]
+        self.assertEqual(
+            [target["filename"] for target in targets],
+            ["任务书.docx", "任务书.pdf", "任务书-LaTeX.zip"],
+        )
+
+        with patch(
+            "sztu_docs_backend.exporter._run", side_effect=self.fake_render
+        ), patch(
+            "sztu_docs_backend.docx_inspector.inspect_docx",
+            return_value=deep_docx_check(),
+        ), patch(
+            "sztu_docs_backend.exporter._task_book_font_roots",
+            return_value=[font_directory],
+        ):
+            receipt = run_export(
+                self.workspace,
+                document_id=document["id"],
+                output_directory=str(self.output),
+                formats=["docx"],
+                engine=engine,
+                request_id=str(uuid.uuid4()),
+            )
+        stored = self.workspace.get_export_job(receipt["export_id"])
+        self.assertEqual(stored["snapshot"]["task_book"], merged)
+        self.assertEqual(
+            stored["snapshot"]["student_profile"],
+            {
+                "advisor_title": "副教授",
+                "graduation_cohort": "2027届",
+                "thesis_title": None,
+            },
+        )
+
+        checkbox_font.unlink()
+        with patch(
+            "sztu_docs_backend.exporter._task_book_font_roots",
+            return_value=[font_directory],
+        ), self.assertRaises(ExportError) as missing_font:
+            preflight_export(
+                self.workspace,
+                document_id=document["id"],
+                output_directory=str(self.output),
+                formats=["docx"],
+                engine=engine,
+            )
+        self.assertEqual(missing_font.exception.code, "REQUIRED_FONT_MISSING")
+        self.assertEqual(missing_font.exception.details["format"], "docx")
+        self.assertIn("Wingdings 2", missing_font.exception.message)
+        pdf_and_tex = preflight_export(
+            self.workspace,
+            document_id=document["id"],
+            output_directory=str(self.output),
+            formats=["tex", "pdf"],
+            engine=engine,
+        )
+        self.assertTrue(pdf_and_tex["ready"])
+        self.assertEqual(pdf_and_tex["formats"], ["pdf", "tex"])
+
+        long_content = json.loads(
+            json.dumps(
+                {"metadata": task_book["metadata"], "sections": task_book["sections"]},
+                ensure_ascii=False,
+            )
+        )
+        long_content["metadata"]["title"] = "任" * 46
+        current = self.workspace.get_document(document["id"])
+        self.workspace.save_draft(
+            document["id"],
+            long_content,
+            current["current_revision"],
+            reason="manual",
+        )
+        with self.assertRaises(ExportError) as caught:
+            preflight_export(
+                self.workspace,
+                document_id=document["id"],
+                output_directory=str(self.output),
+                formats=["pdf"],
+                engine=engine,
+            )
+        self.assertEqual(caught.exception.code, "DOCUMENT_NOT_READY")
+        self.assertEqual(caught.exception.details["field"], "metadata.title")
+        self.assertEqual(
+            caught.exception.details["reason"], "template_capacity_exceeded"
+        )
+        self.assertEqual(caught.exception.details["maximum_lines"], 2)
+        self.assertAlmostEqual(
+            caught.exception.details["line_capacity_units"], 22.677, places=3
+        )
+
+    def test_renderer_maps_task_book_checkbox_font_diagnostic(self) -> None:
+        with self.assertRaises(ExportError) as caught:
+            _run(
+                [
+                    sys.executable,
+                    "-c",
+                    (
+                        "import sys; "
+                        "sys.stderr.write('required checkbox font is missing'); "
+                        "sys.exit(1)"
+                    ),
+                ],
+                cwd=self.root,
+            )
+
+        self.assertEqual(caught.exception.code, "REQUIRED_FONT_MISSING")
+        self.assertIn("Wingdings 2", caught.exception.message)
+
     def test_existing_target_is_not_overwritten_without_confirmation(self) -> None:
         target = self.output / "开题报告.docx"
         target.write_bytes(b"original-user-file")
@@ -329,6 +610,14 @@ class ExportPipelineTests(unittest.TestCase):
         self.assertEqual(stored["status"], "completed")
         self.assertEqual(stored["receipt"], receipt)
         self.assertEqual(stored["snapshot"]["proposal"], self.proposal)
+        self.assertEqual(
+            stored["snapshot"]["student_profile"],
+            {
+                "advisor_title": "副教授",
+                "graduation_cohort": "2026届",
+                "thesis_title": None,
+            },
+        )
         self.assertTrue(stored["overwrite_confirmed"])
         self.assertTrue(stored["artifacts"][0]["replaced_existing"])
         self.assertEqual(stored["artifacts"][0]["relative_path"], target.name)
@@ -431,78 +720,194 @@ class TemplateEngineInstallationTests(unittest.TestCase):
         validator.write_bytes(validator_payload)
         return hashes, hashlib.sha256(validator_payload).hexdigest()
 
-    def test_exact_engine_is_copied_locally_and_reinstall_is_idempotent(self) -> None:
+    def test_linked_workspace_is_snapshotted_and_resynced_after_source_change(self) -> None:
         payloads = {
             "word/render.py": b"synthetic word renderer v1",
             "schema/proposal.schema.json": b'{"synthetic":true}',
         }
-        hashes, validator_hash = self.create_source(
+        hashes, _validator_hash = self.create_source(
             payloads, b"synthetic cjk validator v1"
         )
-        with patch.object(template_engine, "ENGINE_FILE_HASHES", hashes), patch.object(
-            template_engine, "VALIDATOR_SHA256", validator_hash
-        ):
-            installed = install_engine(self.workspace, str(self.source))
+        with patch.object(template_engine, "ENGINE_FILE_HASHES", hashes):
+            linked = install_engine(self.workspace, str(self.source))
             repeated = install_engine(self.workspace, str(self.source))
 
-        destination = installed_engine_root(self.workspace.database.data_directory)
-        self.assertEqual(installed["status"], "installed")
-        self.assertEqual(repeated["status"], "already_installed")
-        self.assertEqual(repeated["installed_at"], installed["installed_at"])
+        first_installation = self.workspace.list_template_installations(
+            enabled_only=True
+        )[0]
+        first_destination = Path(first_installation["install_path"])
+        self.assertEqual(linked["status"], "linked")
+        self.assertEqual(repeated["status"], "already_current")
+        self.assertEqual(repeated["installed_at"], linked["installed_at"])
+        self.assertEqual(linked["source"], "linked-workspace")
         for relative_name, payload in payloads.items():
-            self.assertEqual((destination / relative_name).read_bytes(), payload)
+            self.assertEqual((first_destination / relative_name).read_bytes(), payload)
         self.assertEqual(
-            (destination / "scripts" / "validate_cjk_render.py").read_bytes(),
+            (first_destination / "scripts" / "validate_cjk_render.py").read_bytes(),
             b"synthetic cjk validator v1",
         )
-        installations = self.workspace.list_template_installations(enabled_only=True)
-        self.assertEqual(len(installations), 1)
-        self.assertEqual(
-            Path(installations[0]["install_path"]).resolve(), destination.resolve()
-        )
-        self.assertEqual(installations[0]["metadata"]["pack_sha256"], installed["pack_sha256"])
-
-        original_installed = (destination / "word" / "render.py").read_bytes()
+        original_snapshot = (first_destination / "word" / "render.py").read_bytes()
         (self.source / "word" / "render.py").write_bytes(b"drifted renderer")
+        with patch.object(template_engine, "ENGINE_FILE_HASHES", hashes):
+            updated = install_engine(self.workspace, str(self.source))
+            with patch.dict(
+                os.environ,
+                {"SZTU_DOCS_DATA_DIR": str(self.data_dir)},
+                clear=False,
+            ):
+                resolved = template_engine.resolve_engine("proposal")
+
+        self.assertEqual(updated["status"], "updated")
+        self.assertNotEqual(updated["pack_sha256"], linked["pack_sha256"])
+        self.assertEqual(resolved.pack_sha256, updated["pack_sha256"])
+        self.assertEqual(resolved.source, "linked-workspace")
+        self.assertEqual(
+            (resolved.root / "word" / "render.py").read_bytes(),
+            b"drifted renderer",
+        )
+        self.assertEqual(
+            (first_destination / "word" / "render.py").read_bytes(), original_snapshot
+        )
+        self.assertEqual(
+            len(self.workspace.list_template_installations(enabled_only=True)), 1
+        )
+
+    def test_immutable_committed_engine_still_rejects_hash_drift(self) -> None:
+        payloads = {"word/render.py": b"committed renderer"}
+        hashes, validator_hash = self.create_source(
+            payloads, b"committed validator"
+        )
+        validator = self.source / "scripts" / "validate_cjk_render.py"
         with patch.object(template_engine, "ENGINE_FILE_HASHES", hashes), patch.object(
             template_engine, "VALIDATOR_SHA256", validator_hash
         ):
+            verified = template_engine.verify_engine(
+                self.source, validator=validator, source="committed"
+            )
+            (self.source / "word" / "render.py").write_bytes(b"drifted renderer")
             with self.assertRaises(TemplateEngineError) as caught:
-                install_engine(self.workspace, str(self.source))
+                template_engine.verify_engine(
+                    self.source, validator=validator, source="committed"
+                )
+        self.assertEqual(verified.source, "committed")
         self.assertEqual(caught.exception.code, "TEMPLATE_ENGINE_HASH_MISMATCH")
-        self.assertEqual(
-            (destination / "word" / "render.py").read_bytes(), original_installed
-        )
 
-    def test_conflicting_verified_install_does_not_overwrite_destination(self) -> None:
-        self.create_source(
-            {"word/render.py": b"selected source"}, b"selected validator"
-        )
-        destination = installed_engine_root(self.workspace.database.data_directory)
-        destination.mkdir(parents=True)
-        sentinel = destination / "sentinel.bin"
-        sentinel.write_bytes(b"preserve-existing-install")
+    def test_immutable_submitted_task_book_engine_rejects_hash_drift(self) -> None:
+        relative_name = "templates/task-book/word/render.py"
+        payload = b"submitted task-book renderer"
+        candidate = self.source / relative_name
+        candidate.parent.mkdir(parents=True, exist_ok=True)
+        candidate.write_bytes(payload)
         validator = self.source / "scripts" / "validate_cjk_render.py"
-        descriptors = [
-            EngineDescriptor(
-                root=self.source,
-                validator=validator,
-                pack_sha256="1" * 64,
-                source="selected-local-source",
-            ),
-            EngineDescriptor(
-                root=destination,
-                validator=destination / "scripts" / "validate_cjk_render.py",
-                pack_sha256="2" * 64,
-                source="installed",
-            ),
-        ]
-        with patch.object(template_engine, "verify_engine", side_effect=descriptors):
+        validator.parent.mkdir(parents=True, exist_ok=True)
+        validator.write_bytes(b"submitted task-book validator")
+        with patch.object(
+            template_engine,
+            "TASK_BOOK_ENGINE_FILE_HASHES",
+            {relative_name: hashlib.sha256(payload).hexdigest()},
+        ), patch.object(
+            template_engine,
+            "VALIDATOR_SHA256",
+            hashlib.sha256(validator.read_bytes()).hexdigest(),
+        ):
+            verified = template_engine.verify_task_book_engine(
+                self.source, validator=validator.resolve(), source="submitted"
+            )
+            candidate.write_bytes(b"drifted task-book renderer")
             with self.assertRaises(TemplateEngineError) as caught:
-                install_engine(self.workspace, str(self.source))
-        self.assertEqual(caught.exception.code, "TEMPLATE_INSTALL_CONFLICT")
-        self.assertEqual(sentinel.read_bytes(), b"preserve-existing-install")
-        self.assertEqual([path.name for path in destination.iterdir()], [sentinel.name])
+                template_engine.verify_task_book_engine(
+                    self.source, validator=validator.resolve(), source="submitted"
+                )
+        self.assertEqual(verified.document_type, "task_book")
+        self.assertEqual(verified.version, "0.1+46b6d97")
+        self.assertEqual(caught.exception.code, "TEMPLATE_ENGINE_HASH_MISMATCH")
+
+    def test_midterm_workspace_uses_the_same_content_addressed_link_flow(self) -> None:
+        payloads = {
+            "templates/common/python/content.py": b"synthetic shared content",
+            "templates/midterm/word/render.py": b"synthetic midterm renderer",
+        }
+        for relative_name, payload in payloads.items():
+            path = self.source / relative_name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(payload)
+        validator = self.source / "scripts" / "validate_cjk_render.py"
+        validator.parent.mkdir(parents=True, exist_ok=True)
+        validator.write_bytes(b"synthetic validator")
+        local_fonts = self.source / "templates" / "midterm" / "fonts.local"
+        local_fonts.mkdir()
+        (local_fonts / "licensed-test-font.ttf").write_bytes(b"local-only font")
+
+        with patch.object(
+            template_engine,
+            "MIDTERM_ENGINE_FILE_HASHES",
+            {name: hashlib.sha256(payload).hexdigest() for name, payload in payloads.items()},
+        ):
+            linked = install_engine(self.workspace, str(self.source), "midterm")
+            repeated = install_engine(self.workspace, str(self.source), "midterm")
+            with patch.dict(
+                os.environ,
+                {"SZTU_DOCS_DATA_DIR": str(self.data_dir)},
+                clear=False,
+            ):
+                resolved = template_engine.resolve_engine("midterm")
+
+        self.assertEqual(linked["status"], "linked")
+        self.assertEqual(repeated["status"], "already_current")
+        self.assertTrue(linked["version"].startswith("0.1+workspace."))
+        installation = self.workspace.list_template_installations(enabled_only=True)[0]
+        engine_root = Path(installation["install_path"])
+        self.assertEqual(
+            (engine_root / "word" / "render.py").read_bytes(),
+            b"synthetic midterm renderer",
+        )
+        self.assertEqual(resolved.font_directories, (local_fonts.resolve(),))
+        self.assertFalse((engine_root / "fonts.local").exists())
+
+    def test_task_book_workspace_is_snapshotted_with_shared_runtime_files(self) -> None:
+        payloads = {
+            "templates/common/python/content.py": b"synthetic shared task content",
+            "templates/common/typography/font-policy-2026.json": b"{}",
+            "templates/task-book/python/model.py": b"synthetic task model",
+            "templates/task-book/word/render.py": b"synthetic task word renderer",
+            "templates/task-book/latex/render.py": b"synthetic task latex renderer",
+        }
+        for relative_name, payload in payloads.items():
+            candidate = self.source / relative_name
+            candidate.parent.mkdir(parents=True, exist_ok=True)
+            candidate.write_bytes(payload)
+        validator = self.source / "scripts" / "validate_cjk_render.py"
+        validator.parent.mkdir(parents=True, exist_ok=True)
+        validator.write_bytes(b"synthetic task validator")
+
+        with patch.object(
+            template_engine,
+            "TASK_BOOK_ENGINE_FILE_HASHES",
+            {
+                name: hashlib.sha256(payload).hexdigest()
+                for name, payload in payloads.items()
+            },
+        ):
+            linked = install_engine(self.workspace, str(self.source), "task_book")
+            with patch.dict(
+                os.environ,
+                {"SZTU_DOCS_DATA_DIR": str(self.data_dir)},
+                clear=False,
+            ):
+                resolved = template_engine.resolve_engine("task_book")
+
+        self.assertEqual(linked["status"], "linked")
+        self.assertTrue(linked["version"].startswith("0.1+workspace."))
+        self.assertEqual(resolved.document_type, "task_book")
+        self.assertEqual(resolved.template_id, "sztu.task-book.2026.local")
+        self.assertEqual(
+            (resolved.root / "python/model.py").read_bytes(),
+            b"synthetic task model",
+        )
+        self.assertEqual(
+            (resolved.root.parent / "common/python/content.py").read_bytes(),
+            b"synthetic shared task content",
+        )
 
     def test_intermediate_source_directory_symlink_is_rejected(self) -> None:
         outside = self.root / "outside"
@@ -526,8 +931,10 @@ class TemplateEngineInstallationTests(unittest.TestCase):
             with self.assertRaises(TemplateEngineError) as caught:
                 install_engine(self.workspace, str(self.source))
 
-        self.assertEqual(caught.exception.code, "TEMPLATE_ENGINE_INVALID")
-        self.assertFalse(installed_engine_root(self.data_dir).exists())
+        self.assertEqual(caught.exception.code, "TEMPLATE_SOURCE_INVALID")
+        self.assertFalse(
+            (self.data_dir / "template-engines" / "workspace-links.json").exists()
+        )
 
 
 if __name__ == "__main__":
