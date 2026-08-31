@@ -11,6 +11,7 @@ import {
   shell,
   type IpcMainInvokeEvent,
   type OpenDialogOptions,
+  type SaveDialogOptions,
 } from "electron"
 
 import {
@@ -18,6 +19,12 @@ import {
   SidecarError,
   type SidecarMethod,
 } from "./sidecar-client.js"
+import {
+  DiagnosticService,
+  stableDiagnosticErrorCode,
+  type DiagnosticEnvironmentInput,
+  type DiagnosticOperation,
+} from "./diagnostics.js"
 import { loadRemoteServicesConfig } from "./remote-services-config.js"
 import {
   parseTelemetryUsageEvent,
@@ -32,6 +39,7 @@ let mainWindow: BrowserWindow | undefined
 let sidecar: SidecarClient | undefined
 let telemetry: TelemetryService | undefined
 let updateService: UpdateService | undefined
+let diagnostics: DiagnosticService | undefined
 let remoteServicesStarted = false
 let shutdownStarted = false
 const approvedExportDirectories = new Set<string>()
@@ -271,7 +279,7 @@ function assertDocument(value: unknown): asserts value is Record<string, unknown
   assertExactKeys(
     value,
     ["document_type", "template_version", "schema_version", "title"],
-    ["profile_id"],
+    ["profile_id", "source_document_id"],
   )
   if (value.profile_id !== undefined && value.profile_id !== null) {
     assertResourceId(value.profile_id, "document.profile_id")
@@ -286,6 +294,9 @@ function assertDocument(value: unknown): asserts value is Record<string, unknown
   assertText(value.template_version, "document.template_version", 64)
   assertText(value.schema_version, "document.schema_version", 64)
   assertText(value.title, "document.title", 240)
+  if (value.source_document_id !== undefined) {
+    assertResourceId(value.source_document_id, "document.source_document_id")
+  }
 }
 
 function assertExportFormats(value: unknown): asserts value is Array<"docx" | "pdf" | "tex"> {
@@ -402,6 +413,18 @@ function createWindow(): BrowserWindow {
       event.preventDefault()
     }
   })
+  window.webContents.on("render-process-gone", (_event, details) => {
+    const code =
+      details.reason === "clean-exit"
+        ? undefined
+        : `RENDERER_${details.reason.replaceAll("-", "_").toUpperCase()}`
+    diagnostics?.record(
+      "renderer.process",
+      details.reason === "clean-exit" ? "success" : "failure",
+      0,
+      code,
+    )
+  })
 
   window.once("ready-to-show", () => window.show())
   if (app.isPackaged) {
@@ -431,6 +454,15 @@ async function initializeRemoteServices(): Promise<void> {
     console.error("Remote services configuration was rejected.")
   }
   const resolved = config as Awaited<ReturnType<typeof loadRemoteServicesConfig>>
+  diagnostics = new DiagnosticService({
+    userDataPath: app.getPath("userData"),
+    appVersion: app.getVersion(),
+    electronVersion: process.versions.electron,
+    platform: process.platform,
+    arch: process.arch,
+    packaged: app.isPackaged,
+  })
+  await diagnostics.initialize()
   telemetry = new TelemetryService({
     userDataPath: app.getPath("userData"),
     appVersion: app.getVersion(),
@@ -488,6 +520,45 @@ function registerIpc(): void {
   ipcMain.handle("sztu:environment-check", async (event) => {
     assertTrustedSender(event)
     return runBridge(() => requestSidecar("environment.check", {}))
+  })
+
+  ipcMain.handle("sztu:diagnostic-prepare", async (event) => {
+    assertTrustedSender(event)
+    return runBridge(async () => {
+      if (!diagnostics) throw new Error("Diagnostics service is not initialized.")
+      const environment = await requestSidecar<DiagnosticEnvironmentInput>(
+        "environment.check",
+        {},
+      )
+      const privacy = privacyNoticeStatus()
+      return diagnostics.prepare(environment, {
+        telemetryConfigured: privacy.telemetryConfigured,
+        updateConfigured: privacy.updateConfigured,
+      })
+    })
+  })
+
+  ipcMain.handle("sztu:diagnostic-save", async (event, reportId: unknown) => {
+    assertTrustedSender(event)
+    return runBridge(async () => {
+      if (!diagnostics) throw new Error("Diagnostics service is not initialized.")
+      assertRequestId(reportId, "reportId")
+      const options: SaveDialogOptions = {
+        title: "保存故障诊断包",
+        defaultPath: path.join(
+          app.getPath("documents"),
+          `SZTU-诊断-${reportId.slice(0, 8).toUpperCase()}.json`,
+        ),
+        filters: [{ name: "JSON 诊断包", extensions: ["json"] }],
+        properties: ["createDirectory", "showOverwriteConfirmation"],
+      }
+      const result = mainWindow
+        ? await dialog.showSaveDialog(mainWindow, options)
+        : await dialog.showSaveDialog(options)
+      if (result.canceled || !result.filePath) return { saved: false }
+      await diagnostics.save(reportId, result.filePath)
+      return { saved: true }
+    })
   })
 
   ipcMain.handle("sztu:privacy-status", (event) => {
@@ -595,6 +666,34 @@ function registerIpc(): void {
       return requestSidecar("workspace.selectDocument", { document_id: documentId })
     })
   })
+
+  ipcMain.handle("sztu:workspace-rename-document", async (event, input: unknown) => {
+    assertTrustedSender(event)
+    return runBridge(() => {
+      if (!isRecord(input)) throw new IpcValidationError("重命名参数必须是对象。")
+      assertExactKeys(input, ["documentId", "title"])
+      assertResourceId(input.documentId)
+      assertText(input.title, "title", 240)
+      return requestSidecar("workspace.renameDocument", {
+        document_id: input.documentId,
+        title: input.title,
+      })
+    })
+  })
+
+  for (const [channel, method] of [
+    ["sztu:workspace-delete-document", "workspace.deleteDocument"],
+    ["sztu:workspace-restore-document", "workspace.restoreDocument"],
+    ["sztu:workspace-purge-document", "workspace.purgeDocument"],
+  ] as const) {
+    ipcMain.handle(channel, async (event, documentId: unknown) => {
+      assertTrustedSender(event)
+      return runBridge(() => {
+        assertResourceId(documentId)
+        return requestSidecar(method, { document_id: documentId })
+      })
+    })
+  }
 
   ipcMain.handle("sztu:workspace-save-draft", async (event, input: unknown) => {
     assertTrustedSender(event)
@@ -820,8 +919,9 @@ function registerIpc(): void {
     assertTrustedSender(event)
     return runBridge(() => {
       if (!isRecord(input)) throw new IpcValidationError("导出预检参数必须是对象。")
-      assertExactKeys(input, ["documentId", "outputDirectory", "formats"])
+      assertExactKeys(input, ["documentId", "previewId", "outputDirectory", "formats"])
       assertResourceId(input.documentId)
+      assertResourceId(input.previewId)
       assertExportFormats(input.formats)
       assertText(input.outputDirectory, "outputDirectory", 4096)
       if (!path.isAbsolute(input.outputDirectory as string)) {
@@ -833,6 +933,7 @@ function registerIpc(): void {
       }
       const params: Record<string, unknown> = {
         document_id: input.documentId,
+        preview_id: input.previewId,
         output_directory: outputDirectory,
         formats: input.formats,
       }
@@ -846,10 +947,11 @@ function registerIpc(): void {
       if (!isRecord(input)) throw new IpcValidationError("导出参数必须是对象。")
       assertExactKeys(
         input,
-        ["requestId", "documentId", "outputDirectory", "formats", "preflightToken", "overwriteConfirmed"],
+        ["requestId", "documentId", "previewId", "outputDirectory", "formats", "preflightToken", "overwriteConfirmed"],
       )
       assertRequestId(input.requestId)
       assertResourceId(input.documentId)
+      assertResourceId(input.previewId)
       assertText(input.outputDirectory, "outputDirectory", 4096)
       if (!path.isAbsolute(input.outputDirectory as string)) {
         throw new IpcValidationError("outputDirectory 必须是绝对路径。")
@@ -868,6 +970,7 @@ function registerIpc(): void {
       const params: Record<string, unknown> = {
         request_id: input.requestId,
         document_id: input.documentId,
+        preview_id: input.previewId,
         output_directory: outputDirectory,
         formats: input.formats,
         preflight_token: input.preflightToken,
@@ -937,7 +1040,7 @@ function registerIpc(): void {
     })
   })
 
-  ipcMain.handle("sztu:export-open-artifact", async (event, artifactId: unknown) => {
+  ipcMain.handle("sztu:export-reveal-artifact", async (event, artifactId: unknown) => {
     assertTrustedSender(event)
     return runBridge(async () => {
       assertResourceId(artifactId, "artifactId")
@@ -969,10 +1072,23 @@ function registerIpc(): void {
       ) {
         throw new SidecarError("INVALID_SIDECAR_RESULT", "Sidecar artifact verification failed.")
       }
-      const applicationError = await shell.openPath(resolved.absolute_path as string)
-      return applicationError
-        ? { artifact_id: artifactId, opened: false, application_error: "无法使用默认应用打开该产物。" }
-        : { artifact_id: artifactId, opened: true }
+      shell.showItemInFolder(resolved.absolute_path as string)
+      return { artifact_id: artifactId, revealed: true as const }
+    })
+  })
+
+  ipcMain.handle("sztu:export-delete-history", async (event, input: unknown) => {
+    assertTrustedSender(event)
+    return runBridge(() => {
+      if (!isRecord(input)) throw new IpcValidationError("删除导出记录参数必须是对象。")
+      assertExactKeys(input, ["documentId", "exportId"])
+      assertResourceId(input.documentId, "documentId")
+      assertResourceId(input.exportId, "exportId")
+      return requestSidecar(
+        "export.deleteHistory",
+        { document_id: input.documentId, export_id: input.exportId },
+        15_000,
+      )
     })
   })
 
@@ -1051,13 +1167,26 @@ function registerIpc(): void {
   })
 }
 
-function requestSidecar<T>(
+async function requestSidecar<T>(
   method: SidecarMethod,
   params: Record<string, unknown>,
   timeoutMs?: number,
 ): Promise<T> {
+  const startedAt = Date.now()
   sidecar ??= new SidecarClient(backendRoot(), app.getPath("userData"))
-  return sidecar.request<T>(method, params, timeoutMs)
+  try {
+    const result = await sidecar.request<T>(method, params, timeoutMs)
+    diagnostics?.record(method as DiagnosticOperation, "success", Date.now() - startedAt)
+    return result
+  } catch (error) {
+    diagnostics?.record(
+      method as DiagnosticOperation,
+      "failure",
+      Date.now() - startedAt,
+      stableDiagnosticErrorCode(error),
+    )
+    throw error
+  }
 }
 
 app.enableSandbox()
@@ -1095,8 +1224,11 @@ app.on("window-all-closed", () => {
 app.on("before-quit", (event) => {
   updateService?.stop()
   sidecar?.dispose()
-  if (shutdownStarted || !telemetry) return
+  if (shutdownStarted) return
   shutdownStarted = true
   event.preventDefault()
-  void telemetry.stop().finally(() => app.quit())
+  void Promise.all([
+    telemetry?.stop() ?? Promise.resolve(),
+    diagnostics?.flush() ?? Promise.resolve(),
+  ]).finally(() => app.quit())
 })

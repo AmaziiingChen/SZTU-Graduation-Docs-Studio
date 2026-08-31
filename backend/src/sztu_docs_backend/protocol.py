@@ -16,6 +16,7 @@ from .exporter import (
     build_export_document,
     ExportError,
     content_check,
+    delete_export_history_record,
     failed_content_check,
     generate_preview,
     list_export_history,
@@ -234,6 +235,8 @@ def _safe_storage_details(details: Mapping[str, Any]) -> dict[str, Any]:
             "thesis_title",
             "document",
             "document_id",
+            "source_document_id",
+            "title",
             "profile_id",
             "content",
             "expected_revision",
@@ -256,6 +259,9 @@ def _safe_storage_details(details: Mapping[str, Any]) -> dict[str, Any]:
             "not_temporary",
             "does_not_belong_to_profile",
             "already_assigned",
+            "document_type_mismatch",
+            "temporary_document",
+            "must_be_internal_id",
             "must_be_between_1_and_500",
         },
     }
@@ -326,6 +332,10 @@ class ProtocolSession:
             "workspace.saveProfile": self._save_profile,
             "workspace.createDocument": self._create_document,
             "workspace.selectDocument": self._select_document,
+            "workspace.renameDocument": self._rename_document,
+            "workspace.deleteDocument": self._delete_document,
+            "workspace.restoreDocument": self._restore_document,
+            "workspace.purgeDocument": self._purge_document,
             "workspace.saveDraft": self._save_draft,
             "workspace.closeTemporary": self._close_temporary,
             "document.check": self._check_document,
@@ -333,6 +343,7 @@ class ProtocolSession:
             "export.preflight": self._preflight_export,
             "export.run": self._run_export,
             "export.history": self._export_history,
+            "export.deleteHistory": self._delete_export_history,
             "export.resolveArtifact": self._resolve_artifact,
             "template.install": self._install_template,
             "qa.record": self._record_qa,
@@ -456,6 +467,36 @@ class ProtocolSession:
         )
         return document
 
+    def _rename_document(self, params: dict[str, Any]) -> dict[str, Any]:
+        _shape_params(params, required={"document_id", "title"})
+        workspace = self._require_workspace()
+        workspace.rename_document(
+            _string_param(params, "document_id"),
+            _string_param(params, "title"),
+        )
+        return self._selection()
+
+    def _delete_document(self, params: dict[str, Any]) -> dict[str, Any]:
+        _shape_params(params, required={"document_id"})
+        workspace = self._require_workspace()
+        workspace.delete_document(_string_param(params, "document_id"))
+        return self._selection()
+
+    def _restore_document(self, params: dict[str, Any]) -> dict[str, Any]:
+        _shape_params(params, required={"document_id"})
+        workspace = self._require_workspace()
+        document = workspace.restore_document(_string_param(params, "document_id"))
+        workspace.save_active(
+            profile_id=document["profile_id"], document_id=document["id"]
+        )
+        return self._selection()
+
+    def _purge_document(self, params: dict[str, Any]) -> dict[str, Any]:
+        _shape_params(params, required={"document_id"})
+        workspace = self._require_workspace()
+        workspace.purge_document(_string_param(params, "document_id"))
+        return self._selection()
+
     def _select_document(self, params: dict[str, Any]) -> dict[str, Any]:
         _shape_params(params, required={"document_id"})
         workspace = self._require_workspace()
@@ -577,6 +618,7 @@ class ProtocolSession:
             required={
                 "request_id",
                 "document_id",
+                "preview_id",
                 "output_directory",
                 "formats",
                 "preflight_token",
@@ -596,6 +638,13 @@ class ProtocolSession:
                 {"field": "formats"},
             )
         document_id = _string_param(params, "document_id")
+        preview_id = _string_param(params, "preview_id")
+        if canonical_request_id(preview_id) is None:
+            raise ProtocolError(
+                INVALID_PARAMS,
+                "Preview id must be a UUID.",
+                {"field": "preview_id"},
+            )
         output_directory = _string_param(params, "output_directory")
         request_id = _string_param(params, "request_id")
         if canonical_request_id(request_id) is None:
@@ -621,6 +670,7 @@ class ProtocolSession:
             raise ExportError("PREFLIGHT_EXPIRED", "导出预检已失效，请重新检查。")
         if (
             preflight["document_id"] != document_id
+            or preflight["preview_id"] != preview_id
             or preflight["output_directory"] != str(Path(output_directory).resolve())
             or preflight["formats"] != frozenset(formats)
         ):
@@ -638,11 +688,13 @@ class ProtocolSession:
             cancellation_file=cancellation_file,
             app_version=app_version,
             preflight_token=token,
+            preview_id=preview_id,
         )
 
     def _preflight_export(self, params: dict[str, Any]) -> dict[str, Any]:
         _shape_params(
-            params, required={"document_id", "output_directory", "formats"}
+            params,
+            required={"document_id", "preview_id", "output_directory", "formats"},
         )
         workspace = self._require_workspace()
         formats = params.get("formats")
@@ -656,12 +708,20 @@ class ProtocolSession:
             )
         output_directory = _string_param(params, "output_directory")
         document_id = _string_param(params, "document_id")
+        preview_id = _string_param(params, "preview_id")
+        if canonical_request_id(preview_id) is None:
+            raise ProtocolError(
+                INVALID_PARAMS,
+                "Preview id must be a UUID.",
+                {"field": "preview_id"},
+            )
         document = workspace.get_document(document_id)
         result = preflight_export(
             workspace,
             document_id=document_id,
             output_directory=output_directory,
             formats=formats,
+            preview_id=preview_id,
         )
         now = time.monotonic()
         self.preflight_tokens = {
@@ -697,6 +757,7 @@ class ProtocolSession:
             targets.append({**target, "path": str(target_path)})
         self.preflight_tokens[token] = {
             "document_id": result["document_id"],
+            "preview_id": preview_id,
             "document_revision": document["current_revision"],
             "output_directory": str(Path(output_directory).resolve()),
             "formats": frozenset(result["formats"]),
@@ -780,6 +841,14 @@ class ProtocolSession:
                 | {"template": template, "artifacts": safe_artifacts}
             )
         return {"schema_version": "1.0", "history": safe_history}
+
+    def _delete_export_history(self, params: dict[str, Any]) -> dict[str, Any]:
+        _shape_params(params, required={"document_id", "export_id"})
+        return delete_export_history_record(
+            self._require_workspace(),
+            document_id=_string_param(params, "document_id"),
+            export_id=_string_param(params, "export_id"),
+        )
 
     def _resolve_artifact(self, params: dict[str, Any]) -> dict[str, Any]:
         _shape_params(params, required={"artifact_id"})
@@ -886,6 +955,11 @@ class ProtocolSession:
         documents = workspace.list_documents(profile_id=profile_id, limit=100)
         if not documents and profile_id is not None:
             documents = workspace.list_documents(limit=100)
+        deleted_documents = workspace.list_deleted_documents(
+            profile_id=profile_id, limit=100
+        )
+        if not deleted_documents and profile_id is not None:
+            deleted_documents = workspace.list_deleted_documents(limit=100)
         if profile is not None or document is not None:
             workspace.save_active(
                 profile_id=profile_id,
@@ -897,6 +971,7 @@ class ProtocolSession:
             "profile_draft": workspace.load_profile_draft(),
             "document": document,
             "documents": documents,
+            "deleted_documents": deleted_documents,
         }
 
     def close(self) -> None:

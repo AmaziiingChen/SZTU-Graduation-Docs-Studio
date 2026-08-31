@@ -71,10 +71,21 @@ TASK_BOOK_ENGINE_FILE_HASHES = {
     "templates/task-book/word/official-template.docx": "dd5cdeb1c96d0a617fe03095483dc5f4cbd96a12772d55e940c120978a6104d2",
     "templates/task-book/word/render.py": "204508f99c04c5708355e4c8dd937ed39c1ee2ddd383ab7f51e916ed429760f9",
 }
+WORKSPACE_SHARED_SUPPORT_FILE_NAMES = (
+    "templates/common/latex/sztu-process-form.tex",
+    "templates/common/python/process_form.py",
+)
 WORKSPACE_COMMON_FILE_NAMES = tuple(
-    name
-    for name in MIDTERM_ENGINE_FILE_HASHES
-    if name.startswith("templates/common/")
+    sorted(
+        {
+            *(
+                name
+                for name in MIDTERM_ENGINE_FILE_HASHES
+                if name.startswith("templates/common/")
+            ),
+            *WORKSPACE_SHARED_SUPPORT_FILE_NAMES,
+        }
+    )
 )
 PROPOSAL_WORKSPACE_FILE_NAMES = tuple(
     sorted(
@@ -589,17 +600,27 @@ def _workspace_source(selected: Path, document_type: str) -> WorkspaceEngineSour
     elif document_type == "midterm":
         engine_root, validator = _locate_midterm_source(selected)
         selection_root = selected.resolve()
-        files = tuple(
-            (name, selection_root / name)
-            for name in sorted(MIDTERM_ENGINE_FILE_HASHES)
-        )
+        names = {
+            *MIDTERM_ENGINE_FILE_HASHES,
+            *(
+                name
+                for name in WORKSPACE_SHARED_SUPPORT_FILE_NAMES
+                if (selection_root / name).is_file()
+            ),
+        }
+        files = tuple((name, selection_root / name) for name in sorted(names))
     elif document_type == "task_book":
         engine_root, validator = _locate_task_book_source(selected)
         selection_root = selected.resolve()
-        files = tuple(
-            (name, selection_root / name)
-            for name in sorted(TASK_BOOK_ENGINE_FILE_HASHES)
-        )
+        names = {
+            *TASK_BOOK_ENGINE_FILE_HASHES,
+            *(
+                name
+                for name in WORKSPACE_SHARED_SUPPORT_FILE_NAMES
+                if (selection_root / name).is_file()
+            ),
+        }
+        files = tuple((name, selection_root / name) for name in sorted(names))
     else:
         raise TemplateEngineError(
             "TEMPLATE_ENGINE_UNSUPPORTED", "当前文档类型没有可关联模板。"

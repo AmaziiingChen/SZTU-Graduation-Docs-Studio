@@ -12,7 +12,7 @@ import {
   type Editor,
   type JSONContent,
 } from "@tiptap/react"
-import { EditorState } from "@tiptap/pm/state"
+import { EditorState, TextSelection } from "@tiptap/pm/state"
 import {
   BoldIcon,
   IndentDecreaseIcon,
@@ -28,6 +28,7 @@ import {
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Kbd, KbdGroup } from "@/components/ui/kbd"
 import { Separator } from "@/components/ui/separator"
 import {
   ToggleGroup,
@@ -42,6 +43,7 @@ import {
 import {
   MAX_STRUCTURED_LIST_DEPTH,
   createRestrictedEditorExtensions,
+  editorShortcutLabels,
   listDepthAtSelection,
   structuredBodyFingerprint,
   structuredBodyToTiptap,
@@ -98,6 +100,14 @@ export type StructuredContentEditorProps = {
   ariaInvalid?: boolean
   className?: string
   mode?: StructuredEditorMode
+  selectionSnapshot?: EditorSelectionSnapshot
+  restoreFocus?: boolean
+  onSelectionChange?: (selection: EditorSelectionSnapshot) => void
+}
+
+export type EditorSelectionSnapshot = {
+  anchor: number
+  head: number
 }
 
 function selectToolbarState(editor: Editor): ToolbarState {
@@ -124,20 +134,47 @@ function selectToolbarState(editor: Editor): ToolbarState {
 
 function ToolbarButton({
   label,
+  shortcut,
+  unavailableReason,
+  disabled,
   children,
   ...props
 }: Omit<ComponentProps<typeof Button>, "children" | "aria-label"> & {
   label: string
+  shortcut?: readonly string[]
+  unavailableReason?: string
   children: ReactNode
 }) {
   return (
     <Tooltip>
-      <TooltipTrigger
-        render={<Button type="button" size="icon-sm" aria-label={label} {...props} />}
-      >
-        {children}
+      <TooltipTrigger render={<span className="inline-flex" />}>
+        <Button
+          type="button"
+          size="icon-sm"
+          aria-label={label}
+          disabled={disabled}
+          {...props}
+        >
+          {children}
+        </Button>
       </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
+      <TooltipContent
+        className={unavailableReason ? "flex-col items-start gap-1" : undefined}
+      >
+        <span className="inline-flex items-center gap-1.5">
+          <span>{label}</span>
+          {shortcut ? (
+            <KbdGroup>
+              {shortcut.map((key) => (
+                <Kbd key={key}>{key}</Kbd>
+              ))}
+            </KbdGroup>
+          ) : null}
+        </span>
+        {unavailableReason ? (
+          <span className="text-background/70">{unavailableReason}</span>
+        ) : null}
+      </TooltipContent>
     </Tooltip>
   )
 }
@@ -145,11 +182,13 @@ function ToolbarButton({
 function ToolbarToggle({
   value,
   label,
+  shortcut,
   disabled,
   children,
 }: {
   value: string
   label: string
+  shortcut?: readonly string[]
   disabled?: boolean
   children: ReactNode
 }) {
@@ -166,9 +205,26 @@ function ToolbarToggle({
       >
         {children}
       </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
+      <TooltipContent>
+        <span>{label}</span>
+        {shortcut ? (
+          <KbdGroup>
+            {shortcut.map((key) => (
+              <Kbd key={key}>{key}</Kbd>
+            ))}
+          </KbdGroup>
+        ) : null}
+      </TooltipContent>
     </Tooltip>
   )
+}
+
+function currentEditorShortcutLabels() {
+  const userAgentPlatform = (
+    navigator as Navigator & { userAgentData?: { platform?: string } }
+  ).userAgentData?.platform
+  const platform = userAgentPlatform || navigator.platform || navigator.userAgent
+  return editorShortcutLabels(platform)
 }
 
 export function StructuredContentEditor({
@@ -181,8 +237,13 @@ export function StructuredContentEditor({
   ariaInvalid = false,
   className,
   mode = "body",
+  selectionSnapshot,
+  restoreFocus = false,
+  onSelectionChange,
 }: StructuredContentEditorProps) {
   const onChangeRef = useRef(onChange)
+  const onSelectionChangeRef = useRef(onSelectionChange)
+  const restoredSelectionRef = useRef("")
   const composingRef = useRef(false)
   const compositionBaselineRef = useRef("")
   const compositionFingerprintsRef = useRef(new Set<string>())
@@ -222,6 +283,10 @@ export function StructuredContentEditor({
         }
         onChangeRef.current(nextValue)
       },
+      onSelectionUpdate: ({ editor: updatedEditor }) => {
+        const { anchor, head } = updatedEditor.state.selection
+        onSelectionChangeRef.current?.({ anchor, head })
+      },
     },
     [],
   )
@@ -236,6 +301,29 @@ export function StructuredContentEditor({
   useEffect(() => {
     onChangeRef.current = onChange
   }, [onChange])
+
+  useEffect(() => {
+    onSelectionChangeRef.current = onSelectionChange
+  }, [onSelectionChange])
+
+  useEffect(() => {
+    if (!selectionSnapshot) return
+    const selectionKey = `${selectionSnapshot.anchor}:${selectionSnapshot.head}:${restoreFocus}`
+    if (restoredSelectionRef.current === selectionKey) return
+    const maximum = editor.state.doc.content.size
+    const anchor = Math.max(0, Math.min(selectionSnapshot.anchor, maximum))
+    const head = Math.max(0, Math.min(selectionSnapshot.head, maximum))
+    editor.view.dispatch(
+      editor.state.tr.setSelection(
+        TextSelection.between(
+          editor.state.doc.resolve(anchor),
+          editor.state.doc.resolve(head),
+        ),
+      ),
+    )
+    if (restoreFocus) editor.commands.focus()
+    restoredSelectionRef.current = selectionKey
+  }, [editor, restoreFocus, selectionSnapshot])
 
   useEffect(() => {
     editor.setEditable(!disabled, false)
@@ -303,6 +391,7 @@ export function StructuredContentEditor({
     : toolbarState.bulletList
       ? ["bulletList"]
       : []
+  const shortcuts = currentEditorShortcutLabels()
 
   const changeFormatting = (nextValues: string[]) => {
     const currentValues = new Set(formattingValues)
@@ -404,16 +493,36 @@ export function StructuredContentEditor({
             disabled={disabled}
             onValueChange={changeFormatting}
           >
-            <ToolbarToggle value="bold" label="粗体" disabled={disabled}>
+            <ToolbarToggle
+              value="bold"
+              label="粗体"
+              shortcut={shortcuts.bold}
+              disabled={disabled}
+            >
               <BoldIcon />
             </ToolbarToggle>
-            <ToolbarToggle value="italic" label="斜体" disabled={disabled}>
+            <ToolbarToggle
+              value="italic"
+              label="斜体"
+              shortcut={shortcuts.italic}
+              disabled={disabled}
+            >
               <ItalicIcon />
             </ToolbarToggle>
-            <ToolbarToggle value="subscript" label="下标" disabled={disabled}>
+            <ToolbarToggle
+              value="subscript"
+              label="下标"
+              shortcut={shortcuts.subscript}
+              disabled={disabled}
+            >
               <SubscriptIcon />
             </ToolbarToggle>
-            <ToolbarToggle value="superscript" label="上标" disabled={disabled}>
+            <ToolbarToggle
+              value="superscript"
+              label="上标"
+              shortcut={shortcuts.superscript}
+              disabled={disabled}
+            >
               <SuperscriptIcon />
             </ToolbarToggle>
           </ToggleGroup>
@@ -441,6 +550,16 @@ export function StructuredContentEditor({
 
               <ToolbarButton
                 label="减少缩进"
+                shortcut={shortcuts.outdent}
+                unavailableReason={
+                  disabled
+                    ? "当前为只读状态"
+                    : toolbarState.canOutdent
+                      ? undefined
+                      : toolbarState.listDepth === 0
+                        ? "请先将光标放入列表"
+                        : "当前已是一级列表"
+                }
                 variant="ghost"
                 disabled={disabled || !toolbarState.canOutdent}
                 onClick={() => editor.chain().focus().liftListItem("listItem").run()}
@@ -448,10 +567,18 @@ export function StructuredContentEditor({
                 <IndentDecreaseIcon />
               </ToolbarButton>
               <ToolbarButton
-                label={
-                  toolbarState.listDepth >= MAX_STRUCTURED_LIST_DEPTH
-                    ? `最多支持 ${MAX_STRUCTURED_LIST_DEPTH} 级列表`
-                    : "增加缩进"
+                label="增加缩进"
+                shortcut={shortcuts.indent}
+                unavailableReason={
+                  disabled
+                    ? "当前为只读状态"
+                    : toolbarState.canIndent
+                      ? undefined
+                      : toolbarState.listDepth === 0
+                        ? "请先将光标放入列表"
+                        : toolbarState.listDepth >= MAX_STRUCTURED_LIST_DEPTH
+                          ? `最多支持 ${MAX_STRUCTURED_LIST_DEPTH} 级列表`
+                          : "需要先有上一条同级列表项"
                 }
                 variant="ghost"
                 disabled={disabled || !toolbarState.canIndent}
@@ -469,6 +596,14 @@ export function StructuredContentEditor({
 
           <ToolbarButton
             label="撤销"
+            shortcut={shortcuts.undo}
+            unavailableReason={
+              disabled
+                ? "当前为只读状态"
+                : toolbarState.canUndo
+                  ? undefined
+                  : "暂无可撤销的操作"
+            }
             variant="ghost"
             disabled={disabled || !toolbarState.canUndo}
             onClick={() => editor.chain().focus().undo().run()}
@@ -477,6 +612,14 @@ export function StructuredContentEditor({
           </ToolbarButton>
           <ToolbarButton
             label="重做"
+            shortcut={shortcuts.redo}
+            unavailableReason={
+              disabled
+                ? "当前为只读状态"
+                : toolbarState.canRedo
+                  ? undefined
+                  : "暂无可重做的操作"
+            }
             variant="ghost"
             disabled={disabled || !toolbarState.canRedo}
             onClick={() => editor.chain().focus().redo().run()}

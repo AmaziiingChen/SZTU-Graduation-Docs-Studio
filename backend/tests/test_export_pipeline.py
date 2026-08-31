@@ -15,6 +15,7 @@ from sztu_docs_backend.exporter import (
     ExportError,
     _run,
     build_export_document,
+    delete_export_history_record,
     list_export_history,
     preflight_export,
     run_export,
@@ -559,6 +560,25 @@ class ExportPipelineTests(unittest.TestCase):
         self.assertEqual(caught.exception.code, "REQUIRED_FONT_MISSING")
         self.assertIn("Wingdings 2", caught.exception.message)
 
+    def test_renderer_maps_incomplete_process_form_snapshot(self) -> None:
+        with self.assertRaises(ExportError) as caught:
+            _run(
+                [
+                    sys.executable,
+                    "-c",
+                    (
+                        "import sys; "
+                        "sys.stderr.write(\"ModuleNotFoundError: No module named "
+                        "'common.python.process_form'\"); "
+                        "sys.exit(1)"
+                    ),
+                ],
+                cwd=self.root,
+            )
+
+        self.assertEqual(caught.exception.code, "TEMPLATE_ENGINE_INCOMPLETE")
+        self.assertIn("模板快照", caught.exception.message)
+
     def test_existing_target_is_not_overwritten_without_confirmation(self) -> None:
         target = self.output / "开题报告.docx"
         target.write_bytes(b"original-user-file")
@@ -631,6 +651,20 @@ class ExportPipelineTests(unittest.TestCase):
         self.assertTrue(history[0]["snapshot_available"])
         self.assertTrue(history[0]["overwrite_confirmed"])
         self.assertEqual(history[0]["artifacts"][0]["file_state"], "available")
+
+        deleted = delete_export_history_record(
+            self.workspace,
+            document_id=self.document_id,
+            export_id=receipt["export_id"],
+        )
+        self.assertEqual(deleted, {"export_id": receipt["export_id"], "deleted": True})
+        self.assertEqual(
+            list_export_history(
+                self.workspace, document_id=self.document_id, limit=10
+            )["history"],
+            [],
+        )
+        self.assertEqual(target.read_bytes(), b"synthetic-docx-render-v2")
 
     def test_existing_cancel_marker_cancels_without_partial_artifacts(self) -> None:
         cancellation_directory = self.data_dir / "cancellations"
@@ -866,7 +900,9 @@ class TemplateEngineInstallationTests(unittest.TestCase):
 
     def test_task_book_workspace_is_snapshotted_with_shared_runtime_files(self) -> None:
         payloads = {
+            "templates/common/latex/sztu-process-form.tex": b"synthetic shared latex support",
             "templates/common/python/content.py": b"synthetic shared task content",
+            "templates/common/python/process_form.py": b"synthetic shared process form",
             "templates/common/typography/font-policy-2026.json": b"{}",
             "templates/task-book/python/model.py": b"synthetic task model",
             "templates/task-book/word/render.py": b"synthetic task word renderer",
@@ -898,6 +934,20 @@ class TemplateEngineInstallationTests(unittest.TestCase):
 
         self.assertEqual(linked["status"], "linked")
         self.assertTrue(linked["version"].startswith("0.1+workspace."))
+        self.assertEqual(
+            (
+                resolved.root.parents[1]
+                / "templates/common/python/process_form.py"
+            ).read_bytes(),
+            b"synthetic shared process form",
+        )
+        self.assertEqual(
+            (
+                resolved.root.parents[1]
+                / "templates/common/latex/sztu-process-form.tex"
+            ).read_bytes(),
+            b"synthetic shared latex support",
+        )
         self.assertEqual(resolved.document_type, "task_book")
         self.assertEqual(resolved.template_id, "sztu.task-book.2026.local")
         self.assertEqual(

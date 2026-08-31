@@ -1,7 +1,10 @@
 import type * as React from "react"
 import { BookOpenIcon, ClipboardCheckIcon } from "lucide-react"
 
-import { NavDocuments } from "@/components/workbench/nav-documents"
+import {
+  NavDocuments,
+  type CreateDocumentRequest,
+} from "@/components/workbench/nav-documents"
 import { NavMain } from "@/components/workbench/nav-main"
 import {
   Sidebar,
@@ -13,31 +16,49 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
-import type { DocumentType } from "@/types/desktop-api"
+import type { DocumentRecord } from "@/types/desktop-api"
 
 export function AppSidebar({
   profileActive,
   inspectionActive,
-  activeDocumentType,
+  activeDocumentId,
+  documents,
+  deletedDocuments,
   onSelectProfile,
   onSelectInspection,
-  onSelectDocumentType,
+  onSelectDocument,
+  onCreateDocument,
+  onRenameDocument,
+  onDeleteDocument,
+  onRestoreDocument,
+  onPurgeDocument,
   disabled,
   inspectionDisabled,
   ...props
 }: React.ComponentProps<typeof Sidebar> & {
   profileActive: boolean
   inspectionActive: boolean
-  activeDocumentType: DocumentType
+  activeDocumentId: string | null
+  documents: DocumentRecord[]
+  deletedDocuments: DocumentRecord[]
   onSelectProfile: () => void
   onSelectInspection: () => void
-  onSelectDocumentType: (documentType: DocumentType) => void
+  onSelectDocument: (documentId: string) => Promise<void>
+  onCreateDocument: (request: CreateDocumentRequest) => Promise<void>
+  onRenameDocument: (documentId: string, title: string) => Promise<void>
+  onDeleteDocument: (documentId: string) => Promise<void>
+  onRestoreDocument: (documentId: string) => Promise<void>
+  onPurgeDocument: (documentId: string) => Promise<void>
   disabled: boolean
   inspectionDisabled: boolean
 }) {
   const { isMobile, setOpenMobile } = useSidebar()
   const finishNavigation = (navigate: () => void) => {
     navigate()
+    if (isMobile) setOpenMobile(false)
+  }
+  const finishAsyncNavigation = async (navigate: () => Promise<void>) => {
+    await navigate()
     if (isMobile) setOpenMobile(false)
   }
 
@@ -71,11 +92,18 @@ export function AppSidebar({
         <NavDocuments
           profileActive={profileActive}
           inspectionActive={inspectionActive}
-          activeDocumentType={activeDocumentType}
+          activeDocumentId={activeDocumentId}
+          documents={documents}
+          deletedDocuments={deletedDocuments}
           disabled={disabled}
-          onSelectDocumentType={(documentType) =>
-            finishNavigation(() => onSelectDocumentType(documentType))
+          onSelectDocument={(documentId) =>
+            finishAsyncNavigation(() => onSelectDocument(documentId))
           }
+          onCreateDocument={onCreateDocument}
+          onRenameDocument={onRenameDocument}
+          onDeleteDocument={onDeleteDocument}
+          onRestoreDocument={onRestoreDocument}
+          onPurgeDocument={onPurgeDocument}
         />
       </SidebarContent>
       <SidebarFooter>

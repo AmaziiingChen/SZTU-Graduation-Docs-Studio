@@ -35,6 +35,9 @@ async function invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
 contextBridge.exposeInMainWorld("sztuDesktop", {
   getAppInfo: () => invoke("sztu:app-info"),
   checkEnvironment: () => invoke("sztu:environment-check"),
+  prepareDiagnosticReport: () => invoke("sztu:diagnostic-prepare"),
+  saveDiagnosticReport: (reportId: unknown) =>
+    invoke("sztu:diagnostic-save", reportId),
   getPrivacyNoticeStatus: () => invoke("sztu:privacy-status"),
   acceptPrivacyNotice: () => invoke("sztu:privacy-accept"),
   quitApp: () => invoke("sztu:app-quit"),
@@ -55,6 +58,10 @@ contextBridge.exposeInMainWorld("sztuDesktop", {
   saveProfile: (profile: unknown) => invoke("sztu:workspace-save-profile", profile),
   createDocument: (document: unknown) => invoke("sztu:workspace-create-document", document),
   selectDocument: (documentId: unknown) => invoke("sztu:workspace-select-document", documentId),
+  renameDocument: (input: unknown) => invoke("sztu:workspace-rename-document", input),
+  deleteDocument: (documentId: unknown) => invoke("sztu:workspace-delete-document", documentId),
+  restoreDocument: (documentId: unknown) => invoke("sztu:workspace-restore-document", documentId),
+  purgeDocument: (documentId: unknown) => invoke("sztu:workspace-purge-document", documentId),
   saveDraft: (input: unknown) => invoke("sztu:workspace-save-draft", input),
   closeTemporary: (documentId: unknown) => invoke("sztu:workspace-close-temporary", documentId),
   checkDocument: (documentId: unknown) => invoke("sztu:document-check", documentId),
@@ -64,7 +71,8 @@ contextBridge.exposeInMainWorld("sztuDesktop", {
   exportDocument: (input: unknown) => invoke("sztu:export-document", input),
   cancelExport: (requestId: unknown) => invoke("sztu:export-cancel", requestId),
   listExportHistory: (input: unknown) => invoke("sztu:export-history", input),
-  openExportArtifact: (artifactId: unknown) => invoke("sztu:export-open-artifact", artifactId),
+  revealExportArtifact: (artifactId: unknown) => invoke("sztu:export-reveal-artifact", artifactId),
+  deleteExportHistory: (input: unknown) => invoke("sztu:export-delete-history", input),
   installTemplatePack: (documentType: unknown) => invoke("sztu:template-install", documentType),
   recordQa: (input: unknown) => invoke("sztu:qa-record", input),
 })

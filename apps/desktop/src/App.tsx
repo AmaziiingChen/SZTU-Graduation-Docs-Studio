@@ -1,9 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react"
 import {
   ArrowDownIcon,
   ArrowUpIcon,
-  AppWindowIcon,
-  BracesIcon,
   CalendarIcon,
   CheckCircle2Icon,
   ChevronDownIcon,
@@ -12,8 +18,8 @@ import {
   FileClockIcon,
   FileTextIcon,
   FolderOpenIcon,
-  FolderCheckIcon,
   LoaderCircleIcon,
+  MoreHorizontalIcon,
   PackageCheckIcon,
   PlusIcon,
   RefreshCwIcon,
@@ -21,11 +27,15 @@ import {
   Trash2Icon,
   TriangleAlertIcon,
   UserRoundIcon,
+  ZoomInIcon,
+  ZoomOutIcon,
 } from "lucide-react"
 import { format, isValid, parseISO } from "date-fns"
 import { zhCN } from "date-fns/locale"
 
 import { AppSidebar } from "@/components/workbench/app-sidebar"
+import type { CreateDocumentRequest } from "@/components/workbench/nav-documents"
+import { DiagnosticSupport } from "@/components/workbench/diagnostic-support"
 import {
   DocumentSectionNav,
   type DocumentSectionOption,
@@ -37,7 +47,10 @@ import {
   type OutlineLevel,
   validateOutlineItems,
 } from "@/components/workbench/outline-editor"
-import { StructuredContentEditor } from "@/components/workbench/structured-content-editor"
+import {
+  StructuredContentEditor,
+  type EditorSelectionSnapshot,
+} from "@/components/workbench/structured-content-editor"
 import { ReferenceImporter } from "@/components/workbench/reference-importer"
 import { TaskScheduleEditor } from "@/components/workbench/task-schedule-editor"
 import { SiteHeader } from "@/components/workbench/site-header"
@@ -72,6 +85,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
@@ -80,11 +94,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
-import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-} from "@/components/ui/resizable"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Select,
@@ -106,13 +115,33 @@ import {
 } from "@/components/ui/sidebar"
 import { Toaster } from "@/components/ui/sonner"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 import { useIsMobile } from "@/hooks/use-mobile"
 import {
   ACADEMIC_OPTIONS,
   normalizeAcademicClassLabel,
   type AcademicCollegeOption,
 } from "@/data/academic-options"
+import {
+  acknowledgeAutosave,
+  autosaveFingerprint,
+  createAutosaveVersionState,
+  markAutosaveEdited,
+  planAutosave,
+  reconcileAutosaveFingerprints,
+} from "@/lib/autosave-coordinator"
 import { formatBibtex } from "@/lib/bibtex"
+import {
+  checkNavigationTarget,
+  type CheckNavigationTarget,
+} from "@/lib/document-navigation"
 import {
   markdownToContentBlocks,
   markdownToInlineParagraph,
@@ -232,9 +261,12 @@ type ExportState =
 
 type PreviewState =
   | { status: "idle" }
+  | { status: "checking" }
   | { status: "generating" }
   | { status: "ready"; result: PreviewResult; stale: boolean }
   | { status: "error"; message: string }
+
+type PreviewZoom = "fit" | 75 | 100 | 125 | 150 | 200
 
 type ExportHistoryState =
   | { status: "loading"; jobs: ExportJobSummary[] }
@@ -244,6 +276,7 @@ type ExportHistoryState =
 type PendingExport = {
   requestId: string
   documentId: string
+  previewId: string
   editVersion: number
   previewInputSha256: string
   previewTemplateSha256: string
@@ -262,6 +295,27 @@ type WorkspaceLoadState =
   | { status: "error"; message: string }
 
 type ActivePane = "profile" | "document" | "inspection"
+
+type DocumentViewState = {
+  scrollTop: number
+  selections: Partial<Record<StructuredDraftField, EditorSelectionSnapshot>>
+}
+
+class DocumentViewStateStore {
+  readonly #views = new Map<string, DocumentViewState>()
+
+  read(key: string): DocumentViewState | undefined {
+    return this.#views.get(key)
+  }
+
+  update(
+    key: string,
+    transform: (current: DocumentViewState) => DocumentViewState,
+  ): void {
+    const current = this.#views.get(key) ?? { scrollTop: 0, selections: {} }
+    this.#views.set(key, transform(current))
+  }
+}
 
 type EnvironmentState =
   | { status: "loading" }
@@ -352,6 +406,36 @@ const PROFILE_FIELDS = new Set<TextDraftField>([
 
 const GRADUATION_COHORT_MAX_LENGTH = 20
 const THESIS_TITLE_MAX_LENGTH = 80
+const PREVIEW_DRAWER_DEFAULT_WIDTH = 512
+const PREVIEW_DRAWER_MIN_WIDTH = 384
+const PREVIEW_DRAWER_KEYBOARD_STEP = 32
+const PREVIEW_ACCEPTANCE_BOUNDARY_TOAST_ID = "preview-acceptance-boundary"
+const PREVIEW_A4_WIDTH_CSS_PX = 794
+const PREVIEW_ZOOM_LEVELS: Exclude<PreviewZoom, "fit">[] = [
+  75,
+  100,
+  125,
+  150,
+  200,
+]
+
+function showPreviewAcceptanceBoundary(): void {
+  toast.info("验收边界", {
+    id: PREVIEW_ACCEPTANCE_BOUNDARY_TOAST_ID,
+    description:
+      "这里显示正式模板生成的 PDF 页面，但与 Word/WPS 中的最终效果可能存在差异，仍需在目标编辑器中人工验收。",
+    duration: 8_000,
+  })
+}
+
+function getPreviewDrawerMaxWidth(): number {
+  if (typeof window === "undefined") return PREVIEW_DRAWER_DEFAULT_WIDTH
+  return Math.max(PREVIEW_DRAWER_MIN_WIDTH, Math.floor(window.innerWidth / 2))
+}
+
+function clampPreviewDrawerWidth(width: number, maxWidth: number): number {
+  return Math.min(Math.max(width, PREVIEW_DRAWER_MIN_WIDTH), maxWidth)
+}
 
 function getDesktopApi(): SztuDesktopApi | undefined {
   return (window as Window & { sztuDesktop?: SztuDesktopApi }).sztuDesktop
@@ -836,7 +920,7 @@ function documentSectionOptions(
     return [
       {
         id: "task_basic",
-        label: "基本内容和要求",
+        label: "内容要求",
         description: "任务目标、成果和完成标准",
         state: completionState(
           structuredBodyHasText(draft.taskBasicContent),
@@ -904,7 +988,7 @@ function documentSectionOptions(
       },
       {
         id: "midterm_research",
-        label: "主要研究内容",
+        label: "研究内容",
         description: "当前论文研究内容",
         state: completionState(
           structuredBodyHasText(draft.mainResearchContent),
@@ -1390,18 +1474,20 @@ function profileDraftFromDraft(draft: Draft): StudentProfileDraft {
   }
 }
 
+function autosaveFingerprintsForDraft(
+  draft: Draft,
+  documentType: DocumentType,
+) {
+  return {
+    profile: autosaveFingerprint(profileDraftFromDraft(draft)),
+    document: autosaveFingerprint(draftToContent(draft, documentType)),
+  }
+}
+
 function normalizeGraduationCohort(value: string): string {
   const cohort = value.trim()
   if (!cohort) return "2026届"
   return /^\d{4}$/.test(cohort) ? `${cohort}届` : cohort
-}
-
-const checkIcons: Record<string, typeof BracesIcon> = {
-  python: BracesIcon,
-  temporary_directory: FolderCheckIcon,
-  xelatex: FileTextIcon,
-  office_editor: AppWindowIcon,
-  template_pack: FileCheck2Icon,
 }
 
 function parseDraftDate(value: string): Date | undefined {
@@ -1583,6 +1669,8 @@ function StructuredBodyField({
   error,
   disabled,
   mode = "body",
+  selectionSnapshot,
+  onSelectionChange,
 }: {
   id: StructuredDraftField
   label: string
@@ -1592,6 +1680,8 @@ function StructuredBodyField({
   error?: string
   disabled?: boolean
   mode?: StructuredEditorMode
+  selectionSnapshot?: EditorSelectionSnapshot
+  onSelectionChange?: (selection: EditorSelectionSnapshot) => void
 }) {
   const describedBy = error ? `${id}-description ${id}-error` : `${id}-description`
   const editorSupported =
@@ -1619,6 +1709,8 @@ function StructuredBodyField({
           ariaInvalid={Boolean(error)}
           placeholder={`输入${label}`}
           mode={mode}
+          selectionSnapshot={selectionSnapshot}
+          onSelectionChange={onSelectionChange}
         />
       ) : (
         <Alert>
@@ -2127,8 +2219,11 @@ function StudentProfileEditor({
 }
 
 function DocumentEditor({
+  documentId,
   documentType,
   activeSection,
+  viewState,
+  onViewStateChange,
   draft,
   onChange,
   onStructuredBodyChange,
@@ -2140,8 +2235,13 @@ function DocumentEditor({
   onRetryLoad,
   onRetrySave,
 }: {
+  documentId: string
   documentType: DocumentType
   activeSection: string
+  viewState: DocumentViewState
+  onViewStateChange: (
+    update: (current: DocumentViewState) => DocumentViewState,
+  ) => void
   draft: Draft
   onChange: (field: TextDraftField, value: string) => void
   onStructuredBodyChange: (
@@ -2159,7 +2259,44 @@ function DocumentEditor({
   const isMidterm = documentType === "midterm"
   const isTaskBook = documentType === "task_book"
   const graduationCohort = normalizeGraduationCohort(draft.graduationCohort)
+  const scrollRootRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const viewport = scrollRootRef.current?.querySelector<HTMLElement>(
+      '[data-slot="scroll-area-viewport"]',
+    )
+    if (!viewport) return
+    viewport.scrollTop = viewState.scrollTop
+    const rememberScroll = () => {
+      onViewStateChange((current) => ({
+        ...current,
+        scrollTop: viewport.scrollTop,
+      }))
+    }
+    viewport.addEventListener("scroll", rememberScroll, { passive: true })
+    return () => {
+      rememberScroll()
+      viewport.removeEventListener("scroll", rememberScroll)
+    }
+  }, [activeSection, documentId, onViewStateChange, viewState.scrollTop])
+
+  const rememberSelection = (
+    field: StructuredDraftField,
+    selection: EditorSelectionSnapshot,
+  ) => {
+    onViewStateChange((current) => ({
+      ...current,
+      selections: { ...current.selections, [field]: selection },
+    }))
+  }
+  const editorLocationProps = (field: StructuredDraftField) => ({
+    selectionSnapshot: viewState.selections[field],
+    onSelectionChange: (selection: EditorSelectionSnapshot) =>
+      rememberSelection(field, selection),
+  })
+
   return (
+    <div className="h-full" ref={scrollRootRef}>
     <ScrollArea className="h-full">
       <div className="mx-auto grid max-w-4xl gap-6 p-6">
         <h1 className="text-xl font-semibold">
@@ -2245,7 +2382,7 @@ function DocumentEditor({
         ) : null}
 
         {activeSection === "document_info" && isMidterm ? (
-        <Card className="border-0 shadow-none">
+        <Card className="border-0 shadow-none ring-0">
           <CardHeader>
             <CardTitle>检查日期</CardTitle>
           </CardHeader>
@@ -2278,13 +2415,14 @@ function DocumentEditor({
         ) : null}
 
         {activeSection !== "document_info" ? (
-        <Card className="border-0 shadow-none">
+        <Card className="border-0 shadow-none ring-0">
           <CardContent className="grid gap-6">
             {isTaskBook ? (
               <>
                 {activeSection === "task_basic" ? (
                   <StructuredBodyField
                     id="taskBasicContent"
+                    {...editorLocationProps("taskBasicContent")}
                     label="基本内容和要求"
                     description="填写课题任务、成果要求和完成标准。"
                     value={draft.taskBasicContent}
@@ -2309,6 +2447,7 @@ function DocumentEditor({
                 {activeSection === "task_materials" ? (
                   <StructuredBodyField
                     id="taskRequiredMaterials"
+                    {...editorLocationProps("taskRequiredMaterials")}
                     label="需收集的资料及主要参考文献资料"
                     description="填写完成任务需要收集的资料；该项可留空。"
                     value={draft.taskRequiredMaterials}
@@ -2445,6 +2584,7 @@ function DocumentEditor({
                 {activeSection === "midterm_research" ? (
                 <StructuredBodyField
                   id="mainResearchContent"
+                  {...editorLocationProps("mainResearchContent")}
                   label="论文主要研究内容"
                   description="填写当前论文的主要研究内容，可组合段落和列表。"
                   value={draft.mainResearchContent}
@@ -2455,6 +2595,7 @@ function DocumentEditor({
                 {activeSection === "midterm_progress" ? (
                 <StructuredBodyField
                   id="progress"
+                  {...editorLocationProps("progress")}
                   label="毕业论文（设计）进展情况"
                   description="按实际完成情况填写，可组合段落和列表。"
                   value={draft.progress}
@@ -2468,6 +2609,7 @@ function DocumentEditor({
                 {activeSection === "proposal_significance" ? (
                 <StructuredBodyField
                   id="significance"
+                  {...editorLocationProps("significance")}
                   label="本选题的意义及国内外发展状况"
                   description="请分别说明选题意义和国内外发展状况，至少填写两个段落。"
                   value={draft.significance}
@@ -2486,6 +2628,7 @@ function DocumentEditor({
                 {activeSection === "proposal_research" ? (
                 <StructuredBodyField
                   id="researchContent"
+                  {...editorLocationProps("researchContent")}
                   label="研究内容"
                   description="说明研究对象、主要问题和拟完成内容。"
                   value={draft.researchContent}
@@ -2496,6 +2639,7 @@ function DocumentEditor({
                 {activeSection === "proposal_methods" ? (
                 <StructuredBodyField
                   id="methods"
+                  {...editorLocationProps("methods")}
                   label="研究方法与手段"
                   description="与研究步骤分开填写。"
                   value={draft.methods}
@@ -2506,6 +2650,7 @@ function DocumentEditor({
                 {activeSection === "proposal_steps" ? (
                 <StructuredBodyField
                   id="steps"
+                  {...editorLocationProps("steps")}
                   label="研究步骤"
                   description="按实际推进顺序填写。"
                   value={draft.steps}
@@ -2533,6 +2678,7 @@ function DocumentEditor({
         ) : null}
       </div>
     </ScrollArea>
+    </div>
   )
 }
 
@@ -2550,6 +2696,82 @@ function activeTemplateCheck(
   return environment.result.checks.find((check) => check.id === checkId)
 }
 
+const checkStatusLabels: Record<CheckResult["status"], string> = {
+  not_checked: "待确认",
+  running: "检查中",
+  pass: "通过",
+  warn: "需注意",
+  fail: "未通过",
+  blocked: "受阻",
+}
+
+function DocumentCheckStatus({
+  check,
+  label,
+}: {
+  check: CheckResult
+  label: string
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 py-2">
+      <div className="flex min-w-0 items-center gap-2 text-sm">
+        {check.status === "pass" ? (
+          <CheckCircle2Icon className="size-4 shrink-0 text-muted-foreground" />
+        ) : check.status === "running" ? (
+          <LoaderCircleIcon className="size-4 shrink-0 animate-spin text-muted-foreground" />
+        ) : check.status === "fail" || check.status === "blocked" ? (
+          <TriangleAlertIcon className="size-4 shrink-0 text-destructive" />
+        ) : (
+          <CircleDashedIcon className="size-4 shrink-0 text-muted-foreground" />
+        )}
+        <span>{label}</span>
+      </div>
+      <Badge
+        variant={
+          check.status === "fail" || check.status === "blocked"
+            ? "destructive"
+            : check.status === "pass"
+              ? "outline"
+              : "secondary"
+        }
+        title={check.message}
+      >
+        {checkStatusLabels[check.status]}
+      </Badge>
+    </div>
+  )
+}
+
+function ArtifactCheckSummary({ artifact }: { artifact: ExportArtifactRecord }) {
+  const checks = artifact.checks.filter((check) =>
+    ["structure", "cjk_glyph", "target_editor"].includes(check.gate),
+  )
+  if (checks.length === 0) return null
+
+  const summary = checks.map((check) => {
+    const label =
+      check.gate === "structure"
+        ? "文件结构"
+        : check.gate === "cjk_glyph"
+          ? "中文字形"
+          : "Word/WPS"
+    const status =
+      check.gate === "target_editor" && check.status === "not_checked"
+        ? "待验收"
+        : checkStatusLabels[check.status]
+    return `${label}${status}`
+  })
+
+  return (
+    <span
+      className="text-xs text-muted-foreground"
+      title={checks.map((check) => check.message).join("\n")}
+    >
+      {summary.join(" · ")}
+    </span>
+  )
+}
+
 function PaginatedPreviewPanel({
   activePane,
   documentType,
@@ -2565,36 +2787,17 @@ function PaginatedPreviewPanel({
   blockedMessage?: string
   onGenerate: () => void
 }) {
-  const actionLabel =
-    previewState.status === "generating"
-      ? "正在生成预览"
-      : previewState.status === "ready"
-        ? "重新生成预览"
-        : "生成排版预览"
+  const [zoom, setZoom] = useState<PreviewZoom>("fit")
+  const previewChecks =
+    previewState.status === "ready"
+      ? previewState.result.checks.filter((check) =>
+          ["structure", "cjk_glyph"].includes(check.gate),
+        )
+      : []
 
   return (
     <ScrollArea className="h-full">
-      <div className="grid gap-4 p-4">
-        <div className="flex items-center gap-3">
-          <Button
-            className="flex-1"
-            onClick={onGenerate}
-            disabled={disabled || previewState.status === "generating"}
-          >
-            {previewState.status === "generating" ? (
-              <LoaderCircleIcon className="animate-spin" />
-            ) : (
-              <FileTextIcon />
-            )}
-            {actionLabel}
-          </Button>
-          {previewState.status === "ready" ? (
-            <Badge variant={previewState.stale ? "destructive" : "outline"}>
-              {previewState.stale ? "已过期" : "当前有效"}
-            </Badge>
-          ) : null}
-        </div>
-
+      <div className="grid gap-3 p-4">
         {blockedMessage && activePane !== "profile" ? (
           <Alert variant="destructive">
             <TriangleAlertIcon />
@@ -2603,18 +2806,30 @@ function PaginatedPreviewPanel({
           </Alert>
         ) : null}
 
-        {previewState.status === "idle" && activePane !== "profile" ? (
+        {previewState.status === "idle" &&
+        !blockedMessage &&
+        activePane !== "profile" ? (
           <Alert>
             <FileTextIcon />
-            <AlertTitle>尚未生成预览</AlertTitle>
+            <AlertTitle>正在准备预览</AlertTitle>
             <AlertDescription>
-              填写完成后点击“生成排版预览”，确认页面效果后再导出。
+              工作台将自动保存并检查当前内容，然后生成正式分页预览。
+            </AlertDescription>
+          </Alert>
+        ) : null}
+
+        {previewState.status === "checking" ? (
+          <Alert aria-live="polite">
+            <LoaderCircleIcon className="animate-spin" />
+            <AlertTitle>正在保存并检查内容</AlertTitle>
+            <AlertDescription>
+              内容检查通过后，将自动生成{documentTypeLabels[documentType]}分页预览。
             </AlertDescription>
           </Alert>
         ) : null}
 
         {previewState.status === "generating" ? (
-          <Alert>
+          <Alert aria-live="polite">
             <LoaderCircleIcon className="animate-spin" />
             <AlertTitle>正在生成分页预览</AlertTitle>
             <AlertDescription>
@@ -2624,56 +2839,144 @@ function PaginatedPreviewPanel({
         ) : null}
 
         {previewState.status === "error" ? (
-          <Alert variant="destructive">
-            <TriangleAlertIcon />
-            <AlertTitle>预览生成失败</AlertTitle>
-            <AlertDescription>{previewState.message}</AlertDescription>
-          </Alert>
+          <>
+            <Alert variant="destructive" aria-live="assertive">
+              <TriangleAlertIcon />
+              <AlertTitle>暂时无法生成预览</AlertTitle>
+              <AlertDescription>{previewState.message}</AlertDescription>
+            </Alert>
+            <Button
+              variant="outline"
+              onClick={onGenerate}
+              disabled={disabled}
+            >
+              <RefreshCwIcon />
+              重新生成预览
+            </Button>
+          </>
         ) : null}
 
         {previewState.status === "ready" ? (
           <>
             {previewState.stale ? (
-              <Alert variant="destructive">
-                <TriangleAlertIcon />
-                <AlertTitle>预览已过期</AlertTitle>
-                <AlertDescription>
-                  内容或模板在预览后发生了变化，请重新生成预览再导出。
-                </AlertDescription>
-              </Alert>
+              <>
+                <Alert variant="destructive" aria-live="assertive">
+                  <TriangleAlertIcon />
+                  <AlertTitle>预览已过期</AlertTitle>
+                  <AlertDescription>
+                    内容或模板在预览后发生了变化，请重新生成预览再导出。
+                  </AlertDescription>
+                </Alert>
+                <Button
+                  variant="outline"
+                  onClick={onGenerate}
+                  disabled={disabled}
+                >
+                  <RefreshCwIcon />
+                  重新生成预览
+                </Button>
+              </>
             ) : null}
-            <Card>
-              <CardHeader>
-                <CardTitle>
-                  {previewState.result.pages.length} 页 · {documentTypeLabels[documentType]}
-                </CardTitle>
-                <CardDescription>
-                  模板 {previewState.result.template.version} · {new Date(previewState.result.generated_at).toLocaleString()}
-                </CardDescription>
-              </CardHeader>
-            </Card>
+            <p className="text-sm font-medium text-foreground">
+              {previewState.result.pages.length} 页 · {documentTypeLabels[documentType]}
+            </p>
+            <div
+              aria-label="预览缩放"
+              className="flex items-center justify-end gap-1"
+            >
+              <Button
+                variant={zoom === "fit" ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setZoom("fit")}
+              >
+                适合宽度
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="缩小预览"
+                disabled={zoom === "fit" || zoom === PREVIEW_ZOOM_LEVELS[0]}
+                onClick={() => {
+                  if (zoom === "fit") return
+                  const index = PREVIEW_ZOOM_LEVELS.indexOf(zoom)
+                  setZoom(PREVIEW_ZOOM_LEVELS[Math.max(0, index - 1)])
+                }}
+              >
+                <ZoomOutIcon />
+              </Button>
+              <span className="min-w-12 text-center text-sm text-muted-foreground">
+                {zoom === "fit" ? "自适应" : `${zoom}%`}
+              </span>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="放大预览"
+                disabled={zoom === PREVIEW_ZOOM_LEVELS.at(-1)}
+                onClick={() => {
+                  const current = zoom === "fit" ? 75 : zoom
+                  const index = PREVIEW_ZOOM_LEVELS.indexOf(current)
+                  setZoom(
+                    PREVIEW_ZOOM_LEVELS[
+                      Math.min(PREVIEW_ZOOM_LEVELS.length - 1, index + 1)
+                    ],
+                  )
+                }}
+              >
+                <ZoomInIcon />
+              </Button>
+            </div>
+            {!previewState.stale && previewChecks.length > 0 ? (
+              <div
+                aria-label="预览自动检查"
+                className="rounded-lg border px-3"
+              >
+                <div className="py-3">
+                  <span className="text-sm font-medium">预览检查</span>
+                </div>
+                <Separator />
+                <div className="divide-y">
+                  {previewChecks.map((check) => (
+                    <DocumentCheckStatus
+                      check={check}
+                      key={check.check_id}
+                      label={
+                        check.gate === "structure"
+                          ? "PDF 文件结构"
+                          : "中文字形"
+                      }
+                    />
+                  ))}
+                </div>
+              </div>
+            ) : null}
             {previewState.result.pages.map((page) => (
-              <Card key={page.page_number}>
-                <CardHeader className="py-3">
-                  <CardTitle className="text-sm">第 {page.page_number} 页</CardTitle>
-                </CardHeader>
-                <CardContent>
+              <div
+                key={page.page_number}
+                data-slot="preview-page-viewport"
+                className="overflow-x-auto"
+              >
+                <div
+                  data-slot="preview-page"
+                  className="mx-auto overflow-hidden border bg-background"
+                  style={{
+                    width:
+                      zoom === "fit"
+                        ? "100%"
+                        : `${PREVIEW_A4_WIDTH_CSS_PX * (zoom / 100)}px`,
+                    aspectRatio: "210 / 297",
+                  }}
+                >
                   <img
                     src={page.data_url}
                     alt={`排版预览第 ${page.page_number} 页`}
                     loading="lazy"
-                    className="w-full border bg-background"
+                    decoding="async"
+                    draggable={false}
+                    className="block size-full object-contain"
                   />
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             ))}
-            <Alert>
-              <FileCheck2Icon />
-              <AlertTitle>验收边界</AlertTitle>
-              <AlertDescription>
-                这里显示正式模板生成的 PDF 页面，但仍不等于 Word/WPS 目标编辑器人工验收。
-              </AlertDescription>
-            </Alert>
           </>
         ) : null}
       </div>
@@ -2681,77 +2984,57 @@ function PaginatedPreviewPanel({
   )
 }
 
-function CheckRow({ check }: { check: EnvironmentCheck }) {
-  const Icon = checkIcons[check.id] ?? FileCheck2Icon
-  const variant =
-    check.status === "fail"
-      ? "destructive"
-      : check.status === "warn"
-        ? "secondary"
-        : "outline"
-
-  return (
-    <div className="flex items-start gap-3 py-3">
-      <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-sm font-medium">{check.id}</span>
-          <Badge variant={variant}>
-            {check.status === "pass"
-              ? "可用"
-              : check.status === "warn"
-                ? "受限"
-                : "不可用"}
-          </Badge>
-        </div>
-        <p className="mt-1 text-xs text-muted-foreground">{check.message}</p>
-      </div>
-    </div>
-  )
-}
-
 function InspectionPanel({
   environment,
+  templateCheck,
   onRefresh,
   onInstallTemplate,
   templateInstalling,
-  checks,
   exportState,
   onCancelExport,
   history,
   onRefreshHistory,
-  onOpenArtifact,
+  onRevealArtifact,
+  onDeleteHistory,
   onRecordQa,
 }: {
   environment: EnvironmentState
+  templateCheck: EnvironmentCheck | undefined
   onRefresh: () => void
   onInstallTemplate: () => void
   templateInstalling: boolean
-  checks: CheckResult[]
   exportState: ExportState
   onCancelExport: () => void
   history: ExportHistoryState
   onRefreshHistory: () => void
-  onOpenArtifact: (artifactId: string) => void
+  onRevealArtifact: (artifactId: string) => void
+  onDeleteHistory: (exportId: string) => Promise<boolean>
   onRecordQa: (artifact: ExportArtifactRecord) => void
 }) {
-  const qualityChecks: Array<{ gate: CheckResult["gate"]; label: string }> = [
-    { gate: "content", label: "内容检查" },
-    { gate: "structure", label: "结构检查" },
-    { gate: "cjk_glyph", label: "中文字形" },
-    { gate: "full_page_layout", label: "逐页版式" },
-    { gate: "target_editor", label: "Word/WPS" },
-  ]
+  const [deleteTarget, setDeleteTarget] = useState<ExportJobSummary | null>(null)
+  const [deletingExportId, setDeletingExportId] = useState<string | null>(null)
+  const templateNeedsRepair =
+    templateCheck !== undefined && templateCheck.status !== "pass"
 
   return (
     <ScrollArea className="h-full">
-      <div className="grid gap-4 p-4">
+      <div className="mx-auto grid w-full max-w-5xl gap-4 p-4">
         <Card>
-          <CardHeader className="gap-3">
+          <CardHeader className="gap-2">
             <div className="flex items-start justify-between gap-3">
               <div className="grid gap-1">
-                <CardTitle>本机环境</CardTitle>
-                <CardDescription>结果来自本地 Python 文档引擎。</CardDescription>
+                <CardTitle>当前状态</CardTitle>
+                <CardDescription>
+                  {environment.status === "loading"
+                    ? "正在检查运行环境。"
+                    : environment.status === "error"
+                      ? "文档引擎未连接，可创建故障诊断包协助排查。"
+                      : !environment.result.ready
+                        ? "运行环境异常，可创建故障诊断包协助排查。"
+                        : templateNeedsRepair
+                          ? "当前文档模板需要重新关联。"
+                          : "运行环境正常，可以继续检查、预览和导出。"}
+                </CardDescription>
               </div>
               <Button
                 variant="ghost"
@@ -2768,110 +3051,54 @@ function InspectionPanel({
               </Button>
             </div>
           </CardHeader>
-          <CardContent>
-            {environment.status === "loading" ? (
-              <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
-                <LoaderCircleIcon className="size-4 animate-spin" />
-                正在检查本机环境
+          {environment.status === "error" ||
+          (environment.status === "ready" && !environment.result.ready) ||
+          templateNeedsRepair ? (
+            <CardContent>
+              <div className="grid gap-3">
+                {environment.status === "error" ? (
+                  <Alert variant="destructive">
+                    <TriangleAlertIcon />
+                    <AlertTitle>文档引擎未连接</AlertTitle>
+                    <AlertDescription>{environment.message}</AlertDescription>
+                  </Alert>
+                ) : null}
+                {environment.status === "ready" && !environment.result.ready ? (
+                  <Alert variant="destructive">
+                    <TriangleAlertIcon />
+                    <AlertTitle>运行环境需要修复</AlertTitle>
+                    <AlertDescription>
+                      请创建故障诊断包，并将文件发送给支持人员。
+                    </AlertDescription>
+                  </Alert>
+                ) : null}
+                {templateCheck && templateCheck.status !== "pass" ? (
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p className="text-sm text-muted-foreground">
+                      {templateCheck.message}
+                    </p>
+                    <Button
+                      variant="outline"
+                      onClick={onInstallTemplate}
+                      disabled={templateInstalling}
+                    >
+                      {templateInstalling ? (
+                        <LoaderCircleIcon className="animate-spin" />
+                      ) : (
+                        <PackageCheckIcon />
+                      )}
+                      {templateInstalling ? "正在关联" : "重新关联模板"}
+                    </Button>
+                  </div>
+                ) : null}
               </div>
-            ) : null}
-            {environment.status === "error" ? (
-              <Alert variant="destructive">
-                <TriangleAlertIcon />
-                <AlertTitle>文档引擎未连接</AlertTitle>
-                <AlertDescription>{environment.message}</AlertDescription>
-              </Alert>
-            ) : null}
-            {environment.status === "ready" ? (
-              <div>
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <span className="text-sm text-muted-foreground">
-                    {environment.result.platform.system} · Python{" "}
-                    {environment.result.platform.python}
-                  </span>
-                  <Badge variant={environment.result.ready ? "outline" : "destructive"}>
-                    {environment.result.ready ? "基础环境可用" : "需要修复"}
-                  </Badge>
-                </div>
-                <Separator />
-                <div className="divide-y">
-                  {environment.result.checks.map((check) => (
-                    <CheckRow check={check} key={check.id} />
-                  ))}
-                </div>
-                <Button
-                  className="mt-3 w-full"
-                  variant="outline"
-                  onClick={onInstallTemplate}
-                  disabled={templateInstalling}
-                >
-                  {templateInstalling ? (
-                    <LoaderCircleIcon className="animate-spin" />
-                  ) : (
-                    <PackageCheckIcon />
-                  )}
-                  {templateInstalling ? "正在同步模板" : "关联或更新本地模板工程"}
-                </Button>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  关联一次后，每次检查和导出都会读取最新模板并冻结为内容快照。
-                </p>
-              </div>
-            ) : null}
-          </CardContent>
+            </CardContent>
+          ) : null}
         </Card>
 
         <Card>
-          <CardHeader>
-            <CardTitle>文档质量</CardTitle>
-            <CardDescription>五类状态独立记录，不合并成一个通过结果。</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-3">
-            {qualityChecks.map(({ gate, label }) => {
-              const check = checks.find((item) => item.gate === gate)
-              const status = check?.status ?? "not_checked"
-              const labelText =
-                status === "pass"
-                  ? "通过"
-                  : status === "fail"
-                    ? "未通过"
-                    : status === "blocked"
-                      ? "受阻"
-                      : status === "running"
-                        ? "检查中"
-                        : status === "warn"
-                          ? "需注意"
-                          : "未检查"
-              return (
-                <div className="grid gap-1" key={gate}>
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2 text-sm">
-                      {status === "pass" ? (
-                        <CheckCircle2Icon className="size-4 text-muted-foreground" />
-                      ) : status === "running" ? (
-                        <LoaderCircleIcon className="size-4 animate-spin text-muted-foreground" />
-                      ) : (
-                        <CircleDashedIcon className="size-4 text-muted-foreground" />
-                      )}
-                      {label}
-                    </div>
-                    <Badge
-                      variant={
-                        status === "fail"
-                          ? "destructive"
-                          : status === "pass"
-                            ? "outline"
-                            : "secondary"
-                      }
-                    >
-                      {labelText}
-                    </Badge>
-                  </div>
-                  {check ? (
-                    <p className="pl-6 text-xs text-muted-foreground">{check.message}</p>
-                  ) : null}
-                </div>
-              )
-            })}
+          <CardContent>
+            <DiagnosticSupport />
           </CardContent>
         </Card>
 
@@ -2904,38 +3131,12 @@ function InspectionPanel({
           </Alert>
         ) : null}
 
-        {exportState.status === "succeeded" ? (
-          <Card>
-            <CardHeader>
-              <CardTitle>最近导出</CardTitle>
-              <CardDescription>
-                模板 {exportState.receipt.template.version} ·{" "}
-                {new Date(exportState.receipt.generated_at).toLocaleString()}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-3">
-              {exportState.receipt.artifacts.map((artifact) => (
-                <div className="grid gap-1 text-sm" key={artifact.format}>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-medium">{artifact.format.toUpperCase()}</span>
-                    <Badge variant="outline">已生成</Badge>
-                  </div>
-                  <p className="break-all text-xs text-muted-foreground">{artifact.path}</p>
-                  <p className="text-xs text-muted-foreground">
-                    SHA-256 {artifact.sha256.slice(0, 12)}…
-                  </p>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        ) : null}
-
         <Card>
           <CardHeader className="gap-3">
             <div className="flex items-start justify-between gap-3">
               <div className="grid gap-1">
                 <CardTitle>导出历史</CardTitle>
-                <CardDescription>产物仅通过受控本地记录重新打开。</CardDescription>
+                <CardDescription>查看本地产物状态并管理历史记录。</CardDescription>
               </div>
               <Button
                 variant="ghost"
@@ -2966,92 +3167,172 @@ function InspectionPanel({
             {history.status === "ready" && history.jobs.length === 0 ? (
               <p className="text-sm text-muted-foreground">当前文档还没有导出记录。</p>
             ) : null}
-            {history.jobs.map((job) => (
-              <div className="grid gap-2 rounded-lg border p-3" key={job.export_id}>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-medium">
-                    {job.requested_formats
-                      .map((format) => format.toUpperCase())
-                      .join("、")}
-                  </span>
-                  <Badge
-                    variant={job.status === "failed" ? "destructive" : "outline"}
-                  >
-                    {job.status === "completed"
-                      ? "已完成"
-                      : job.status === "failed"
-                        ? "失败"
-                        : job.status === "cancelled"
-                          ? "已取消"
-                          : "处理中"}
-                  </Badge>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {new Date(job.completed_at ?? job.created_at).toLocaleString()}
-                </p>
-                {job.artifacts.map((artifact) => {
-                  const targetEditor = artifact.checks.find(
-                    (check) => check.gate === "target_editor",
-                  )
-                  return (
-                    <div className="grid gap-2 border-t pt-2" key={artifact.artifact_id}>
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-sm">{artifact.display_name}</span>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => onOpenArtifact(artifact.artifact_id)}
-                        >
-                          <FolderOpenIcon />
-                          打开产物
-                        </Button>
-                      </div>
-                      {artifact.format === "docx" ? (
-                        <div className="flex items-center justify-between gap-2">
-                          <Badge
-                            variant={
-                              targetEditor?.status === "fail" ? "destructive" : "secondary"
-                            }
-                          >
-                            {targetEditor?.status === "pass"
-                              ? "Word/WPS 人工验收已记录"
-                              : targetEditor?.status === "fail"
-                                ? "Word/WPS 人工验收未通过"
-                                : "Word/WPS 人工验收未记录"}
-                          </Badge>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => onRecordQa(artifact)}
-                          >
-                            记录人工验收
-                          </Button>
-                        </div>
-                      ) : null}
-                    </div>
-                  )
-                })}
+            {history.jobs.length > 0 ? (
+              <div className="rounded-lg border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>产物</TableHead>
+                      <TableHead>格式</TableHead>
+                      <TableHead>导出时间</TableHead>
+                      <TableHead>状态</TableHead>
+                      <TableHead className="w-12 text-right">操作</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {history.jobs.map((job) => {
+                      const availableArtifact = job.artifacts.find(
+                        (artifact) => artifact.file_state === "available",
+                      )
+                      const docxArtifact = job.artifacts.find(
+                        (artifact) => artifact.format === "docx",
+                      )
+                      const missingCount = job.artifacts.filter(
+                        (artifact) => artifact.file_state === "missing",
+                      ).length
+                      const modifiedCount = job.artifacts.filter(
+                        (artifact) => artifact.file_state === "modified",
+                      ).length
+                      const statusLabel =
+                        job.status === "failed"
+                          ? "导出失败"
+                          : job.status === "cancelled"
+                            ? "已取消"
+                            : job.status === "queued" || job.status === "running"
+                              ? "处理中"
+                              : missingCount === job.artifacts.length && missingCount > 0
+                                ? "已删除或移动"
+                                : missingCount > 0
+                                  ? "部分文件已删除或移动"
+                                  : modifiedCount > 0
+                                    ? "文件已修改"
+                                    : "可用"
+                      return (
+                        <TableRow key={job.export_id}>
+                          <TableCell className="min-w-48 whitespace-normal">
+                            {job.artifacts.length > 0 ? (
+                              <div className="grid gap-0.5">
+                                {job.artifacts.map((artifact) => (
+                                  <span className="grid gap-0.5" key={artifact.artifact_id}>
+                                    <span>{artifact.display_name}</span>
+                                    <ArtifactCheckSummary artifact={artifact} />
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground">未生成产物</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {job.requested_formats
+                              .map((item) => item.toUpperCase())
+                              .join("、")}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {new Date(job.completed_at ?? job.created_at).toLocaleString()}
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              variant={job.status === "failed" ? "destructive" : "outline"}
+                            >
+                              {statusLabel}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger
+                                render={
+                                  <Button
+                                    variant="ghost"
+                                    size="icon-sm"
+                                    aria-label={`管理导出记录 ${new Date(job.created_at).toLocaleString()}`}
+                                  />
+                                }
+                              >
+                                <MoreHorizontalIcon />
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-44">
+                                <DropdownMenuItem
+                                  disabled={!availableArtifact}
+                                  onClick={() =>
+                                    availableArtifact &&
+                                    onRevealArtifact(availableArtifact.artifact_id)
+                                  }
+                                >
+                                  <FolderOpenIcon />
+                                  打开本地位置
+                                </DropdownMenuItem>
+                                {docxArtifact ? (
+                                  <DropdownMenuItem onClick={() => onRecordQa(docxArtifact)}>
+                                    <FileCheck2Icon />
+                                    记录人工验收
+                                  </DropdownMenuItem>
+                                ) : null}
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  variant="destructive"
+                                  disabled={
+                                    job.status === "queued" ||
+                                    job.status === "running" ||
+                                    deletingExportId === job.export_id
+                                  }
+                                  onClick={() => setDeleteTarget(job)}
+                                >
+                                  <Trash2Icon />
+                                  删除记录
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
               </div>
-            ))}
+            ) : null}
           </CardContent>
         </Card>
 
-        <Alert>
-          <CheckCircle2Icon />
-          <AlertTitle>能力边界</AlertTitle>
-          <AlertDescription>
-            内容合同、本地导出和自动质量回执已接入；逐页人工检查与 Word/WPS
-            验收仍保持独立，必须由使用者明确记录。
-          </AlertDescription>
-        </Alert>
+        <Dialog
+          open={deleteTarget !== null}
+          onOpenChange={(open) => {
+            if (!open && deletingExportId === null) setDeleteTarget(null)
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>删除这条导出记录？</DialogTitle>
+              <DialogDescription>
+                仅从列表中移除记录，不会删除已经导出的本地文件。
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                disabled={deletingExportId !== null}
+                onClick={() => setDeleteTarget(null)}
+              >
+                取消
+              </Button>
+              <Button
+                variant="destructive"
+                disabled={!deleteTarget || deletingExportId !== null}
+                onClick={async () => {
+                  if (!deleteTarget) return
+                  setDeletingExportId(deleteTarget.export_id)
+                  const deleted = await onDeleteHistory(deleteTarget.export_id)
+                  setDeletingExportId(null)
+                  if (deleted) setDeleteTarget(null)
+                }}
+              >
+                {deletingExportId ? <LoaderCircleIcon className="animate-spin" /> : null}
+                删除记录
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
-        <Alert>
-          <FolderCheckIcon />
-          <AlertTitle>本地数据说明</AlertTitle>
-          <AlertDescription>
-            草稿保存在本机 SQLite 数据库中；本地存储不等于加密，请妥善保护系统账户。
-          </AlertDescription>
-        </Alert>
       </div>
     </ScrollArea>
   )
@@ -3068,6 +3349,7 @@ export default function App() {
   const [profile, setProfile] = useState<StudentProfile | null>(null)
   const [document, setDocument] = useState<DocumentRecord | null>(null)
   const [documents, setDocuments] = useState<DocumentRecord[]>([])
+  const [deletedDocuments, setDeletedDocuments] = useState<DocumentRecord[]>([])
   const [revision, setRevision] = useState(0)
   const [workspace, setWorkspace] = useState<WorkspaceLoadState>({
     status: "loading",
@@ -3081,9 +3363,22 @@ export default function App() {
   const [environment, setEnvironment] = useState<EnvironmentState>({
     status: "loading",
   })
-  const [qualityChecks, setQualityChecks] = useState<CheckResult[]>([])
   const [previewState, setPreviewState] = useState<PreviewState>({ status: "idle" })
   const [previewOpen, setPreviewOpen] = useState(false)
+  const [previewDrawerMaxWidth, setPreviewDrawerMaxWidth] = useState(
+    getPreviewDrawerMaxWidth,
+  )
+  const [previewDrawerWidth, setPreviewDrawerWidth] = useState(() =>
+    clampPreviewDrawerWidth(
+      PREVIEW_DRAWER_DEFAULT_WIDTH,
+      getPreviewDrawerMaxWidth(),
+    ),
+  )
+  const previewDrawerDragRef = useRef<{
+    pointerId: number
+    startX: number
+    startWidth: number
+  } | null>(null)
   const [exportState, setExportState] = useState<ExportState>({ status: "idle" })
   const [history, setHistory] = useState<ExportHistoryState>({
     status: "loading",
@@ -3109,14 +3404,138 @@ export default function App() {
   useEffect(() => {
     activeDocumentIdRef.current = activeDocumentId ?? null
   }, [activeDocumentId])
+  useEffect(() => {
+    const syncPreviewDrawerBounds = () => {
+      const maxWidth = getPreviewDrawerMaxWidth()
+      setPreviewDrawerMaxWidth(maxWidth)
+      setPreviewDrawerWidth((current) =>
+        clampPreviewDrawerWidth(current, maxWidth),
+      )
+    }
+    window.addEventListener("resize", syncPreviewDrawerBounds)
+    return () => window.removeEventListener("resize", syncPreviewDrawerBounds)
+  }, [])
+  const startPreviewDrawerResize = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (isMobile) return
+      previewDrawerDragRef.current = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startWidth: previewDrawerWidth,
+      }
+      event.currentTarget.setPointerCapture?.(event.pointerId)
+      event.preventDefault()
+    },
+    [isMobile, previewDrawerWidth],
+  )
+  const continuePreviewDrawerResize = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const drag = previewDrawerDragRef.current
+      if (!drag || drag.pointerId !== event.pointerId) return
+      setPreviewDrawerWidth(
+        clampPreviewDrawerWidth(
+          drag.startWidth + drag.startX - event.clientX,
+          previewDrawerMaxWidth,
+        ),
+      )
+    },
+    [previewDrawerMaxWidth],
+  )
+  const stopPreviewDrawerResize = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const drag = previewDrawerDragRef.current
+      if (!drag || drag.pointerId !== event.pointerId) return
+      previewDrawerDragRef.current = null
+      if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId)
+      }
+    },
+    [],
+  )
+  const resizePreviewDrawerWithKeyboard = useCallback(
+    (event: ReactKeyboardEvent<HTMLDivElement>) => {
+      let nextWidth: number | undefined
+      if (event.key === "ArrowLeft") {
+        nextWidth = previewDrawerWidth + PREVIEW_DRAWER_KEYBOARD_STEP
+      } else if (event.key === "ArrowRight") {
+        nextWidth = previewDrawerWidth - PREVIEW_DRAWER_KEYBOARD_STEP
+      } else if (event.key === "Home") {
+        nextWidth = PREVIEW_DRAWER_MIN_WIDTH
+      } else if (event.key === "End") {
+        nextWidth = previewDrawerMaxWidth
+      }
+      if (nextWidth === undefined) return
+      event.preventDefault()
+      setPreviewDrawerWidth(
+        clampPreviewDrawerWidth(nextWidth, previewDrawerMaxWidth),
+      )
+    },
+    [previewDrawerMaxWidth, previewDrawerWidth],
+  )
   const activeDocumentType = documentTypeFromRecord(document?.document_type)
   const sections = documentSectionOptions(draft, activeDocumentType)
   const activeSection = activeSections[activeDocumentType]
   const graduationCohort = normalizeGraduationCohort(draft.graduationCohort)
   const editVersion = useRef(0)
-  const documentEditVersion = useRef(0)
-  const persistedDocumentEditVersion = useRef(0)
+  const autosaveVersions = useRef(createAutosaveVersionState())
   const saving = useRef(false)
+  const documentViewStates = useMemo(() => new DocumentViewStateStore(), [])
+  const pendingCheckTarget = useRef<CheckNavigationTarget | null>(null)
+  const activeViewStateKey = activeDocumentId
+    ? `${activeDocumentId}:${activeSection}`
+    : ""
+  const activeDocumentViewState =
+    documentViewStates.read(activeViewStateKey) ?? {
+      scrollTop: 0,
+      selections: {},
+    }
+  const updateActiveDocumentViewState = useCallback(
+    (update: (current: DocumentViewState) => DocumentViewState) => {
+      if (!activeDocumentId) return
+      const key = `${activeDocumentId}:${activeSection}`
+      documentViewStates.update(key, update)
+    },
+    [activeDocumentId, activeSection, documentViewStates],
+  )
+  const navigateToCheck = useCallback(
+    (target: CheckNavigationTarget) => {
+      pendingCheckTarget.current = target
+      if (target.sectionId) {
+        setActiveSections((current) => ({
+          ...current,
+          [activeDocumentType]: target.sectionId ?? current[activeDocumentType],
+        }))
+      }
+      setActivePane(target.pane)
+    },
+    [activeDocumentType],
+  )
+
+  useEffect(() => {
+    const target = pendingCheckTarget.current
+    if (
+      !target ||
+      activePane !== target.pane ||
+      (target.sectionId !== undefined && activeSection !== target.sectionId)
+    ) {
+      return
+    }
+    const frame = window.requestAnimationFrame(() => {
+      const root = window.document.querySelector<HTMLElement>(target.selector)
+      if (!root) return
+      const focusable = root.matches(
+        'button, input, textarea, select, [contenteditable="true"], [tabindex]',
+      )
+        ? root
+        : root.querySelector<HTMLElement>(
+            'button, input, textarea, select, [contenteditable="true"], [tabindex]',
+          )
+      focusable?.focus()
+      root.scrollIntoView?.({ block: "center" })
+      pendingCheckTarget.current = null
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [activePane, activeSection])
 
   const recordTelemetry = useCallback((input: TelemetryUsageEvent) => {
     const api = getDesktopApi()
@@ -3179,24 +3598,31 @@ export default function App() {
           ? snapshot.documents
           : [...(snapshot.documents ?? []), resolvedDocument],
       )
+      setDeletedDocuments(snapshot.deleted_documents ?? [])
       setRevision(currentRevision(resolvedDocument))
-      setDraft(
-        draftFromRecords(
-          snapshot.profile,
-          snapshot.profile_draft,
-          resolvedDocument,
-          fallback,
-        ),
+      const resolvedDraft = draftFromRecords(
+        snapshot.profile,
+        snapshot.profile_draft,
+        resolvedDocument,
+        fallback,
       )
-      setQualityChecks([])
+      setDraft(resolvedDraft)
       setPreviewState({ status: "idle" })
       setExportState({ status: "idle" })
       setHistory({ status: "loading", jobs: [] })
       setPendingExport(null)
       setQaTarget(null)
       editVersion.current = 0
-      documentEditVersion.current = fallback ? 1 : 0
-      persistedDocumentEditVersion.current = 0
+      const initialFingerprints = autosaveFingerprintsForDraft(
+        resolvedDraft,
+        documentTypeFromRecord(resolvedDocument.document_type),
+      )
+      autosaveVersions.current = createAutosaveVersionState({
+        profileDirty: Boolean(fallback),
+        documentDirty: Boolean(fallback),
+        profileFingerprint: initialFingerprints.profile,
+        documentFingerprint: initialFingerprints.document,
+      })
       setSaveState(fallback ? "dirty" : "saved")
       setWorkspace({ status: "ready" })
     },
@@ -3288,6 +3714,13 @@ export default function App() {
     void refreshHistory()
   }, [activeDocumentId, refreshHistory])
 
+  useEffect(() => {
+    if (!activeDocumentId || activePane !== "inspection") return
+    const refreshAfterReturningToApp = () => void refreshHistory()
+    window.addEventListener("focus", refreshAfterReturningToApp)
+    return () => window.removeEventListener("focus", refreshAfterReturningToApp)
+  }, [activeDocumentId, activePane, refreshHistory])
+
   const saveNow = useCallback(
     async (reason: "auto" | "manual" = "auto") => {
       const api = getDesktopApi()
@@ -3299,23 +3732,37 @@ export default function App() {
       const draftAtStart = draft
       const documentAtStart = document
       const expectedRevision = revision
-      const documentVersionAtStart = documentEditVersion.current
-      const documentNeedsSave =
-        documentVersionAtStart !== persistedDocumentEditVersion.current
+      const fingerprints = autosaveFingerprintsForDraft(
+        draftAtStart,
+        documentTypeFromRecord(documentAtStart.document_type),
+      )
+      autosaveVersions.current = reconcileAutosaveFingerprints(
+        autosaveVersions.current,
+        fingerprints,
+      )
+      const savePlan = planAutosave(autosaveVersions.current)
       saving.current = true
       setSaveState("saving")
 
       try {
-        await api.saveProfileDraft(profileDraftFromDraft(draftAtStart))
-        let savedProfile = profile
-        if (profileIsComplete(draftAtStart)) {
-          savedProfile = await api.saveProfile(
-            profileFromDraft(draftAtStart, profile),
+        if (savePlan.profile !== null) {
+          await api.saveProfileDraft(profileDraftFromDraft(draftAtStart))
+          let savedProfile = profile
+          if (profileIsComplete(draftAtStart)) {
+            savedProfile = await api.saveProfile(
+              profileFromDraft(draftAtStart, profile),
+            )
+          }
+          autosaveVersions.current = acknowledgeAutosave(
+            autosaveVersions.current,
+            "profile",
+            savePlan.profile,
+            fingerprints.profile,
           )
+          setProfile(savedProfile)
         }
 
-        setProfile(savedProfile)
-        if (documentNeedsSave) {
+        if (savePlan.document !== null) {
           const result = await api.saveDraft({
             documentId: documentAtStart.id,
             content: draftToContent(
@@ -3325,7 +3772,12 @@ export default function App() {
             expectedRevision,
             reason,
           })
-          persistedDocumentEditVersion.current = documentVersionAtStart
+          autosaveVersions.current = acknowledgeAutosave(
+            autosaveVersions.current,
+            "document",
+            savePlan.document,
+            fingerprints.document,
+          )
           setRevision(result.revision)
           setDocument((current) =>
             current
@@ -3354,83 +3806,69 @@ export default function App() {
     [document, draft, profile, revision, setSaveState, workspace.status],
   )
 
-  const switchDocumentType = async (documentType: DocumentType) => {
+  const prepareForDocumentChange = async () => {
     const api = getDesktopApi()
-    if (documentType === activeDocumentType) {
-      setActivePane("document")
-      return
-    }
     if (
       !api ||
       workspace.status !== "ready" ||
       saveState === "saving" ||
       exportState.status === "exporting"
     ) {
-      return
+      return false
     }
     if (saveState === "dirty" || saveState === "error") {
       const saved = await saveNow("manual")
-      if (!saved) return
+      if (!saved) return false
     }
+    return saveState !== "conflict"
+  }
 
-    setWorkspace({ status: "loading" })
-    setSaveState("loading")
-    try {
-      const existing = documents.find(
-        (item) => item.document_type === documentType,
-      )
-      if (existing) {
-        const snapshot = await api.selectDocument(existing.id)
-        await applyWorkspace(snapshot)
-        setActivePane("document")
-      } else {
-        const created = await api.createDocument({
-          profile_id: profile?.id ?? null,
-          document_type: documentType,
-          template_version:
-            documentType === "task_book"
-              ? "0.1+46b6d97"
-              : documentType === "midterm"
-                ? "0.1+local.20260830"
-                : "0.1.0-dev.1",
-          schema_version: documentType === "proposal" ? "0.2" : "0.1",
-          title:
-            documentType === "task_book"
-              ? "未命名任务书"
-              : documentType === "midterm"
-                ? "未命名中期检查表"
-                : "未命名开题报告",
-        })
-        setDocument(created)
-        setDocuments((current) => [...current, created])
-        setRevision(currentRevision(created))
-        setDraft(
-          draftFromRecords(
-            profile,
-            profileDraftFromDraft(draft),
-            created,
-          ),
-        )
-        setQualityChecks([])
-        setPreviewState({ status: "idle" })
-        setExportState({ status: "idle" })
-        setHistory({ status: "loading", jobs: [] })
-        setPendingExport(null)
-        setQaTarget(null)
-        editVersion.current = 0
-        documentEditVersion.current = 0
-        persistedDocumentEditVersion.current = 0
-        setSaveState("saved")
-        setWorkspace({ status: "ready" })
-        setActivePane("document")
-      }
-    } catch (error) {
-      setWorkspace({
-        status: "error",
-        message: error instanceof Error ? error.message : "文档切换失败。",
-      })
-      setSaveState("error")
+  const selectDocumentFile = async (documentId: string) => {
+    if (documentId === activeDocumentId) {
+      setActivePane("document")
+      return
     }
+    const api = getDesktopApi()
+    if (!api || !(await prepareForDocumentChange())) {
+      throw new Error("当前内容尚未保存，暂时无法切换文档。")
+    }
+    const snapshot = await api.selectDocument(documentId)
+    await applyWorkspace(snapshot)
+    setActivePane("document")
+  }
+
+  const createDocumentFile = async (request: CreateDocumentRequest) => {
+    const api = getDesktopApi()
+    if (!api || !(await prepareForDocumentChange())) {
+      throw new Error("当前内容尚未保存，暂时无法新建文档。")
+    }
+    const created = await api.createDocument({
+      profile_id: profile?.id ?? null,
+      document_type: request.type,
+      template_version:
+        request.type === "task_book"
+          ? "0.1+46b6d97"
+          : request.type === "midterm"
+            ? "0.1+local.20260830"
+            : "0.1.0-dev.1",
+      schema_version: request.type === "proposal" ? "0.2" : "0.1",
+      title: request.title,
+      source_document_id: request.sourceDocumentId,
+    })
+    const snapshot = await api.selectDocument(created.id)
+    await applyWorkspace(snapshot)
+    setActivePane("document")
+  }
+
+  const runDocumentMutation = async (
+    operation: (api: NonNullable<ReturnType<typeof getDesktopApi>>) => Promise<WorkspaceSnapshot>,
+  ) => {
+    const api = getDesktopApi()
+    if (!api || !(await prepareForDocumentChange())) {
+      throw new Error("当前内容尚未保存，暂时无法执行此操作。")
+    }
+    const snapshot = await operation(api)
+    await applyWorkspace(snapshot)
   }
 
   useEffect(() => {
@@ -3460,13 +3898,20 @@ export default function App() {
       }
       return next
     })
-    setQualityChecks([])
     setPreviewState((current) =>
       current.status === "ready" ? { ...current, stale: true } : current,
     )
     editVersion.current += 1
-    if (!PROFILE_FIELDS.has(field)) {
-      documentEditVersion.current += 1
+    if (PROFILE_FIELDS.has(field)) {
+      autosaveVersions.current = markAutosaveEdited(
+        autosaveVersions.current,
+        "profile",
+      )
+    } else {
+      autosaveVersions.current = markAutosaveEdited(
+        autosaveVersions.current,
+        "document",
+      )
     }
     setSaveState("dirty")
   }
@@ -3476,36 +3921,47 @@ export default function App() {
     value: StructuredBodyValue,
   ) => {
     setDraft((current) => ({ ...current, [field]: value }))
-    setQualityChecks([])
     setPreviewState((current) =>
       current.status === "ready" ? { ...current, stale: true } : current,
     )
     editVersion.current += 1
-    if (field !== "title") {
-      documentEditVersion.current += 1
+    if (field === "title") {
+      autosaveVersions.current = markAutosaveEdited(
+        autosaveVersions.current,
+        "profile",
+      )
+    } else {
+      autosaveVersions.current = markAutosaveEdited(
+        autosaveVersions.current,
+        "document",
+      )
     }
     setSaveState("dirty")
   }
 
   const updateDirectory = (value: OutlineEditorItem[]) => {
     setDraft((current) => ({ ...current, directory: value }))
-    setQualityChecks([])
     setPreviewState((current) =>
       current.status === "ready" ? { ...current, stale: true } : current,
     )
     editVersion.current += 1
-    documentEditVersion.current += 1
+    autosaveVersions.current = markAutosaveEdited(
+      autosaveVersions.current,
+      "document",
+    )
     setSaveState("dirty")
   }
 
   const updateTaskSchedule = (value: TaskScheduleEditorItem[]) => {
     setDraft((current) => ({ ...current, taskSchedule: value }))
-    setQualityChecks([])
     setPreviewState((current) =>
       current.status === "ready" ? { ...current, stale: true } : current,
     )
     editVersion.current += 1
-    documentEditVersion.current += 1
+    autosaveVersions.current = markAutosaveEdited(
+      autosaveVersions.current,
+      "document",
+    )
     setSaveState("dirty")
   }
 
@@ -3534,18 +3990,7 @@ export default function App() {
     if (!profileIsComplete(draft)) {
       const message =
         "请先打开左侧“学生档案”，补全姓名、学号、毕业届别、学院、专业、班级、指导教师和职称。"
-      setQualityChecks([
-        {
-          schema_version: "1.0",
-          check_id: "student-profile-content",
-          gate: "content",
-          status: "fail",
-          blocking: true,
-          message,
-          code: "PROFILE_INCOMPLETE",
-          checked_at: new Date().toISOString(),
-        },
-      ])
+      setActivePane("profile")
       recordTelemetry({
         name: "document_action",
         action: "check",
@@ -3561,18 +4006,7 @@ export default function App() {
       const message = !thesisTitle
         ? "请先打开左侧“学生档案”，填写共用论文题目。"
         : `学生档案中的论文题目最多 ${THESIS_TITLE_MAX_LENGTH} 个字符。`
-      setQualityChecks([
-        {
-          schema_version: "1.0",
-          check_id: "student-profile-thesis-title",
-          gate: "content",
-          status: "fail",
-          blocking: true,
-          message,
-          code: "THESIS_TITLE_INVALID",
-          checked_at: new Date().toISOString(),
-        },
-      ])
+      navigateToCheck({ pane: "profile", selector: '[aria-label="论文题目"]' })
       recordTelemetry({
         name: "document_action",
         action: "check",
@@ -3589,18 +4023,7 @@ export default function App() {
     ) {
       const message =
         "任务书必须从学生档案的毕业届别提取四位年份，例如“2026届”。请先修改学生档案。"
-      setQualityChecks([
-        {
-          schema_version: "1.0",
-          check_id: "task-book-graduation-year",
-          gate: "content",
-          status: "fail",
-          blocking: true,
-          message,
-          code: "GRADUATION_YEAR_MISSING",
-          checked_at: new Date().toISOString(),
-        },
-      ])
+      navigateToCheck({ pane: "profile", selector: "#graduationCohort" })
       recordTelemetry({
         name: "document_action",
         action: "check",
@@ -3629,26 +4052,6 @@ export default function App() {
     if (!isCurrentSavedRevision(documentIdAtStart, versionAtStart)) {
       return false
     }
-    const runningCheck: CheckResult = {
-      schema_version: "1.0",
-      check_id:
-        activeDocumentType === "task_book"
-          ? "task-book-content"
-          : activeDocumentType === "midterm"
-          ? "midterm-content"
-          : "proposal-content",
-      gate: "content",
-      status: "running",
-      blocking: true,
-      message:
-        activeDocumentType === "task_book"
-          ? "正在检查任务书必填字段、进度安排和选题信息。"
-          : activeDocumentType === "midterm"
-          ? "正在检查中期检查表必填字段和结构化内容。"
-          : "正在检查开题报告必填字段和段落结构。",
-      checked_at: null,
-    }
-    setQualityChecks([runningCheck])
     try {
       const result = await api.checkDocument(documentIdAtStart)
       if (!isCurrentSavedRevision(documentIdAtStart, versionAtStart)) {
@@ -3657,7 +4060,6 @@ export default function App() {
         }
         return false
       }
-      setQualityChecks(result.checks)
       const passed = result.checks.every((check) => check.status === "pass")
       const failedCheck = result.checks.find((check) => check.status === "fail")
       recordTelemetry({
@@ -3669,22 +4071,21 @@ export default function App() {
           ? {}
           : { errorCode: failedCheck?.code ?? "VALIDATION_FAILED" }),
       })
-      if (passed) toast.success("内容检查通过。")
-      else toast.error(failedCheck?.message ?? "内容检查未通过。")
+      if (passed) {
+        toast.success("内容检查通过。")
+      } else {
+        const target = failedCheck
+          ? checkNavigationTarget(activeDocumentType, failedCheck)
+          : null
+        if (target) navigateToCheck(target)
+        toast.error(failedCheck?.message ?? "内容检查未通过。")
+      }
       return passed
     } catch (error) {
       if (!isCurrentSavedRevision(documentIdAtStart, versionAtStart)) {
         return false
       }
       const message = error instanceof Error ? error.message : "内容检查失败。"
-      setQualityChecks([
-        {
-          ...runningCheck,
-          status: "fail",
-          message,
-          code: "CHECK_FAILED",
-        },
-      ])
       recordTelemetry({
         name: "document_action",
         action: "check",
@@ -3703,6 +4104,7 @@ export default function App() {
       !api ||
       !document ||
       activePane === "profile" ||
+      previewState.status === "checking" ||
       previewState.status === "generating" ||
       exportState.status === "exporting" ||
       saveStateRef.current === "loading" ||
@@ -3713,11 +4115,21 @@ export default function App() {
     }
     const documentIdAtStart = document.id
     const versionAtStart = editVersion.current
+    setPreviewState({ status: "checking" })
     const passed = await checkContent()
     if (
       !passed ||
       !isCurrentSavedRevision(documentIdAtStart, versionAtStart)
     ) {
+      if (activeDocumentIdRef.current === documentIdAtStart) {
+        setPreviewState({
+          status: "error",
+          message:
+            editVersion.current === versionAtStart
+              ? "内容检查未通过，请根据页面提示修正后重试。"
+              : "检查期间内容发生了变化，请等待当前内容保存后重试。",
+        })
+      }
       recordTelemetry({
         name: "document_action",
         action: "preview",
@@ -3735,7 +4147,6 @@ export default function App() {
       })
       if (activeDocumentIdRef.current !== documentIdAtStart) return
       const stale = !isCurrentSavedRevision(documentIdAtStart, versionAtStart)
-      if (!stale) setQualityChecks(result.checks)
       setPreviewState({ status: "ready", result, stale })
       recordTelemetry({
         name: "document_action",
@@ -3745,7 +4156,7 @@ export default function App() {
         ...(stale ? { errorCode: "RESULT_STALE" } : {}),
       })
       if (stale) toast.info("预览已生成，但内容随后发生变化，请重新生成。")
-      else toast.success(`已生成 ${result.pages.length} 页排版预览。`)
+      else showPreviewAcceptanceBoundary()
     } catch (error) {
       if (activeDocumentIdRef.current !== documentIdAtStart) return
       if (!isCurrentSavedRevision(documentIdAtStart, versionAtStart)) {
@@ -3812,15 +4223,32 @@ export default function App() {
     }
   }
 
-  const openArtifact = async (artifactId: string) => {
+  const revealArtifact = async (artifactId: string) => {
     const api = getDesktopApi()
     if (!api) return
     try {
-      const result = await api.openExportArtifact(artifactId)
-      if (result.opened) toast.success("已使用系统默认应用打开产物。")
-      else toast.error(result.application_error ?? "产物打开失败。")
+      await api.revealExportArtifact(artifactId)
+      toast.success("已在系统文件管理器中显示产物。")
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "产物打开失败。")
+      await refreshHistory()
+      toast.error(error instanceof Error ? error.message : "无法打开产物所在位置。")
+    }
+  }
+
+  const deleteHistoryRecord = async (exportId: string) => {
+    const api = getDesktopApi()
+    if (!api || !activeDocumentId) return false
+    try {
+      await api.deleteExportHistory({ documentId: activeDocumentId, exportId })
+      setHistory((current) => ({
+        status: "ready",
+        jobs: current.jobs.filter((job) => job.export_id !== exportId),
+      }))
+      toast.success("已删除导出记录，本地文件未受影响。")
+      return true
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "导出记录删除失败。")
+      return false
     }
   }
 
@@ -3832,7 +4260,7 @@ export default function App() {
     if (!api || !qaTarget || qaSubmitting) return
     setQaSubmitting(true)
     try {
-      const result = await api.recordQa({
+      await api.recordQa({
         artifactId: qaTarget.artifact.artifact_id,
         gate: "target_editor",
         status,
@@ -3841,10 +4269,6 @@ export default function App() {
           qaNotes.trim() ||
           (status === "pass" ? "已完成逐页人工验收。" : "人工验收未通过。"),
       })
-      setQualityChecks((current) => [
-        ...current.filter((check) => check.gate !== result.check.gate),
-        result.check,
-      ])
       setQaTarget(null)
       setQaNotes("")
       toast.success(
@@ -3909,12 +4333,12 @@ export default function App() {
       const receipt = await api.exportDocument({
         requestId: pending.requestId,
         documentId: pending.documentId,
+        previewId: pending.previewId,
         outputDirectory: pending.outputDirectory,
         formats: pending.formats,
         overwriteConfirmed,
         preflightToken: pending.preflightToken,
       })
-      setQualityChecks(receipt.checks)
       setExportState({ status: "succeeded", receipt })
       recordTelemetry({
         name: "document_action",
@@ -3993,6 +4417,7 @@ export default function App() {
     try {
       const preflight = await api.preflightExport({
         documentId: documentIdAtStart,
+        previewId: previewAtStart.preview_id,
         formats,
         outputDirectory,
       })
@@ -4016,6 +4441,7 @@ export default function App() {
       const pending: PendingExport = {
         requestId: newRequestId(),
         documentId: documentIdAtStart,
+        previewId: previewAtStart.preview_id,
         editVersion: versionAtStart,
         previewInputSha256: previewAtStart.input_sha256,
         previewTemplateSha256: previewAtStart.template.pack_sha256,
@@ -4132,6 +4558,19 @@ export default function App() {
     previewState.status === "ready" &&
     !previewState.stale &&
     previewState.result.document_id === document?.id
+  const previewBusy =
+    previewState.status === "checking" || previewState.status === "generating"
+  const previewTriggerDisabled =
+    workspaceDisabled ||
+    activePane === "profile" ||
+    !document ||
+    saveState === "loading" ||
+    saveState === "saving" ||
+    saveState === "conflict" ||
+    exportState.status === "exporting"
+  const previewGenerationDisabled =
+    previewTriggerDisabled || !environmentReady || !templateReady
+  const draftExportReady = draftIsExportReady(draft, activeDocumentType)
   const exportDisabled =
     workspaceDisabled ||
     activePane === "profile" ||
@@ -4139,9 +4578,31 @@ export default function App() {
     saveState !== "saved" ||
     !environmentReady ||
     !templateReady ||
-    !draftIsExportReady(draft, activeDocumentType) ||
+    !draftExportReady ||
     !previewReady ||
     exportState.status === "exporting"
+  const exportDisabledReason = !environmentReady
+    ? environmentFailure?.message ?? "请先修复本机文档环境"
+    : !templateReady
+      ? "请先在左侧“检查与导出”中关联可用的本地模板工程"
+      : !previewReady
+        ? "请先生成当前内容的排版预览"
+        : draftExportReady
+          ? "选择导出格式"
+          : activeDocumentType === "task_book"
+            ? "请补全任务书正文、进度安排、参考文献和选题信息，并确认毕业届别含四位年份"
+            : activeDocumentType === "midterm"
+              ? "请先填写全部必填字段、有效目录、研究内容和进展情况"
+              : "请先填写全部必填字段，并确保选题意义至少有两个段落"
+
+  const openPreviewAndExport = () => {
+    setPreviewOpen(true)
+    if (previewReady) {
+      showPreviewAcceptanceBoundary()
+    } else if (!previewBusy && !previewGenerationDisabled) {
+      void generatePreview()
+    }
+  }
 
   const editor =
     activePane === "profile" ? (
@@ -4154,8 +4615,11 @@ export default function App() {
       />
     ) : (
       <DocumentEditor
+        documentId={document?.id ?? ""}
         documentType={activeDocumentType}
         activeSection={activeSection}
+        viewState={activeDocumentViewState}
+        onViewStateChange={updateActiveDocumentViewState}
         draft={draft}
         onChange={updateDraft}
         onStructuredBodyChange={updateStructuredBody}
@@ -4172,15 +4636,16 @@ export default function App() {
   const inspectionPanel = (
     <InspectionPanel
       environment={environment}
+      templateCheck={templateCheck}
       onRefresh={refreshEnvironment}
       onInstallTemplate={() => void installTemplate()}
       templateInstalling={templateInstalling}
-      checks={qualityChecks}
       exportState={exportState}
       onCancelExport={() => void cancelExport()}
       history={history}
       onRefreshHistory={() => void refreshHistory()}
-      onOpenArtifact={(artifactId) => void openArtifact(artifactId)}
+      onRevealArtifact={(artifactId) => void revealArtifact(artifactId)}
+      onDeleteHistory={deleteHistoryRecord}
       onRecordQa={(artifact) => {
         setQaNotes("")
         setQaTarget({ artifact })
@@ -4217,14 +4682,7 @@ export default function App() {
             : undefined
       }
       disabled={
-        workspaceDisabled ||
-        !document ||
-        saveState === "loading" ||
-        saveState === "saving" ||
-        saveState === "conflict" ||
-        !environmentReady ||
-        !templateReady ||
-        exportState.status === "exporting"
+        previewGenerationDisabled
       }
       onGenerate={() => void generatePreview()}
     />
@@ -4234,6 +4692,7 @@ export default function App() {
 
   return (
     <SidebarProvider
+      className="h-svh min-h-0 overflow-hidden"
       style={
         {
           "--sidebar-width": "14rem",
@@ -4245,14 +4704,29 @@ export default function App() {
         variant="inset"
         profileActive={activePane === "profile"}
         inspectionActive={activePane === "inspection"}
-        activeDocumentType={activeDocumentType}
+        activeDocumentId={activeDocumentId ?? null}
+        documents={documents}
+        deletedDocuments={deletedDocuments}
         onSelectProfile={() => setActivePane("profile")}
         onSelectInspection={() => setActivePane("inspection")}
-        onSelectDocumentType={(documentType) => void switchDocumentType(documentType)}
+        onSelectDocument={selectDocumentFile}
+        onCreateDocument={createDocumentFile}
+        onRenameDocument={(documentId, title) =>
+          runDocumentMutation((api) => api.renameDocument({ documentId, title }))
+        }
+        onDeleteDocument={(documentId) =>
+          runDocumentMutation((api) => api.deleteDocument(documentId))
+        }
+        onRestoreDocument={(documentId) =>
+          runDocumentMutation((api) => api.restoreDocument(documentId))
+        }
+        onPurgeDocument={(documentId) =>
+          runDocumentMutation((api) => api.purgeDocument(documentId))
+        }
         disabled={workspaceDisabled || exportState.status === "exporting"}
         inspectionDisabled={workspaceDisabled}
       />
-      <SidebarInset className="h-svh overflow-hidden">
+      <SidebarInset className="min-h-0 overflow-hidden">
         <SiteHeader
           title={
             activePane === "profile"
@@ -4277,9 +4751,16 @@ export default function App() {
               variant={
                 saveState === "error" || saveState === "conflict"
                   ? "destructive"
-                  : saveState === "dirty" || saveState === "saving"
+                  : saveState === "dirty" ||
+                      saveState === "saving" ||
+                      saveState === "saved"
                     ? "outline"
                     : "secondary"
+              }
+              className={
+                saveState === "saved"
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800/60 dark:bg-emerald-950/40 dark:text-emerald-300"
+                  : undefined
               }
             >
               {saveState === "loading" || saveState === "saving" ? (
@@ -4316,95 +4797,18 @@ export default function App() {
                 <Button
                   variant="outline"
                   size={isMobile ? "icon-sm" : "sm"}
-                  aria-label={
-                    previewState.status === "generating"
-                      ? "正在生成预览"
-                      : "排版预览"
-                  }
-                  title={
-                    previewState.status === "generating"
-                      ? "正在生成预览"
-                      : "排版预览"
-                  }
-                  onClick={() => setPreviewOpen(true)}
-                  disabled={
-                    workspaceDisabled ||
-                    !document ||
-                    saveState === "loading" ||
-                    saveState === "saving" ||
-                    saveState === "conflict" ||
-                    exportState.status === "exporting"
-                  }
+                  aria-label="预览&导出"
+                  title="预览&导出"
+                  onClick={openPreviewAndExport}
+                  disabled={previewTriggerDisabled}
                 >
-                  {previewState.status === "generating" ? (
+                  {previewBusy ? (
                     <LoaderCircleIcon className="animate-spin" />
                   ) : (
                     <FileTextIcon />
                   )}
-                  {isMobile ? null : (
-                    <span>
-                      {previewState.status === "generating"
-                        ? "正在生成预览"
-                        : "排版预览"}
-                    </span>
-                  )}
+                  {isMobile ? null : <span>预览&导出</span>}
                 </Button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    render={
-                      <Button
-                        size={isMobile ? "icon-sm" : "sm"}
-                        aria-label="导出"
-                        disabled={exportDisabled}
-                        title={
-                          !environmentReady
-                            ? environmentFailure?.message ?? "请先修复本机文档环境"
-                            : !templateReady
-                              ? "请先在左侧“检查与导出”中关联可用的本地模板工程"
-                              : !previewReady
-                                ? "请先生成当前内容的排版预览"
-                                : draftIsExportReady(draft, activeDocumentType)
-                                  ? "选择导出格式"
-                                  : activeDocumentType === "task_book"
-                                    ? "请补全任务书正文、进度安排、参考文献和选题信息，并确认毕业届别含四位年份"
-                                    : activeDocumentType === "midterm"
-                                      ? "请先填写全部必填字段、有效目录、主要研究内容和进展情况"
-                                      : "请先填写全部必填字段，并确保选题意义至少有两个段落"
-                        }
-                      />
-                    }
-                  >
-                    {exportState.status === "exporting" ? (
-                      <LoaderCircleIcon className="animate-spin" />
-                    ) : (
-                      <FileClockIcon />
-                    )}
-                    {isMobile ? null : (
-                      <>
-                        <span>
-                          {exportState.status === "exporting" ? "正在导出" : "导出"}
-                        </span>
-                        <ChevronDownIcon />
-                      </>
-                    )}
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => void startExport(["docx"])}>
-                      导出 Word
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => void startExport(["pdf"])}>
-                      导出 PDF
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => void startExport(["tex"])}>
-                      导出 LaTeX 源码包
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => void startExport(["docx", "pdf"])}
-                    >
-                      同时导出 Word 和 PDF
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
               </>
             ) : undefined
           }
@@ -4422,21 +4826,10 @@ export default function App() {
                 <div className="min-h-0 flex-1">{mainPanel}</div>
               </div>
             ) : (
-              <ResizablePanelGroup
-                orientation="horizontal"
-                className="min-h-0 flex-1"
-              >
-                <ResizablePanel defaultSize="18%" minSize="14%" maxSize="24%">
-                  {sectionNavigation}
-                </ResizablePanel>
-                <ResizableHandle withHandle />
-                <ResizablePanel
-                  defaultSize="82%"
-                  minSize="60%"
-                >
-                  {mainPanel}
-                </ResizablePanel>
-              </ResizablePanelGroup>
+              <div className="flex min-h-0 flex-1">
+                {sectionNavigation}
+                <div className="min-w-0 flex-1">{mainPanel}</div>
+              </div>
             )}
           </div>
         </div>
@@ -4447,10 +4840,80 @@ export default function App() {
       >
         <SheetContent
           side="right"
-          className="w-full gap-0 p-0 sm:max-w-3xl"
+          showCloseButton={false}
+          className="gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-none"
+          style={
+            isMobile
+              ? undefined
+              : {
+                  width: previewDrawerWidth,
+                  maxWidth: previewDrawerMaxWidth,
+                }
+          }
         >
-          <SheetHeader className="border-b pr-14">
-            <SheetTitle>排版预览</SheetTitle>
+          {!isMobile ? (
+            <div
+              role="separator"
+              aria-label="调整预览抽屉宽度"
+              aria-orientation="vertical"
+              aria-valuemin={PREVIEW_DRAWER_MIN_WIDTH}
+              aria-valuemax={previewDrawerMaxWidth}
+              aria-valuenow={Math.round(previewDrawerWidth)}
+              aria-valuetext={`${Math.round(previewDrawerWidth)} 像素`}
+              tabIndex={0}
+              onPointerDown={startPreviewDrawerResize}
+              onPointerMove={continuePreviewDrawerResize}
+              onPointerUp={stopPreviewDrawerResize}
+              onPointerCancel={stopPreviewDrawerResize}
+              onKeyDown={resizePreviewDrawerWithKeyboard}
+              className="group absolute inset-y-0 left-0 z-10 flex w-2 -translate-x-1/2 touch-none cursor-col-resize items-center justify-center focus-visible:outline-none"
+            >
+              <span className="h-10 w-px bg-border group-hover:bg-foreground group-focus-visible:bg-ring" />
+            </div>
+          ) : null}
+          <SheetHeader className="flex-row items-center justify-between gap-3 border-b">
+            <SheetTitle>预览&导出</SheetTitle>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    aria-label="导出"
+                    disabled={exportDisabled}
+                    title={exportDisabledReason}
+                  />
+                }
+              >
+                {exportState.status === "exporting" ? (
+                  <LoaderCircleIcon className="animate-spin" />
+                ) : (
+                  <FileClockIcon />
+                )}
+                <span>
+                  {exportState.status === "exporting"
+                    ? "正在导出"
+                    : previewReady
+                      ? "导出"
+                      : "生成预览后可导出"}
+                </span>
+                <ChevronDownIcon />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuItem onClick={() => void startExport(["docx"])}>
+                  导出 Word
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => void startExport(["pdf"])}>
+                  导出 PDF
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => void startExport(["tex"])}>
+                  导出 LaTeX 源码包
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => void startExport(["docx", "pdf"])}
+                >
+                  同时导出 Word 和 PDF
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </SheetHeader>
           <div className="min-h-0 flex-1">{previewPanel}</div>
         </SheetContent>

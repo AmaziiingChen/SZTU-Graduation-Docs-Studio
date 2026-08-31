@@ -19,6 +19,22 @@ import type {
 export const MAX_STRUCTURED_LIST_DEPTH = 4
 export type StructuredEditorMode = "body" | "paragraphs" | "inline"
 
+export function editorShortcutLabels(platform: string) {
+  const mac = /Mac|iPhone|iPad|iPod/i.test(platform)
+  const modifier = mac ? "⌘" : "Ctrl"
+  const shift = mac ? "⇧" : "Shift"
+  return {
+    bold: [modifier, "B"],
+    italic: [modifier, "I"],
+    subscript: [modifier, shift, "−"],
+    superscript: [modifier, shift, "+"],
+    outdent: [shift, "Tab"],
+    indent: ["Tab"],
+    undo: [modifier, "Z"],
+    redo: [modifier, "Y"],
+  } as const
+}
+
 const LIST_NODE_NAMES = new Set(["orderedList", "bulletList"])
 const ALLOWED_MARK_NAMES = new Set([
   "bold",
@@ -26,6 +42,59 @@ const ALLOWED_MARK_NAMES = new Set([
   "subscript",
   "superscript",
 ])
+
+const UNICODE_SCRIPT_CHARACTERS: Readonly<
+  Record<string, { text: string; script: "sub" | "super" }>
+> = {
+  "⁰": { text: "0", script: "super" },
+  "¹": { text: "1", script: "super" },
+  "²": { text: "2", script: "super" },
+  "³": { text: "3", script: "super" },
+  "⁴": { text: "4", script: "super" },
+  "⁵": { text: "5", script: "super" },
+  "⁶": { text: "6", script: "super" },
+  "⁷": { text: "7", script: "super" },
+  "⁸": { text: "8", script: "super" },
+  "⁹": { text: "9", script: "super" },
+  "⁺": { text: "+", script: "super" },
+  "⁻": { text: "−", script: "super" },
+  "⁼": { text: "=", script: "super" },
+  "⁽": { text: "(", script: "super" },
+  "⁾": { text: ")", script: "super" },
+  "ⁱ": { text: "i", script: "super" },
+  "ⁿ": { text: "n", script: "super" },
+  "₀": { text: "0", script: "sub" },
+  "₁": { text: "1", script: "sub" },
+  "₂": { text: "2", script: "sub" },
+  "₃": { text: "3", script: "sub" },
+  "₄": { text: "4", script: "sub" },
+  "₅": { text: "5", script: "sub" },
+  "₆": { text: "6", script: "sub" },
+  "₇": { text: "7", script: "sub" },
+  "₈": { text: "8", script: "sub" },
+  "₉": { text: "9", script: "sub" },
+  "₊": { text: "+", script: "sub" },
+  "₋": { text: "−", script: "sub" },
+  "₌": { text: "=", script: "sub" },
+  "₍": { text: "(", script: "sub" },
+  "₎": { text: ")", script: "sub" },
+  "ₐ": { text: "a", script: "sub" },
+  "ₑ": { text: "e", script: "sub" },
+  "ₒ": { text: "o", script: "sub" },
+  "ₓ": { text: "x", script: "sub" },
+  "ₕ": { text: "h", script: "sub" },
+  "ₖ": { text: "k", script: "sub" },
+  "ₗ": { text: "l", script: "sub" },
+  "ₘ": { text: "m", script: "sub" },
+  "ₙ": { text: "n", script: "sub" },
+  "ₚ": { text: "p", script: "sub" },
+  "ₛ": { text: "s", script: "sub" },
+  "ₜ": { text: "t", script: "sub" },
+}
+
+const PLAIN_SCIENTIFIC_CHARACTER_REPLACEMENTS: Readonly<Record<string, string>> = {
+  "℃": "°C",
+}
 
 function isStructuredRun(value: unknown): boolean {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -109,24 +178,56 @@ function marksForRun(
   return marks.length ? marks : undefined
 }
 
-function paragraphToTiptap(paragraph: ParagraphInput): JSONContent {
-  if (typeof paragraph === "string") {
-    return {
-      type: "paragraph",
-      content: paragraph ? [{ type: "text", text: paragraph }] : undefined,
+function expandLegacyScientificText(
+  text: string,
+  style: Omit<StructuredRun, "text">,
+): StructuredRun[] {
+  const runs: StructuredRun[] = []
+  const baseStyle: Omit<StructuredRun, "text"> = {
+    bold: style.bold,
+    italic: style.italic,
+    script: style.script,
+  }
+  for (const character of text) {
+    const mapped = UNICODE_SCRIPT_CHARACTERS[character]
+    const nextStyle = {
+      ...baseStyle,
+      script:
+        mapped && baseStyle.script === "normal"
+          ? mapped.script
+          : baseStyle.script,
+    }
+    const nextText = mapped?.text ??
+      PLAIN_SCIENTIFIC_CHARACTER_REPLACEMENTS[character] ??
+      character
+    const previous = runs.at(-1)
+    if (previous && sameRunStyle(previous, nextStyle)) {
+      previous.text += nextText
+    } else {
+      runs.push({ text: nextText, ...nextStyle })
     }
   }
+  return runs
+}
 
-  const content = paragraph.runs.flatMap((run) => {
-    if (!run.text) return []
-    return [
-      {
-        type: "text",
-        text: run.text,
-        marks: marksForRun(run),
-      },
-    ]
-  })
+function paragraphToTiptap(paragraph: ParagraphInput): JSONContent {
+  const sourceRuns: StructuredRun[] =
+    typeof paragraph === "string"
+      ? [{ text: paragraph, bold: false, italic: false, script: "normal" }]
+      : paragraph.runs
+  const content = sourceRuns.flatMap((run) =>
+    expandLegacyScientificText(run.text, run).flatMap((expanded) => {
+      if (!expanded.text) return []
+      const marks = marksForRun(expanded)
+      return [
+        {
+          type: "text",
+          text: expanded.text,
+          ...(marks ? { marks } : {}),
+        },
+      ]
+    }),
+  )
 
   return {
     type: "paragraph",
@@ -239,11 +340,13 @@ function paragraphFromTiptap(node: JSONContent): ParagraphInput {
     const text = child.text ?? ""
     if (!text) continue
     const style = styleForTextNode(child)
-    const previous = runs.at(-1)
-    if (previous && sameRunStyle(previous, style)) {
-      previous.text += text
-    } else {
-      runs.push({ text, ...style })
+    for (const expanded of expandLegacyScientificText(text, style)) {
+      const previous = runs.at(-1)
+      if (previous && sameRunStyle(previous, expanded)) {
+        previous.text += expanded.text
+      } else {
+        runs.push(expanded)
+      }
     }
   }
 
@@ -414,12 +517,31 @@ const ContractListMarker = Extension.create({
   },
 })
 
+function toggleSubscript(editor: Editor): boolean {
+  const chain = editor.chain().focus()
+  if (editor.isActive("subscript")) return chain.unsetSubscript().run()
+  return chain.unsetSuperscript().setSubscript().run()
+}
+
+function toggleSuperscript(editor: Editor): boolean {
+  const chain = editor.chain().focus()
+  if (editor.isActive("superscript")) return chain.unsetSuperscript().run()
+  return chain.unsetSubscript().setSuperscript().run()
+}
+
 function createRestrictedDocumentBehavior(mode: StructuredEditorMode) {
   return Extension.create({
     name: `restrictedDocumentBehavior-${mode}`,
     priority: 1_000,
     addKeyboardShortcuts() {
       return {
+        "Mod-Shift--": () => toggleSubscript(this.editor),
+        "Mod-Shift-_": () => toggleSubscript(this.editor),
+        "Mod-Shift-+": () => toggleSuperscript(this.editor),
+        "Mod-Shift-=": () => toggleSuperscript(this.editor),
+        "Mod-z": () => this.editor.commands.undo(),
+        "Mod-y": () => this.editor.commands.redo(),
+        "Mod-Shift-z": () => this.editor.commands.redo(),
         ...(mode === "inline"
           ? {
               Enter: () => true,

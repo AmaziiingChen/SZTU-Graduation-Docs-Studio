@@ -23,6 +23,7 @@ from typing import Any
 
 from .bibtex_gate import BibtexValidationError, count_valid_bibtex_entries
 from .storage.database import utc_now
+from .storage.paths import protect_private_file
 from .storage.services.common import encode_json, new_id
 from .template_engine import (
     ENGINE_TEMPLATE_ID,
@@ -55,6 +56,8 @@ DOCUMENT_OUTPUT_FILENAMES = {
     },
 }
 RENDER_TIMEOUT_SECONDS = 90
+PREVIEW_CACHE_SCHEMA_VERSION = "1.0"
+PREVIEW_RENDER_DPI = 240
 ADVISOR_TITLE_PATTERN = re.compile(r"(老师|教授|副教授|讲师|博士|导师)\s*$")
 TASK_BOOK_ADVISOR_TITLE_PATTERN = re.compile(
     r"(?:老师|导师|教授|副教授|讲师|研究员|副研究员|工程师|高级工程师|博士|硕士)"
@@ -103,6 +106,29 @@ def resolve_engine(document_type: str = "proposal") -> EngineDescriptor:
         return _resolve_engine(document_type)
     except TemplateEngineError as exc:
         raise ExportError(exc.code, exc.message, exc.details) from exc
+
+
+def _preview_cache_identity(
+    document_id: str,
+    input_sha256: str,
+    template_sha256: str,
+) -> tuple[str, str]:
+    cache_key = hashlib.sha256(
+        canonical_json(
+            {
+                "schema_version": PREVIEW_CACHE_SCHEMA_VERSION,
+                "backend_version": BACKEND_VERSION,
+                "document_id": document_id,
+                "input_sha256": input_sha256,
+                "template_sha256": template_sha256,
+                "render_dpi": PREVIEW_RENDER_DPI,
+            }
+        )
+    ).hexdigest()
+    preview_id = str(
+        uuid.uuid5(uuid.NAMESPACE_URL, f"sztu-docs-preview:{cache_key}")
+    )
+    return cache_key, preview_id
 
 
 def _require_text(
@@ -1546,6 +1572,15 @@ def _run(
                 "缺少本地文档渲染依赖；请运行 corepack pnpm setup:backend 后重启工作台。",
                 {"exit_code": process.returncode},
             )
+        if (
+            "No module named 'common.python.process_form'" in diagnostic
+            or "sztu-process-form.tex' not found" in diagnostic
+        ):
+            raise ExportError(
+                "TEMPLATE_ENGINE_INCOMPLETE",
+                "当前模板快照缺少共享排版文件；请重新关联模板工程后重试。",
+                {"exit_code": process.returncode},
+            )
         raise ExportError(
             "RENDER_FAILED",
             "文档渲染失败，请检查本机字体和文档引擎环境。",
@@ -1680,6 +1715,7 @@ def preflight_export(
     output_directory: str | None,
     formats: list[str],
     engine: EngineDescriptor | None = None,
+    preview_id: str | None = None,
 ) -> dict[str, Any]:
     if output_directory is None:
         if (
@@ -1703,6 +1739,14 @@ def preflight_export(
         )
     descriptor = engine or resolve_engine(record["document_type"])
     validate_template_renderability(record["document_type"], proposal, descriptor)
+    if preview_id is not None:
+        _verified_preview_pdf(
+            workspace,
+            record=record,
+            proposal=proposal,
+            descriptor=descriptor,
+            preview_id=preview_id,
+        )
     _require_task_book_docx_font(
         record["document_type"], ordered_formats, descriptor
     )
@@ -1731,6 +1775,7 @@ def preflight_export(
         "document_revision": record["current_revision"],
         "input_sha256": input_sha256,
         "template_sha256": descriptor.pack_sha256,
+        "preview_id": preview_id,
         "formats": ordered_formats,
         "output_directory": str(output) if output is not None else None,
         "targets": targets,
@@ -2001,6 +2046,31 @@ def list_export_history(
     return {"schema_version": "1.0", "history": history}
 
 
+def delete_export_history_record(
+    workspace: Any,
+    *,
+    document_id: str,
+    export_id: str,
+) -> dict[str, Any]:
+    """Delete one terminal export record without touching its exported files."""
+
+    workspace.get_document(document_id)
+    with workspace.database.transaction(immediate=True) as connection:
+        row = connection.execute(
+            "SELECT status FROM export_jobs WHERE id = ? AND document_id = ?",
+            (export_id, document_id),
+        ).fetchone()
+        if row is None:
+            raise ExportError("EXPORT_HISTORY_NOT_FOUND", "未找到该导出记录。")
+        if row["status"] in {"queued", "running"}:
+            raise ExportError("EXPORT_HISTORY_ACTIVE", "正在进行的导出不能删除记录。")
+        connection.execute(
+            "DELETE FROM export_jobs WHERE id = ? AND document_id = ?",
+            (export_id, document_id),
+        )
+    return {"export_id": export_id, "deleted": True}
+
+
 def resolve_artifact(workspace: Any, *, artifact_id: str) -> dict[str, Any]:
     row = workspace.database.connection.execute(
         """
@@ -2035,6 +2105,202 @@ def resolve_artifact(workspace: Any, *, artifact_id: str) -> dict[str, Any]:
     }
 
 
+def _cached_preview_result(
+    preview_directory: Path,
+    *,
+    preview_id: str,
+    document_id: str,
+    document_revision: int,
+    cache_key: str,
+    input_sha256: str,
+    descriptor: EngineDescriptor,
+) -> dict[str, Any] | None:
+    if (
+        not preview_directory.is_dir()
+        or preview_directory.is_symlink()
+        or preview_directory.name != preview_id
+    ):
+        return None
+    manifest_path = preview_directory / "manifest.json"
+    if not manifest_path.is_file() or manifest_path.is_symlink():
+        return None
+    try:
+        if manifest_path.stat().st_size > 1_048_576:
+            return None
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(manifest, dict) or set(manifest) != {
+        "schema_version",
+        "cache_key",
+        "input_sha256",
+        "template",
+        "pdf",
+        "pages",
+        "checks",
+        "generated_at",
+    }:
+        return None
+    expected_template = {
+        "template_id": descriptor.template_id,
+        "version": descriptor.version,
+        "pack_sha256": descriptor.pack_sha256,
+    }
+    if (
+        manifest.get("schema_version") != PREVIEW_CACHE_SCHEMA_VERSION
+        or manifest.get("cache_key") != cache_key
+        or manifest.get("input_sha256") != input_sha256
+        or manifest.get("template") != expected_template
+        or not isinstance(manifest.get("checks"), list)
+        or not isinstance(manifest.get("generated_at"), str)
+    ):
+        return None
+
+    def cached_artifact(value: Any) -> dict[str, Any] | None:
+        if not isinstance(value, dict) or set(value) != {
+            "filename",
+            "sha256",
+            "size_bytes",
+        }:
+            return None
+        filename = value.get("filename")
+        expected_sha256 = value.get("sha256")
+        expected_size = value.get("size_bytes")
+        if (
+            not isinstance(filename, str)
+            or Path(filename).name != filename
+            or not isinstance(expected_sha256, str)
+            or re.fullmatch(r"[0-9a-f]{64}", expected_sha256) is None
+            or isinstance(expected_size, bool)
+            or not isinstance(expected_size, int)
+            or expected_size < 1
+        ):
+            return None
+        path = preview_directory / filename
+        if not path.is_file() or path.is_symlink():
+            return None
+        try:
+            if path.stat().st_size != expected_size or sha256_file(path) != expected_sha256:
+                return None
+        except OSError:
+            return None
+        return {
+            "absolute_path": str(path.resolve()),
+            "sha256": expected_sha256,
+            "size_bytes": expected_size,
+        }
+
+    pdf = cached_artifact(manifest.get("pdf"))
+    raw_pages = manifest.get("pages")
+    if pdf is None or not isinstance(raw_pages, list) or not 1 <= len(raw_pages) <= 80:
+        return None
+    pages: list[dict[str, Any]] = []
+    for index, raw_page in enumerate(raw_pages, start=1):
+        if not isinstance(raw_page, dict) or raw_page.get("page_number") != index:
+            return None
+        artifact = cached_artifact(
+            {key: value for key, value in raw_page.items() if key != "page_number"}
+        )
+        if artifact is None:
+            return None
+        pages.append({"page_number": index, **artifact})
+    return {
+        "schema_version": PREVIEW_CACHE_SCHEMA_VERSION,
+        "preview_id": preview_id,
+        "document_id": document_id,
+        "document_revision": document_revision,
+        "input_sha256": input_sha256,
+        "template": expected_template,
+        "pdf": pdf,
+        "pages": pages,
+        "checks": manifest["checks"],
+        "generated_at": manifest["generated_at"],
+    }
+
+
+def _verified_preview_pdf(
+    workspace: Any,
+    *,
+    record: dict[str, Any],
+    proposal: dict[str, Any],
+    descriptor: EngineDescriptor,
+    preview_id: str,
+) -> Path:
+    data_directory = workspace.database.data_directory
+    if workspace.is_temporary or data_directory is None:
+        raise ExportError("PREVIEW_UNAVAILABLE", "当前工作区无法复用排版预览。")
+    input_sha256 = hashlib.sha256(canonical_json(proposal)).hexdigest()
+    cache_key, expected_preview_id = _preview_cache_identity(
+        record["id"], input_sha256, descriptor.pack_sha256
+    )
+    if preview_id != expected_preview_id:
+        raise ExportError(
+            "PREVIEW_STALE",
+            "排版预览与当前内容或模板不一致，请重新生成预览。",
+        )
+    previews_root = (data_directory / "previews").resolve(strict=False)
+    document_root = (previews_root / record["id"]).resolve(strict=False)
+    preview_directory = (document_root / preview_id).resolve(strict=False)
+    if preview_directory.parent != document_root or document_root.parent != previews_root:
+        raise ExportError("PREVIEW_PATH_INVALID", "预览缓存路径无效。")
+    cached = _cached_preview_result(
+        preview_directory,
+        preview_id=preview_id,
+        document_id=record["id"],
+        document_revision=record["current_revision"],
+        cache_key=cache_key,
+        input_sha256=input_sha256,
+        descriptor=descriptor,
+    )
+    if cached is None:
+        raise ExportError(
+            "PREVIEW_UNAVAILABLE",
+            "当前排版预览已失效或不可用，请重新生成预览。",
+        )
+    pdf_path = Path(cached["pdf"]["absolute_path"]).resolve(strict=False)
+    if pdf_path.parent != preview_directory or not pdf_path.is_file() or pdf_path.is_symlink():
+        raise ExportError("PREVIEW_PATH_INVALID", "预览 PDF 路径无效。")
+    return pdf_path
+
+
+def _write_preview_manifest(
+    preview_directory: Path,
+    *,
+    cache_key: str,
+    result: dict[str, Any],
+) -> None:
+    pdf = result["pdf"]
+    pages = result["pages"]
+    manifest = {
+        "schema_version": PREVIEW_CACHE_SCHEMA_VERSION,
+        "cache_key": cache_key,
+        "input_sha256": result["input_sha256"],
+        "template": result["template"],
+        "pdf": {
+            "filename": Path(pdf["absolute_path"]).name,
+            "sha256": pdf["sha256"],
+            "size_bytes": pdf["size_bytes"],
+        },
+        "pages": [
+            {
+                "page_number": page["page_number"],
+                "filename": Path(page["absolute_path"]).name,
+                "sha256": page["sha256"],
+                "size_bytes": page["size_bytes"],
+            }
+            for page in pages
+        ],
+        "checks": result["checks"],
+        "generated_at": result["generated_at"],
+    }
+    manifest_path = preview_directory / "manifest.json"
+    temporary_path = preview_directory / ".manifest.json.tmp"
+    temporary_path.write_bytes(canonical_json(manifest))
+    protect_private_file(temporary_path)
+    os.replace(temporary_path, manifest_path)
+    protect_private_file(manifest_path)
+
+
 def generate_preview(
     workspace: Any,
     *,
@@ -2063,12 +2329,36 @@ def generate_preview(
     if not isinstance(source_content, dict):
         raise ExportError("DOCUMENT_NOT_READY", "当前文档尚未保存完整内容。")
     descriptor = resolve_engine(source_record["document_type"])
-    preview_id = new_id()
+    proposal = build_export_document(workspace, source_record)
+    if not isinstance(proposal, dict):
+        raise ExportError("DOCUMENT_NOT_READY", "当前文档尚未保存完整内容。")
+    input_sha256 = hashlib.sha256(canonical_json(proposal)).hexdigest()
+    cache_key, preview_id = _preview_cache_identity(
+        document_id,
+        input_sha256,
+        descriptor.pack_sha256,
+    )
     previews_root = (data_directory / "previews").resolve(strict=False)
     document_root = (previews_root / document_id).resolve(strict=False)
     preview_directory = (document_root / preview_id).resolve(strict=False)
     if preview_directory.parent != document_root or document_root.parent != previews_root:
         raise ExportError("PREVIEW_PATH_INVALID", "预览缓存路径无效。")
+    document_root.mkdir(parents=True, mode=0o700, exist_ok=True)
+    cached = _cached_preview_result(
+        preview_directory,
+        preview_id=preview_id,
+        document_id=document_id,
+        document_revision=source_record["current_revision"],
+        cache_key=cache_key,
+        input_sha256=input_sha256,
+        descriptor=descriptor,
+    )
+    if cached is not None:
+        return cached
+    if preview_directory.exists():
+        if preview_directory.is_symlink() or not preview_directory.is_dir():
+            raise ExportError("PREVIEW_PATH_INVALID", "预览缓存路径无效。")
+        shutil.rmtree(preview_directory)
     preview_directory.mkdir(parents=True, mode=0o700, exist_ok=False)
 
     try:
@@ -2139,7 +2429,7 @@ def generate_preview(
                 "pdftoppm",
                 "-png",
                 "-r",
-                "150",
+                str(PREVIEW_RENDER_DPI),
                 str(pdf_path),
                 str(page_prefix),
             ],
@@ -2163,18 +2453,8 @@ def generate_preview(
         if [number for number, _ in page_paths] != list(range(1, len(page_paths) + 1)):
             raise ExportError("PREVIEW_RENDER_FAILED", "预览页面序号不连续。")
 
-        for old_preview in document_root.iterdir():
-            if old_preview == preview_directory or old_preview.is_symlink():
-                continue
-            try:
-                uuid.UUID(old_preview.name)
-            except ValueError:
-                continue
-            if old_preview.is_dir():
-                shutil.rmtree(old_preview)
-
-        return {
-            "schema_version": "1.0",
+        result = {
+            "schema_version": PREVIEW_CACHE_SCHEMA_VERSION,
             "preview_id": preview_id,
             "document_id": document_id,
             "document_revision": source_record["current_revision"],
@@ -2197,6 +2477,33 @@ def generate_preview(
             "checks": receipt["checks"],
             "generated_at": receipt["generated_at"],
         }
+        if (
+            result["input_sha256"] != input_sha256
+            or result["template"]
+            != {
+                "template_id": descriptor.template_id,
+                "version": descriptor.version,
+                "pack_sha256": descriptor.pack_sha256,
+            }
+        ):
+            raise ExportError("PREVIEW_RENDER_FAILED", "预览输入与当前内容不一致。")
+        _write_preview_manifest(
+            preview_directory,
+            cache_key=cache_key,
+            result=result,
+        )
+
+        for old_preview in document_root.iterdir():
+            if old_preview == preview_directory or old_preview.is_symlink():
+                continue
+            try:
+                uuid.UUID(old_preview.name)
+            except ValueError:
+                continue
+            if old_preview.is_dir():
+                shutil.rmtree(old_preview)
+
+        return result
     except Exception:
         shutil.rmtree(preview_directory, ignore_errors=True)
         raise
@@ -2318,6 +2625,7 @@ def run_export(
     cancellation_file: str | None = None,
     app_version: str = "unknown",
     preflight_token: str | None = None,
+    preview_id: str | None = None,
 ) -> dict[str, Any]:
     output, record, proposal, ordered_formats = _validate_export_request(
         workspace, document_id, output_directory, formats
@@ -2327,6 +2635,17 @@ def run_export(
     _require_task_book_docx_font(
         record["document_type"], ordered_formats, descriptor
     )
+    preview_pdf = (
+        _verified_preview_pdf(
+            workspace,
+            record=record,
+            proposal=proposal,
+            descriptor=descriptor,
+            preview_id=preview_id,
+        )
+        if preview_id is not None
+        else None
+    )
     output_filenames = DOCUMENT_OUTPUT_FILENAMES[record["document_type"]]
     if preflight_token is not None:
         current_preflight = preflight_export(
@@ -2335,6 +2654,7 @@ def run_export(
             output_directory=str(output),
             formats=ordered_formats,
             engine=descriptor,
+            preview_id=preview_id,
         )
         if current_preflight["preflight_token"] != preflight_token:
             raise ExportError(
@@ -2459,7 +2779,9 @@ def run_export(
                     ) from exc
                 generated["docx"] = docx_path
 
-            if "pdf" in ordered_formats or "tex" in ordered_formats:
+            if "tex" in ordered_formats or (
+                "pdf" in ordered_formats and preview_pdf is None
+            ):
                 _check_cancelled(cancel_path)
                 latex_dir = work / "latex"
                 latex_command = [
@@ -2471,7 +2793,7 @@ def run_export(
                     str(latex_dir),
                     "--overwrite",
                 ]
-                if "pdf" in ordered_formats:
+                if "pdf" in ordered_formats and preview_pdf is None:
                     latex_command.append("--compile")
                 _run(
                     latex_command,
@@ -2481,7 +2803,7 @@ def run_export(
                 )
 
             if "pdf" in ordered_formats:
-                pdf_path = latex_dir / "main.pdf"
+                pdf_path = preview_pdf or (latex_dir / "main.pdf")
                 checks.extend(
                     _check_pdf(
                         pdf_path,

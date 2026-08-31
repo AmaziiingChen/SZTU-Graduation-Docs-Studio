@@ -14,6 +14,10 @@ export type SidecarMethod =
   | "workspace.saveProfile"
   | "workspace.createDocument"
   | "workspace.selectDocument"
+  | "workspace.renameDocument"
+  | "workspace.deleteDocument"
+  | "workspace.restoreDocument"
+  | "workspace.purgeDocument"
   | "workspace.saveDraft"
   | "workspace.closeTemporary"
   | "document.check"
@@ -21,6 +25,7 @@ export type SidecarMethod =
   | "export.preflight"
   | "export.run"
   | "export.history"
+  | "export.deleteHistory"
   | "export.resolveArtifact"
   | "template.install"
   | "qa.record"
@@ -39,6 +44,10 @@ const ALLOWED_METHODS = new Set<SidecarMethod>([
   "workspace.saveProfile",
   "workspace.createDocument",
   "workspace.selectDocument",
+  "workspace.renameDocument",
+  "workspace.deleteDocument",
+  "workspace.restoreDocument",
+  "workspace.purgeDocument",
   "workspace.saveDraft",
   "workspace.closeTemporary",
   "document.check",
@@ -46,9 +55,27 @@ const ALLOWED_METHODS = new Set<SidecarMethod>([
   "export.preflight",
   "export.run",
   "export.history",
+  "export.deleteHistory",
   "export.resolveArtifact",
   "template.install",
   "qa.record",
+])
+const RECOVERABLE_METHODS = new Set<SidecarMethod>([
+  "system.ping",
+  "system.version",
+  "environment.check",
+  "workspace.open",
+  "workspace.selectDocument",
+  "document.check",
+  "preview.generate",
+  "export.history",
+  "export.resolveArtifact",
+])
+const RECOVERABLE_ERROR_CODES = new Set([
+  "SIDECAR_START_FAILED",
+  "SIDECAR_WRITE_FAILED",
+  "SIDECAR_CLOSED",
+  "SIDECAR_EXITED",
 ])
 
 export function resolveSidecarPython(
@@ -115,6 +142,19 @@ export class SidecarError extends Error {
   }
 }
 
+export function shouldRetrySidecarRequest(
+  method: SidecarMethod,
+  error: unknown,
+  attempt: number,
+): boolean {
+  return (
+    attempt === 0 &&
+    RECOVERABLE_METHODS.has(method) &&
+    error instanceof SidecarError &&
+    RECOVERABLE_ERROR_CODES.has(error.code)
+  )
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value)
 }
@@ -179,17 +219,31 @@ export class SidecarClient {
       pythonExecutable ?? resolveSidecarPython(backendRoot)
   }
 
-  request<T>(
+  async request<T>(
     method: SidecarMethod,
     params: Record<string, unknown> = {},
     timeoutMs = 15_000,
   ): Promise<T> {
     if (!ALLOWED_METHODS.has(method)) {
-      return Promise.reject(new SidecarError("INVALID_METHOD", "Sidecar method is not allowed."))
+      throw new SidecarError("INVALID_METHOD", "Sidecar method is not allowed.")
     }
     if (this.pending.size >= MAX_PENDING_REQUESTS) {
-      return Promise.reject(new SidecarError("TOO_MANY_PENDING_REQUESTS", "Too many sidecar requests are pending."))
+      throw new SidecarError("TOO_MANY_PENDING_REQUESTS", "Too many sidecar requests are pending.")
     }
+
+    try {
+      return await this.requestOnce<T>(method, params, timeoutMs)
+    } catch (error) {
+      if (!shouldRetrySidecarRequest(method, error, 0)) throw error
+      return this.requestOnce<T>(method, params, timeoutMs)
+    }
+  }
+
+  private requestOnce<T>(
+    method: SidecarMethod,
+    params: Record<string, unknown>,
+    timeoutMs: number,
+  ): Promise<T> {
     const id = randomUUID()
     const message = `${JSON.stringify({ protocol: "1.0", id, method, params })}\n`
     if (Buffer.byteLength(message, "utf8") > MAX_MESSAGE_BYTES) {
@@ -213,10 +267,7 @@ export class SidecarClient {
         if (!error) return
         const request = this.pending.get(id)
         if (!request) return
-        clearTimeout(request.timeout)
-        this.pending.delete(id)
-        this.rememberSettled(id)
-        request.reject(new SidecarError("SIDECAR_WRITE_FAILED", "Could not write to the sidecar."))
+        this.failProcess("SIDECAR_WRITE_FAILED")
       })
     })
   }

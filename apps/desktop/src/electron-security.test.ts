@@ -17,6 +17,10 @@ const telemetrySource = readFileSync(
   join(applicationRoot, "electron/telemetry.ts"),
   "utf8",
 )
+const diagnosticsSource = readFileSync(
+  join(applicationRoot, "electron/diagnostics.ts"),
+  "utf8",
+)
 const updateSource = readFileSync(
   join(applicationRoot, "electron/update-service.ts"),
   "utf8",
@@ -50,6 +54,8 @@ describe("Electron security boundary", () => {
     for (const method of [
       "getAppInfo",
       "checkEnvironment",
+      "prepareDiagnosticReport",
+      "saveDiagnosticReport",
       "getPrivacyNoticeStatus",
       "acceptPrivacyNotice",
       "quitApp",
@@ -61,6 +67,10 @@ describe("Electron security boundary", () => {
       "saveProfileDraft",
       "saveProfile",
       "createDocument",
+      "renameDocument",
+      "deleteDocument",
+      "restoreDocument",
+      "purgeDocument",
       "saveDraft",
       "closeTemporary",
       "checkDocument",
@@ -70,7 +80,8 @@ describe("Electron security boundary", () => {
       "exportDocument",
       "cancelExport",
       "listExportHistory",
-      "openExportArtifact",
+      "revealExportArtifact",
+      "deleteExportHistory",
       "installTemplatePack",
       "recordQa",
     ]) {
@@ -84,6 +95,8 @@ describe("Electron security boundary", () => {
   it("maps every workspace action to a dedicated IPC channel and validates the sender", () => {
     for (const channel of [
       "sztu:workspace-open",
+      "sztu:diagnostic-prepare",
+      "sztu:diagnostic-save",
       "sztu:privacy-status",
       "sztu:privacy-accept",
       "sztu:app-quit",
@@ -102,15 +115,24 @@ describe("Electron security boundary", () => {
       "sztu:export-document",
       "sztu:export-cancel",
       "sztu:export-history",
-      "sztu:export-open-artifact",
+      "sztu:export-reveal-artifact",
+      "sztu:export-delete-history",
       "sztu:template-install",
       "sztu:qa-record",
     ]) {
       expect(mainSource).toContain(`ipcMain.handle("${channel}"`)
     }
+    for (const channel of [
+      "sztu:workspace-rename-document",
+      "sztu:workspace-delete-document",
+      "sztu:workspace-restore-document",
+      "sztu:workspace-purge-document",
+    ]) {
+      expect(mainSource).toContain(`"${channel}"`)
+    }
     expect(mainSource).not.toContain("sztu:workspace-restore-previous")
     expect(sidecarSource).not.toContain("workspace.restorePrevious")
-    expect(mainSource.match(/assertTrustedSender\(event\)/g)?.length).toBeGreaterThanOrEqual(23)
+    expect(mainSource.match(/assertTrustedSender\(event\)/g)?.length).toBeGreaterThanOrEqual(24)
     expect(mainSource).toContain("assertExactKeys")
     expect(mainSource).toContain("assertJsonValue")
   })
@@ -199,6 +221,7 @@ describe("Electron security boundary", () => {
     expect(mainSource).toContain("params.cancellation_file = marker")
     expect(mainSource).toContain("overwrite_confirmed: input.overwriteConfirmed")
     expect(mainSource).toContain("preflight_token: input.preflightToken")
+    expect(mainSource).toContain("preview_id: input.previewId")
     expect(mainSource).toContain("app_version: app.getVersion()")
     const cancelStart = mainSource.indexOf('ipcMain.handle("sztu:export-cancel"')
     const historyStart = mainSource.indexOf('ipcMain.handle("sztu:export-history"')
@@ -209,12 +232,15 @@ describe("Electron security boundary", () => {
 
   it("keeps artifact paths and template source paths out of renderer arguments", () => {
     expect(preloadSource).toContain(
-      'openExportArtifact: (artifactId: unknown) => invoke("sztu:export-open-artifact", artifactId)',
+      'revealExportArtifact: (artifactId: unknown) => invoke("sztu:export-reveal-artifact", artifactId)',
+    )
+    expect(preloadSource).toContain(
+      'deleteExportHistory: (input: unknown) => invoke("sztu:export-delete-history", input)',
     )
     expect(preloadSource).toContain(
       'installTemplatePack: (documentType: unknown) => invoke("sztu:template-install", documentType)',
     )
-    expect(mainSource).toContain("shell.openPath")
+    expect(mainSource).toContain("shell.showItemInFolder")
     expect(mainSource).toContain("SHA256_PATTERN.test(resolved.sha256)")
     expect(mainSource).toContain("resolved.verified !== true")
     expect(mainSource).toContain('properties: ["openDirectory"]')
@@ -247,6 +273,11 @@ describe("Electron security boundary", () => {
     expect(updateSource).not.toContain("PRIVATE KEY")
     expect(remoteConfigSource).toContain('parsed.protocol !== "https:"')
     expect(remoteConfigSource).not.toMatch(/SecretId|SecretKey/)
+    expect(diagnosticsSource).toContain("scanReport")
+    expect(diagnosticsSource).toContain("MAX_OPERATION_ENTRIES = 200")
+    expect(diagnosticsSource).toContain("source_fields_removed")
+    expect(diagnosticsSource).toContain("full_name|student_number|thesis_title")
+    expect(diagnosticsSource).not.toMatch(/\bfetch\s*\(/)
 
     for (const sourcePath of rendererSources(rendererRoot)) {
       if (sourcePath.endsWith("electron-security.test.ts")) continue

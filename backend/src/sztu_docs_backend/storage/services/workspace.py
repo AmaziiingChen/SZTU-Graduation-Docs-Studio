@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+import shutil
 from collections.abc import Mapping, Sequence
 from pathlib import Path, PureWindowsPath
 from typing import Any
@@ -39,6 +41,7 @@ JSON_COLUMNS = {
 }
 
 HOST_PATH_KEYS = frozenset({"path", "output_directory", "install_path"})
+INTERNAL_DOCUMENT_ID = re.compile(r"^[0-9a-f]{32}$")
 
 
 def _without_absolute_host_paths(value: Any) -> Any:
@@ -122,6 +125,42 @@ class Workspace:
         self, *, profile_id: str | None = None, limit: int = 100
     ) -> list[dict[str, Any]]:
         return self.documents.list(profile_id=profile_id, limit=limit)
+
+    def list_deleted_documents(
+        self, *, profile_id: str | None = None, limit: int = 100
+    ) -> list[dict[str, Any]]:
+        return self.documents.list_deleted(profile_id=profile_id, limit=limit)
+
+    def rename_document(self, document_id: str, title: str) -> dict[str, Any]:
+        return self.documents.rename(document_id, title)
+
+    def delete_document(self, document_id: str) -> dict[str, Any]:
+        return self.documents.soft_delete(document_id)
+
+    def restore_document(self, document_id: str) -> dict[str, Any]:
+        return self.documents.restore(document_id)
+
+    def purge_document(self, document_id: str) -> dict[str, Any]:
+        """Permanently remove app-owned data without touching exported files."""
+
+        if not INTERNAL_DOCUMENT_ID.fullmatch(document_id):
+            raise ValidationError("document_id", "must_be_internal_id")
+        document = self.documents.get(document_id, include_deleted=True)
+        if document["soft_deleted_at"] is None:
+            raise NotFoundError("document", document_id)
+        data_directory = self.database.data_directory
+        if data_directory is not None:
+            previews_root = (data_directory / "previews").resolve(strict=False)
+            document_root = previews_root / document_id
+            if document_root.parent != previews_root:
+                raise ValidationError("document_id", "must_be_internal_id")
+            if document_root.is_symlink():
+                document_root.unlink()
+            elif document_root.is_dir():
+                shutil.rmtree(document_root)
+            elif document_root.exists():
+                document_root.unlink()
+        return self.documents.purge(document_id)
 
     def assign_profile(self, document_id: str, profile_id: str) -> dict[str, Any]:
         return self.documents.assign_profile(document_id, profile_id)

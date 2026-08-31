@@ -1,4 +1,4 @@
-"""Document storage with one current autosaved draft per document."""
+"""Independent document files with one current autosaved draft each."""
 
 from __future__ import annotations
 
@@ -25,6 +25,11 @@ class DocumentService:
         template_version = require_text(payload, "template_version", maximum=64)
         schema_version = require_text(payload, "schema_version", maximum=64)
         title = require_text(payload, "title", maximum=240)
+        source_document_id = payload.get("source_document_id")
+        if source_document_id is not None and (
+            not isinstance(source_document_id, str) or not source_document_id
+        ):
+            raise ValidationError("source_document_id", "must_be_text")
         document_id = new_id()
         now = utc_now()
 
@@ -37,12 +42,40 @@ class DocumentService:
                     ).fetchone()
                     if profile is None:
                         raise NotFoundError("student_profile", profile_id)
+                source_content_json: str | None = None
+                if source_document_id is not None:
+                    source = connection.execute(
+                        """
+                        SELECT profile_id, document_type, current_revision
+                        FROM documents
+                        WHERE id = ? AND soft_deleted_at IS NULL
+                        """,
+                        (source_document_id,),
+                    ).fetchone()
+                    if source is None:
+                        raise NotFoundError("document", source_document_id)
+                    if source["profile_id"] != profile_id:
+                        raise ValidationError("source_document_id", "does_not_belong_to_profile")
+                    if source["document_type"] != document_type:
+                        raise ValidationError("source_document_id", "document_type_mismatch")
+                    if int(source["current_revision"]) > 0:
+                        revision = connection.execute(
+                            """
+                            SELECT content_json FROM draft_revisions
+                            WHERE document_id = ? AND revision_number = ?
+                            """,
+                            (source_document_id, source["current_revision"]),
+                        ).fetchone()
+                        source_content_json = (
+                            str(revision["content_json"]) if revision is not None else None
+                        )
                 connection.execute(
                     """
                     INSERT INTO documents(
                         id, profile_id, document_type, template_version,
-                        schema_version, title, is_temporary, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        schema_version, title, is_temporary, current_revision,
+                        created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         document_id,
@@ -52,20 +85,33 @@ class DocumentService:
                         schema_version,
                         title,
                         int(self.database.temporary),
+                        1 if source_content_json is not None else 0,
                         now,
                         now,
                     ),
                 )
+                if source_content_json is not None:
+                    connection.execute(
+                        """
+                        INSERT INTO draft_revisions(
+                            id, document_id, revision_number, content_json,
+                            save_reason, based_on_revision, created_at
+                        ) VALUES (?, ?, 1, ?, 'import', 0, ?)
+                        """,
+                        (new_id(), document_id, source_content_json, now),
+                    )
         except sqlite3.IntegrityError as exc:
             raise ValidationError("document", "constraint_failed") from exc
         return self.get(document_id)
 
-    def get(self, document_id: str) -> dict[str, Any]:
+    def get(self, document_id: str, *, include_deleted: bool = False) -> dict[str, Any]:
+        deleted_clause = "" if include_deleted else " AND soft_deleted_at IS NULL"
         row = self.database.connection.execute(
-            """
+            f"""
             SELECT id, profile_id, document_type, template_version, schema_version,
-                   title, status, is_temporary, current_revision, created_at, updated_at
-            FROM documents WHERE id = ?
+                   title, status, is_temporary, current_revision, created_at, updated_at,
+                   soft_deleted_at
+            FROM documents WHERE id = ?{deleted_clause}
             """,
             (document_id,),
         ).fetchone()
@@ -93,12 +139,15 @@ class DocumentService:
             raise ValidationError("profile_id", "must_be_text")
         if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 500:
             raise ValidationError("limit", "must_be_between_1_and_500")
-        where = "WHERE profile_id = ?" if profile_id is not None else ""
+        where = "WHERE soft_deleted_at IS NULL"
+        if profile_id is not None:
+            where += " AND profile_id = ?"
         parameters: tuple[Any, ...] = (profile_id, limit) if profile_id is not None else (limit,)
         rows = self.database.connection.execute(
             f"""
             SELECT id, profile_id, document_type, template_version, schema_version,
-                   title, status, is_temporary, current_revision, created_at, updated_at
+                   title, status, is_temporary, current_revision, created_at, updated_at,
+                   soft_deleted_at
             FROM documents
             {where}
             ORDER BY updated_at DESC, id ASC
@@ -110,6 +159,97 @@ class DocumentService:
         for item in result:
             item["is_temporary"] = bool(item["is_temporary"])
         return result
+
+    def list_deleted(
+        self, *, profile_id: str | None = None, limit: int = 100
+    ) -> list[dict[str, Any]]:
+        if profile_id is not None and not isinstance(profile_id, str):
+            raise ValidationError("profile_id", "must_be_text")
+        if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 500:
+            raise ValidationError("limit", "must_be_between_1_and_500")
+        where = "WHERE soft_deleted_at IS NOT NULL"
+        parameters: tuple[Any, ...] = (limit,)
+        if profile_id is not None:
+            where += " AND profile_id = ?"
+            parameters = (profile_id, limit)
+        rows = self.database.connection.execute(
+            f"""
+            SELECT id, profile_id, document_type, template_version, schema_version,
+                   title, status, is_temporary, current_revision, created_at, updated_at,
+                   soft_deleted_at
+            FROM documents
+            {where}
+            ORDER BY soft_deleted_at DESC, id ASC
+            LIMIT ?
+            """,
+            parameters,
+        ).fetchall()
+        result = [dict(row) for row in rows]
+        for item in result:
+            item["is_temporary"] = bool(item["is_temporary"])
+        return result
+
+    def rename(self, document_id: str, title: str) -> dict[str, Any]:
+        if not isinstance(document_id, str) or not document_id:
+            raise ValidationError("document_id", "must_be_text")
+        if not isinstance(title, str) or not title.strip():
+            raise ValidationError("title", "required")
+        normalized = title.strip()
+        if len(normalized) > 240:
+            raise ValidationError("title", "too_long")
+        with self.database.transaction(immediate=True) as connection:
+            cursor = connection.execute(
+                """
+                UPDATE documents SET title = ?, updated_at = ?
+                WHERE id = ? AND soft_deleted_at IS NULL
+                """,
+                (normalized, utc_now(), document_id),
+            )
+            if cursor.rowcount != 1:
+                raise NotFoundError("document", document_id)
+        return self.get(document_id)
+
+    def soft_delete(self, document_id: str) -> dict[str, Any]:
+        now = utc_now()
+        with self.database.transaction(immediate=True) as connection:
+            row = connection.execute(
+                "SELECT is_temporary FROM documents WHERE id = ? AND soft_deleted_at IS NULL",
+                (document_id,),
+            ).fetchone()
+            if row is None:
+                raise NotFoundError("document", document_id)
+            if bool(row["is_temporary"]):
+                raise ValidationError("document_id", "temporary_document")
+            connection.execute(
+                "UPDATE documents SET soft_deleted_at = ?, updated_at = ? WHERE id = ?",
+                (now, now, document_id),
+            )
+        return self.get(document_id, include_deleted=True)
+
+    def restore(self, document_id: str) -> dict[str, Any]:
+        now = utc_now()
+        with self.database.transaction(immediate=True) as connection:
+            cursor = connection.execute(
+                """
+                UPDATE documents SET soft_deleted_at = NULL, updated_at = ?
+                WHERE id = ? AND soft_deleted_at IS NOT NULL
+                """,
+                (now, document_id),
+            )
+            if cursor.rowcount != 1:
+                raise NotFoundError("document", document_id)
+        return self.get(document_id)
+
+    def purge(self, document_id: str) -> dict[str, Any]:
+        with self.database.transaction(immediate=True) as connection:
+            row = connection.execute(
+                "SELECT 1 FROM documents WHERE id = ? AND soft_deleted_at IS NOT NULL",
+                (document_id,),
+            ).fetchone()
+            if row is None:
+                raise NotFoundError("document", document_id)
+            connection.execute("DELETE FROM documents WHERE id = ?", (document_id,))
+        return {"document_id": document_id, "deleted": True}
 
     def assign_profile(self, document_id: str, profile_id: str) -> dict[str, Any]:
         if not isinstance(document_id, str) or not document_id:
@@ -125,7 +265,7 @@ class DocumentService:
             if profile is None:
                 raise NotFoundError("student_profile", profile_id)
             document = connection.execute(
-                "SELECT profile_id FROM documents WHERE id = ?", (document_id,)
+                "SELECT profile_id FROM documents WHERE id = ? AND soft_deleted_at IS NULL", (document_id,)
             ).fetchone()
             if document is None:
                 raise NotFoundError("document", document_id)
@@ -174,7 +314,7 @@ class DocumentService:
         now = utc_now()
         with self.database.transaction(immediate=True) as connection:
             current = connection.execute(
-                "SELECT current_revision FROM documents WHERE id = ?",
+                "SELECT current_revision FROM documents WHERE id = ? AND soft_deleted_at IS NULL",
                 (document_id,),
             ).fetchone()
             if current is None:
@@ -189,7 +329,7 @@ class DocumentService:
                 """
                 UPDATE documents
                 SET current_revision = ?, updated_at = ?
-                WHERE id = ? AND current_revision = ?
+                WHERE id = ? AND current_revision = ? AND soft_deleted_at IS NULL
                 """,
                 (new_revision, now, document_id, expected_revision),
             )

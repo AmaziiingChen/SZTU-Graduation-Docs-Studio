@@ -18,6 +18,7 @@ The user approved implementation of a Word-like structured editing experience wh
 4. Directory editing uses the existing outline-item contract and a dedicated outline mode. `level` is authoritative; numbering is display data and whitespace is never hierarchy.
 5. The right paginated PDF preview remains explicit and click-generated. Editing structured content marks it stale; editor rendering is not final layout acceptance.
 6. Legacy Markdown is a compatibility import format only. The adapter parses an allowlisted structured subset; if unsupported block syntax is present, it preserves the complete source verbatim as editable plain text rather than silently removing content.
+7. Formatting, list-depth, undo, and redo shortcuts follow the current Microsoft Word conventions and use `Mod` so Windows maps to Ctrl and macOS maps to Command. Toolbar tooltips show platform-specific shortcuts with the default shadcn `Kbd` and `KbdGroup`, and disabled list-depth or history controls explain why they are unavailable. Subscript and superscript remain mutually exclusive whether invoked by mouse or keyboard.
 
 ## Consequences
 

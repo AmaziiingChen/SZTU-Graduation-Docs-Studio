@@ -1,72 +1,468 @@
+import { useMemo, useState } from "react"
 import {
-  ClipboardCheckIcon,
-  FilePenLineIcon,
+  ChevronRightIcon,
+  FilePlus2Icon,
   FileTextIcon,
-  GraduationCapIcon,
+  FolderIcon,
+  MoreHorizontalIcon,
+  PencilIcon,
+  PlusIcon,
+  RotateCcwIcon,
+  Trash2Icon,
 } from "lucide-react"
+import { toast } from "sonner"
 
+import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import {
   SidebarGroup,
   SidebarGroupLabel,
   SidebarMenu,
+  SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
 } from "@/components/ui/sidebar"
-import type { DocumentType } from "@/types/desktop-api"
+import type { DocumentRecord, DocumentType } from "@/types/desktop-api"
 
-const items: Array<{
-  type?: DocumentType
+const documentGroups: Array<{
+  type: DocumentType
   label: string
-  icon: typeof FilePenLineIcon
-  disabled?: boolean
+  defaultTitle: string
 }> = [
-  { type: "proposal", label: "开题报告", icon: FilePenLineIcon },
-  { type: "task_book", label: "任务书", icon: FileTextIcon },
-  { type: "midterm", label: "中期检查", icon: ClipboardCheckIcon },
-  { label: "毕业论文", icon: GraduationCapIcon, disabled: true },
+  { type: "proposal", label: "开题报告", defaultTitle: "未命名开题报告" },
+  { type: "task_book", label: "任务书", defaultTitle: "未命名任务书" },
+  { type: "midterm", label: "中期检查", defaultTitle: "未命名中期检查表" },
 ]
+
+export type CreateDocumentRequest = {
+  type: DocumentType
+  title: string
+  sourceDocumentId?: string
+}
+
+type ConfirmAction =
+  | { kind: "recycle"; document: DocumentRecord }
+  | { kind: "purge"; document: DocumentRecord }
+  | null
 
 export function NavDocuments({
   profileActive,
   inspectionActive,
-  activeDocumentType,
+  activeDocumentId,
+  documents,
+  deletedDocuments,
   disabled,
-  onSelectDocumentType,
+  onSelectDocument,
+  onCreateDocument,
+  onRenameDocument,
+  onDeleteDocument,
+  onRestoreDocument,
+  onPurgeDocument,
 }: {
   profileActive: boolean
   inspectionActive: boolean
-  activeDocumentType: DocumentType
+  activeDocumentId: string | null
+  documents: DocumentRecord[]
+  deletedDocuments: DocumentRecord[]
   disabled: boolean
-  onSelectDocumentType: (documentType: DocumentType) => void
+  onSelectDocument: (documentId: string) => Promise<void>
+  onCreateDocument: (request: CreateDocumentRequest) => Promise<void>
+  onRenameDocument: (documentId: string, title: string) => Promise<void>
+  onDeleteDocument: (documentId: string) => Promise<void>
+  onRestoreDocument: (documentId: string) => Promise<void>
+  onPurgeDocument: (documentId: string) => Promise<void>
 }) {
+  const activeType = documents.find((item) => item.id === activeDocumentId)?.document_type
+  const [expanded, setExpanded] = useState<Record<DocumentType, boolean>>({
+    proposal: activeType === "proposal" || activeType === undefined,
+    task_book: activeType === "task_book",
+    midterm: activeType === "midterm",
+  })
+  const [thesisExpanded, setThesisExpanded] = useState(false)
+  const [trashExpanded, setTrashExpanded] = useState(false)
+  const [createType, setCreateType] = useState<DocumentType | null>(null)
+  const [createTitle, setCreateTitle] = useState("")
+  const [createSource, setCreateSource] = useState("blank")
+  const [renameTarget, setRenameTarget] = useState<DocumentRecord | null>(null)
+  const [renameTitle, setRenameTitle] = useState("")
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null)
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const groupedDocuments = useMemo(
+    () =>
+      Object.fromEntries(
+        documentGroups.map((group) => [
+          group.type,
+          documents.filter((document) => document.document_type === group.type),
+        ]),
+      ) as Record<DocumentType, DocumentRecord[]>,
+    [documents],
+  )
+
+  const openCreate = (type: DocumentType, defaultTitle: string) => {
+    setCreateType(type)
+    setCreateTitle(defaultTitle)
+    setCreateSource("blank")
+    setError(null)
+  }
+
+  const run = async (operation: () => Promise<void>, onSuccess: () => void) => {
+    setPending(true)
+    setError(null)
+    try {
+      await operation()
+      onSuccess()
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "文档操作失败，请重试。"
+      setError(message)
+      toast.error(message)
+    } finally {
+      setPending(false)
+    }
+  }
+
   return (
-    <SidebarGroup>
-      <SidebarGroupLabel>毕业设计文档</SidebarGroupLabel>
-      <SidebarMenu>
-        {items.map((item) => (
-          <SidebarMenuItem key={item.label}>
+    <>
+      <SidebarGroup>
+        <SidebarGroupLabel>毕业设计文档</SidebarGroupLabel>
+        <SidebarMenu>
+          {documentGroups.map((group) => {
+            const groupDocuments = groupedDocuments[group.type]
+            const isExpanded = expanded[group.type]
+            return (
+              <SidebarMenuItem key={group.type}>
+                <SidebarMenuButton
+                  tooltip={group.label}
+                  aria-expanded={isExpanded}
+                  onClick={() =>
+                    setExpanded((current) => ({
+                      ...current,
+                      [group.type]: !current[group.type],
+                    }))
+                  }
+                >
+                  <ChevronRightIcon
+                    className={isExpanded ? "rotate-90 transition-transform" : "transition-transform"}
+                  />
+                  <FolderIcon />
+                  <span>{group.label}</span>
+                </SidebarMenuButton>
+                <SidebarMenuAction
+                  aria-label={`新建${group.label}`}
+                  title={`新建${group.label}`}
+                  disabled={disabled}
+                  showOnHover
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    openCreate(group.type, group.defaultTitle)
+                  }}
+                >
+                  <PlusIcon />
+                </SidebarMenuAction>
+                {isExpanded ? (
+                  <SidebarMenuSub className="mr-0 pr-0">
+                    {groupDocuments.length === 0 ? (
+                      <SidebarMenuSubItem>
+                        <span className="block px-2 py-1 text-xs text-muted-foreground">暂无文档</span>
+                      </SidebarMenuSubItem>
+                    ) : null}
+                    {groupDocuments.map((item) => (
+                      <SidebarMenuSubItem key={item.id}>
+                        <SidebarMenuSubButton
+                          render={<button type="button" disabled={disabled} />}
+                          className="w-full pr-8"
+                          isActive={!profileActive && !inspectionActive && item.id === activeDocumentId}
+                          onClick={() => void onSelectDocument(item.id)}
+                        >
+                          <FileTextIcon />
+                          <span className="min-w-0 flex-1 truncate">{item.title}</span>
+                        </SidebarMenuSubButton>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger
+                            render={
+                              <button
+                                type="button"
+                                className="absolute top-1 right-1 flex size-5 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring disabled:pointer-events-none disabled:opacity-50"
+                                aria-label={`管理文档 ${item.title}`}
+                                disabled={disabled}
+                              />
+                            }
+                          >
+                            <MoreHorizontalIcon className="size-4" />
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-36">
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setRenameTarget(item)
+                                setRenameTitle(item.title)
+                                setError(null)
+                              }}
+                            >
+                              <PencilIcon />
+                              重命名
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              variant="destructive"
+                              onClick={() => {
+                                setConfirmAction({ kind: "recycle", document: item })
+                                setError(null)
+                              }}
+                            >
+                              <Trash2Icon />
+                              移到回收站
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </SidebarMenuSubItem>
+                    ))}
+                  </SidebarMenuSub>
+                ) : null}
+              </SidebarMenuItem>
+            )
+          })}
+
+          <SidebarMenuItem>
             <SidebarMenuButton
-              tooltip={item.disabled ? `${item.label}尚未开放` : item.label}
-              className={item.disabled ? "text-muted-foreground" : undefined}
-              aria-disabled={item.disabled || disabled}
-              isActive={
-                !profileActive && !inspectionActive && item.type === activeDocumentType
-              }
-              disabled={item.disabled || disabled}
-              onClick={
-                item.disabled
-                  ? undefined
-                  : () => {
-                      if (item.type) onSelectDocumentType(item.type)
-                    }
-              }
+              tooltip="毕业论文"
+              aria-expanded={thesisExpanded}
+              onClick={() => setThesisExpanded((current) => !current)}
             >
-              <item.icon />
-              <span>{item.label}</span>
+              <ChevronRightIcon
+                className={thesisExpanded ? "rotate-90 transition-transform" : "transition-transform"}
+              />
+              <FolderIcon />
+              <span>毕业论文</span>
             </SidebarMenuButton>
+            {thesisExpanded ? (
+              <SidebarMenuSub className="mr-0 pr-0">
+                <SidebarMenuSubItem>
+                  <span className="block px-2 py-1 text-xs text-muted-foreground">
+                    暂未开放新建
+                  </span>
+                </SidebarMenuSubItem>
+              </SidebarMenuSub>
+            ) : null}
           </SidebarMenuItem>
-        ))}
-      </SidebarMenu>
-    </SidebarGroup>
+
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              tooltip="回收站"
+              aria-label={`回收站（${deletedDocuments.length} 个文档）`}
+              aria-expanded={trashExpanded}
+              onClick={() => setTrashExpanded((current) => !current)}
+            >
+              <ChevronRightIcon
+                className={trashExpanded ? "rotate-90 transition-transform" : "transition-transform"}
+              />
+              <Trash2Icon />
+              <span>回收站</span>
+              {deletedDocuments.length > 0 ? (
+                <span className="ml-auto text-xs text-muted-foreground">{deletedDocuments.length}</span>
+              ) : null}
+            </SidebarMenuButton>
+            {trashExpanded ? (
+              <SidebarMenuSub className="mr-0 pr-0">
+                {deletedDocuments.length === 0 ? (
+                  <SidebarMenuSubItem>
+                    <span className="block px-2 py-1 text-xs text-muted-foreground">回收站为空</span>
+                  </SidebarMenuSubItem>
+                ) : null}
+                {deletedDocuments.map((item) => (
+                  <SidebarMenuSubItem key={item.id}>
+                    <span
+                      className="block truncate py-1 pr-8 pl-2 text-xs text-muted-foreground"
+                      title={item.title}
+                    >
+                      {item.title}
+                    </span>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger
+                        render={
+                          <button
+                            type="button"
+                            className="absolute top-1 right-1 flex size-5 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring disabled:pointer-events-none disabled:opacity-50"
+                            aria-label={`管理回收站文档 ${item.title}`}
+                            disabled={disabled}
+                          />
+                        }
+                      >
+                        <MoreHorizontalIcon className="size-4" />
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-36">
+                        <DropdownMenuItem onClick={() => void run(() => onRestoreDocument(item.id), () => undefined)}>
+                          <RotateCcwIcon />
+                          恢复
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          variant="destructive"
+                          onClick={() => {
+                            setConfirmAction({ kind: "purge", document: item })
+                            setError(null)
+                          }}
+                        >
+                          <Trash2Icon />
+                          永久删除
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </SidebarMenuSubItem>
+                ))}
+              </SidebarMenuSub>
+            ) : null}
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarGroup>
+
+      <Dialog open={createType !== null} onOpenChange={(open) => !open && setCreateType(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>新建{documentGroups.find((item) => item.type === createType)?.label}</DialogTitle>
+            <DialogDescription>新建空白文档，或复制一份已有内容后独立编辑。</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <label className="grid gap-2 text-sm font-medium">
+              文件名
+              <Input value={createTitle} maxLength={240} onChange={(event) => setCreateTitle(event.target.value)} />
+            </label>
+            <label className="grid gap-2 text-sm font-medium">
+              初始内容
+              <Select value={createSource} onValueChange={(value) => setCreateSource(value ?? "blank")}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="blank">
+                    <FilePlus2Icon />
+                    空白文档
+                  </SelectItem>
+                  {(createType ? groupedDocuments[createType] : []).map((item) => (
+                    <SelectItem
+                      key={item.id}
+                      value={item.id}
+                      onClick={() => setCreateSource(item.id)}
+                    >
+                      {`基于：${item.title}`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+            {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" disabled={pending} onClick={() => setCreateType(null)}>取消</Button>
+            <Button
+              disabled={pending || !createType || !createTitle.trim()}
+              onClick={() => {
+                if (!createType) return
+                void run(
+                  () => onCreateDocument({
+                    type: createType,
+                    title: createTitle.trim(),
+                    sourceDocumentId: createSource === "blank" ? undefined : createSource,
+                  }),
+                  () => setCreateType(null),
+                )
+              }}
+            >
+              新建
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={renameTarget !== null} onOpenChange={(open) => !open && setRenameTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>重命名文档</DialogTitle>
+            <DialogDescription>只修改工作台中的文件名，不改变正文和已导出的文件。</DialogDescription>
+          </DialogHeader>
+          <Input
+            aria-label="新文件名"
+            value={renameTitle}
+            maxLength={240}
+            onChange={(event) => setRenameTitle(event.target.value)}
+          />
+          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          <DialogFooter>
+            <Button variant="outline" disabled={pending} onClick={() => setRenameTarget(null)}>取消</Button>
+            <Button
+              disabled={pending || !renameTarget || !renameTitle.trim()}
+              onClick={() => {
+                if (!renameTarget) return
+                void run(
+                  () => onRenameDocument(renameTarget.id, renameTitle.trim()),
+                  () => setRenameTarget(null),
+                )
+              }}
+            >
+              保存
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={confirmAction !== null} onOpenChange={(open) => !open && setConfirmAction(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{confirmAction?.kind === "purge" ? "永久删除文档？" : "移到回收站？"}</DialogTitle>
+            <DialogDescription>
+              {confirmAction?.kind === "purge"
+                ? "将永久删除软件内的正文、草稿和历史记录，且无法恢复。已经导出的文件不会被删除。"
+                : "文档会从当前列表移入回收站，之后仍可恢复。已经导出的文件不会被删除。"}
+            </DialogDescription>
+          </DialogHeader>
+          <p className="truncate text-sm font-medium">{confirmAction?.document.title}</p>
+          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          <DialogFooter>
+            <Button variant="outline" disabled={pending} onClick={() => setConfirmAction(null)}>取消</Button>
+            <Button
+              variant="destructive"
+              disabled={pending || !confirmAction}
+              onClick={() => {
+                if (!confirmAction) return
+                const action = confirmAction
+                void run(
+                  () => action.kind === "purge"
+                    ? onPurgeDocument(action.document.id)
+                    : onDeleteDocument(action.document.id),
+                  () => setConfirmAction(null),
+                )
+              }}
+            >
+              {confirmAction?.kind === "purge" ? "永久删除" : "移到回收站"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }

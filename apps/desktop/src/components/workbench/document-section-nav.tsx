@@ -65,7 +65,10 @@ export function DocumentSectionNav({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col border-r bg-muted/30">
+    <div
+      data-slot="document-section-nav"
+      className="flex h-full min-h-0 w-(--sidebar-width) shrink-0 flex-col border-r bg-muted/30"
+    >
       <div className="border-b p-4">
         <p className="text-sm font-medium">文档板块</p>
       </div>

@@ -14,6 +14,7 @@ from unittest.mock import patch
 from sztu_docs_backend.exporter import (
     ExportError,
     _graduation_year_from_cohort,
+    _preview_cache_identity,
     _render_content_without_editor_state,
     canonical_json,
     generate_preview,
@@ -41,6 +42,21 @@ def proposal_fixture() -> dict:
 
 
 class ProposalContractTests(unittest.TestCase):
+    def test_preview_cache_identity_changes_with_content_or_template(self) -> None:
+        first = _preview_cache_identity("document-1", "a" * 64, "b" * 64)
+        repeated = _preview_cache_identity("document-1", "a" * 64, "b" * 64)
+        changed_content = _preview_cache_identity(
+            "document-1", "c" * 64, "b" * 64
+        )
+        changed_template = _preview_cache_identity(
+            "document-1", "a" * 64, "d" * 64
+        )
+
+        self.assertEqual(first, repeated)
+        self.assertNotEqual(first, changed_content)
+        self.assertNotEqual(first, changed_template)
+        uuid.UUID(first[1])
+
     def test_valid_proposal_has_stable_canonical_json(self) -> None:
         proposal = proposal_fixture()
         self.assertIs(validate_proposal(proposal), proposal)
@@ -537,6 +553,12 @@ class TaskBookExportIntegrationTests(unittest.TestCase):
                         request_id=str(uuid.uuid4()),
                         app_version="task-book-integration-test",
                     )
+                    repeated_preview = generate_preview(
+                        workspace,
+                        document_id=document["id"],
+                        request_id=str(uuid.uuid4()),
+                        app_version="task-book-integration-test",
+                    )
                 self.assertEqual(receipt["status"], "succeeded")
                 self.assertEqual(
                     {Path(item["path"]).name for item in receipt["artifacts"]},
@@ -560,6 +582,10 @@ class TaskBookExportIntegrationTests(unittest.TestCase):
                 self.assertEqual(
                     preview["template"]["pack_sha256"],
                     receipt["template"]["pack_sha256"],
+                )
+                self.assertEqual(repeated_preview["preview_id"], preview["preview_id"])
+                self.assertEqual(
+                    repeated_preview["generated_at"], preview["generated_at"]
                 )
                 self.assertEqual(
                     len(workspace.list_export_jobs(document_id=document["id"])),
@@ -621,11 +647,18 @@ class ProposalExportIntegrationTests(unittest.TestCase):
                         reason="manual",
                     )
 
+                    preview = generate_preview(
+                        workspace,
+                        document_id=document["id"],
+                        request_id=str(uuid.uuid4()),
+                        app_version="0.1.0",
+                    )
                     receipt = run_export(
                         workspace,
                         document_id=document["id"],
                         output_directory=str(output),
                         formats=["docx", "pdf"],
+                        preview_id=preview["preview_id"],
                     )
                 self.assertEqual(receipt["status"], "succeeded")
                 self.assertTrue(receipt["template"]["version"].startswith("0.2+workspace."))
@@ -634,6 +667,15 @@ class ProposalExportIntegrationTests(unittest.TestCase):
                     ["docx", "pdf"],
                 )
                 self.assertTrue(all(Path(item["path"]).is_file() for item in receipt["artifacts"]))
+                exported_pdf = next(
+                    Path(item["path"])
+                    for item in receipt["artifacts"]
+                    if item["format"] == "pdf"
+                )
+                self.assertEqual(
+                    exported_pdf.read_bytes(),
+                    Path(preview["pdf"]["absolute_path"]).read_bytes(),
+                )
                 self.assertEqual(
                     next(
                         check
@@ -672,13 +714,17 @@ class ProposalExportIntegrationTests(unittest.TestCase):
                     {"SZTU_DOCS_DATA_DIR": str(root_path / "data")},
                     clear=False,
                 ):
-                    preview = generate_preview(
+                    repeated_preview = generate_preview(
                         workspace,
                         document_id=document["id"],
                         request_id=str(uuid.uuid4()),
                         app_version="0.1.0",
                     )
                 self.assertGreaterEqual(len(preview["pages"]), 1)
+                self.assertEqual(repeated_preview["preview_id"], preview["preview_id"])
+                self.assertEqual(
+                    repeated_preview["generated_at"], preview["generated_at"]
+                )
                 self.assertTrue(
                     all(
                         Path(page["absolute_path"]).is_file()

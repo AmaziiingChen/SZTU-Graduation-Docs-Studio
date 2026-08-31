@@ -24,6 +24,7 @@ from sztu_docs_backend.storage.migrations import (
     v0002_export_pipeline,
     v0003_student_profile_shared_fields,
     v0004_student_profile_thesis_title,
+    v0005_document_recycle_bin,
 )
 from sztu_docs_backend.storage.paths import DATA_DIR_ENV
 
@@ -104,7 +105,7 @@ class StorageTests(unittest.TestCase):
             version = database.connection.execute(
                 "SELECT MAX(version) FROM schema_migrations"
             ).fetchone()[0]
-            self.assertEqual(version, 4)
+            self.assertEqual(version, 5)
 
     def test_environment_variable_supplies_persistent_data_directory(self) -> None:
         with patch.dict(os.environ, {DATA_DIR_ENV: str(self.data_dir)}):
@@ -274,6 +275,55 @@ class StorageTests(unittest.TestCase):
             self.assertEqual(current["content"], {"sequence": 4})
             self.assertEqual(current["save_reason"], "auto")
 
+    def test_document_copy_recycle_restore_and_permanent_delete(self) -> None:
+        exported_file = Path(self.temporary_directory.name) / "already-exported.docx"
+        exported_file.write_bytes(b"synthetic export")
+        with Workspace.open_persistent(self.data_dir) as workspace:
+            profile = workspace.save_profile(synthetic_profile())
+            source = workspace.create_document(synthetic_document(profile["id"]))
+            workspace.save_draft(source["id"], {"body": "独立副本内容"}, 0)
+
+            copied_payload = synthetic_document(profile["id"])
+            copied_payload.update(
+                {"title": "合成副本", "source_document_id": source["id"]}
+            )
+            copied = workspace.create_document(copied_payload)
+            self.assertEqual(copied["content"], {"body": "独立副本内容"})
+            self.assertEqual(copied["current_revision"], 1)
+            workspace.save_draft(copied["id"], {"body": "副本已修改"}, 1)
+            self.assertEqual(
+                workspace.get_document(source["id"])["content"],
+                {"body": "独立副本内容"},
+            )
+
+            renamed = workspace.rename_document(copied["id"], "重命名副本")
+            self.assertEqual(renamed["title"], "重命名副本")
+            workspace.delete_document(copied["id"])
+            with self.assertRaises(NotFoundError):
+                workspace.get_document(copied["id"])
+            self.assertEqual(
+                [item["id"] for item in workspace.list_deleted_documents()],
+                [copied["id"]],
+            )
+
+            restored = workspace.restore_document(copied["id"])
+            self.assertEqual(restored["content"], {"body": "副本已修改"})
+            active_preview = self.data_dir / "previews" / copied["id"] / "active"
+            active_preview.mkdir(parents=True)
+            (active_preview / "page.png").write_bytes(b"active cache")
+            with self.assertRaises(NotFoundError):
+                workspace.purge_document(copied["id"])
+            self.assertTrue(active_preview.exists())
+            workspace.delete_document(copied["id"])
+            preview_directory = self.data_dir / "previews" / copied["id"] / "cached"
+            preview_directory.mkdir(parents=True)
+            (preview_directory / "page.png").write_bytes(b"cache")
+            workspace.purge_document(copied["id"])
+            self.assertFalse((self.data_dir / "previews" / copied["id"]).exists())
+            self.assertEqual(workspace.list_deleted_documents(), [])
+
+        self.assertTrue(exported_file.exists())
+
     def test_temporary_workspace_never_creates_a_database_and_close_clears_it(self) -> None:
         with patch.dict(os.environ, {DATA_DIR_ENV: str(self.data_dir)}):
             workspace = Workspace.create_temporary()
@@ -415,6 +465,24 @@ class StorageTests(unittest.TestCase):
             self.assertIn("idx_export_jobs_request_id", indexes)
             self.assertIn("idx_export_jobs_active_document", indexes)
 
+    def test_document_recycle_bin_migration_is_idempotent(self) -> None:
+        with Database.open_persistent(self.data_dir) as database:
+            with database.transaction(immediate=True) as connection:
+                v0005_document_recycle_bin.apply(connection)
+                v0005_document_recycle_bin.apply(connection)
+            columns = [
+                row["name"]
+                for row in database.connection.execute("PRAGMA table_info(documents)")
+            ]
+            self.assertEqual(columns.count("soft_deleted_at"), 1)
+            indexes = {
+                row["name"]
+                for row in database.connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'index'"
+                )
+            }
+            self.assertIn("idx_documents_recycle_bin", indexes)
+
     def test_student_profile_shared_fields_migration_is_idempotent(self) -> None:
         with Database.open_persistent(self.data_dir) as database:
             with database.transaction(immediate=True) as connection:
@@ -489,7 +557,7 @@ class StorageTests(unittest.TestCase):
             version = migrated.connection.execute(
                 "SELECT MAX(version) FROM schema_migrations"
             ).fetchone()[0]
-            self.assertEqual(version, 4)
+            self.assertEqual(version, 5)
             self.assertEqual(row["status"], "failed")
             self.assertEqual(row["progress"], 100)
             self.assertEqual(row["error_code"], "EXPORT_INTERRUPTED")
@@ -692,7 +760,7 @@ class StorageTests(unittest.TestCase):
             raise RuntimeError("synthetic migration failure")
 
         plan = DEFAULT_MIGRATIONS + (
-            Migration(5, "synthetic_failure", failing_migration),
+            Migration(6, "synthetic_failure", failing_migration),
         )
         with self.assertRaises(MigrationError) as caught:
             Database.open_persistent(self.data_dir, migrations=plan)
@@ -711,7 +779,7 @@ class StorageTests(unittest.TestCase):
             raw.close()
         self.assertEqual(major, "示例专业")
         self.assertIsNone(partial)
-        self.assertEqual(version, 4)
+        self.assertEqual(version, 5)
 
         backups = list((self.data_dir / "backups").glob(f"{BACKUP_PREFIX}*.sqlite3"))
         self.assertEqual(len(backups), 1)

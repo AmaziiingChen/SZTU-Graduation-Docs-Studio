@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest"
 
 import {
   SidecarClient,
+  SidecarError,
   isSidecarProgressEnvelope,
   isSidecarResponseEnvelope,
+  shouldRetrySidecarRequest,
 } from "../electron/sidecar-client"
 
 const requestId = "123e4567-e89b-42d3-a456-426614174000"
@@ -77,5 +79,33 @@ describe("SidecarClient protocol boundary", () => {
     await expect(request("document.teleport")).rejects.toMatchObject({
       code: "INVALID_METHOD",
     })
+  })
+
+  it("retries one recoverable read request but never a write", () => {
+    const exited = new SidecarError("SIDECAR_EXITED", "Sidecar exited.")
+    expect(shouldRetrySidecarRequest("environment.check", exited, 0)).toBe(true)
+    expect(shouldRetrySidecarRequest("preview.generate", exited, 0)).toBe(true)
+    expect(shouldRetrySidecarRequest("workspace.saveDraft", exited, 0)).toBe(false)
+    expect(shouldRetrySidecarRequest("workspace.deleteDocument", exited, 0)).toBe(false)
+    expect(shouldRetrySidecarRequest("workspace.purgeDocument", exited, 0)).toBe(false)
+    expect(shouldRetrySidecarRequest("export.run", exited, 0)).toBe(false)
+    expect(shouldRetrySidecarRequest("environment.check", exited, 1)).toBe(false)
+  })
+
+  it("does not retry protocol errors or timeouts", () => {
+    expect(
+      shouldRetrySidecarRequest(
+        "environment.check",
+        new SidecarError("INVALID_SIDECAR_JSON", "Invalid JSON."),
+        0,
+      ),
+    ).toBe(false)
+    expect(
+      shouldRetrySidecarRequest(
+        "environment.check",
+        new SidecarError("REQUEST_TIMEOUT", "Timed out."),
+        0,
+      ),
+    ).toBe(false)
   })
 })

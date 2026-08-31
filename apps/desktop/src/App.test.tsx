@@ -69,6 +69,21 @@ const environmentResult = {
   ],
 }
 
+function environmentWithUnavailableTemplate(checkId: string) {
+  return {
+    ...environmentResult,
+    checks: environmentResult.checks.map((check) =>
+      check.id === checkId
+        ? {
+            ...check,
+            status: "warn" as const,
+            message: "当前文档模板工程不可用，请重新关联。",
+          }
+        : check,
+    ),
+  }
+}
+
 const profile: StudentProfile = {
   id: "profile-fixture",
   full_name: "合成学生甲",
@@ -150,6 +165,36 @@ const contentCheck = {
   checked_at: "2026-08-30T00:00:02Z",
 }
 
+const pdfStructureCheck = {
+  ...contentCheck,
+  check_id: "pdf-structure",
+  gate: "structure" as const,
+  message: "PDF 页面尺寸与字体信息已检查。",
+}
+
+const cjkGlyphCheck = {
+  ...contentCheck,
+  check_id: "pdf-cjk-glyph",
+  gate: "cjk_glyph" as const,
+  message: "PDF 中文字形检查通过。",
+}
+
+const docxStructureCheck = {
+  ...contentCheck,
+  check_id: "docx-deep-structure",
+  gate: "structure" as const,
+  message: "Word 文件结构检查通过。",
+}
+
+const pendingTargetEditorCheck = {
+  ...contentCheck,
+  check_id: "target-editor",
+  gate: "target_editor" as const,
+  status: "not_checked" as const,
+  blocking: false,
+  message: "尚未记录当前导出产物的 Word/WPS 人工验收。",
+}
+
 const exportReceipt = {
   schema_version: "1.0" as const,
   export_id: "export-fixture",
@@ -175,7 +220,7 @@ const exportReceipt = {
       size_bytes: 2345,
     },
   ],
-  checks: [contentCheck],
+  checks: [contentCheck, pdfStructureCheck, cjkGlyphCheck],
   generated_at: "2026-08-30T00:00:03Z",
 }
 
@@ -219,7 +264,7 @@ const previewResult = {
       data_url: "data:image/png;base64,iVBORw0KGgo=",
     },
   ],
-  checks: [contentCheck],
+  checks: [contentCheck, pdfStructureCheck, cjkGlyphCheck],
   generated_at: "2026-08-30T00:00:02Z",
 }
 
@@ -243,7 +288,7 @@ const historyJob = {
       size_bytes: 1234,
       file_state: "available" as const,
       replaced_existing: false,
-      checks: [],
+      checks: [docxStructureCheck, pendingTargetEditorCheck],
     },
   ],
   created_at: "2026-08-30T00:00:02Z",
@@ -326,6 +371,16 @@ function mockApi(): SztuDesktopApi {
       platform: "darwin",
     }),
     checkEnvironment: vi.fn().mockResolvedValue(environmentResult),
+    prepareDiagnosticReport: vi.fn().mockResolvedValue({
+      reportId: "11111111-1111-4111-8111-111111111111",
+      createdAt: "2026-08-31T12:00:00Z",
+      sizeBytes: 4096,
+      operationCount: 12,
+      environmentCheckCount: environmentResult.checks.length,
+      sourceFieldsRemoved: 8,
+      privacyStatus: "passed",
+    }),
+    saveDiagnosticReport: vi.fn().mockResolvedValue({ saved: true }),
     getPrivacyNoticeStatus: vi.fn().mockResolvedValue({
       noticeVersion: "1.1",
       acknowledged: true,
@@ -353,6 +408,7 @@ function mockApi(): SztuDesktopApi {
       profile_draft: null,
       document: documentFixture(),
       documents: [documentFixture()],
+      deleted_documents: [],
     }),
     saveProfileDraft: vi.fn().mockImplementation(async (profileDraft) => profileDraft),
     saveProfile: vi.fn().mockResolvedValue(profile),
@@ -372,6 +428,39 @@ function mockApi(): SztuDesktopApi {
       profile_draft: null,
       document: documentFixture({ id: documentId }),
       documents: [documentFixture({ id: documentId })],
+      deleted_documents: [],
+    })),
+    renameDocument: vi.fn().mockImplementation(async () => ({
+      mode: "persistent" as const,
+      profile,
+      profile_draft: null,
+      document: documentFixture(),
+      documents: [documentFixture()],
+      deleted_documents: [],
+    })),
+    deleteDocument: vi.fn().mockImplementation(async () => ({
+      mode: "persistent" as const,
+      profile,
+      profile_draft: null,
+      document: documentFixture(),
+      documents: [documentFixture()],
+      deleted_documents: [],
+    })),
+    restoreDocument: vi.fn().mockImplementation(async () => ({
+      mode: "persistent" as const,
+      profile,
+      profile_draft: null,
+      document: documentFixture(),
+      documents: [documentFixture()],
+      deleted_documents: [],
+    })),
+    purgeDocument: vi.fn().mockImplementation(async () => ({
+      mode: "persistent" as const,
+      profile,
+      profile_draft: null,
+      document: documentFixture(),
+      documents: [documentFixture()],
+      deleted_documents: [],
     })),
     saveDraft: vi.fn().mockResolvedValue({
       document_id: "document-fixture",
@@ -385,6 +474,7 @@ function mockApi(): SztuDesktopApi {
       profile_draft: null,
       document: documentFixture(),
       documents: [documentFixture()],
+      deleted_documents: [],
     }),
     checkDocument: vi.fn().mockResolvedValue({ checks: [contentCheck] }),
     generatePreview: vi.fn().mockResolvedValue(previewResult),
@@ -409,9 +499,13 @@ function mockApi(): SztuDesktopApi {
       schema_version: "1.0",
       history: [],
     }),
-    openExportArtifact: vi.fn().mockResolvedValue({
+    revealExportArtifact: vi.fn().mockResolvedValue({
       artifact_id: "artifact-docx-fixture",
-      opened: true,
+      revealed: true,
+    }),
+    deleteExportHistory: vi.fn().mockResolvedValue({
+      export_id: "export-fixture",
+      deleted: true,
     }),
     installTemplatePack: vi.fn().mockResolvedValue({
       status: "linked",
@@ -494,10 +588,7 @@ async function openSharedThesisTitle() {
 }
 
 async function generateCurrentPreview(api: SztuDesktopApi) {
-  fireEvent.click(await screen.findByRole("button", { name: "排版预览" }))
-  fireEvent.click(
-    await screen.findByRole("button", { name: "生成排版预览" }),
-  )
+  fireEvent.click(await screen.findByRole("button", { name: "预览&导出" }))
   await waitFor(() =>
     expect(api.generatePreview).toHaveBeenCalledWith({
       requestId: expect.any(String),
@@ -507,7 +598,35 @@ async function generateCurrentPreview(api: SztuDesktopApi) {
   expect(
     await screen.findByRole("img", { name: "排版预览第 1 页" }),
   ).toBeInTheDocument()
-  fireEvent.click(screen.getByRole("button", { name: "Close" }))
+}
+
+function closePreviewDrawer() {
+  const closeButton = document.querySelector<HTMLElement>(
+    '[data-slot="sheet-close"]',
+  )
+  if (closeButton) {
+    fireEvent.click(closeButton)
+    return
+  }
+
+  const backdrop = document.querySelector<HTMLElement>(
+    '[data-slot="sheet-overlay"]',
+  )
+  if (backdrop) {
+    fireEvent.mouseDown(backdrop, { button: 0 })
+    fireEvent.mouseUp(backdrop, { button: 0 })
+    fireEvent.click(backdrop)
+  }
+}
+
+function closePreviewDrawerFromBackdrop() {
+  const backdrop = document.querySelector<HTMLElement>(
+    '[data-slot="sheet-overlay"]',
+  )
+  expect(backdrop).not.toBeNull()
+  fireEvent.mouseDown(backdrop!, { button: 0 })
+  fireEvent.mouseUp(backdrop!, { button: 0 })
+  fireEvent.click(backdrop!)
 }
 
 describe("M3 workbench persistence", () => {
@@ -560,15 +679,19 @@ describe("M3 workbench persistence", () => {
   it("restores the active persistent profile and document", async () => {
     renderApp()
 
+    const savedStatus = await screen.findByLabelText("保存状态：已保存")
+    expect(savedStatus).toHaveClass(
+      "border-emerald-200",
+      "bg-emerald-50",
+      "text-emerald-700",
+    )
     expect(
-      await screen.findByLabelText("保存状态：已保存"),
-    ).toBeInTheDocument()
-    expect(
-      screen.queryByRole("dialog", { name: "排版预览" }),
+      screen.queryByRole("dialog", { name: "预览&导出" }),
     ).not.toBeInTheDocument()
     expect(screen.queryByText("尚未生成预览")).not.toBeInTheDocument()
     expect(screen.queryByText("本机环境")).not.toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "导出" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "预览&导出" })).toBeEnabled()
+    expect(screen.queryByRole("button", { name: "导出" })).not.toBeInTheDocument()
     expect(await openSharedThesisTitle()).toHaveTextContent("合成开题报告")
   })
 
@@ -580,12 +703,18 @@ describe("M3 workbench persistence", () => {
       "data-variant",
       "inset",
     )
-    expect(
-      container
-        .querySelector<HTMLElement>('[data-slot="sidebar-wrapper"]')
-        ?.style.getPropertyValue("--sidebar-width"),
-    ).toBe("14rem")
-    expect(container.querySelector('[data-slot="sidebar-inset"]')).toBeInTheDocument()
+    const sidebarWrapper = container.querySelector<HTMLElement>(
+      '[data-slot="sidebar-wrapper"]',
+    )
+    expect(sidebarWrapper?.style.getPropertyValue("--sidebar-width")).toBe("14rem")
+    expect(sidebarWrapper).toHaveClass("h-svh", "min-h-0", "overflow-hidden")
+
+    const sidebarInset = container.querySelector<HTMLElement>(
+      '[data-slot="sidebar-inset"]',
+    )
+    expect(sidebarInset).toBeInTheDocument()
+    expect(sidebarInset).toHaveClass("min-h-0", "overflow-hidden")
+    expect(sidebarInset).not.toHaveClass("h-svh")
     expect(
       screen.getByRole("heading", { level: 1, name: "2026届开题报告工作台" }),
     ).toBeInTheDocument()
@@ -603,13 +732,23 @@ describe("M3 workbench persistence", () => {
     const header = container.querySelector("header")
     expect(header).not.toBeNull()
     expect(within(header!).getByRole("button", { name: "检查内容" })).toBeInTheDocument()
-    expect(within(header!).getByRole("button", { name: "排版预览" })).toBeInTheDocument()
-    expect(within(header!).getByRole("button", { name: "导出" })).toBeInTheDocument()
+    expect(within(header!).getByRole("button", { name: "预览&导出" })).toBeInTheDocument()
+    expect(within(header!).queryByRole("button", { name: "导出" })).not.toBeInTheDocument()
+    const sectionNavigation = screen.getByRole("navigation", {
+      name: "当前文档板块",
+    }).closest('[data-slot="document-section-nav"]')
+    expect(sectionNavigation).toHaveClass(
+      "w-(--sidebar-width)",
+      "shrink-0",
+    )
+    expect(
+      container.querySelector('[data-slot="resizable-handle"]'),
+    ).not.toBeInTheDocument()
     expect(
       (await screen.findByRole("textbox", {
         name: "本选题的意义及国内外发展状况",
       })).closest('[data-slot="card"]'),
-    ).toHaveClass("border-0", "shadow-none")
+    ).toHaveClass("border-0", "shadow-none", "ring-0")
     expect(screen.queryByRole("button", { name: "预览与检查" })).not.toBeInTheDocument()
     expect(await openSharedThesisTitle()).toHaveTextContent("合成开题报告")
   })
@@ -655,7 +794,7 @@ describe("M3 workbench persistence", () => {
     )
     expect(api.saveDraft).not.toHaveBeenCalled()
 
-    fireEvent.click(screen.getByRole("button", { name: "开题报告" }))
+    fireEvent.click(screen.getByRole("button", { name: "合成开题报告" }))
     expect(
       await screen.findByRole("heading", {
         level: 1,
@@ -863,12 +1002,17 @@ describe("M3 workbench persistence", () => {
     expect(
       screen.getByRole("heading", { level: 1, name: "检查与导出" }),
     ).toBeInTheDocument()
-    expect(screen.getByText("本机环境")).toBeInTheDocument()
-    expect(screen.getByText("文档质量")).toBeInTheDocument()
+    expect(screen.getByText("当前状态")).toBeInTheDocument()
+    expect(screen.queryByText("文档质量")).not.toBeInTheDocument()
+    expect(screen.queryByText("Python 3.14.4 is supported.")).not.toBeInTheDocument()
+    expect(screen.getByText("故障诊断包")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "创建诊断包" })).toBeInTheDocument()
+    expect(screen.queryByText("高级信息与故障诊断")).not.toBeInTheDocument()
+    expect(screen.queryByText("本机环境")).not.toBeInTheDocument()
     expect(screen.queryByText("尚未生成预览")).not.toBeInTheDocument()
     expect(screen.queryByText("预览与检查")).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole("button", { name: "开题报告" }))
+    fireEvent.click(screen.getByRole("button", { name: "合成开题报告" }))
     expect(
       (await screen.findAllByRole("heading", {
         level: 1,
@@ -879,30 +1023,129 @@ describe("M3 workbench persistence", () => {
     expect(await openSharedThesisTitle()).toHaveTextContent("合成开题报告")
   })
 
-  it("generates a paginated preview only after the explicit action", async () => {
+  it("creates and saves a privacy-scanned local diagnostic package", async () => {
+    const api = mockApi()
+    installApi(api)
+    renderApp()
+
+    await openOperationsPanel()
+    expect(screen.getByRole("button", { name: "发送诊断包" })).toBeDisabled()
+    fireEvent.click(screen.getByRole("button", { name: "创建诊断包" }))
+
+    expect(
+      await screen.findByRole("dialog", { name: "诊断包已通过隐私扫描" }),
+    ).toBeInTheDocument()
+    expect(screen.getByText("12 条")).toBeInTheDocument()
+    expect(screen.getByText("4.0 KB")).toBeInTheDocument()
+    expect(screen.getByText("已移除 8 个原始说明或扩展字段。")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "保存到本机" }))
+    await waitFor(() =>
+      expect(api.saveDiagnosticReport).toHaveBeenCalledWith(
+        "11111111-1111-4111-8111-111111111111",
+      ),
+    )
+    expect(await screen.findByText("已保存到你选择的位置。")).toBeInTheDocument()
+  })
+
+  it("opens the drawer and generates a paginated preview on the first action", async () => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 1600,
+    })
     const api = mockApi()
     installApi(api)
     renderApp()
 
     expect(screen.queryByRole("img", { name: "排版预览第 1 页" })).not.toBeInTheDocument()
-    fireEvent.click(await screen.findByRole("button", { name: "排版预览" }))
+    fireEvent.click(await screen.findByRole("button", { name: "预览&导出" }))
     expect(
-      await screen.findByRole("dialog", { name: "排版预览" }),
+      await screen.findByRole("dialog", { name: "预览&导出" }),
     ).toBeInTheDocument()
-    expect(api.generatePreview).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByRole("button", { name: "生成排版预览" }))
     await waitFor(() =>
       expect(api.generatePreview).toHaveBeenCalledWith({
         requestId: expect.any(String),
         documentId: "document-fixture",
       }),
     )
+    const firstPage = await screen.findByRole("img", {
+      name: "排版预览第 1 页",
+    })
+    expect(firstPage).toBeInTheDocument()
+    expect(screen.getByLabelText("预览自动检查")).toBeInTheDocument()
+    expect(screen.getByText("PDF 文件结构")).toBeInTheDocument()
+    expect(screen.getByText("中文字形")).toBeInTheDocument()
+    expect(screen.queryByText("生成时自动完成")).not.toBeInTheDocument()
+    expect(firstPage.closest('[data-slot="card"]')).toBeNull()
+    const firstPageSurface = firstPage.closest<HTMLElement>(
+      '[data-slot="preview-page"]',
+    )
+    expect(firstPageSurface).toBeInTheDocument()
+    expect(firstPageSurface).toHaveStyle({
+      width: "100%",
+      aspectRatio: "210 / 297",
+    })
+    expect(screen.getByLabelText("预览缩放")).toBeInTheDocument()
+    expect(screen.getByText("自适应")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "放大预览" }))
+    expect(firstPageSurface).toHaveStyle({ width: "794px" })
+    expect(screen.getByText("100%")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "适合宽度" }))
+    expect(firstPageSurface).toHaveStyle({ width: "100%" })
+    expect(screen.queryByText("当前有效")).not.toBeInTheDocument()
+    expect(screen.queryByText(/^模板 /)).not.toBeInTheDocument()
+    expect(screen.queryByText("第 1 页")).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "重新生成" })).not.toBeInTheDocument()
+    const previewDrawer = firstPage.closest<HTMLElement>(
+      '[data-slot="sheet-content"]',
+    )
+    const acceptanceBoundary = await screen.findByText("验收边界")
+    expect(acceptanceBoundary.closest("[data-sonner-toast]")).not.toBeNull()
+    expect(previewDrawer).not.toContainElement(acceptanceBoundary)
     expect(
-      await screen.findByRole("img", { name: "排版预览第 1 页" }),
+      screen.getByText(
+        "这里显示正式模板生成的 PDF 页面，但与 Word/WPS 中的最终效果可能存在差异，仍需在目标编辑器中人工验收。",
+      ),
     ).toBeInTheDocument()
-    expect(screen.getByText("当前有效")).toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: "Close" }))
+    expect(previewDrawer).toHaveClass(
+      "data-[side=right]:w-full",
+      "data-[side=right]:sm:max-w-none",
+    )
+    expect(previewDrawer).toHaveStyle({ width: "512px", maxWidth: "800px" })
+    const resizeHandle = screen.getByRole("separator", {
+      name: "调整预览抽屉宽度",
+    })
+    expect(resizeHandle).toHaveAttribute("aria-valuemin", "384")
+    expect(resizeHandle).toHaveAttribute("aria-valuemax", "800")
+    fireEvent.pointerDown(resizeHandle, { pointerId: 1, clientX: 1000 })
+    fireEvent.pointerMove(resizeHandle, { pointerId: 1, clientX: 700 })
+    fireEvent.pointerUp(resizeHandle, { pointerId: 1, clientX: 700 })
+    expect(previewDrawer).toHaveStyle({ width: "800px", maxWidth: "800px" })
+    fireEvent.keyDown(resizeHandle, { key: "Home" })
+    expect(previewDrawer).toHaveStyle({ width: "384px" })
+    fireEvent.keyDown(resizeHandle, { key: "ArrowLeft" })
+    expect(previewDrawer).toHaveStyle({ width: "416px" })
+    fireEvent.keyDown(resizeHandle, { key: "End" })
+    expect(previewDrawer).toHaveStyle({ width: "800px" })
     expect(screen.getByRole("button", { name: "导出" })).toBeEnabled()
+    expect(screen.queryByRole("button", { name: "Close" })).not.toBeInTheDocument()
+    const drawerHeader = previewDrawer?.querySelector<HTMLElement>(
+      '[data-slot="sheet-header"]',
+    )
+    expect(drawerHeader).not.toBeNull()
+    expect(within(drawerHeader!).getByRole("button", { name: "导出" })).toBeInTheDocument()
+
+    closePreviewDrawerFromBackdrop()
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "预览&导出" }),
+      ).not.toBeInTheDocument(),
+    )
+    fireEvent.click(screen.getByRole("button", { name: "预览&导出" }))
+    expect(await screen.findByRole("img", {
+      name: "排版预览第 1 页",
+    })).toBeInTheDocument()
+    expect(api.generatePreview).toHaveBeenCalledTimes(1)
+    expect(screen.getAllByText("验收边界")).toHaveLength(1)
   })
 
   it("marks the generated preview stale as soon as input changes", async () => {
@@ -911,15 +1154,15 @@ describe("M3 workbench persistence", () => {
     renderApp()
 
     await generateCurrentPreview(api)
+    closePreviewDrawerFromBackdrop()
     replaceRichText(
       screen.getByRole("textbox", { name: "本选题的意义及国内外发展状况" }),
       "预览后修改的选题意义",
     )
 
-    fireEvent.click(screen.getByRole("button", { name: "排版预览" }))
-    expect(screen.getByText("预览已过期")).toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: "Close" }))
-    expect(screen.getByRole("button", { name: "导出" })).toBeDisabled()
+    fireEvent.click(screen.getByRole("button", { name: "预览&导出" }))
+    await waitFor(() => expect(api.generatePreview).toHaveBeenCalledTimes(2))
+    expect(await screen.findByRole("button", { name: "导出" })).toBeEnabled()
   })
 
   it("never marks a preview for an older edit revision as current", async () => {
@@ -932,14 +1175,10 @@ describe("M3 workbench persistence", () => {
     installApi(api)
     renderApp()
 
-    fireEvent.click(await screen.findByRole("button", { name: "排版预览" }))
-    fireEvent.click(
-      await screen.findByRole("button", { name: "生成排版预览" }),
-    )
+    fireEvent.click(await screen.findByRole("button", { name: "预览&导出" }))
     await waitFor(() => expect(api.generatePreview).toHaveBeenCalledTimes(1))
-    fireEvent.click(screen.getByRole("button", { name: "Close" }))
     replaceRichText(
-      screen.getByRole("textbox", { name: "本选题的意义及国内外发展状况" }),
+      screen.getByLabelText("本选题的意义及国内外发展状况"),
       "预览生成期间修改的选题意义",
     )
     await act(async () => {
@@ -947,10 +1186,8 @@ describe("M3 workbench persistence", () => {
       await pendingPreview
     })
 
-    fireEvent.click(screen.getByRole("button", { name: "排版预览" }))
     expect(await screen.findByText("预览已过期")).toBeInTheDocument()
     expect(screen.queryByText("当前有效")).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: "Close" }))
     expect(screen.getByRole("button", { name: "导出" })).toBeDisabled()
   })
 
@@ -971,14 +1208,15 @@ describe("M3 workbench persistence", () => {
     installApi(api)
     renderApp()
 
-    const exportButton = await screen.findByRole("button", { name: "导出" })
+    fireEvent.click(await screen.findByRole("button", { name: "预览&导出" }))
+    expect(await screen.findByText("暂时无法生成预览")).toBeInTheDocument()
+    const exportButton = screen.getByRole("button", { name: "导出" })
     expect(exportButton).toBeDisabled()
     expect(exportButton).toHaveAttribute(
       "title",
       "请先在左侧“检查与导出”中关联可用的本地模板工程",
     )
-    fireEvent.click(await screen.findByRole("button", { name: "排版预览" }))
-    expect(await screen.findByText("暂时无法生成预览")).toBeInTheDocument()
+    expect(api.generatePreview).not.toHaveBeenCalled()
   })
 
   it("creates an unnamed proposal when no active document exists", async () => {
@@ -1046,6 +1284,76 @@ describe("M3 workbench persistence", () => {
     expect(screen.getByLabelText("保存状态：已保存")).toBeInTheDocument()
   })
 
+  it("autosaves document changes without rewriting the completed profile", async () => {
+    const api = mockApi()
+    installApi(api)
+    renderApp()
+
+    const significance = await screen.findByLabelText(
+      "本选题的意义及国内外发展状况",
+    )
+    vi.useFakeTimers()
+    replaceRichText(significance, "只需要保存正文的选题意义")
+    await act(async () => vi.advanceTimersByTimeAsync(700))
+
+    expect(api.saveDraft).toHaveBeenCalledTimes(1)
+    expect(api.saveProfileDraft).not.toHaveBeenCalled()
+    expect(api.saveProfile).not.toHaveBeenCalled()
+    expect(screen.getByLabelText("保存状态：已保存")).toBeInTheDocument()
+  })
+
+  it("skips autosave IPC when an edit returns to the persisted value", async () => {
+    const api = mockApi()
+    installApi(api)
+    renderApp()
+
+    fireEvent.click(await screen.findByRole("button", { name: "学生档案" }))
+    const advisorTitle = screen.getByLabelText("指导教师职称")
+    vi.useFakeTimers()
+    fireEvent.change(advisorTitle, { target: { value: "教授" } })
+    fireEvent.change(advisorTitle, { target: { value: "副教授" } })
+    await act(async () => vi.advanceTimersByTimeAsync(700))
+
+    expect(api.saveProfileDraft).not.toHaveBeenCalled()
+    expect(api.saveProfile).not.toHaveBeenCalled()
+    expect(api.saveDraft).not.toHaveBeenCalled()
+    expect(screen.getByLabelText("保存状态：已保存")).toBeInTheDocument()
+  })
+
+  it("retries only the still-dirty document after a mixed save partially succeeds", async () => {
+    const api = mockApi()
+    vi.mocked(api.saveDraft).mockRejectedValueOnce(
+      new Error("DOCUMENT_DRAFT_SAVE_FAILED"),
+    )
+    installApi(api)
+    renderApp()
+
+    const significance = await screen.findByLabelText(
+      "本选题的意义及国内外发展状况",
+    )
+    replaceRichText(significance, "等待重试的正文")
+    fireEvent.click(screen.getByRole("button", { name: "学生档案" }))
+    fireEvent.change(screen.getByLabelText("指导教师职称"), {
+      target: { value: "教授" },
+    })
+    await waitFor(() => expect(api.saveDraft).toHaveBeenCalledTimes(1), {
+      timeout: 2_000,
+    })
+
+    expect(api.saveProfileDraft).toHaveBeenCalledTimes(1)
+    expect(api.saveProfile).toHaveBeenCalledTimes(1)
+    expect(screen.getByLabelText("保存状态：保存失败")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "合成开题报告" }))
+    fireEvent.click(screen.getByRole("button", { name: "重试保存" }))
+    await waitFor(() =>
+      expect(screen.getByLabelText("保存状态：已保存")).toBeInTheDocument(),
+    )
+    expect(api.saveProfileDraft).toHaveBeenCalledTimes(1)
+    expect(api.saveProfile).toHaveBeenCalledTimes(1)
+    expect(api.saveDraft).toHaveBeenCalledTimes(2)
+  })
+
   it("does not check or preview an older revision when editing continues during save", async () => {
     const api = mockApi()
     let resolveSave!: (value: SaveDraftResult) => void
@@ -1060,10 +1368,9 @@ describe("M3 workbench persistence", () => {
       "本选题的意义及国内外发展状况",
     )
     replaceRichText(significance, "等待保存的选题意义")
-    fireEvent.click(screen.getByRole("button", { name: "排版预览" }))
-    fireEvent.click(screen.getByRole("button", { name: "生成排版预览" }))
+    fireEvent.click(screen.getByRole("button", { name: "预览&导出" }))
     await waitFor(() => expect(api.saveDraft).toHaveBeenCalledTimes(1))
-    fireEvent.click(screen.getByRole("button", { name: "Close" }))
+    closePreviewDrawer()
 
     replaceRichText(significance, "保存等待期间继续编辑的选题意义")
     await act(async () => {
@@ -1351,7 +1658,9 @@ describe("M3 workbench persistence", () => {
     expect(screen.queryByLabelText("保存状态：已保存")).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "重新载入" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "检查内容" })).toBeDisabled()
-    expect(screen.getByRole("button", { name: "排版预览" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "预览&导出" })).toBeDisabled()
+    expect(api.saveProfileDraft).not.toHaveBeenCalled()
+    expect(api.saveProfile).not.toHaveBeenCalled()
     expect(api.checkDocument).not.toHaveBeenCalled()
     expect(api.generatePreview).not.toHaveBeenCalled()
   })
@@ -1364,6 +1673,7 @@ describe("M3 workbench persistence", () => {
     await generateCurrentPreview(api)
     const exportButton = await screen.findByRole("button", { name: "导出" })
     fireEvent.click(exportButton)
+    expect(await screen.findByRole("menu")).toHaveClass("w-56")
     fireEvent.click(
       await screen.findByRole("menuitem", {
         name: "同时导出 Word 和 PDF",
@@ -1376,19 +1686,22 @@ describe("M3 workbench persistence", () => {
     expect(api.chooseExportDirectory).toHaveBeenCalledTimes(1)
     expect(api.preflightExport).toHaveBeenCalledWith({
       documentId: "document-fixture",
+      previewId: "preview-fixture",
       outputDirectory: "/tmp/sztu-export-test",
       formats: ["docx", "pdf"],
     })
     expect(api.exportDocument).toHaveBeenCalledWith({
       requestId: expect.any(String),
       documentId: "document-fixture",
+      previewId: "preview-fixture",
       outputDirectory: "/tmp/sztu-export-test",
       formats: ["docx", "pdf"],
       overwriteConfirmed: false,
       preflightToken: "e".repeat(64),
     })
+    closePreviewDrawer()
     await openOperationsPanel()
-    expect(screen.getByText("/tmp/sztu-export-test/proposal.pdf")).toBeInTheDocument()
+    expect(screen.queryByText("/tmp/sztu-export-test/proposal.pdf")).not.toBeInTheDocument()
   })
 
   it("does not continue exporting when content changes during the export check", async () => {
@@ -1414,7 +1727,7 @@ describe("M3 workbench persistence", () => {
     await waitFor(() => expect(api.checkDocument).toHaveBeenCalledTimes(2))
 
     replaceRichText(
-      screen.getByRole("textbox", { name: "本选题的意义及国内外发展状况" }),
+      screen.getByLabelText("本选题的意义及国内外发展状况"),
       "导出检查期间修改的选题意义",
     )
     await act(async () => {
@@ -1456,6 +1769,7 @@ describe("M3 workbench persistence", () => {
     await waitFor(() =>
       expect(api.preflightExport).toHaveBeenCalledWith({
         documentId: "document-fixture",
+        previewId: "preview-fixture",
         outputDirectory: "/tmp/sztu-export-test",
         formats: ["tex"],
       }),
@@ -1463,10 +1777,11 @@ describe("M3 workbench persistence", () => {
     expect(api.exportDocument).toHaveBeenCalledWith(
       expect.objectContaining({ formats: ["tex"], overwriteConfirmed: false }),
     )
+    closePreviewDrawer()
     await openOperationsPanel()
     expect(
-      await screen.findByText("/tmp/sztu-export-test/开题报告-LaTeX.zip"),
-    ).toBeInTheDocument()
+      screen.queryByText("/tmp/sztu-export-test/开题报告-LaTeX.zip"),
+    ).not.toBeInTheDocument()
   })
 
   it("requires explicit confirmation before overwriting an existing output", async () => {
@@ -1514,6 +1829,7 @@ describe("M3 workbench persistence", () => {
     await generateCurrentPreview(api)
     fireEvent.click(await screen.findByRole("button", { name: "导出" }))
     fireEvent.click(await screen.findByRole("menuitem", { name: "导出 Word" }))
+    closePreviewDrawer()
     await openOperationsPanel()
     const cancelButton = await screen.findByRole("button", { name: "取消导出" })
     fireEvent.click(cancelButton)
@@ -1531,42 +1847,50 @@ describe("M3 workbench persistence", () => {
     ).toBeGreaterThan(0)
   })
 
-  it("refreshes history, opens artifacts, and records only explicit manual QA", async () => {
+  it("renders compact history actions, reveals artifacts, and records only explicit manual QA", async () => {
     const api = mockApi()
-    const pendingTargetEditorCheck = {
-      ...contentCheck,
-      check_id: "target-editor-pending",
-      gate: "target_editor" as const,
-      status: "not_checked" as const,
-      blocking: false,
-      message: "尚未记录当前导出产物的 Word/WPS 人工验收。",
+    const verifiedTargetEditorCheck = {
+      ...pendingTargetEditorCheck,
+      check_id: "target-editor-wps",
+      status: "pass" as const,
+      message: "WPS Office 人工验收已记录。",
     }
-    vi.mocked(api.checkDocument).mockResolvedValue({
-      checks: [contentCheck, pendingTargetEditorCheck],
-    })
-    vi.mocked(api.listExportHistory).mockResolvedValue({
-      schema_version: "1.0",
-      history: [historyJob],
-    })
+    vi.mocked(api.listExportHistory)
+      .mockResolvedValueOnce({
+        schema_version: "1.0",
+        history: [historyJob],
+      })
+      .mockResolvedValue({
+        schema_version: "1.0",
+        history: [
+          {
+            ...historyJob,
+            artifacts: historyJob.artifacts.map((artifact) => ({
+              ...artifact,
+              checks: [docxStructureCheck, verifiedTargetEditorCheck],
+            })),
+          },
+        ],
+      })
     installApi(api)
     renderApp()
 
-    fireEvent.click(await screen.findByRole("button", { name: "检查内容" }))
-    await waitFor(() => expect(api.checkDocument).toHaveBeenCalledTimes(1))
     await openOperationsPanel()
-    expect(
-      await screen.findByText("尚未记录当前导出产物的 Word/WPS 人工验收。"),
-    ).toBeInTheDocument()
     expect(await screen.findByText("开题报告.docx")).toBeInTheDocument()
-    expect(screen.getByText("Word/WPS 人工验收未记录")).toBeInTheDocument()
+    expect(screen.getByText(/文件结构通过 · Word\/WPS待验收/)).toBeInTheDocument()
+    expect(screen.getByRole("columnheader", { name: "产物" })).toBeInTheDocument()
+    expect(screen.getByRole("columnheader", { name: "状态" })).toBeInTheDocument()
+    expect(screen.getByText("可用")).toBeInTheDocument()
     expect(api.recordQa).not.toHaveBeenCalled()
 
-    fireEvent.click(screen.getByRole("button", { name: "打开产物" }))
+    fireEvent.click(screen.getByRole("button", { name: /管理导出记录/ }))
+    fireEvent.click(await screen.findByRole("menuitem", { name: "打开本地位置" }))
     await waitFor(() =>
-      expect(api.openExportArtifact).toHaveBeenCalledWith("artifact-docx-fixture"),
+      expect(api.revealExportArtifact).toHaveBeenCalledWith("artifact-docx-fixture"),
     )
 
-    fireEvent.click(screen.getByRole("button", { name: "记录人工验收" }))
+    fireEvent.click(screen.getByRole("button", { name: /管理导出记录/ }))
+    fireEvent.click(await screen.findByRole("menuitem", { name: "记录人工验收" }))
     expect(await screen.findByText("记录 Word/WPS 人工验收")).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText("验收备注（可选）"), {
       target: { value: "已在虚构环境逐页检查。" },
@@ -1581,19 +1905,89 @@ describe("M3 workbench persistence", () => {
       editor: "wps",
       message: "已在虚构环境逐页检查。",
     })
-    expect(await screen.findByText("WPS Office 人工验收已记录。")).toBeInTheDocument()
     expect(
-      screen.queryByText("尚未记录当前导出产物的 Word/WPS 人工验收。"),
-    ).not.toBeInTheDocument()
+      await screen.findByText(/文件结构通过 · Word\/WPS通过/),
+    ).toBeInTheDocument()
   })
 
-  it("links a local template workspace and refreshes environment checks", async () => {
+  it("marks missing artifacts and deletes only their history record", async () => {
     const api = mockApi()
+    vi.mocked(api.listExportHistory).mockResolvedValue({
+      schema_version: "1.0",
+      history: [
+        {
+          ...historyJob,
+          artifacts: historyJob.artifacts.map((artifact) => ({
+            ...artifact,
+            file_state: "missing" as const,
+          })),
+        },
+      ],
+    })
     installApi(api)
     renderApp()
 
     await openOperationsPanel()
-    fireEvent.click(screen.getByRole("button", { name: "关联或更新本地模板工程" }))
+    expect(await screen.findByText("已删除或移动")).toBeInTheDocument()
+    const historyCallsBeforeFocus = vi.mocked(api.listExportHistory).mock.calls.length
+    window.dispatchEvent(new Event("focus"))
+    await waitFor(() =>
+      expect(api.listExportHistory).toHaveBeenCalledTimes(historyCallsBeforeFocus + 1),
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: /管理导出记录/ }))
+    expect(await screen.findByRole("menuitem", { name: "打开本地位置" })).toHaveAttribute(
+      "data-disabled",
+    )
+    fireEvent.click(screen.getByRole("menuitem", { name: "删除记录" }))
+    expect(await screen.findByText("删除这条导出记录？")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "删除记录" }))
+
+    await waitFor(() =>
+      expect(api.deleteExportHistory).toHaveBeenCalledWith({
+        documentId: "document-fixture",
+        exportId: "export-fixture",
+      }),
+    )
+    expect(await screen.findByText("当前文档还没有导出记录。")).toBeInTheDocument()
+  })
+
+  it("navigates a failed check to the matching editor field", async () => {
+    const api = mockApi()
+    const failedMethodsCheck = {
+      ...contentCheck,
+      check_id: "proposal-methods-required",
+      status: "fail" as const,
+      message: "请补充研究方法与手段。",
+      code: "DOCUMENT_NOT_READY",
+      details: { field: "sections.methods_and_means[0]" },
+    }
+    vi.mocked(api.checkDocument).mockResolvedValue({
+      checks: [failedMethodsCheck],
+    })
+    installApi(api)
+    renderApp()
+
+    fireEvent.click(await screen.findByRole("button", { name: "检查内容" }))
+    await waitFor(() => expect(api.checkDocument).toHaveBeenCalledTimes(1))
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("textbox", { name: "研究方法与手段" }),
+      ).toHaveFocus(),
+    )
+  })
+
+  it("links a local template workspace and refreshes environment checks", async () => {
+    const api = mockApi()
+    vi.mocked(api.checkEnvironment).mockResolvedValue(
+      environmentWithUnavailableTemplate("proposal_engine"),
+    )
+    installApi(api)
+    renderApp()
+
+    await openOperationsPanel()
+    fireEvent.click(screen.getByRole("button", { name: "重新关联模板" }))
     await waitFor(() => expect(api.installTemplatePack).toHaveBeenCalledTimes(1))
     expect(api.installTemplatePack).toHaveBeenCalledWith("proposal")
     await waitFor(() => expect(api.checkEnvironment).toHaveBeenCalledTimes(2))
@@ -1601,6 +1995,9 @@ describe("M3 workbench persistence", () => {
 
   it("switches to the submitted task-book template without repeating shared profile fields", async () => {
     const api = mockApi()
+    vi.mocked(api.checkEnvironment).mockResolvedValue(
+      environmentWithUnavailableTemplate("task_book_engine"),
+    )
     const proposal = documentFixture()
     const taskBook = taskBookDocumentFixture()
     vi.mocked(api.openWorkspace).mockResolvedValue({
@@ -1620,7 +2017,8 @@ describe("M3 workbench persistence", () => {
     installApi(api)
     renderApp()
 
-    fireEvent.click(await screen.findByRole("button", { name: /任务书/ }))
+    fireEvent.click(await screen.findByRole("button", { name: "任务书" }))
+    fireEvent.click(await screen.findByRole("button", { name: "合成任务书" }))
     await waitFor(() =>
       expect(api.selectDocument).toHaveBeenCalledWith("task-book-document"),
     )
@@ -1629,7 +2027,7 @@ describe("M3 workbench persistence", () => {
       await screen.findByText("2026届本科毕业论文（设计）任务书"),
     ).toBeInTheDocument()
     expect(screen.queryByRole("textbox", { name: "论文题目" })).toBeNull()
-    fireEvent.click(screen.getByRole("button", { name: /基本内容和要求/ }))
+    fireEvent.click(screen.getByRole("button", { name: /内容要求/ }))
     expect(
       screen.getByRole("textbox", { name: "基本内容和要求" }),
     ).toHaveTextContent(
@@ -1703,7 +2101,7 @@ describe("M3 workbench persistence", () => {
     expect(savedContent.metadata).not.toHaveProperty("advisor_title")
 
     await openOperationsPanel()
-    fireEvent.click(screen.getByRole("button", { name: "关联或更新本地模板工程" }))
+    fireEvent.click(screen.getByRole("button", { name: "重新关联模板" }))
     await waitFor(() =>
       expect(api.installTemplatePack).toHaveBeenCalledWith("task_book"),
     )
@@ -1711,6 +2109,9 @@ describe("M3 workbench persistence", () => {
 
   it("keeps one shared thesis title after switching documents", async () => {
     const api = mockApi()
+    vi.mocked(api.checkEnvironment).mockResolvedValue(
+      environmentWithUnavailableTemplate("midterm_engine"),
+    )
     const proposal = documentFixture()
     const taskBook = taskBookDocumentFixture()
     vi.mocked(api.openWorkspace).mockResolvedValue({
@@ -1730,7 +2131,8 @@ describe("M3 workbench persistence", () => {
     installApi(api)
     renderApp()
 
-    fireEvent.click(await screen.findByRole("button", { name: /任务书/ }))
+    fireEvent.click(await screen.findByRole("button", { name: "任务书" }))
+    fireEvent.click(await screen.findByRole("button", { name: "合成任务书" }))
     await waitFor(() =>
       expect(api.selectDocument).toHaveBeenCalledWith("task-book-document"),
     )
@@ -1763,10 +2165,19 @@ describe("M3 workbench persistence", () => {
         save_reason: null,
       }),
     )
+    vi.mocked(api.selectDocument).mockResolvedValue({
+      mode: "persistent",
+      profile,
+      profile_draft: null,
+      document: taskBookDocumentFixture({ id: "new-task-book" }),
+      documents: [proposal, taskBookDocumentFixture({ id: "new-task-book" })],
+      deleted_documents: [],
+    })
     installApi(api)
     renderApp()
 
-    fireEvent.click(await screen.findByRole("button", { name: /任务书/ }))
+    fireEvent.click(await screen.findByRole("button", { name: "新建任务书" }))
+    fireEvent.click(await screen.findByRole("button", { name: "新建" }))
     await waitFor(() =>
       expect(api.createDocument).toHaveBeenCalledWith({
         profile_id: profile.id,
@@ -1774,6 +2185,7 @@ describe("M3 workbench persistence", () => {
         template_version: "0.1+46b6d97",
         schema_version: "0.1",
         title: "未命名任务书",
+        source_document_id: undefined,
       }),
     )
     expect(
@@ -1881,10 +2293,7 @@ describe("M3 workbench persistence", () => {
     installApi(api)
     renderApp()
 
-    fireEvent.click(await screen.findByRole("button", { name: "排版预览" }))
-    fireEvent.click(
-      await screen.findByRole("button", { name: "生成排版预览" }),
-    )
+    fireEvent.click(await screen.findByRole("button", { name: "预览&导出" }))
     await waitFor(() =>
       expect(api.checkDocument).toHaveBeenCalledWith("task-book-document"),
     )
@@ -1894,13 +2303,13 @@ describe("M3 workbench persistence", () => {
         documentId: "task-book-document",
       }),
     )
-    fireEvent.click(screen.getByRole("button", { name: "Close" }))
     fireEvent.click(await screen.findByRole("button", { name: "导出" }))
     fireEvent.click(await screen.findByRole("menuitem", { name: "导出 Word" }))
 
     await waitFor(() =>
       expect(api.preflightExport).toHaveBeenCalledWith({
         documentId: "task-book-document",
+        previewId: "preview-fixture",
         outputDirectory: "/tmp/sztu-export-test",
         formats: ["docx"],
       }),
@@ -1908,6 +2317,7 @@ describe("M3 workbench persistence", () => {
     expect(api.exportDocument).toHaveBeenCalledWith({
       requestId: expect.any(String),
       documentId: "task-book-document",
+      previewId: "preview-fixture",
       outputDirectory: "/tmp/sztu-export-test",
       formats: ["docx"],
       overwriteConfirmed: false,
@@ -1934,12 +2344,19 @@ describe("M3 workbench persistence", () => {
     expect(
       await screen.findByText(/任务书必须从学生档案的毕业届别提取四位年份/),
     ).toBeInTheDocument()
+    expect(screen.getByRole("combobox", { name: "毕业届别" })).toHaveFocus()
     expect(api.checkDocument).not.toHaveBeenCalled()
-    expect(screen.getByRole("button", { name: "导出" })).toBeDisabled()
+    fireEvent.click(screen.getByRole("button", { name: "任务书" }))
+    fireEvent.click(screen.getByRole("button", { name: "合成任务书" }))
+    fireEvent.click(screen.getByRole("button", { name: "预览&导出" }))
+    expect(api.generatePreview).not.toHaveBeenCalled()
   })
 
   it("switches to an existing midterm document and exposes only student-owned fields", async () => {
     const api = mockApi()
+    vi.mocked(api.checkEnvironment).mockResolvedValue(
+      environmentWithUnavailableTemplate("midterm_engine"),
+    )
     const proposal = documentFixture()
     const midterm = documentFixture({
       id: "midterm-document",
@@ -1988,7 +2405,8 @@ describe("M3 workbench persistence", () => {
     installApi(api)
     renderApp()
 
-    fireEvent.click(await screen.findByRole("button", { name: /中期检查/ }))
+    fireEvent.click(await screen.findByRole("button", { name: "中期检查" }))
+    fireEvent.click(await screen.findByRole("button", { name: "中期检查表" }))
     await waitFor(() =>
       expect(api.selectDocument).toHaveBeenCalledWith("midterm-document"),
     )
@@ -2026,15 +2444,15 @@ describe("M3 workbench persistence", () => {
     expect(screen.getByLabelText("班级")).toHaveValue("示例一班")
     expect(screen.getByLabelText("指导教师职称")).toHaveValue("副教授")
     expect(screen.getByLabelText("毕业届别")).toHaveValue("2026届")
-    expect(screen.queryByText("排版预览")).not.toBeInTheDocument()
+    expect(screen.queryByText("预览&导出")).not.toBeInTheDocument()
     expect(screen.queryByText("档案与导出快照")).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "检查内容" })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "导出" })).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole("button", { name: /中期检查/ }))
+    fireEvent.click(screen.getByRole("button", { name: "中期检查表" }))
 
     await openOperationsPanel()
-    fireEvent.click(screen.getByRole("button", { name: "关联或更新本地模板工程" }))
+    fireEvent.click(screen.getByRole("button", { name: "重新关联模板" }))
     await waitFor(() =>
       expect(api.installTemplatePack).toHaveBeenCalledWith("midterm"),
     )
@@ -2083,7 +2501,8 @@ describe("M3 workbench persistence", () => {
     installApi(api)
     renderApp()
 
-    fireEvent.click(await screen.findByRole("button", { name: /主要研究内容/ }))
+    await screen.findByRole("heading", { name: "2026届中期检查工作台" })
+    fireEvent.click(screen.getByRole("button", { name: /研究内容/ }))
 
     expect(
       await screen.findByText("本栏包含暂不支持编辑的内容块"),
@@ -2114,9 +2533,9 @@ describe("environment boundary", () => {
     installApi(api)
     renderApp()
 
-    fireEvent.click(await screen.findByRole("button", { name: "排版预览" }))
+    fireEvent.click(await screen.findByRole("button", { name: "预览&导出" }))
     expect(await screen.findByText("暂时无法生成预览")).toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: "Close" }))
+    closePreviewDrawer()
     await openOperationsPanel()
     expect(screen.getByText("文档引擎未连接")).toBeInTheDocument()
     expect(screen.getByText("SIDECAR_EXITED")).toBeInTheDocument()

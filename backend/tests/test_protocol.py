@@ -379,6 +379,7 @@ class ProtocolTests(unittest.TestCase):
             "workspace.createDocument", {"document": document_payload()}
         )["result"]
         document_id = document["id"]
+        preview_id = str(uuid.uuid4())
         output_directory = str(Path(self.temporary_directory.name) / "output")
         preflight_result = {
             "schema_version": "1.0",
@@ -421,6 +422,7 @@ class ProtocolTests(unittest.TestCase):
                 "export.preflight",
                 {
                     "document_id": document_id,
+                    "preview_id": preview_id,
                     "output_directory": output_directory,
                     "formats": ["docx", "pdf"],
                 },
@@ -431,6 +433,7 @@ class ProtocolTests(unittest.TestCase):
                 {
                     "request_id": request_id,
                     "document_id": document_id,
+                    "preview_id": preview_id,
                     "output_directory": output_directory,
                     "formats": ["docx", "pdf"],
                     "preflight_token": preflight["preflight_token"],
@@ -442,6 +445,7 @@ class ProtocolTests(unittest.TestCase):
 
         self.assertEqual(response["result"], expected)
         self.assertEqual(run.call_args.kwargs["document_id"], document_id)
+        self.assertEqual(run.call_args.kwargs["preview_id"], preview_id)
         self.assertEqual(run.call_args.kwargs["formats"], ["docx", "pdf"])
         self.assertEqual(run.call_args.kwargs["request_id"], request_id)
         self.assertEqual(run.call_args.kwargs["preflight_token"], "3" * 64)
@@ -452,6 +456,7 @@ class ProtocolTests(unittest.TestCase):
             {
                 "request_id": str(uuid.uuid4()),
                 "document_id": document_id,
+                "preview_id": preview_id,
                 "output_directory": output_directory,
                 "formats": ["docx", "pdf"],
                 "preflight_token": preflight["preflight_token"],
@@ -527,6 +532,25 @@ class ProtocolTests(unittest.TestCase):
         self.assertNotIn("私密届别不得透传", encoded)
         artifact = response["result"]["history"][0]["artifacts"][0]
         self.assertEqual(artifact["display_name"], "开题报告.docx")
+
+    def test_export_history_delete_is_scoped_and_returns_no_paths(self) -> None:
+        self.open()
+        document_id = uuid.uuid4().hex
+        export_id = uuid.uuid4().hex
+        with patch(
+            "sztu_docs_backend.protocol.delete_export_history_record",
+            return_value={"export_id": export_id, "deleted": True},
+        ) as delete_record:
+            response = self.request(
+                "export.deleteHistory",
+                {"document_id": document_id, "export_id": export_id},
+            )
+
+        self.assertTrue(response["ok"])
+        self.assertEqual(response["result"], {"export_id": export_id, "deleted": True})
+        delete_record.assert_called_once()
+        self.assertEqual(delete_record.call_args.kwargs["document_id"], document_id)
+        self.assertEqual(delete_record.call_args.kwargs["export_id"], export_id)
 
     def test_internal_exception_is_not_exposed_or_traced(self) -> None:
         with patch(
@@ -641,6 +665,7 @@ class ProtocolTests(unittest.TestCase):
             "profile_draft": None,
             "document": None,
             "documents": [],
+            "deleted_documents": [],
         })
         profile = self.request(
             "workspace.saveProfile", {"profile": profile_payload()}
@@ -775,6 +800,57 @@ class ProtocolTests(unittest.TestCase):
         )
         self.assertNotIn("error", selected)
         self.assertEqual(selected["result"]["document"]["profile_id"], profile["id"])
+
+    def test_document_file_lifecycle_is_exposed_through_workspace_protocol(self) -> None:
+        self.open()
+        profile = self.request(
+            "workspace.saveProfile", {"profile": profile_payload()}
+        )["result"]
+        source = self.request(
+            "workspace.createDocument",
+            {"document": document_payload(profile["id"])},
+        )["result"]
+        self.request(
+            "workspace.saveDraft",
+            {
+                "document_id": source["id"],
+                "content": {"body": "用于复制的内容"},
+                "expected_revision": 0,
+            },
+        )
+        copied_payload = document_payload(profile["id"])
+        copied_payload.update(
+            {"title": "开题报告副本", "source_document_id": source["id"]}
+        )
+        copied = self.request(
+            "workspace.createDocument", {"document": copied_payload}
+        )["result"]
+        self.assertEqual(copied["content"], {"body": "用于复制的内容"})
+
+        renamed = self.request(
+            "workspace.renameDocument",
+            {"document_id": copied["id"], "title": "第二版开题报告"},
+        )["result"]
+        self.assertEqual(renamed["document"]["title"], "第二版开题报告")
+
+        recycled = self.request(
+            "workspace.deleteDocument", {"document_id": copied["id"]}
+        )["result"]
+        self.assertEqual([item["id"] for item in recycled["documents"]], [source["id"]])
+        self.assertEqual(
+            [item["id"] for item in recycled["deleted_documents"]],
+            [copied["id"]],
+        )
+
+        restored = self.request(
+            "workspace.restoreDocument", {"document_id": copied["id"]}
+        )["result"]
+        self.assertEqual(restored["document"]["id"], copied["id"])
+        self.request("workspace.deleteDocument", {"document_id": copied["id"]})
+        purged = self.request(
+            "workspace.purgeDocument", {"document_id": copied["id"]}
+        )["result"]
+        self.assertEqual(purged["deleted_documents"], [])
 
     def test_untrusted_record_id_is_not_reflected_in_storage_error(self) -> None:
         self.open()

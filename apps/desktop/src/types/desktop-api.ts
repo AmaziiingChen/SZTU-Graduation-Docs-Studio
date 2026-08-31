@@ -29,6 +29,20 @@ export type AppInfo = {
   platform: string
 }
 
+export type DiagnosticSummary = {
+  reportId: string
+  createdAt: string
+  sizeBytes: number
+  operationCount: number
+  environmentCheckCount: number
+  sourceFieldsRemoved: number
+  privacyStatus: "passed"
+}
+
+export type DiagnosticSaveResult = {
+  saved: boolean
+}
+
 export type PrivacyNoticeStatus = {
   noticeVersion: string
   acknowledged: boolean
@@ -113,6 +127,7 @@ export type DocumentInput = {
   template_version: string
   schema_version: string
   title: string
+  source_document_id?: string
 }
 
 export type DocumentRecord = {
@@ -130,6 +145,7 @@ export type DocumentRecord = {
   saved_at: string | null
   created_at: string
   updated_at: string
+  soft_deleted_at?: string | null
   restored_from_revision?: number
 }
 
@@ -139,6 +155,12 @@ export type WorkspaceState = {
   profile_draft: StudentProfileDraft | null
   document: DocumentRecord | null
   documents: DocumentRecord[]
+  deleted_documents: DocumentRecord[]
+}
+
+export type RenameDocumentInput = {
+  documentId: string
+  title: string
 }
 
 export type SaveDraftInput = {
@@ -234,6 +256,7 @@ export type ExportReceipt = {
 export type ExportDocumentInput = {
   requestId: string
   documentId: string
+  previewId: string
   outputDirectory: string
   formats: ExportFormat[]
   overwriteConfirmed: boolean
@@ -242,6 +265,7 @@ export type ExportDocumentInput = {
 
 export type ExportPreflightInput = {
   documentId: string
+  previewId: string
   formats: ExportFormat[]
   outputDirectory: string
 }
@@ -318,10 +342,19 @@ export type ExportCancelResult = {
   cancel_requested_at: string | null
 }
 
-export type OpenArtifactResult = {
+export type RevealArtifactResult = {
   artifact_id: string
-  opened: boolean
-  application_error?: string
+  revealed: true
+}
+
+export type DeleteExportHistoryInput = {
+  documentId: string
+  exportId: string
+}
+
+export type DeleteExportHistoryResult = {
+  export_id: string
+  deleted: true
 }
 
 export type TemplateInstallResult = {
@@ -360,6 +393,8 @@ export type RecordQaResult = {
 export type SztuDesktopApi = {
   getAppInfo: () => Promise<AppInfo>
   checkEnvironment: () => Promise<EnvironmentResult>
+  prepareDiagnosticReport: () => Promise<DiagnosticSummary>
+  saveDiagnosticReport: (reportId: string) => Promise<DiagnosticSaveResult>
   getPrivacyNoticeStatus: () => Promise<PrivacyNoticeStatus>
   acceptPrivacyNotice: () => Promise<PrivacyNoticeStatus>
   quitApp: () => Promise<null>
@@ -372,6 +407,10 @@ export type SztuDesktopApi = {
   saveProfile: (profile: StudentProfileInput) => Promise<StudentProfile>
   createDocument: (document: DocumentInput) => Promise<DocumentRecord>
   selectDocument: (documentId: string) => Promise<WorkspaceState>
+  renameDocument: (input: RenameDocumentInput) => Promise<WorkspaceState>
+  deleteDocument: (documentId: string) => Promise<WorkspaceState>
+  restoreDocument: (documentId: string) => Promise<WorkspaceState>
+  purgeDocument: (documentId: string) => Promise<WorkspaceState>
   saveDraft: (input: SaveDraftInput) => Promise<SaveDraftResult>
   closeTemporary: (documentId: string) => Promise<WorkspaceState>
   checkDocument: (documentId: string) => Promise<DocumentCheckResult>
@@ -381,7 +420,8 @@ export type SztuDesktopApi = {
   exportDocument: (input: ExportDocumentInput) => Promise<ExportReceipt>
   cancelExport: (requestId: string) => Promise<ExportCancelResult>
   listExportHistory: (input: ExportHistoryInput) => Promise<ExportHistoryResult>
-  openExportArtifact: (artifactId: string) => Promise<OpenArtifactResult>
+  revealExportArtifact: (artifactId: string) => Promise<RevealArtifactResult>
+  deleteExportHistory: (input: DeleteExportHistoryInput) => Promise<DeleteExportHistoryResult>
   installTemplatePack: (documentType: DocumentType) => Promise<TemplateInstallResult | null>
   recordQa: (input: RecordQaInput) => Promise<RecordQaResult>
 }
