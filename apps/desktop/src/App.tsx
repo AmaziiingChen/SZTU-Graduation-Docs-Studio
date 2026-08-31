@@ -138,6 +138,7 @@ import {
   reconcileAutosaveFingerprints,
 } from "@/lib/autosave-coordinator"
 import { formatBibtex } from "@/lib/bibtex"
+import { cn } from "@/lib/utils"
 import {
   checkNavigationTarget,
   type CheckNavigationTarget,
@@ -1671,6 +1672,7 @@ function StructuredBodyField({
   mode = "body",
   selectionSnapshot,
   onSelectionChange,
+  fillHeight = false,
 }: {
   id: StructuredDraftField
   label: string
@@ -1682,6 +1684,7 @@ function StructuredBodyField({
   mode?: StructuredEditorMode
   selectionSnapshot?: EditorSelectionSnapshot
   onSelectionChange?: (selection: EditorSelectionSnapshot) => void
+  fillHeight?: boolean
 }) {
   const describedBy = error ? `${id}-description ${id}-error` : `${id}-description`
   const editorSupported =
@@ -1689,15 +1692,13 @@ function StructuredBodyField({
     (mode === "body" || paragraphBodyIsValid(value)) &&
     (mode !== "inline" || value.length <= 1)
   return (
-    <div className="grid gap-2">
-      <div className="grid gap-1">
-        <p className="text-sm font-medium" id={`${id}-label`}>
-          {label}
-        </p>
-        <p className="text-xs text-muted-foreground" id={`${id}-description`}>
-          {description}
-        </p>
-      </div>
+    <div className={cn(fillHeight ? "flex h-full min-h-0 flex-col gap-2" : "grid gap-2")}>
+      <p className="sr-only" id={`${id}-label`}>
+        {label}
+      </p>
+      <p className="sr-only" id={`${id}-description`}>
+        {description}
+      </p>
       {editorSupported ? (
         <StructuredContentEditor
           key={`${id}-${mode}`}
@@ -1711,6 +1712,8 @@ function StructuredBodyField({
           mode={mode}
           selectionSnapshot={selectionSnapshot}
           onSelectionChange={onSelectionChange}
+          fillHeight={fillHeight}
+          className={fillHeight ? "min-h-0 flex-1" : undefined}
         />
       ) : (
         <Alert>
@@ -2258,13 +2261,26 @@ function DocumentEditor({
 }) {
   const isMidterm = documentType === "midterm"
   const isTaskBook = documentType === "task_book"
-  const graduationCohort = normalizeGraduationCohort(draft.graduationCohort)
   const scrollRootRef = useRef<HTMLDivElement>(null)
+  const immersiveSection = isTaskBook
+    ? ["task_basic", "task_materials", "task_references"].includes(activeSection)
+    : isMidterm
+      ? activeSection === "midterm_research" || activeSection === "midterm_progress"
+      : [
+          "proposal_significance",
+          "proposal_research",
+          "proposal_methods",
+          "proposal_steps",
+          "proposal_references",
+        ].includes(activeSection)
 
   useEffect(() => {
-    const viewport = scrollRootRef.current?.querySelector<HTMLElement>(
+    const viewports = scrollRootRef.current?.querySelectorAll<HTMLElement>(
       '[data-slot="scroll-area-viewport"]',
     )
+    const viewport = immersiveSection
+      ? viewports?.item((viewports?.length ?? 1) - 1)
+      : viewports?.item(0)
     if (!viewport) return
     viewport.scrollTop = viewState.scrollTop
     const rememberScroll = () => {
@@ -2278,7 +2294,13 @@ function DocumentEditor({
       rememberScroll()
       viewport.removeEventListener("scroll", rememberScroll)
     }
-  }, [activeSection, documentId, onViewStateChange, viewState.scrollTop])
+  }, [
+    activeSection,
+    documentId,
+    immersiveSection,
+    onViewStateChange,
+    viewState.scrollTop,
+  ])
 
   const rememberSelection = (
     field: StructuredDraftField,
@@ -2298,14 +2320,13 @@ function DocumentEditor({
   return (
     <div className="h-full" ref={scrollRootRef}>
     <ScrollArea className="h-full">
-      <div className="mx-auto grid max-w-4xl gap-6 p-6">
-        <h1 className="text-xl font-semibold">
-          {isTaskBook
-            ? `${graduationCohort}本科毕业论文（设计）任务书`
-            : isMidterm
-              ? `${graduationCohort}中期检查表`
-              : `${graduationCohort}开题报告`}
-        </h1>
+      <div
+        className={cn(
+          immersiveSection
+            ? "flex h-full min-h-0 w-full flex-col gap-4 p-4"
+            : "mx-auto grid max-w-4xl gap-6 p-6",
+        )}
+      >
 
         {!profileIsComplete(draft) && workspace.status === "ready" ? (
           <Alert>
@@ -2415,26 +2436,27 @@ function DocumentEditor({
         ) : null}
 
         {activeSection !== "document_info" ? (
-        <Card className="border-0 shadow-none ring-0">
-          <CardContent className="grid gap-6">
+        <Card className={cn("border-0 shadow-none ring-0", immersiveSection && "min-h-0 flex-1 py-0")}>
+          <CardContent className={cn("grid gap-6", immersiveSection && "h-full min-h-0 px-0")}>
             {isTaskBook ? (
               <>
                 {activeSection === "task_basic" ? (
                   <StructuredBodyField
                     id="taskBasicContent"
                     {...editorLocationProps("taskBasicContent")}
-                    label="基本内容和要求"
+                    label="内容要求"
                     description="填写课题任务、成果要求和完成标准。"
                     value={draft.taskBasicContent}
                     error={
                       !structuredBodyHasText(draft.taskBasicContent)
-                        ? "请填写至少一段基本内容和要求。"
+                        ? "请填写至少一段内容要求。"
                         : draft.taskBasicContent.length > 80
-                          ? "基本内容和要求最多 80 个内容块。"
+                          ? "内容要求最多 80 个内容块。"
                           : undefined
                     }
                     onChange={onStructuredBodyChange}
                     disabled={disabled}
+                    fillHeight
                   />
                 ) : null}
                 {activeSection === "task_schedule" ? (
@@ -2585,11 +2607,12 @@ function DocumentEditor({
                 <StructuredBodyField
                   id="mainResearchContent"
                   {...editorLocationProps("mainResearchContent")}
-                  label="论文主要研究内容"
+                  label="研究内容"
                   description="填写当前论文的主要研究内容，可组合段落和列表。"
                   value={draft.mainResearchContent}
                   onChange={onStructuredBodyChange}
                   disabled={disabled}
+                  fillHeight
                 />
                 ) : null}
                 {activeSection === "midterm_progress" ? (
@@ -2601,6 +2624,7 @@ function DocumentEditor({
                   value={draft.progress}
                   onChange={onStructuredBodyChange}
                   disabled={disabled}
+                  fillHeight
                 />
                 ) : null}
               </>
@@ -2623,6 +2647,7 @@ function DocumentEditor({
                   }
                   onChange={onStructuredBodyChange}
                   disabled={disabled}
+                  fillHeight
                 />
                 ) : null}
                 {activeSection === "proposal_research" ? (
@@ -2634,6 +2659,7 @@ function DocumentEditor({
                   value={draft.researchContent}
                   onChange={onStructuredBodyChange}
                   disabled={disabled}
+                  fillHeight
                 />
                 ) : null}
                 {activeSection === "proposal_methods" ? (
@@ -2645,6 +2671,7 @@ function DocumentEditor({
                   value={draft.methods}
                   onChange={onStructuredBodyChange}
                   disabled={disabled}
+                  fillHeight
                 />
                 ) : null}
                 {activeSection === "proposal_steps" ? (
@@ -2656,6 +2683,7 @@ function DocumentEditor({
                   value={draft.steps}
                   onChange={onStructuredBodyChange}
                   disabled={disabled}
+                  fillHeight
                 />
                 ) : null}
                 {activeSection === "proposal_references" ? (

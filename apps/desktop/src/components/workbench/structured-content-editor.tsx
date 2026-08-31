@@ -29,6 +29,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Kbd, KbdGroup } from "@/components/ui/kbd"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import {
   ToggleGroup,
@@ -103,6 +104,7 @@ export type StructuredContentEditorProps = {
   selectionSnapshot?: EditorSelectionSnapshot
   restoreFocus?: boolean
   onSelectionChange?: (selection: EditorSelectionSnapshot) => void
+  fillHeight?: boolean
 }
 
 export type EditorSelectionSnapshot = {
@@ -240,6 +242,7 @@ export function StructuredContentEditor({
   selectionSnapshot,
   restoreFocus = false,
   onSelectionChange,
+  fillHeight = false,
 }: StructuredContentEditorProps) {
   const onChangeRef = useRef(onChange)
   const onSelectionChangeRef = useRef(onSelectionChange)
@@ -254,7 +257,10 @@ export function StructuredContentEditor({
   const editorClass =
     mode === "inline"
       ? "min-h-12 whitespace-pre-wrap break-words px-3 py-3 text-sm leading-6 outline-none [&_p]:min-h-6"
-      : "min-h-96 whitespace-pre-wrap break-words px-3 py-3 text-sm leading-6 outline-none [&>p+p]:mt-2 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:min-h-6 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-6"
+      : cn(
+          fillHeight ? "min-h-full" : "min-h-96",
+          "whitespace-pre-wrap break-words px-3 py-3 text-sm leading-6 outline-none [&>p+p]:mt-2 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:min-h-6 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-6",
+        )
 
   const editor = useEditor(
     {
@@ -442,6 +448,7 @@ export function StructuredContentEditor({
       <div
         className={cn(
           "overflow-clip rounded-lg border border-input bg-background transition-all focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50",
+          fillHeight && "flex h-full min-h-0 flex-col",
           disabled && "opacity-75",
           className,
         )}
@@ -484,7 +491,7 @@ export function StructuredContentEditor({
         <div
           role="toolbar"
           aria-label={`${ariaLabel}格式工具栏`}
-          className="sticky top-0 z-10 flex flex-wrap items-center gap-1 border-b bg-muted/30 p-1.5"
+          className="z-10 flex shrink-0 flex-wrap items-center gap-1 border-b bg-muted/30 p-1.5"
         >
           <ToggleGroup
             multiple
@@ -634,17 +641,33 @@ export function StructuredContentEditor({
           )}
         </div>
 
-        <div className="relative">
-          {toolbarState.empty ? (
-            <span
-              aria-hidden="true"
-              className="pointer-events-none absolute left-3 top-3 text-sm text-muted-foreground"
-            >
-              {placeholder}
-            </span>
-          ) : null}
-          <EditorContent editor={editor} />
-        </div>
+        {fillHeight ? (
+          <ScrollArea className="min-h-0 flex-1">
+            <div className="relative min-h-full">
+              {toolbarState.empty ? (
+                <span
+                  aria-hidden="true"
+                  className="pointer-events-none absolute top-3 left-3 text-sm text-muted-foreground"
+                >
+                  {placeholder}
+                </span>
+              ) : null}
+              <EditorContent className="min-h-full" editor={editor} />
+            </div>
+          </ScrollArea>
+        ) : (
+          <div className="relative">
+            {toolbarState.empty ? (
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute top-3 left-3 text-sm text-muted-foreground"
+              >
+                {placeholder}
+              </span>
+            ) : null}
+            <EditorContent editor={editor} />
+          </div>
+        )}
       </div>
     </TooltipProvider>
   )

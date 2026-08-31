@@ -453,6 +453,30 @@ describe("structured content editor adapters", () => {
 })
 
 describe("StructuredContentEditor", () => {
+  it("keeps the toolbar fixed while the immersive writing surface owns scrolling", () => {
+    const { container } = render(
+      <div className="h-96">
+        <StructuredContentEditor
+          value={["沉浸式正文"]}
+          onChange={vi.fn()}
+          ariaLabel="沉浸式正文"
+          fillHeight
+        />
+      </div>,
+    )
+
+    expect(screen.getByRole("toolbar", { name: "沉浸式正文格式工具栏" })).toHaveClass(
+      "shrink-0",
+    )
+    expect(screen.getByRole("textbox", { name: "沉浸式正文" })).toHaveClass(
+      "min-h-full",
+    )
+    expect(container.querySelector('[data-slot="scroll-area"]')).toHaveClass(
+      "min-h-0",
+      "flex-1",
+    )
+  })
+
   it("renders only the allowlisted controls and exposes the current structure", () => {
     render(
       <StructuredContentEditor

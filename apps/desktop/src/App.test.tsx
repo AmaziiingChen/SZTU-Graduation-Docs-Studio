@@ -749,6 +749,15 @@ describe("M3 workbench persistence", () => {
         name: "本选题的意义及国内外发展状况",
       })).closest('[data-slot="card"]'),
     ).toHaveClass("border-0", "shadow-none", "ring-0")
+    expect(
+      screen.queryByRole("heading", { level: 1, name: "2026届开题报告" }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByText("本选题的意义及国内外发展状况"),
+    ).toHaveClass("sr-only")
+    expect(
+      screen.getByText("请分别说明选题意义和国内外发展状况，至少填写两个段落。"),
+    ).toHaveClass("sr-only")
     expect(screen.queryByRole("button", { name: "预览与检查" })).not.toBeInTheDocument()
     expect(await openSharedThesisTitle()).toHaveTextContent("合成开题报告")
   })
@@ -801,7 +810,7 @@ describe("M3 workbench persistence", () => {
         name: "秋季毕业批次开题报告工作台",
       }),
     ).toBeInTheDocument()
-    expect(screen.getByText("秋季毕业批次开题报告")).toBeInTheDocument()
+    expect(screen.queryByText("秋季毕业批次开题报告")).not.toBeInTheDocument()
   })
 
   it("keeps multiple advisors paired with their titles in user-defined order", async () => {
@@ -1408,10 +1417,12 @@ describe("M3 workbench persistence", () => {
   number={1},
   pages={1--8}
 }`
+    fireEvent.click(screen.getByRole("button", { name: "高级源码" }))
     fireEvent.change(
-      screen.getByRole("textbox", { name: "参考文献 BibTeX" }),
+      screen.getByRole("textbox", { name: "参考文献高级 BibTeX 源码" }),
       { target: { value: source } },
     )
+    fireEvent.click(screen.getByRole("button", { name: "保存源码" }))
 
     expect(
       screen.getByText(
@@ -1450,12 +1461,14 @@ describe("M3 workbench persistence", () => {
     renderApp()
 
     fireEvent.click(await screen.findByRole("button", { name: /参考文献/ }))
-    const sourceInput = screen.getByRole("textbox", {
-      name: "参考文献 BibTeX",
-    })
     const validSource =
       "@article{valid, author={张三}, title={可用条目}, journal={合成期刊}, year={2026}}"
-    fireEvent.change(sourceInput, { target: { value: validSource } })
+    fireEvent.click(screen.getByRole("button", { name: "高级源码" }))
+    fireEvent.change(
+      screen.getByRole("textbox", { name: "参考文献高级 BibTeX 源码" }),
+      { target: { value: validSource } },
+    )
+    fireEvent.click(screen.getByRole("button", { name: "保存源码" }))
 
     await waitFor(() => expect(api.saveDraft).toHaveBeenCalledTimes(1), {
       timeout: 2_000,
@@ -1466,7 +1479,12 @@ describe("M3 workbench persistence", () => {
     vi.mocked(api.saveDraft).mockClear()
 
     const invalidSource = "@article{broken, title={缺少作者和期刊}}"
-    fireEvent.change(sourceInput, { target: { value: invalidSource } })
+    fireEvent.click(screen.getByRole("button", { name: "高级源码" }))
+    fireEvent.change(
+      screen.getByRole("textbox", { name: "参考文献高级 BibTeX 源码" }),
+      { target: { value: invalidSource } },
+    )
+    fireEvent.click(screen.getByRole("button", { name: "保存源码" }))
     await waitFor(() => expect(api.saveDraft).toHaveBeenCalledTimes(1), {
       timeout: 2_000,
     })
@@ -1482,7 +1500,12 @@ describe("M3 workbench persistence", () => {
     })
     vi.mocked(api.saveDraft).mockClear()
 
-    fireEvent.change(sourceInput, { target: { value: "" } })
+    fireEvent.click(screen.getByRole("button", { name: "高级源码" }))
+    fireEvent.change(
+      screen.getByRole("textbox", { name: "参考文献高级 BibTeX 源码" }),
+      { target: { value: "" } },
+    )
+    fireEvent.click(screen.getByRole("button", { name: "保存源码" }))
     await waitFor(() => expect(api.saveDraft).toHaveBeenCalledTimes(1), {
       timeout: 2_000,
     })
@@ -2024,12 +2047,12 @@ describe("M3 workbench persistence", () => {
     )
 
     expect(
-      await screen.findByText("2026届本科毕业论文（设计）任务书"),
+      await screen.findByRole("heading", { name: "2026届任务书工作台" }),
     ).toBeInTheDocument()
     expect(screen.queryByRole("textbox", { name: "论文题目" })).toBeNull()
     fireEvent.click(screen.getByRole("button", { name: /内容要求/ }))
     expect(
-      screen.getByRole("textbox", { name: "基本内容和要求" }),
+      screen.getByRole("textbox", { name: "内容要求" }),
     ).toHaveTextContent(
       "完成统一数据模型和双路文档渲染。",
     )
@@ -2189,7 +2212,7 @@ describe("M3 workbench persistence", () => {
       }),
     )
     expect(
-      await screen.findByText("2026届本科毕业论文（设计）任务书"),
+      await screen.findByRole("heading", { name: "2026届任务书工作台" }),
     ).toBeInTheDocument()
   })
 
@@ -2410,7 +2433,9 @@ describe("M3 workbench persistence", () => {
     await waitFor(() =>
       expect(api.selectDocument).toHaveBeenCalledWith("midterm-document"),
     )
-    expect(await screen.findByText("2026届中期检查表")).toBeInTheDocument()
+    expect(
+      await screen.findByRole("heading", { name: "2026届中期检查工作台" }),
+    ).toBeInTheDocument()
     const checkDate = screen.getByLabelText("检查日期")
     expect(checkDate.closest('[data-slot="card"]')).toHaveClass(
       "border-0",
@@ -2507,7 +2532,7 @@ describe("M3 workbench persistence", () => {
     expect(
       await screen.findByText("本栏包含暂不支持编辑的内容块"),
     ).toBeInTheDocument()
-    expect(screen.queryByRole("textbox", { name: "论文主要研究内容" })).toBeNull()
+    expect(screen.queryByRole("textbox", { name: "研究内容" })).toBeNull()
   })
 
   it("does not expose a temporary workspace in the one-pass document flow", async () => {

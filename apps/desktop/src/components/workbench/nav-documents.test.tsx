@@ -88,17 +88,17 @@ describe("NavDocuments file tree", () => {
     expect(action).toHaveClass("right-1")
   })
 
-  it("renders thesis as an expandable folder without a creation action", () => {
+  it("keeps thesis visibly unavailable without exposing a creation action", () => {
     const callbacks = renderNavigation()
     const thesisFolder = screen.getByRole("button", { name: "毕业论文" })
 
-    expect(thesisFolder).toHaveAttribute("aria-expanded", "false")
+    expect(thesisFolder).toHaveAttribute("aria-disabled", "true")
+    expect(thesisFolder).toHaveClass("text-muted-foreground")
     expect(
       screen.queryByRole("button", { name: "新建毕业论文（暂未开放）" }),
     ).not.toBeInTheDocument()
     fireEvent.click(thesisFolder)
-    expect(thesisFolder).toHaveAttribute("aria-expanded", "true")
-    expect(screen.getByText("暂未开放新建")).toBeInTheDocument()
+    expect(screen.queryByText("暂未开放新建")).not.toBeInTheDocument()
     expect(callbacks.onCreateDocument).not.toHaveBeenCalled()
   })
 

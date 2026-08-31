@@ -5,32 +5,41 @@ import { ReferenceImporter } from "./reference-importer"
 
 afterEach(cleanup)
 
-describe("ReferenceImporter", () => {
-  it("generates a read-only formatted preview from pasted BibTeX", () => {
-    render(
+const first =
+  "@article{first, author={张三}, title={第一篇}, journal={合成期刊}, year={2025}}"
+const second =
+  "@article{second, author={李四}, title={第二篇}, journal={合成期刊}, year={2026}}"
+
+function renderImporter(source = "", onChange = vi.fn()) {
+  return {
+    onChange,
+    ...render(
       <ReferenceImporter
-        source={'@article{demo, author={张三}, title={合成论文}, journal={合成期刊}, year={2026}}'}
+        source={source}
         maximumEntries={50}
         maximumReferenceLength={1000}
-        onChange={vi.fn()}
+        onChange={onChange}
       />,
+    ),
+  }
+}
+
+describe("ReferenceImporter", () => {
+  it("renders each parsed reference as a collapsed formatted item", () => {
+    renderImporter(
+      "@article{demo, author={张三}, title={合成论文}, journal={合成期刊}, year={2026}}",
     )
 
-    expect(screen.getByText("demo")).toBeInTheDocument()
+    expect(screen.getByText("1 条")).toBeInTheDocument()
     expect(
       screen.getByText("[1] 张三. 合成论文[J]. 合成期刊, 2026."),
     ).toBeInTheDocument()
-    expect(screen.queryByRole("textbox", { name: "自动排版结果" })).toBeNull()
+    expect(screen.queryByText("@article{demo")).not.toBeInTheDocument()
   })
 
-  it("renders BibTeX title styles and scripts in the read-only preview", () => {
-    const { container } = render(
-      <ReferenceImporter
-        source={String.raw`@article{rich, author={张三}, title={{\textbf{CO}}_{2} 与 \emph{R}^{2} 模型}, journal={合成期刊}, year={2026}}`}
-        maximumEntries={50}
-        maximumReferenceLength={1000}
-        onChange={vi.fn()}
-      />,
+  it("renders BibTeX title styles and scripts in the collapsed preview", () => {
+    const { container } = renderImporter(
+      String.raw`@article{rich, author={张三}, title={{\textbf{CO}}_{2} 与 \emph{R}^{2} 模型}, journal={合成期刊}, year={2026}}`,
     )
 
     expect(screen.getByText(/\[1\] 张三\./)).toHaveTextContent(
@@ -42,7 +51,7 @@ describe("ReferenceImporter", () => {
     expect(container.querySelector("sup")).toHaveTextContent("2")
   })
 
-  it("shows parsed entries while retaining the legacy fallback for invalid BibTeX", () => {
+  it("shows valid parsed entries while retaining the last valid legacy fallback", () => {
     render(
       <ReferenceImporter
         source={
@@ -56,7 +65,6 @@ describe("ReferenceImporter", () => {
     )
 
     expect(screen.getByText("BibTeX 尚未通过检查")).toBeInTheDocument()
-    expect(screen.getByText("valid")).toBeInTheDocument()
     expect(
       screen.getByText("[1] 张三. 可用条目[J]. 合成期刊, 2026."),
     ).toBeInTheDocument()
@@ -64,44 +72,53 @@ describe("ReferenceImporter", () => {
     expect(screen.getByText(/不会被错误输入覆盖/)).toBeInTheDocument()
   })
 
-  it("emits the complete source for autosave", () => {
-    const onChange = vi.fn()
-    render(
-      <ReferenceImporter
-        source=""
-        maximumEntries={50}
-        maximumReferenceLength={1000}
-        onChange={onChange}
-      />,
-    )
+  it("adds one complete entry from the focused entry dialog", () => {
+    const { onChange } = renderImporter()
 
-    fireEvent.change(screen.getByRole("textbox", { name: "参考文献 BibTeX" }), {
+    fireEvent.click(screen.getByRole("button", { name: "添加第一条参考文献" }))
+    fireEvent.change(screen.getByRole("textbox", { name: "单条参考文献 BibTeX" }), {
       target: { value: "@book{demo, title={书名}, year={2026}}" },
     })
+    fireEvent.click(screen.getByRole("button", { name: "完成" }))
+
     expect(onChange).toHaveBeenCalledWith(
       "@book{demo, title={书名}, year={2026}}",
     )
   })
 
-  it("adds one blank line between complete pasted BibTeX entries", () => {
-    const onChange = vi.fn()
-    const first =
-      "@article{first, author={张三}, title={第一篇}, journal={合成期刊}, year={2025}}"
-    const second =
-      "@article{second, author={李四}, title={第二篇}, journal={合成期刊}, year={2026}}"
-    render(
-      <ReferenceImporter
-        source=""
-        maximumEntries={50}
-        maximumReferenceLength={1000}
-        onChange={onChange}
-      />,
-    )
+  it("appends and separates multiple entries through batch paste", () => {
+    const { onChange } = renderImporter(first)
 
-    fireEvent.change(screen.getByRole("textbox", { name: "参考文献 BibTeX" }), {
-      target: { value: `${first}\n${second}` },
+    fireEvent.click(screen.getByRole("button", { name: "批量粘贴 BibTeX" }))
+    fireEvent.change(screen.getByRole("textbox", { name: "批量参考文献 BibTeX" }), {
+      target: { value: second },
     })
+    fireEvent.click(screen.getByRole("button", { name: "添加这些条目" }))
 
     expect(onChange).toHaveBeenCalledWith(`${first}\n\n${second}`)
+  })
+
+  it("moves entries with accessible up and down controls", () => {
+    const { onChange } = renderImporter(`${first}\n\n${second}`)
+
+    fireEvent.click(screen.getByRole("button", { name: /\[1\].*第一篇/ }))
+    fireEvent.click(screen.getByRole("button", { name: "下移 first" }))
+
+    expect(onChange).toHaveBeenCalledWith(`${second}\n\n${first}`)
+  })
+
+  it("keeps macros in advanced source mode and disables lossy item edits", () => {
+    const source = `@string{journalName = {合成期刊}}\n\n@article{macro, author={张三}, title={宏测试}, journal=journalName, year={2026}}`
+    const { onChange } = renderImporter(source)
+
+    expect(screen.getByText("当前文献包含宏、注释或其他高级源码")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: /\[1\].*宏测试/ }))
+    expect(screen.getByRole("button", { name: "编辑 macro" })).toBeDisabled()
+
+    fireEvent.click(screen.getByRole("button", { name: "高级源码" }))
+    const editor = screen.getByRole("textbox", { name: "参考文献高级 BibTeX 源码" })
+    expect(editor).toHaveValue(source)
+    fireEvent.click(screen.getByRole("button", { name: "保存源码" }))
+    expect(onChange).toHaveBeenCalledWith(source)
   })
 })
