@@ -3,6 +3,7 @@
 - 状态：Accepted
 - 日期：2026-08-30
 - 决策者：项目维护者
+- 后续补充：联网与遥测结论由 [ADR 0010](0010-disclosed-telemetry-and-signed-update-downloads.md) 更新；本地文档处理与 sidecar 架构继续有效。
 
 ## 背景
 

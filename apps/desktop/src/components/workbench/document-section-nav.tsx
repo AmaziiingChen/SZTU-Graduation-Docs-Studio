@@ -83,12 +83,7 @@ export function DocumentSectionNav({
                 aria-current={selected ? "page" : undefined}
                 onClick={() => onSectionChange(section.id)}
               >
-                <span className="grid min-w-0 flex-1 gap-0.5">
-                  <span>{section.label}</span>
-                  <span className="line-clamp-2 text-xs font-normal text-muted-foreground">
-                    {section.description}
-                  </span>
-                </span>
+                <span className="min-w-0 flex-1">{section.label}</span>
                 <Badge
                   variant={state === "error" ? "destructive" : "outline"}
                   className="ml-2"

@@ -7,10 +7,15 @@
     "setup:backend": "python scripts/setup_backend_runtime.py",
     "predev": "pnpm setup:backend",
     "dev": "pnpm --filter @sztu-docs/desktop dev",
+    "telemetry:dev": "pnpm --filter @sztu-docs/telemetry-admin dev",
+    "telemetry:build": "pnpm --filter @sztu-docs/telemetry-admin build",
+    "telemetry:test": "pnpm --filter @sztu-docs/telemetry-admin test",
+    "update:manifest": "node scripts/create_update_manifest.mjs",
+    "test:update-tools": "node --test tests/update-manifest-tools.test.mjs",
     "build": "pnpm --filter @sztu-docs/desktop build",
     "lint": "pnpm --filter @sztu-docs/desktop lint",
     "test": "pnpm --filter @sztu-docs/desktop test",
     "test:backend": "pnpm setup:backend && python scripts/run_backend_tests.py",
-    "verify": "pnpm lint && pnpm test && pnpm test:backend && pnpm build"
+    "verify": "pnpm lint && pnpm test && pnpm telemetry:test && pnpm test:update-tools && pnpm test:backend && pnpm build && pnpm telemetry:build"
   }
 }

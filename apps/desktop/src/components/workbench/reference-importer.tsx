@@ -1,5 +1,5 @@
 import { useMemo } from "react"
-import { BookOpenCheckIcon, BracesIcon, TriangleAlertIcon } from "lucide-react"
+import { BookOpenCheckIcon, TriangleAlertIcon } from "lucide-react"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -123,10 +123,6 @@ export function ReferenceImporter({
               从知网、期刊网站或文献管理软件复制完整 BibTeX；系统会在本机解析并按粘贴顺序生成引用。
             </p>
           </div>
-          <Badge variant="outline">
-            <BracesIcon />
-            本地自动解析
-          </Badge>
         </div>
         <Textarea
           id="bibliography-source"

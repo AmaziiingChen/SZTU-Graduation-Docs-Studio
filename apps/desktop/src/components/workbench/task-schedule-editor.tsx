@@ -7,7 +7,6 @@ import {
   Trash2Icon,
 } from "lucide-react"
 
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
@@ -86,30 +85,8 @@ export function TaskScheduleEditor({
 
   return (
     <div className="grid min-h-0 gap-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={disabled || value.length >= 60}
-          onClick={() => {
-            const item = createTaskScheduleEditorItem()
-            setSelectedId(item.id)
-            onChange([...value, item])
-          }}
-        >
-          <ListPlusIcon data-icon="inline-start" />
-          新增进度
-        </Button>
-        <Badge variant={validationErrors.length ? "destructive" : "outline"}>
-          {validationErrors.length
-            ? `${validationErrors.length} 项待处理`
-            : `进度安排 · ${value.length} 项`}
-        </Badge>
-      </div>
-
-      {selectedItem ? (
-        <div className="grid gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        {selectedItem ? (
           <div className="grid gap-1">
             <p className="text-sm font-medium">
               第 {selectedIndex + 1} 项进度内容
@@ -118,22 +95,41 @@ export function TaskScheduleEditor({
               内容支持粗体、斜体和上下标；时间范围在下方对应条目中填写。
             </p>
           </div>
-          <StructuredContentEditor
-            key={selectedItem.id}
-            value={inlineBody(selectedItem.content)}
-            onChange={(content) =>
-              replaceItem(selectedIndex, {
-                ...selectedItem,
-                content: inlineParagraph(content),
-              })
-            }
-            mode="inline"
-            disabled={disabled}
-            ariaLabel={`第 ${selectedIndex + 1} 项进度内容`}
-            ariaInvalid={!paragraphInputText(selectedItem.content).trim()}
-            placeholder="输入本阶段要完成的工作"
-          />
+        ) : null}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={disabled || value.length >= 60}
+            onClick={() => {
+              const item = createTaskScheduleEditorItem()
+              setSelectedId(item.id)
+              onChange([...value, item])
+            }}
+          >
+            <ListPlusIcon data-icon="inline-start" />
+            新增进度
+          </Button>
         </div>
+      </div>
+
+      {selectedItem ? (
+        <StructuredContentEditor
+          key={selectedItem.id}
+          value={inlineBody(selectedItem.content)}
+          onChange={(content) =>
+            replaceItem(selectedIndex, {
+              ...selectedItem,
+              content: inlineParagraph(content),
+            })
+          }
+          mode="inline"
+          disabled={disabled}
+          ariaLabel={`第 ${selectedIndex + 1} 项进度内容`}
+          ariaInvalid={!paragraphInputText(selectedItem.content).trim()}
+          placeholder="输入本阶段要完成的工作"
+        />
       ) : null}
 
       <Separator />

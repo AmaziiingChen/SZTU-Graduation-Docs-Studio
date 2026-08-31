@@ -24,6 +24,8 @@ Draft 2020-12，并以稳定 `$id` 作为跨语言标识。
 | `qa-policy.schema.json` | `policy_version=1.0` | 模板包质量策略 |
 | `template-install-operation.schema.json` | `$defs.params/result` | 离线模板包安装 |
 | `qa-record-operation.schema.json` | `$defs.params/result` | Word/WPS 目标编辑器 QA 记录 |
+| `telemetry-batch.schema.json` | `schema_version=1.0` | 不含文档内容的匿名运行事件批次 |
+| `update-manifest.schema.json` | `schema_version=1.0` | Ed25519 签名的桌面更新清单 |
 
 具体升级规则见 [`COMPATIBILITY.md`](COMPATIBILITY.md)。每个文件的稳定 `$id` 可直接从
 Schema 根对象读取。

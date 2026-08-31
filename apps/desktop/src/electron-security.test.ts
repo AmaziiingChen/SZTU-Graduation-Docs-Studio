@@ -13,6 +13,18 @@ const sidecarSource = readFileSync(
   join(applicationRoot, "electron/sidecar-client.ts"),
   "utf8",
 )
+const telemetrySource = readFileSync(
+  join(applicationRoot, "electron/telemetry.ts"),
+  "utf8",
+)
+const updateSource = readFileSync(
+  join(applicationRoot, "electron/update-service.ts"),
+  "utf8",
+)
+const remoteConfigSource = readFileSync(
+  join(applicationRoot, "electron/remote-services-config.ts"),
+  "utf8",
+)
 
 function rendererSources(directory: string): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
@@ -38,6 +50,13 @@ describe("Electron security boundary", () => {
     for (const method of [
       "getAppInfo",
       "checkEnvironment",
+      "getPrivacyNoticeStatus",
+      "acceptPrivacyNotice",
+      "quitApp",
+      "recordTelemetry",
+      "getUpdateStatus",
+      "revealDownloadedUpdate",
+      "onUpdateStatus",
       "openWorkspace",
       "saveProfileDraft",
       "saveProfile",
@@ -65,6 +84,12 @@ describe("Electron security boundary", () => {
   it("maps every workspace action to a dedicated IPC channel and validates the sender", () => {
     for (const channel of [
       "sztu:workspace-open",
+      "sztu:privacy-status",
+      "sztu:privacy-accept",
+      "sztu:app-quit",
+      "sztu:telemetry-record",
+      "sztu:update-status",
+      "sztu:update-reveal",
       "sztu:workspace-save-profile-draft",
       "sztu:workspace-save-profile",
       "sztu:workspace-create-document",
@@ -85,7 +110,7 @@ describe("Electron security boundary", () => {
     }
     expect(mainSource).not.toContain("sztu:workspace-restore-previous")
     expect(sidecarSource).not.toContain("workspace.restorePrevious")
-    expect(mainSource.match(/assertTrustedSender\(event\)/g)?.length).toBeGreaterThanOrEqual(17)
+    expect(mainSource.match(/assertTrustedSender\(event\)/g)?.length).toBeGreaterThanOrEqual(23)
     expect(mainSource).toContain("assertExactKeys")
     expect(mainSource).toContain("assertJsonValue")
   })
@@ -205,6 +230,28 @@ describe("Electron security boundary", () => {
       const source = readFileSync(sourcePath, "utf8")
       expect(source, sourcePath).not.toMatch(/from ["']node:/)
       expect(source, sourcePath).not.toMatch(/\brequire\s*\(/)
+    }
+  })
+
+  it("keeps telemetry content-free and validates signed update artifacts in the main process", () => {
+    expect(telemetrySource).toContain("parseTelemetryUsageEvent")
+    expect(telemetrySource).toContain("TELEMETRY_INTERVAL_MS = 30 * 60 * 1000")
+    expect(telemetrySource).toContain("INSTALLATION_ID_LIFETIME_MS")
+    expect(telemetrySource).toContain("STABLE_ERROR_CODE")
+    expect(telemetrySource).not.toMatch(
+      /studentName|student_number|thesis_title|referencesBibtex|file_path|content_hash/,
+    )
+    expect(updateSource).toContain('publicKey.asymmetricKeyType !== "ed25519"')
+    expect(updateSource).toContain('createHash("sha256")')
+    expect(updateSource).toContain("artifact.size_bytes")
+    expect(updateSource).not.toContain("PRIVATE KEY")
+    expect(remoteConfigSource).toContain('parsed.protocol !== "https:"')
+    expect(remoteConfigSource).not.toMatch(/SecretId|SecretKey/)
+
+    for (const sourcePath of rendererSources(rendererRoot)) {
+      if (sourcePath.endsWith("electron-security.test.ts")) continue
+      const source = readFileSync(sourcePath, "utf8")
+      expect(source, sourcePath).not.toMatch(/\bfetch\s*\(/)
     }
   })
 })

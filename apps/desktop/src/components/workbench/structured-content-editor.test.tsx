@@ -170,6 +170,35 @@ describe("structured content editor adapters", () => {
     editor.destroy()
   })
 
+  it("prevents browser focus traversal for Tab in multiline paragraphs", () => {
+    for (const mode of ["body", "paragraphs"] as const) {
+      const paragraphEditor = new Editor({
+        extensions: createRestrictedEditorExtensions(mode),
+        content: structuredBodyToTiptap(["普通正文段落"]),
+      })
+      const paragraphBefore = paragraphEditor.getJSON()
+      const tabEvent = new KeyboardEvent("keydown", {
+        key: "Tab",
+        bubbles: true,
+        cancelable: true,
+      })
+      const shiftTabEvent = new KeyboardEvent("keydown", {
+        key: "Tab",
+        shiftKey: true,
+        bubbles: true,
+        cancelable: true,
+      })
+
+      paragraphEditor.view.dom.dispatchEvent(tabEvent)
+      paragraphEditor.view.dom.dispatchEvent(shiftTabEvent)
+
+      expect(tabEvent.defaultPrevented).toBe(true)
+      expect(shiftTabEvent.defaultPrevented).toBe(true)
+      expect(paragraphEditor.getJSON()).toEqual(paragraphBefore)
+      paragraphEditor.destroy()
+    }
+  })
+
   it("blocks Tab from creating a fifth list level", () => {
     const fourLevels: StructuredBodyValue = [
       {

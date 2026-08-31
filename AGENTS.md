@@ -83,3 +83,13 @@ These rules apply to every frontend prototype, screenshot, and production page i
 - Validate all paths, template manifests, hashes, schemas, IPC messages, and external application requests at their trust boundary.
 - Keep mutable template development and immutable release trust separate. A user-selected or adjacent local template workspace may be re-read during development only after every allowlisted file and path is validated, fingerprinted, and copied into a private content-addressed snapshot. Render from the snapshot, record its hash/version, and retain fixed-hash verification for committed or released templates.
 - Cleanup features must enumerate and preview exact generated targets. They must never interpret Git ignored status as permission to delete a file.
+
+## Telemetry and update boundaries
+
+- Official packaged builds may require disclosed anonymous operational telemetry, but collection must remain purpose-limited and schema-bound. Never transmit profile fields, thesis titles, document content, BibTeX, filenames, absolute paths, template contents, output hashes, free-form error messages, IP addresses, hardware serials, account identifiers, or clipboard data.
+- Renderer telemetry input is an exact allowlist of event names and enum-valued attributes. The main process must reject arbitrary event names, unknown fields, raw log strings, and unstable error text before anything enters the local queue.
+- Use a random pseudonymous installation identifier that rotates at least every 30 days. Session duration is reported in coarse buckets. The local queue is bounded, stored with private permissions, and never blocks editing or export when the network is unavailable.
+- The first packaged launch must clearly disclose the mandatory telemetry and update behavior before transmission begins. There is no hidden collection and no settings control that falsely claims to disable a mandatory release policy.
+- COS or another static origin may host only public update manifests and artifacts. Telemetry ingestion requires a separate HTTPS service. Never embed COS SecretId, SecretKey, a server signing key, or another reusable credential in the client.
+- Update manifests must be verified with a pinned Ed25519 public key before version or URL fields are trusted. Downloaded artifacts must match the signed platform, architecture, byte length, and SHA-256 before the UI reports them as ready.
+- A downloaded artifact is not an installed update. Automatic installation and restart require platform packaging, code signing, rollback, and target-platform acceptance gates; do not imply those gates passed from a successful download.

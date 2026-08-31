@@ -96,10 +96,28 @@ describe("outline helpers", () => {
     expect(
       screen.getByRole("button", { name: "第 5 条目录：增加缩进" }),
     ).toBeDisabled()
-    fireEvent.keyDown(
-      screen.getByRole("button", { name: "第 5 条目录标题" }),
-      { key: "Tab" },
+    const titleButton = screen.getByRole("button", {
+      name: "第 5 条目录标题",
+    })
+    const tabEvent = new KeyboardEvent("keydown", {
+      key: "Tab",
+      bubbles: true,
+      cancelable: true,
+    })
+    const shiftTabEvent = new KeyboardEvent("keydown", {
+      key: "Tab",
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    })
+
+    titleButton.dispatchEvent(tabEvent)
+    screen.getByRole("button", { name: "第 1 条目录标题" }).dispatchEvent(
+      shiftTabEvent,
     )
+
+    expect(tabEvent.defaultPrevented).toBe(true)
+    expect(shiftTabEvent.defaultPrevented).toBe(true)
     expect(onChange).not.toHaveBeenCalled()
   })
 

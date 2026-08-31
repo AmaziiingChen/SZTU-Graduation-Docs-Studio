@@ -326,6 +326,27 @@ function mockApi(): SztuDesktopApi {
       platform: "darwin",
     }),
     checkEnvironment: vi.fn().mockResolvedValue(environmentResult),
+    getPrivacyNoticeStatus: vi.fn().mockResolvedValue({
+      noticeVersion: "1.1",
+      acknowledged: true,
+      acceptedAt: "2026-08-30T00:00:00Z",
+      telemetryConfigured: false,
+      updateConfigured: false,
+      configurationRequired: false,
+    }),
+    acceptPrivacyNotice: vi.fn().mockResolvedValue({
+      noticeVersion: "1.1",
+      acknowledged: true,
+      acceptedAt: "2026-08-30T00:00:00Z",
+      telemetryConfigured: false,
+      updateConfigured: false,
+      configurationRequired: false,
+    }),
+    quitApp: vi.fn().mockResolvedValue(null),
+    recordTelemetry: vi.fn().mockResolvedValue(null),
+    getUpdateStatus: vi.fn().mockResolvedValue({ state: "unconfigured" }),
+    revealDownloadedUpdate: vi.fn().mockResolvedValue(null),
+    onUpdateStatus: vi.fn().mockReturnValue(() => undefined),
     openWorkspace: vi.fn().mockResolvedValue({
       mode: "persistent",
       profile,
@@ -502,6 +523,38 @@ describe("M3 workbench persistence", () => {
       value: 1024,
     })
     delete (window as Window & { sztuDesktop?: SztuDesktopApi }).sztuDesktop
+  })
+
+  it("shows a concise privacy notice without a false development warning", async () => {
+    const api = mockApi()
+    vi.mocked(api.getPrivacyNoticeStatus).mockResolvedValue({
+      noticeVersion: "1.1",
+      acknowledged: false,
+      acceptedAt: null,
+      telemetryConfigured: true,
+      updateConfigured: false,
+      configurationRequired: false,
+    })
+    installApi(api)
+
+    renderApp()
+
+    expect(
+      await screen.findByRole("dialog", {
+        name: "使用说明与隐私告知",
+      }),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/必要的匿名运行信息/)).toBeInTheDocument()
+    expect(screen.queryByText("当前开发构建尚未配置远程服务")).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "同意并继续" }))
+
+    await waitFor(() => expect(api.acceptPrivacyNotice).toHaveBeenCalledOnce())
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "使用说明与隐私告知" }),
+      ).not.toBeInTheDocument(),
+    )
   })
 
   it("restores the active persistent profile and document", async () => {

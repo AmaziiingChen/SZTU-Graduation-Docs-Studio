@@ -427,15 +427,20 @@ function createRestrictedDocumentBehavior(mode: StructuredEditorMode) {
             }
           : {}),
         Tab: () => {
-          if (mode !== "body" || !this.editor.isActive("listItem")) return false
+          if (mode === "inline") return false
+          if (mode !== "body" || !this.editor.isActive("listItem")) return true
           if (listDepthAtSelection(this.editor) >= MAX_STRUCTURED_LIST_DEPTH) {
             return true
           }
-          return this.editor.commands.sinkListItem("listItem")
+          this.editor.commands.sinkListItem("listItem")
+          return true
         },
         "Shift-Tab": () => {
-          if (mode !== "body" || !this.editor.isActive("listItem")) return false
-          return this.editor.commands.liftListItem("listItem")
+          if (mode === "inline") return false
+          if (this.editor.isActive("listItem")) {
+            this.editor.commands.liftListItem("listItem")
+          }
+          return true
         },
       }
     },

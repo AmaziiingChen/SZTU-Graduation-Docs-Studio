@@ -35,6 +35,20 @@ async function invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
 contextBridge.exposeInMainWorld("sztuDesktop", {
   getAppInfo: () => invoke("sztu:app-info"),
   checkEnvironment: () => invoke("sztu:environment-check"),
+  getPrivacyNoticeStatus: () => invoke("sztu:privacy-status"),
+  acceptPrivacyNotice: () => invoke("sztu:privacy-accept"),
+  quitApp: () => invoke("sztu:app-quit"),
+  recordTelemetry: (input: unknown) => invoke("sztu:telemetry-record", input),
+  getUpdateStatus: () => invoke("sztu:update-status"),
+  revealDownloadedUpdate: () => invoke("sztu:update-reveal"),
+  onUpdateStatus: (callback: unknown) => {
+    if (typeof callback !== "function") {
+      throw new DesktopApiError("INVALID_CALLBACK", "更新状态监听器必须是函数。")
+    }
+    const listener = (_event: Electron.IpcRendererEvent, status: unknown) => callback(status)
+    ipcRenderer.on("sztu:update-status", listener)
+    return () => ipcRenderer.removeListener("sztu:update-status", listener)
+  },
   openWorkspace: (mode: unknown) => invoke("sztu:workspace-open", mode),
   saveProfileDraft: (profile: unknown) =>
     invoke("sztu:workspace-save-profile-draft", profile),

@@ -29,6 +29,41 @@ export type AppInfo = {
   platform: string
 }
 
+export type PrivacyNoticeStatus = {
+  noticeVersion: string
+  acknowledged: boolean
+  acceptedAt: string | null
+  telemetryConfigured: boolean
+  updateConfigured: boolean
+  configurationRequired: boolean
+}
+
+export type TelemetryUsageEvent =
+  | {
+      name: "view_opened"
+      view: "profile" | "proposal" | "task_book" | "midterm" | "inspection"
+    }
+  | {
+      name: "document_action"
+      action: "check" | "preview" | "template_sync" | "export" | "qa_record"
+      documentType: DocumentType
+      outcome: "success" | "failure" | "cancelled"
+      errorCode?: string
+      formatCount?: number
+    }
+
+export type UpdateStatus =
+  | { state: "unconfigured" }
+  | { state: "idle" }
+  | { state: "checking" }
+  | { state: "up_to_date"; checkedAt: string }
+  | { state: "downloading"; version: string }
+  | { state: "downloaded"; version: string; downloadedAt: string }
+  | {
+      state: "error"
+      code: "CHECK_FAILED" | "MANIFEST_INVALID" | "DOWNLOAD_FAILED"
+    }
+
 export type WorkspaceMode = "persistent" | "temporary"
 export type DocumentType = "proposal" | "task_book" | "midterm"
 
@@ -325,6 +360,13 @@ export type RecordQaResult = {
 export type SztuDesktopApi = {
   getAppInfo: () => Promise<AppInfo>
   checkEnvironment: () => Promise<EnvironmentResult>
+  getPrivacyNoticeStatus: () => Promise<PrivacyNoticeStatus>
+  acceptPrivacyNotice: () => Promise<PrivacyNoticeStatus>
+  quitApp: () => Promise<null>
+  recordTelemetry: (input: TelemetryUsageEvent) => Promise<null>
+  getUpdateStatus: () => Promise<UpdateStatus>
+  revealDownloadedUpdate: () => Promise<null>
+  onUpdateStatus: (callback: (status: UpdateStatus) => void) => () => void
   openWorkspace: (mode: WorkspaceMode) => Promise<WorkspaceState>
   saveProfileDraft: (profile: StudentProfileDraft) => Promise<StudentProfileDraft>
   saveProfile: (profile: StudentProfileInput) => Promise<StudentProfile>

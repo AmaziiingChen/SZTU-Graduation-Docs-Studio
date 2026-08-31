@@ -18,12 +18,22 @@ import {
   SidecarError,
   type SidecarMethod,
 } from "./sidecar-client.js"
+import { loadRemoteServicesConfig } from "./remote-services-config.js"
+import {
+  parseTelemetryUsageEvent,
+  TelemetryService,
+} from "./telemetry.js"
+import { UpdateService, type UpdateStatus } from "./update-service.js"
 
 const moduleDirectory = path.dirname(fileURLToPath(import.meta.url))
 const developmentServerUrl = "http://127.0.0.1:5173"
 
 let mainWindow: BrowserWindow | undefined
 let sidecar: SidecarClient | undefined
+let telemetry: TelemetryService | undefined
+let updateService: UpdateService | undefined
+let remoteServicesStarted = false
+let shutdownStarted = false
 const approvedExportDirectories = new Set<string>()
 const activeCancellationFiles = new Map<string, string>()
 const activePreviewCancellationFiles = new Map<string, string>()
@@ -403,6 +413,68 @@ function createWindow(): BrowserWindow {
   return window
 }
 
+async function startRemoteServices(): Promise<void> {
+  if (remoteServicesStarted) return
+  remoteServicesStarted = true
+  await telemetry?.start()
+  updateService?.start()
+}
+
+async function initializeRemoteServices(): Promise<void> {
+  let config = {}
+  try {
+    config = await loadRemoteServicesConfig({
+      packaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+    })
+  } catch {
+    console.error("Remote services configuration was rejected.")
+  }
+  const resolved = config as Awaited<ReturnType<typeof loadRemoteServicesConfig>>
+  telemetry = new TelemetryService({
+    userDataPath: app.getPath("userData"),
+    appVersion: app.getVersion(),
+    platform: process.platform,
+    arch: process.arch,
+    packaged: app.isPackaged,
+    endpoint: resolved.telemetryEndpoint,
+  })
+  await telemetry.initialize()
+  updateService = new UpdateService({
+    userDataPath: app.getPath("userData"),
+    currentVersion: app.getVersion(),
+    platform: process.platform,
+    arch: process.arch,
+    manifestUrl: resolved.updateManifestUrl,
+    publicKeyPem: resolved.updatePublicKeyPem,
+    onOutcome: (outcome, version) => telemetry?.recordUpdate(outcome, version),
+  })
+  updateService.onStatus((status) => {
+    mainWindow?.webContents.send("sztu:update-status", status)
+  })
+  if (privacyNoticeStatus().acknowledged) {
+    await startRemoteServices()
+  }
+}
+
+function privacyNoticeStatus() {
+  if (!telemetry || !updateService) {
+    throw new Error("Remote services are not initialized.")
+  }
+  const telemetryStatus = telemetry.getPrivacyStatus()
+  const updateConfigured = updateService.getStatus().state !== "unconfigured"
+  const configurationRequired = app.isPackaged
+  const releaseConfigurationMissing =
+    configurationRequired &&
+    (!telemetryStatus.telemetryConfigured || !updateConfigured)
+  return {
+    ...telemetryStatus,
+    acknowledged: telemetryStatus.acknowledged && !releaseConfigurationMissing,
+    updateConfigured,
+    configurationRequired,
+  }
+}
+
 function registerIpc(): void {
   ipcMain.handle("sztu:app-info", (event) => {
     assertTrustedSender(event)
@@ -416,6 +488,70 @@ function registerIpc(): void {
   ipcMain.handle("sztu:environment-check", async (event) => {
     assertTrustedSender(event)
     return runBridge(() => requestSidecar("environment.check", {}))
+  })
+
+  ipcMain.handle("sztu:privacy-status", (event) => {
+    assertTrustedSender(event)
+    return runBridge(() => privacyNoticeStatus())
+  })
+
+  ipcMain.handle("sztu:privacy-accept", (event) => {
+    assertTrustedSender(event)
+    return runBridge(async () => {
+      if (!telemetry) throw new Error("Telemetry service is not initialized.")
+      const current = privacyNoticeStatus()
+      if (
+        current.configurationRequired &&
+        (!current.telemetryConfigured || !current.updateConfigured)
+      ) {
+        throw new IpcValidationError(
+          "正式构建缺少匿名遥测或签名更新配置，不能继续运行。",
+        )
+      }
+      await telemetry.acceptNotice()
+      await startRemoteServices()
+      return privacyNoticeStatus()
+    })
+  })
+
+  ipcMain.handle("sztu:app-quit", (event) => {
+    assertTrustedSender(event)
+    return runBridge(() => {
+      setImmediate(() => app.quit())
+      return null
+    })
+  })
+
+  ipcMain.handle("sztu:telemetry-record", (event, input: unknown) => {
+    assertTrustedSender(event)
+    return runBridge(async () => {
+      if (!telemetry) throw new Error("Telemetry service is not initialized.")
+      let parsed
+      try {
+        parsed = parseTelemetryUsageEvent(input)
+      } catch {
+        throw new IpcValidationError("遥测事件不在允许列表中。")
+      }
+      await telemetry.recordUsage(parsed)
+      return null
+    })
+  })
+
+  ipcMain.handle("sztu:update-status", (event) => {
+    assertTrustedSender(event)
+    return runBridge<UpdateStatus>(() =>
+      updateService?.getStatus() ?? { state: "unconfigured" },
+    )
+  })
+
+  ipcMain.handle("sztu:update-reveal", (event) => {
+    assertTrustedSender(event)
+    return runBridge(() => {
+      const downloadedPath = updateService?.revealDownloadedPath()
+      if (!downloadedPath) throw new IpcValidationError("当前没有已校验的更新文件。")
+      shell.showItemInFolder(downloadedPath)
+      return null
+    })
   })
 
   ipcMain.handle("sztu:workspace-open", async (event, mode: unknown) => {
@@ -936,9 +1072,10 @@ if (!app.requestSingleInstanceLock()) {
     }
   })
 
-  void app.whenReady().then(() => {
+  void app.whenReady().then(async () => {
     configureSession()
     registerIpc()
+    await initializeRemoteServices()
     mainWindow = createWindow()
 
     app.on("activate", () => {
@@ -955,6 +1092,11 @@ app.on("window-all-closed", () => {
   }
 })
 
-app.on("before-quit", () => {
+app.on("before-quit", (event) => {
+  updateService?.stop()
   sidecar?.dispose()
+  if (shutdownStarted || !telemetry) return
+  shutdownStarted = true
+  event.preventDefault()
+  void telemetry.stop().finally(() => app.quit())
 })

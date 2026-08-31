@@ -75,8 +75,10 @@ class ContractTests(unittest.TestCase):
                 "qa-record-operation.schema.json",
                 "student-profile.schema.json",
                 "task-book.schema.json",
+                "telemetry-batch.schema.json",
                 "template-install-operation.schema.json",
                 "template-manifest.schema.json",
+                "update-manifest.schema.json",
             },
         )
         schema_ids: set[str] = set()
@@ -315,6 +317,26 @@ class ContractTests(unittest.TestCase):
         )
         self.assertNotIn("graduation_cohort", student["required"])
         self.assertTrue(advisor["properties"]["title"]["deprecated"])
+
+    def test_telemetry_contract_never_accepts_arbitrary_attributes(self) -> None:
+        schema = load_json(CONTRACTS / "telemetry-batch.schema.json")
+        event = schema["properties"]["events"]["items"]
+        rules = event["allOf"]
+        self.assertEqual(len(rules), 4)
+        for rule in rules:
+            attributes = rule["then"]["properties"]["attributes"]
+            variants = attributes.get("oneOf", [attributes])
+            for variant in variants:
+                self.assertIs(variant["additionalProperties"], False)
+        serialized = json.dumps(schema, ensure_ascii=False)
+        for forbidden in (
+            "student_name",
+            "student_number",
+            "thesis_title",
+            "file_path",
+            "free_text",
+        ):
+            self.assertNotIn(forbidden, serialized)
 
     def test_ipc_identifiers_are_uuid_strings_and_progress_is_distinct(self) -> None:
         envelope = load_json(CONTRACTS / "ipc-envelope.schema.json")

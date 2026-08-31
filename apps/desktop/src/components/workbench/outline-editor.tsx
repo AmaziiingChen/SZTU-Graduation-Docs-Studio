@@ -254,41 +254,8 @@ export function OutlineEditor({
   return (
     <TooltipProvider>
       <div className="grid min-h-0 gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={disabled}
-            onClick={() => {
-              const item = createOutlineEditorItem()
-              setSelectedId(item.id)
-              onChange([...value, item])
-            }}
-          >
-            <ListPlusIcon data-icon="inline-start" />
-            新增目录
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={disabled || validationErrors.length > 0}
-            onClick={() => onChange(renumberOutlineItems(value))}
-          >
-            <RefreshCwIcon data-icon="inline-start" />
-            重新编号
-          </Button>
-          <Separator orientation="vertical" className="h-5" />
-          <Badge variant={validationErrors.length ? "destructive" : "outline"}>
-            {validationErrors.length
-              ? `${validationErrors.length} 项待处理`
-              : `目录 · ${value.length} 项`}
-          </Badge>
-        </div>
-
-        {selectedItem ? (
-          <div className="grid gap-2">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          {selectedItem ? (
             <div className="grid gap-1">
               <p className="text-sm font-medium">
                 第 {selectedIndex + 1} 条目录标题
@@ -297,22 +264,51 @@ export function OutlineEditor({
                 标题支持粗体、斜体和上下标；目录层级与编号在下方对应条目中维护。
               </p>
             </div>
-            <StructuredContentEditor
-              key={selectedItem.id}
-              value={inlineBody(selectedItem.title)}
-              onChange={(title) =>
-                replaceItem(selectedIndex, {
-                  ...selectedItem,
-                  title: inlineParagraph(title),
-                })
-              }
-              mode="inline"
+          ) : null}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
               disabled={disabled}
-              ariaLabel={`第 ${selectedIndex + 1} 条目录标题`}
-              ariaInvalid={!paragraphInputText(selectedItem.title).trim()}
-              placeholder="输入目录标题"
-            />
+              onClick={() => {
+                const item = createOutlineEditorItem()
+                setSelectedId(item.id)
+                onChange([...value, item])
+              }}
+            >
+              <ListPlusIcon data-icon="inline-start" />
+              新增目录
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={disabled || validationErrors.length > 0}
+              onClick={() => onChange(renumberOutlineItems(value))}
+            >
+              <RefreshCwIcon data-icon="inline-start" />
+              重新编号
+            </Button>
           </div>
+        </div>
+
+        {selectedItem ? (
+          <StructuredContentEditor
+            key={selectedItem.id}
+            value={inlineBody(selectedItem.title)}
+            onChange={(title) =>
+              replaceItem(selectedIndex, {
+                ...selectedItem,
+                title: inlineParagraph(title),
+              })
+            }
+            mode="inline"
+            disabled={disabled}
+            ariaLabel={`第 ${selectedIndex + 1} 条目录标题`}
+            ariaInvalid={!paragraphInputText(selectedItem.title).trim()}
+            placeholder="输入目录标题"
+          />
         ) : null}
 
         <Separator />
@@ -364,11 +360,10 @@ export function OutlineEditor({
                         return
                       }
                       if (event.key !== "Tab") return
+                      event.preventDefault()
                       if (event.shiftKey && canOutdent) {
-                        event.preventDefault()
                         changeLevel(index, -1)
                       } else if (!event.shiftKey && canIndent) {
-                        event.preventDefault()
                         changeLevel(index, 1)
                       }
                     }}

@@ -142,11 +142,14 @@ import type {
   ExportJobSummary,
   ExportReceipt,
   JsonObject,
+  PrivacyNoticeStatus,
   PreviewResult,
   StudentProfile,
   StudentProfileDraft,
   StudentProfileInput,
   SztuDesktopApi,
+  TelemetryUsageEvent,
+  UpdateStatus,
   WorkspaceMode,
   WorkspaceState as WorkspaceSnapshot,
 } from "@/types/desktop-api"
@@ -265,6 +268,12 @@ type EnvironmentState =
   | { status: "ready"; result: EnvironmentResult }
   | { status: "error"; message: string }
 
+type PrivacyNoticeState =
+  | { status: "loading" }
+  | { status: "required"; result: PrivacyNoticeStatus }
+  | { status: "accepted"; result: PrivacyNoticeStatus }
+  | { status: "error"; message: string }
+
 async function loadEnvironmentState(): Promise<EnvironmentState> {
   const api = getDesktopApi()
   if (!api) {
@@ -355,6 +364,19 @@ function errorHasCode(error: unknown, code: string): boolean {
     "code" in error &&
     (error as { code?: unknown }).code === code
   )
+}
+
+function telemetryErrorCode(error: unknown): string {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof (error as { code?: unknown }).code === "string" &&
+    /^[A-Z][A-Z0-9_]{0,63}$/.test((error as { code: string }).code)
+  ) {
+    return (error as { code: string }).code
+  }
+  return "UNKNOWN_ERROR"
 }
 
 function newRequestId(): string {
@@ -1505,7 +1527,7 @@ function DateField({
 
   return (
     <div className="grid gap-2">
-      <label className="text-sm font-medium" htmlFor={id}>
+      <label className="sr-only" htmlFor={id}>
         {label}
       </label>
       <Popover open={open} onOpenChange={setOpen}>
@@ -1884,9 +1906,6 @@ function StudentProfileEditor({
         <Card>
           <CardHeader>
             <CardTitle>论文题目</CardTitle>
-            <CardDescription>
-              所有毕业设计过程文档共用同一题目；修改后会自动保存。
-            </CardDescription>
           </CardHeader>
           <CardContent>
             <StructuredContentEditor
@@ -1910,9 +1929,6 @@ function StudentProfileEditor({
         <Card>
           <CardHeader>
             <CardTitle>共用基础信息</CardTitle>
-            <CardDescription>
-              修改后会自动保存，并作为所有过程文档下一次检查与导出的唯一基础信息来源。
-            </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-2">
             <Field
@@ -1977,12 +1993,7 @@ function StudentProfileEditor({
               disabled={disabled}
             />
             <div className="grid gap-3 md:col-span-2">
-              <div className="grid gap-1">
-                <p className="text-sm font-medium">指导教师</p>
-                <p className="text-xs text-muted-foreground">
-                  教师和职称按行一一对应；第一行是第一指导教师，可调整后续教师的顺序。
-                </p>
-              </div>
+              <p className="text-sm font-medium">指导教师</p>
               {advisorEntries.map((entry, index) => {
                 const nameLabel = index === 0 ? "指导教师" : `第${index + 1}指导教师`
                 const titleLabel =
@@ -2423,12 +2434,7 @@ function DocumentEditor({
               <>
                 {activeSection === "midterm_directory" ? (
                 <div className="grid gap-2">
-                  <div className="grid gap-1">
-                    <p className="text-sm font-medium">论文目录</p>
-                    <p className="text-xs text-muted-foreground">
-                      目录层级会直接写入文档结构；编号和标题分开维护，不再依赖空格或小数点猜测缩进。
-                    </p>
-                  </div>
+                  <p className="text-sm font-medium">论文目录</p>
                   <OutlineEditor
                     value={draft.directory}
                     onChange={onDirectoryChange}
@@ -3088,6 +3094,16 @@ export default function App() {
   const [qaTarget, setQaTarget] = useState<QaTarget | null>(null)
   const [qaNotes, setQaNotes] = useState("")
   const [qaSubmitting, setQaSubmitting] = useState(false)
+  const [privacyNotice, setPrivacyNotice] = useState<PrivacyNoticeState>({
+    status: "loading",
+  })
+  const [privacySubmitting, setPrivacySubmitting] = useState(false)
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({
+    state: "unconfigured",
+  })
+  const [dismissedUpdateVersion, setDismissedUpdateVersion] = useState<string | null>(
+    null,
+  )
   const activeDocumentId = document?.id
   const activeDocumentIdRef = useRef<string | null>(activeDocumentId ?? null)
   useEffect(() => {
@@ -3101,6 +3117,36 @@ export default function App() {
   const documentEditVersion = useRef(0)
   const persistedDocumentEditVersion = useRef(0)
   const saving = useRef(false)
+
+  const recordTelemetry = useCallback((input: TelemetryUsageEvent) => {
+    const api = getDesktopApi()
+    if (!api) return
+    void api.recordTelemetry(input).catch(() => undefined)
+  }, [])
+
+  const loadRemoteServiceState = useCallback(async () => {
+    const api = getDesktopApi()
+    if (!api) return
+    try {
+      const [notice, update] = await Promise.all([
+        api.getPrivacyNoticeStatus(),
+        api.getUpdateStatus(),
+      ])
+      setPrivacyNotice({
+        status: notice.acknowledged ? "accepted" : "required",
+        result: notice,
+      })
+      setUpdateStatus(update)
+    } catch (error) {
+      setPrivacyNotice({
+        status: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "无法读取匿名遥测与更新服务状态。",
+      })
+    }
+  }, [])
 
   const isCurrentSavedRevision = (documentId: string, version: number) =>
     activeDocumentIdRef.current === documentId &&
@@ -3211,6 +3257,25 @@ export default function App() {
   useEffect(() => {
     void loadEnvironmentState().then(setEnvironment)
   }, [])
+
+  useEffect(() => {
+    const api = getDesktopApi()
+    if (!api) return
+    // oxlint-disable-next-line react/set-state-in-effect -- initial IPC hydration synchronizes React with the main-process remote-service state.
+    void loadRemoteServiceState()
+    return api.onUpdateStatus((status) => setUpdateStatus(status))
+  }, [loadRemoteServiceState])
+
+  useEffect(() => {
+    if (privacyNotice.status !== "accepted") return
+    const view =
+      activePane === "profile"
+        ? "profile"
+        : activePane === "inspection"
+          ? "inspection"
+          : activeDocumentType
+    recordTelemetry({ name: "view_opened", view })
+  }, [activeDocumentType, activePane, privacyNotice.status, recordTelemetry])
 
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect -- initial IPC hydration synchronizes React with the local workspace.
@@ -3450,6 +3515,13 @@ export default function App() {
     const documentIdAtStart = document.id
     const versionAtStart = editVersion.current
     if (saveStateRef.current === "conflict") {
+      recordTelemetry({
+        name: "document_action",
+        action: "check",
+        documentType: activeDocumentType,
+        outcome: "failure",
+        errorCode: "REVISION_CONFLICT",
+      })
       toast.error("当前草稿存在修订冲突，请重新载入后再检查或生成预览。")
       return false
     }
@@ -3474,6 +3546,13 @@ export default function App() {
           checked_at: new Date().toISOString(),
         },
       ])
+      recordTelemetry({
+        name: "document_action",
+        action: "check",
+        documentType: activeDocumentType,
+        outcome: "failure",
+        errorCode: "PROFILE_INCOMPLETE",
+      })
       toast.error(message)
       return false
     }
@@ -3494,6 +3573,13 @@ export default function App() {
           checked_at: new Date().toISOString(),
         },
       ])
+      recordTelemetry({
+        name: "document_action",
+        action: "check",
+        documentType: activeDocumentType,
+        outcome: "failure",
+        errorCode: "THESIS_TITLE_INVALID",
+      })
       toast.error(message)
       return false
     }
@@ -3515,6 +3601,13 @@ export default function App() {
           checked_at: new Date().toISOString(),
         },
       ])
+      recordTelemetry({
+        name: "document_action",
+        action: "check",
+        documentType: activeDocumentType,
+        outcome: "failure",
+        errorCode: "GRADUATION_YEAR_MISSING",
+      })
       toast.error(message)
       return false
     }
@@ -3566,8 +3659,18 @@ export default function App() {
       }
       setQualityChecks(result.checks)
       const passed = result.checks.every((check) => check.status === "pass")
+      const failedCheck = result.checks.find((check) => check.status === "fail")
+      recordTelemetry({
+        name: "document_action",
+        action: "check",
+        documentType: activeDocumentType,
+        outcome: passed ? "success" : "failure",
+        ...(passed
+          ? {}
+          : { errorCode: failedCheck?.code ?? "VALIDATION_FAILED" }),
+      })
       if (passed) toast.success("内容检查通过。")
-      else toast.error(result.checks.find((check) => check.status === "fail")?.message ?? "内容检查未通过。")
+      else toast.error(failedCheck?.message ?? "内容检查未通过。")
       return passed
     } catch (error) {
       if (!isCurrentSavedRevision(documentIdAtStart, versionAtStart)) {
@@ -3582,6 +3685,13 @@ export default function App() {
           code: "CHECK_FAILED",
         },
       ])
+      recordTelemetry({
+        name: "document_action",
+        action: "check",
+        documentType: activeDocumentType,
+        outcome: "failure",
+        errorCode: telemetryErrorCode(error),
+      })
       toast.error(message)
       return false
     }
@@ -3608,6 +3718,13 @@ export default function App() {
       !passed ||
       !isCurrentSavedRevision(documentIdAtStart, versionAtStart)
     ) {
+      recordTelemetry({
+        name: "document_action",
+        action: "preview",
+        documentType: activeDocumentType,
+        outcome: "failure",
+        errorCode: "PRECHECK_FAILED",
+      })
       return
     }
     setPreviewState({ status: "generating" })
@@ -3620,6 +3737,13 @@ export default function App() {
       const stale = !isCurrentSavedRevision(documentIdAtStart, versionAtStart)
       if (!stale) setQualityChecks(result.checks)
       setPreviewState({ status: "ready", result, stale })
+      recordTelemetry({
+        name: "document_action",
+        action: "preview",
+        documentType: activeDocumentType,
+        outcome: stale ? "failure" : "success",
+        ...(stale ? { errorCode: "RESULT_STALE" } : {}),
+      })
       if (stale) toast.info("预览已生成，但内容随后发生变化，请重新生成。")
       else toast.success(`已生成 ${result.pages.length} 页排版预览。`)
     } catch (error) {
@@ -3630,6 +3754,13 @@ export default function App() {
       }
       const message = error instanceof Error ? error.message : "排版预览生成失败。"
       setPreviewState({ status: "error", message })
+      recordTelemetry({
+        name: "document_action",
+        action: "preview",
+        documentType: activeDocumentType,
+        outcome: "failure",
+        errorCode: telemetryErrorCode(error),
+      })
       toast.error(message)
     }
   }
@@ -3640,7 +3771,15 @@ export default function App() {
     setTemplateInstalling(true)
     try {
       const installed = await api.installTemplatePack(activeDocumentType)
-      if (!installed) return
+      if (!installed) {
+        recordTelemetry({
+          name: "document_action",
+          action: "template_sync",
+          documentType: activeDocumentType,
+          outcome: "cancelled",
+        })
+        return
+      }
       toast.success(
         installed.status === "already_current"
           ? `本地模板工程已是最新快照 ${installed.version}。`
@@ -3653,7 +3792,20 @@ export default function App() {
           : current,
       )
       await refreshEnvironment()
+      recordTelemetry({
+        name: "document_action",
+        action: "template_sync",
+        documentType: activeDocumentType,
+        outcome: "success",
+      })
     } catch (error) {
+      recordTelemetry({
+        name: "document_action",
+        action: "template_sync",
+        documentType: activeDocumentType,
+        outcome: "failure",
+        errorCode: telemetryErrorCode(error),
+      })
       toast.error(error instanceof Error ? error.message : "模板安装失败。")
     } finally {
       setTemplateInstalling(false)
@@ -3700,8 +3852,21 @@ export default function App() {
           ? `${editor === "word" ? "Word" : "WPS"} 人工验收已记录。`
           : `${editor === "word" ? "Word" : "WPS"} 未通过已记录。`,
       )
+      recordTelemetry({
+        name: "document_action",
+        action: "qa_record",
+        documentType: activeDocumentType,
+        outcome: "success",
+      })
       await refreshHistory()
     } catch (error) {
+      recordTelemetry({
+        name: "document_action",
+        action: "qa_record",
+        documentType: activeDocumentType,
+        outcome: "failure",
+        errorCode: telemetryErrorCode(error),
+      })
       toast.error(error instanceof Error ? error.message : "人工验收记录失败。")
     } finally {
       setQaSubmitting(false)
@@ -3751,6 +3916,13 @@ export default function App() {
       })
       setQualityChecks(receipt.checks)
       setExportState({ status: "succeeded", receipt })
+      recordTelemetry({
+        name: "document_action",
+        action: "export",
+        documentType: activeDocumentType,
+        outcome: "success",
+        formatCount: pending.formats.length,
+      })
       toast.success(
         `已导出 ${receipt.artifacts
           .map((artifact) => artifact.format.toUpperCase())
@@ -3765,6 +3937,14 @@ export default function App() {
           ? error.message
           : "导出失败。"
       setExportState({ status: "error", message })
+      recordTelemetry({
+        name: "document_action",
+        action: "export",
+        documentType: activeDocumentType,
+        outcome: cancelled ? "cancelled" : "failure",
+        ...(cancelled ? {} : { errorCode: telemetryErrorCode(error) }),
+        formatCount: pending.formats.length,
+      })
       if (cancelled) toast.info(message)
       else toast.error(message)
       await refreshHistory()
@@ -3793,7 +3973,16 @@ export default function App() {
       return
     }
     const outputDirectory = await api.chooseExportDirectory()
-    if (!outputDirectory) return
+    if (!outputDirectory) {
+      recordTelemetry({
+        name: "document_action",
+        action: "export",
+        documentType: activeDocumentType,
+        outcome: "cancelled",
+        formatCount: formats.length,
+      })
+      return
+    }
     if (!isCurrentSavedRevision(documentIdAtStart, versionAtStart)) {
       setPreviewState((current) =>
         current.status === "ready" ? { ...current, stale: true } : current,
@@ -3852,6 +4041,14 @@ export default function App() {
       }
       const message = error instanceof Error ? error.message : "导出预检失败。"
       setExportState({ status: "error", message })
+      recordTelemetry({
+        name: "document_action",
+        action: "export",
+        documentType: activeDocumentType,
+        outcome: "failure",
+        errorCode: telemetryErrorCode(error),
+        formatCount: formats.length,
+      })
       toast.error(message)
     }
   }
@@ -3877,6 +4074,37 @@ export default function App() {
           : current,
       )
       toast.error(error instanceof Error ? error.message : "取消导出失败。")
+    }
+  }
+
+  const acceptPrivacyNotice = async () => {
+    const api = getDesktopApi()
+    if (!api || privacySubmitting) return
+    setPrivacySubmitting(true)
+    try {
+      const result = await api.acceptPrivacyNotice()
+      setPrivacyNotice({ status: "accepted", result })
+      setUpdateStatus(await api.getUpdateStatus())
+    } catch (error) {
+      setPrivacyNotice({
+        status: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "无法保存匿名运行数据与更新服务确认状态。",
+      })
+    } finally {
+      setPrivacySubmitting(false)
+    }
+  }
+
+  const revealDownloadedUpdate = async () => {
+    const api = getDesktopApi()
+    if (!api) return
+    try {
+      await api.revealDownloadedUpdate()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "无法显示更新文件。")
     }
   }
 
@@ -4227,6 +4455,116 @@ export default function App() {
           <div className="min-h-0 flex-1">{previewPanel}</div>
         </SheetContent>
       </Sheet>
+      <Dialog
+        open={privacyNotice.status === "required" || privacyNotice.status === "error"}
+        onOpenChange={() => undefined}
+      >
+        <DialogContent showCloseButton={false} className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>使用说明与隐私告知</DialogTitle>
+            <DialogDescription>
+              继续使用前，请确认本软件的必要使用说明。
+            </DialogDescription>
+          </DialogHeader>
+          {privacyNotice.status === "error" ? (
+            <Alert variant="destructive">
+              <TriangleAlertIcon />
+              <AlertTitle>暂时无法继续</AlertTitle>
+              <AlertDescription>
+                初始化未完成，请稍后重试。
+              </AlertDescription>
+            </Alert>
+          ) : privacyNotice.status === "required" ? (
+            <div className="grid gap-3 text-sm text-muted-foreground">
+              <p className="text-muted-foreground">
+                本软件会收集必要的匿名运行信息，用于稳定性分析、功能改进和版本服务，不会上传你填写的文档内容和个人资料。
+              </p>
+              <p>点击“同意并继续”即表示你已知悉并接受上述说明。</p>
+              {privacyNotice.result.configurationRequired &&
+              (!privacyNotice.result.telemetryConfigured ||
+                !privacyNotice.result.updateConfigured) ? (
+                <Alert variant="destructive">
+                  <TriangleAlertIcon />
+                  <AlertTitle>当前版本暂不可用</AlertTitle>
+                  <AlertDescription>
+                    必要服务尚未完成配置，请退出应用并联系开发者。
+                  </AlertDescription>
+                </Alert>
+              ) : null}
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={privacySubmitting}
+              onClick={() => void getDesktopApi()?.quitApp()}
+            >
+              退出应用
+            </Button>
+            {privacyNotice.status === "error" ? (
+              <Button
+                disabled={privacySubmitting}
+                onClick={() => void loadRemoteServiceState()}
+              >
+                重新读取
+              </Button>
+            ) : privacyNotice.status === "required" ? (
+              <Button
+                disabled={
+                  privacySubmitting ||
+                  (privacyNotice.result.configurationRequired &&
+                    (!privacyNotice.result.telemetryConfigured ||
+                      !privacyNotice.result.updateConfigured))
+                }
+                onClick={() => void acceptPrivacyNotice()}
+              >
+                {privacySubmitting ? (
+                  <LoaderCircleIcon className="animate-spin" />
+                ) : null}
+                同意并继续
+              </Button>
+            ) : null}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={
+          updateStatus.state === "downloaded" &&
+          dismissedUpdateVersion !== updateStatus.version
+        }
+        onOpenChange={(open) => {
+          if (!open && updateStatus.state === "downloaded") {
+            setDismissedUpdateVersion(updateStatus.version)
+          }
+        }}
+      >
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>新版本已下载并校验</DialogTitle>
+            <DialogDescription>
+              {updateStatus.state === "downloaded"
+                ? `版本 ${updateStatus.version} 已通过签名、大小和 SHA-256 校验。当前阶段不会自动覆盖正在运行的应用。`
+                : null}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (updateStatus.state === "downloaded") {
+                  setDismissedUpdateVersion(updateStatus.version)
+                }
+              }}
+            >
+              稍后处理
+            </Button>
+            <Button onClick={() => void revealDownloadedUpdate()}>
+              <FolderOpenIcon />
+              显示更新文件
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog
         open={pendingExport !== null}
         onOpenChange={(open) => {

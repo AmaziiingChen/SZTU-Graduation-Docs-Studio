@@ -1,0 +1,7 @@
+@import "../../desktop/src/index.css";
+@source "../../desktop/src/components";
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+}
