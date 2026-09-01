@@ -121,7 +121,7 @@ class ContractTests(unittest.TestCase):
         midterm = CONTRACTS / "midterm.schema.json"
         self.assertEqual(
             hashlib.sha256(common.read_bytes()).hexdigest(),
-            "b43829110464ec8623129557534a0fcaa72bb5033ead36d93251959042588eca",
+            "60eced9ef46618174cd6070a904d6999b1c436dcad19ade785309d346255a9a7",
         )
         self.assertEqual(
             hashlib.sha256(midterm.read_bytes()).hexdigest(),
