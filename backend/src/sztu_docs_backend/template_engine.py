@@ -15,61 +15,62 @@ from .storage.database import utc_now
 from .storage.paths import prepare_private_directory, protect_private_file
 from .template_catalog import template_pack_root
 
-ENGINE_VERSION = "0.2+a0799ee"
+ENGINE_VERSION = "0.3+5342c1e"
 ENGINE_TEMPLATE_ID = "sztu.proposal.2026.local"
-ENGINE_DIRECTORY_NAME = "proposal-0.2-a0799ee"
-MIDTERM_ENGINE_VERSION = "0.1+local.20260830"
+ENGINE_DIRECTORY_NAME = "proposal-0.3-5342c1e"
+MIDTERM_ENGINE_VERSION = "0.2+13fa40e"
 MIDTERM_ENGINE_TEMPLATE_ID = "sztu.midterm.2026.local"
-MIDTERM_ENGINE_DIRECTORY_NAME = "midterm-0.1-local-20260830"
-TASK_BOOK_ENGINE_VERSION = "0.1+46b6d97"
+MIDTERM_ENGINE_DIRECTORY_NAME = "midterm-0.2-13fa40e"
+TASK_BOOK_ENGINE_VERSION = "0.2+5342c1e"
 TASK_BOOK_ENGINE_TEMPLATE_ID = "sztu.task-book.2026.local"
-TASK_BOOK_ENGINE_DIRECTORY_NAME = "task-book-0.1-46b6d97"
+TASK_BOOK_ENGINE_DIRECTORY_NAME = "task-book-0.2-5342c1e"
 SUPPORTED_ENGINE_DOCUMENT_TYPES = frozenset({"proposal", "midterm", "task_book"})
 INSTALL_MANIFEST_NAME = "install-manifest.json"
 WORKSPACE_LINKS_NAME = "workspace-links.json"
 WORKSPACE_SNAPSHOTS_DIRECTORY = "workspace-snapshots"
 ENGINE_FILE_HASHES = {
-    "word/render.py": "c255ccac31ea73a5c1629eb0d30c91f6931c9083329f5e6218070e13a8d869aa",
+    "word/render.py": "19bb3a35251dbf67978e1bebcf8cf447a0392280a87b223050bd90184301d1d2",
     "word/official-template.docx": "85b9ccc9d92e923fda81501a9f5abfd237fbc1c5021bafe449e51f044bfa5806",
-    "latex/render.py": "16fb153f629dd417a9d165849a555cd01f829aba96353ea67b633a182d3e3259",
-    "latex/main.tex": "1794535971360397c3947c8b6f00542584602667596edd61b0320c9e7bbe57d6",
-    "schema/proposal.schema.json": "4a916b1127dc3db6a8dc6c8f5278b4d994feb77e9e09b507639a92a30d4efa63",
+    "latex/render.py": "6bb81ca26fc7fee115ec4d99967c64ea58f492789504caf4d57fc8483750d2bd",
+    "latex/main.tex": "48d247245e69469fc04a253f0d242494f41df4f6d39a867854724fa74e5388e2",
+    "schema/proposal.schema.json": "555275e6e4a6058beeddf4031651f419b03c31566f4ed83807cb3a67c3f8c5cc",
 }
 MIDTERM_ENGINE_FILE_HASHES = {
     "templates/common/__init__.py": "b5cf6a625cd4c58cac3e8bd2636bafe769bfe6394784d9c7dbb758edec251e5c",
     "templates/common/python/__init__.py": "687b666c14d9378451c2474ddd7c9736eec9f29bf41e13a6d1702061808b13c0",
-    "templates/common/python/content.py": "36c61c9f09254ddf515a955f0fe3230eec98a0dc6d63d7ce2939f60b04d80e45",
-    "templates/common/python/font_files.py": "4782eefaea6e6898d09213d4b75c0f4d482e0daee0b1f935e4dbca72c03ed285",
+    "templates/common/python/content.py": "8bc536783a80882ee2dcb4912b490dc0fb575ce97f09446894ba70777d6a6bef",
+    "templates/common/python/font_files.py": "fe11a76d2033d1a1ae670616183c0f870cf6cd58e76ed8fa1a0a064495f86c74",
+    "templates/common/python/outline_numbering.py": "d240b198a61cd1ce439c0ecf8686228a391926bd54b552917a202fdb41e9f6ec",
     "templates/common/python/typography.py": "864e8743cdde4a88b7bc4e0345c981e8fab3fc0d38933eb8fd90568a91858650",
-    "templates/common/schema/content-block.schema.json": "6c766db71640843a8eaa86d9398e6a02b3b9b0d11edfd24b512e27c8caef0562",
-    "templates/common/typography/chinese-sizes.json": "0edffced2a950d98da56a62874e4a5ed1ef41fe6ac7780afee345ca7f433ce6b",
-    "templates/common/typography/font-policy-2026.json": "b363a52094f61062ac673d1eca212e940f0c56cc576444741c00904a827d1e9c",
-    "templates/midterm/latex/main.tex": "de5a63a007d1232ed41d16c76bbd0a1c5d0ccd97cb19d7b55b8233875c52bad6",
-    "templates/midterm/latex/render.py": "12adc734cd8f8b4e3eb522ea321f0f3399760dd1cd33b8cd6c1ee6accd1399eb",
-    "templates/midterm/schema/midterm.schema.json": "17924cfa9daf2e1a56e29ab883bbe5fd93482c2a3afa88591f0ad3a355707d58",
-    "templates/midterm/spec/layout.json": "4c0dc0b2e7543361b3fde49362230ddd80c3edfda6310eae668bdb39e56093a4",
+    "templates/common/schema/content-block.schema.json": "b43829110464ec8623129557534a0fcaa72bb5033ead36d93251959042588eca",
+    "templates/common/typography/chinese-sizes.json": "46ec813ebc86f8a0b5fa0e2fc19c9e6b1e59519b7a03a53ed676f7126f0c8cc2",
+    "templates/common/typography/font-policy-2026.json": "dcebfe802d687d94865972d04fa9b0581c121d22f2f46a3a31121be47e2c30f8",
+    "templates/midterm/latex/main.tex": "9e2a4fa15791fc07765110c90df7918c5db5a1115d151d4820c0173d0412674d",
+    "templates/midterm/latex/render.py": "44eaf3a08a256d48ee3abd4350d1b4a97c262530681021618c746d821ca832a6",
+    "templates/midterm/schema/midterm.schema.json": "46fb159387e7312e7b955f75b109d4cb661e60f376521d9f0b736a1aade274a6",
+    "templates/midterm/spec/layout.json": "7f42c199403b79fcc7403afc5303c761c7b26be4972cb9447fa31851e409cbee",
     "templates/midterm/word/official-template.docx": "5411d1471ba1a30def0b8c945a11674cce4616a6b3c0d3a8953e3f45b88af1a2",
-    "templates/midterm/word/render.py": "31758477b634547161fbe40da263ec3d4f0e0f201d923faed8441da0e3f0a725",
+    "templates/midterm/word/render.py": "48663197397a383c12885288a2baf42d45a2df22403de94114ece76b4d9de916",
 }
 TASK_BOOK_ENGINE_FILE_HASHES = {
     "templates/common/__init__.py": "b5cf6a625cd4c58cac3e8bd2636bafe769bfe6394784d9c7dbb758edec251e5c",
     "templates/common/python/__init__.py": "687b666c14d9378451c2474ddd7c9736eec9f29bf41e13a6d1702061808b13c0",
-    "templates/common/python/content.py": "2f2ab4d43e57d5dff9cad2f44fc47f9d0dddbb3c6ab06821364ec9850b94e420",
-    "templates/common/python/font_files.py": "4782eefaea6e6898d09213d4b75c0f4d482e0daee0b1f935e4dbca72c03ed285",
+    "templates/common/python/content.py": "8bc536783a80882ee2dcb4912b490dc0fb575ce97f09446894ba70777d6a6bef",
+    "templates/common/python/font_files.py": "fe11a76d2033d1a1ae670616183c0f870cf6cd58e76ed8fa1a0a064495f86c74",
     "templates/common/python/typography.py": "864e8743cdde4a88b7bc4e0345c981e8fab3fc0d38933eb8fd90568a91858650",
-    "templates/common/schema/content-block.schema.json": "6c766db71640843a8eaa86d9398e6a02b3b9b0d11edfd24b512e27c8caef0562",
+    "templates/common/schema/content-block.schema.json": "b43829110464ec8623129557534a0fcaa72bb5033ead36d93251959042588eca",
     "templates/common/typography/chinese-sizes.json": "46ec813ebc86f8a0b5fa0e2fc19c9e6b1e59519b7a03a53ed676f7126f0c8cc2",
-    "templates/common/typography/font-policy-2026.json": "1aa94285f0b15dddf20178998c55c72839cc0878cb60904f0247a2b182619a61",
+    "templates/common/typography/font-policy-2026.json": "dcebfe802d687d94865972d04fa9b0581c121d22f2f46a3a31121be47e2c30f8",
     "templates/task-book/render.py": "16594594f5cabdb24845a5723ba26eea837ab2c5e91618b3ca4720e15769b40b",
     "templates/task-book/python/__init__.py": "a0f9d99aadb8bae63368ba16ff1c51a917e97011eafb938bbf31182b2c080e20",
-    "templates/task-book/python/model.py": "6aaad71b1f9c527defcf65c1e65989da36a2a12a95d55a6568723f2f16d9f204",
-    "templates/task-book/latex/main.tex": "0b33e6aef703434e812e634cb7b30ce36b4c663b3895433348fcfb65331acc2a",
-    "templates/task-book/latex/render.py": "ad2e737331e023f44c62e3a97018b714b02232bfd58694e4144290c512ba79ba",
+    "templates/task-book/python/model.py": "95895e3ce62fa18f17aa93a26ad2f9780b14597ded7b31c79256d65268bd654d",
+    "templates/task-book/latex/main.tex": "f6fffdc1ec647a47f872bd67511cf4f401372768313ad8cdc4307739c7e5464d",
+    "templates/task-book/latex/render.py": "776d4178ad8cd3d69c6a67f38e286040a941a0ea4c1167fe483483cc30748b69",
     "templates/task-book/schema/task-book.schema.json": "16cfd7b8071c7164e356663fd4c5239cb10c4a738414a72882017129d1582ae4",
     "templates/task-book/spec/fixed-content.json": "555f81cbfe0b654ce609bc3ba20b95ade6676d7159f4e991b991665f6b6e92c2",
-    "templates/task-book/spec/layout.json": "374c6800ed8fe14cfcb7f0b93f08bedb17f62529149cf5827ba7b6151f284331",
+    "templates/task-book/spec/layout.json": "44779a67bf024ec0ab4bcaac8987376412bedb2f1fb4ce1103ff3b06a373cfed",
     "templates/task-book/word/official-template.docx": "dd5cdeb1c96d0a617fe03095483dc5f4cbd96a12772d55e940c120978a6104d2",
-    "templates/task-book/word/render.py": "204508f99c04c5708355e4c8dd937ed39c1ee2ddd383ab7f51e916ed429760f9",
+    "templates/task-book/word/render.py": "5f3dcec4a6331926830c78061c37765b23b3fade14995ec7204bbf65b03b6320",
 }
 WORKSPACE_SHARED_SUPPORT_FILE_NAMES = (
     "templates/common/latex/sztu-process-form.tex",

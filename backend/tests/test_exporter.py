@@ -661,7 +661,7 @@ class ProposalExportIntegrationTests(unittest.TestCase):
                         preview_id=preview["preview_id"],
                     )
                 self.assertEqual(receipt["status"], "succeeded")
-                self.assertTrue(receipt["template"]["version"].startswith("0.2+workspace."))
+                self.assertTrue(receipt["template"]["version"].startswith("0.3+workspace."))
                 self.assertEqual(
                     [item["format"] for item in receipt["artifacts"]],
                     ["docx", "pdf"],

@@ -3703,9 +3703,9 @@ export default function App() {
       document_type: request.type,
       template_version:
         request.type === "task_book"
-          ? "0.1+46b6d97"
+          ? "0.2+5342c1e"
           : request.type === "midterm"
-            ? "0.1+local.20260830"
+            ? "0.2+13fa40e"
             : "0.1.0-dev.1",
       schema_version: request.type === "proposal" ? "0.2" : "0.1",
       title: request.title,

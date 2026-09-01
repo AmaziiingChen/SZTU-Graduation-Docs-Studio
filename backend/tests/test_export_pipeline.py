@@ -853,12 +853,13 @@ class TemplateEngineInstallationTests(unittest.TestCase):
                     self.source, validator=validator.resolve(), source="submitted"
                 )
         self.assertEqual(verified.document_type, "task_book")
-        self.assertEqual(verified.version, "0.1+46b6d97")
+        self.assertEqual(verified.version, "0.2+5342c1e")
         self.assertEqual(caught.exception.code, "TEMPLATE_ENGINE_HASH_MISMATCH")
 
     def test_midterm_workspace_uses_the_same_content_addressed_link_flow(self) -> None:
         payloads = {
             "templates/common/python/content.py": b"synthetic shared content",
+            "templates/common/python/outline_numbering.py": b"synthetic outline numbering",
             "templates/midterm/word/render.py": b"synthetic midterm renderer",
         }
         for relative_name, payload in payloads.items():
@@ -888,7 +889,7 @@ class TemplateEngineInstallationTests(unittest.TestCase):
 
         self.assertEqual(linked["status"], "linked")
         self.assertEqual(repeated["status"], "already_current")
-        self.assertTrue(linked["version"].startswith("0.1+workspace."))
+        self.assertTrue(linked["version"].startswith("0.2+workspace."))
         installation = self.workspace.list_template_installations(enabled_only=True)[0]
         engine_root = Path(installation["install_path"])
         self.assertEqual(
@@ -933,7 +934,7 @@ class TemplateEngineInstallationTests(unittest.TestCase):
                 resolved = template_engine.resolve_engine("task_book")
 
         self.assertEqual(linked["status"], "linked")
-        self.assertTrue(linked["version"].startswith("0.1+workspace."))
+        self.assertTrue(linked["version"].startswith("0.2+workspace."))
         self.assertEqual(
             (
                 resolved.root.parents[1]
