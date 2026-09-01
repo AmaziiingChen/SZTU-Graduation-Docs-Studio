@@ -100,6 +100,15 @@ export type ToolLinkId =
   | "qianwen"
   | "gemini"
 
+export type ImageAssetImportResult = {
+  path: string
+  previewUrl: string
+  originalName: string
+  mimeType: "image/png" | "image/jpeg"
+  sizeBytes: number
+  sha256: string
+}
+
 export type StudentProfileInput = {
   id?: string
   full_name: string
@@ -421,6 +430,7 @@ export type SztuDesktopApi = {
   getUpdateStatus: () => Promise<UpdateStatus>
   revealDownloadedUpdate: () => Promise<null>
   openToolLink: (toolId: ToolLinkId) => Promise<null>
+  importImageAsset: () => Promise<ImageAssetImportResult | null>
   onUpdateStatus: (callback: (status: UpdateStatus) => void) => () => void
   openWorkspace: (mode: WorkspaceMode) => Promise<WorkspaceState>
   saveProfileDraft: (profile: StudentProfileDraft) => Promise<StudentProfileDraft>

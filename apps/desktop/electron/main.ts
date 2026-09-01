@@ -7,6 +7,7 @@ import {
   BrowserWindow,
   dialog,
   ipcMain,
+  protocol,
   session,
   shell,
   type IpcMainInvokeEvent,
@@ -87,6 +88,15 @@ const REQUEST_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9
 const MAX_JSON_DEPTH = 20
 const MAX_JSON_COLLECTION_SIZE = 10_000
 const SHA256_PATTERN = /^[a-f0-9]{64}$/
+const MANAGED_IMAGE_NAME_PATTERN = /^([a-f0-9]{64})\.(png|jpe?g)$/
+const MAX_IMAGE_ASSET_BYTES = 20 * 1024 * 1024
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: "sztu-asset",
+    privileges: { standard: true, secure: true, supportFetchAPI: true },
+  },
+])
 
 class IpcValidationError extends Error {
   readonly code = "INVALID_PARAMS"
@@ -138,6 +148,49 @@ function cancellationPath(requestId: string): string {
     throw new IpcValidationError("取消请求路径无效。")
   }
   return marker
+}
+
+function imageAssetDirectory(): string {
+  return path.resolve(app.getPath("userData"), "document-assets")
+}
+
+function detectImageMime(bytes: Buffer): "image/png" | "image/jpeg" | null {
+  if (
+    bytes.length >= 8 &&
+    bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+  ) return "image/png"
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+    return "image/jpeg"
+  }
+  return null
+}
+
+async function registerAssetProtocol(): Promise<void> {
+  protocol.handle("sztu-asset", async (request) => {
+    const url = new URL(request.url)
+    const fileName = decodeURIComponent(url.pathname.replace(/^\//, ""))
+    const match = url.hostname === "asset" ? fileName.match(MANAGED_IMAGE_NAME_PATTERN) : null
+    if (!match) return new Response("Not found", { status: 404 })
+    const directory = imageAssetDirectory()
+    const target = path.resolve(directory, fileName)
+    if (!target.startsWith(`${directory}${path.sep}`)) return new Response("Forbidden", { status: 403 })
+    try {
+      const fileStat = await lstat(target)
+      if (!fileStat.isFile() || fileStat.isSymbolicLink() || fileStat.size > MAX_IMAGE_ASSET_BYTES) {
+        return new Response("Forbidden", { status: 403 })
+      }
+      const bytes = await readFile(target)
+      const digest = createHash("sha256").update(bytes).digest("hex")
+      const mimeType = detectImageMime(bytes)
+      if (digest !== match[1] || !mimeType) return new Response("Invalid asset", { status: 422 })
+      return new Response(bytes, {
+        headers: { "Content-Type": mimeType, "Cache-Control": "private, max-age=31536000, immutable" },
+      })
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return new Response("Not found", { status: 404 })
+      throw error
+    }
+  })
 }
 
 async function removeCancellationMarker(marker: string): Promise<void> {
@@ -407,7 +460,7 @@ function configureSession(): void {
       responseHeaders: {
         ...details.responseHeaders,
         "Content-Security-Policy": [
-          `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src ${connectSources}`,
+          `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: sztu-asset:; connect-src ${connectSources}`,
         ],
       },
     })
@@ -659,6 +712,48 @@ function registerIpc(): void {
       }
       await shell.openExternal(TOOL_LINKS[toolId as ToolLinkId])
       return null
+    })
+  })
+
+  ipcMain.handle("sztu:asset-import-image", async (event) => {
+    assertTrustedSender(event)
+    return runBridge(async () => {
+      const options: OpenDialogOptions = {
+        title: "选择论文图片",
+        filters: [{ name: "图片", extensions: ["png", "jpg", "jpeg"] }],
+        properties: ["openFile", "dontAddToRecent"],
+      }
+      const result = mainWindow
+        ? await dialog.showOpenDialog(mainWindow, options)
+        : await dialog.showOpenDialog(options)
+      const sourcePath = result.filePaths[0]
+      if (result.canceled || !sourcePath) return null
+      const fileStat = await lstat(sourcePath)
+      if (!fileStat.isFile() || fileStat.isSymbolicLink() || fileStat.size > MAX_IMAGE_ASSET_BYTES) {
+        throw new IpcValidationError("图片必须是小于 20 MiB 的普通文件。")
+      }
+      const bytes = await readFile(sourcePath)
+      const mimeType = detectImageMime(bytes)
+      if (!mimeType) throw new IpcValidationError("仅支持真实的 PNG 或 JPEG 图片。")
+      const sha256 = createHash("sha256").update(bytes).digest("hex")
+      const suffix = mimeType === "image/png" ? "png" : "jpg"
+      const fileName = `${sha256}.${suffix}`
+      const directory = imageAssetDirectory()
+      const target = path.resolve(directory, fileName)
+      await mkdir(directory, { recursive: true, mode: 0o700 })
+      try {
+        await writeFile(target, bytes, { flag: "wx", mode: 0o600 })
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error
+      }
+      return {
+        path: target,
+        previewUrl: `sztu-asset://asset/${fileName}`,
+        originalName: path.basename(sourcePath),
+        mimeType,
+        sizeBytes: bytes.length,
+        sha256,
+      }
     })
   })
 
@@ -1239,6 +1334,7 @@ if (!app.requestSingleInstanceLock()) {
   })
 
   void app.whenReady().then(async () => {
+    await registerAssetProtocol()
     configureSession()
     registerIpc()
     await initializeRemoteServices()

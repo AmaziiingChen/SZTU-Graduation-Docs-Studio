@@ -402,6 +402,7 @@ function mockApi(): SztuDesktopApi {
     getUpdateStatus: vi.fn().mockResolvedValue({ state: "unconfigured" }),
     revealDownloadedUpdate: vi.fn().mockResolvedValue(null),
     openToolLink: vi.fn().mockResolvedValue(null),
+    importImageAsset: vi.fn().mockResolvedValue(null),
     onUpdateStatus: vi.fn().mockReturnValue(() => undefined),
     openWorkspace: vi.fn().mockResolvedValue({
       mode: "persistent",
@@ -2510,7 +2511,7 @@ describe("M3 workbench persistence", () => {
     )
   })
 
-  it("preserves an existing image block instead of crashing the text editor", async () => {
+  it("opens an existing image block in the structured midterm editor", async () => {
     const api = mockApi()
     const midterm = documentFixture({
       id: "midterm-with-image",
@@ -2556,10 +2557,11 @@ describe("M3 workbench persistence", () => {
     await screen.findByRole("heading", { name: "2026届中期检查工作台" })
     fireEvent.click(screen.getByRole("button", { name: /研究内容/ }))
 
+    expect(await screen.findByText("图片：合成示意图")).toBeInTheDocument()
+    expect(screen.getByRole("textbox", { name: "研究内容" })).toBeInTheDocument()
     expect(
-      await screen.findByText("本栏包含暂不支持编辑的内容块"),
-    ).toBeInTheDocument()
-    expect(screen.queryByRole("textbox", { name: "研究内容" })).toBeNull()
+      screen.queryByText("本栏包含暂不支持编辑的内容块"),
+    ).not.toBeInTheDocument()
   })
 
   it("does not expose a temporary workspace in the one-pass document flow", async () => {

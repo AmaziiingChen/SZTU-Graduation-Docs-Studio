@@ -16,6 +16,8 @@ import {
   editorShortcutLabels,
   isStructuredBodyValue,
   structuredBodyToTiptap,
+  structuredFigureCatalog,
+  structuredFigureChapterCounts,
   tiptapToStructuredBody,
 } from "@/lib/structured-content-editor"
 import type { StructuredBodyValue } from "@/types/structured-content"
@@ -177,14 +179,114 @@ describe("structured content editor adapters", () => {
     )
   })
 
-  it("rejects image blocks with a controlled text-only guard", () => {
+  it("loads legacy image blocks into the structured editor without losing the asset", () => {
     const imageBody = [
       { type: "image", path: "images/fixture.png", alt: "合成图片" },
     ]
-    expect(isStructuredBodyValue(imageBody)).toBe(false)
-    expect(() =>
-      structuredBodyToTiptap(imageBody as unknown as StructuredBodyValue),
-    ).toThrow("正文编辑器仅支持段落及四级以内的有序或无序列表")
+    expect(isStructuredBodyValue(imageBody)).toBe(true)
+    const editorDocument = structuredBodyToTiptap(
+      imageBody as StructuredBodyValue,
+    )
+    expect(editorDocument.content?.[0]).toMatchObject({
+      type: "figureBlock",
+      attrs: { path: "images/fixture.png", alt: "合成图片", chapter: 1 },
+    })
+    expect(tiptapToStructuredBody(editorDocument)).toEqual([
+      {
+        type: "image",
+        path: "images/fixture.png",
+        alt: "合成图片",
+        width_mm: 120,
+        chapter: 1,
+        caption: "",
+      },
+    ])
+  })
+
+  it("renumbers figures by chapter and keeps references bound to stable ids", () => {
+    const value: StructuredBodyValue = [
+      "结果见{{fig:fig-example_0001}}。",
+      {
+        type: "image",
+        id: "fig-example_0001",
+        path: "/tmp/example.png",
+        alt: "实验结果",
+        chapter: 2,
+        caption: "实验结果",
+      },
+    ]
+    const editor = new Editor({
+      extensions: createRestrictedEditorExtensions(),
+      content: structuredBodyToTiptap(value),
+    })
+    editor.commands.insertContent("")
+    expect(editor.getJSON().content?.[0]?.content?.[1]).toMatchObject({
+      type: "figureReference",
+      attrs: { figureId: "fig-example_0001", label: "图 2-1" },
+    })
+    expect(editor.getJSON().content?.[1]).toMatchObject({
+      type: "figureBlock",
+      attrs: { figureId: "fig-example_0001", label: "图 2-1" },
+    })
+    expect(tiptapToStructuredBody(editor.getJSON())).toEqual([
+      "结果见{{fig:fig-example_0001}}。",
+      {
+        type: "image",
+        id: "fig-example_0001",
+        path: "/tmp/example.png",
+        alt: "实验结果",
+        width_mm: 120,
+        chapter: 2,
+        caption: "实验结果",
+      },
+    ])
+    editor.destroy()
+  })
+
+  it("keeps numbering and references continuous across both midterm body sections", () => {
+    const research: StructuredBodyValue = [{
+      type: "image",
+      id: "fig-research_0001",
+      path: "/tmp/research.png",
+      alt: "研究流程",
+      chapter: 2,
+      caption: "研究流程",
+    }]
+    const progress: StructuredBodyValue = [
+      "进展对照{{fig:fig-research_0001}}。",
+      {
+        type: "image",
+        id: "fig-progress_0001",
+        path: "/tmp/progress.png",
+        alt: "进展结果",
+        chapter: 2,
+        caption: "进展结果",
+      },
+    ]
+    const catalog = structuredFigureCatalog(research, progress)
+    const numbering = {
+      startCounts: structuredFigureChapterCounts(research),
+      knownLabels: Object.fromEntries(catalog.map((figure) => [figure.id, figure.label])),
+    }
+    expect(catalog.map((figure) => figure.label)).toEqual(["图 2-1", "图 2-2"])
+    const document = structuredBodyToTiptap(progress, numbering)
+    expect(document.content?.[0]?.content?.[1]).toMatchObject({
+      type: "figureReference",
+      attrs: { figureId: "fig-research_0001", label: "图 2-1" },
+    })
+    expect(document.content?.[1]).toMatchObject({
+      type: "figureBlock",
+      attrs: { figureId: "fig-progress_0001", label: "图 2-2" },
+    })
+    const editor = new Editor({
+      extensions: createRestrictedEditorExtensions("body", numbering),
+      content: document,
+    })
+    editor.commands.insertContent("")
+    expect(editor.getJSON().content?.[1]).toMatchObject({
+      attrs: { label: "图 2-2" },
+    })
+    editor.destroy()
   })
 
   it("maps Tab and Shift+Tab to semantic list nesting", () => {

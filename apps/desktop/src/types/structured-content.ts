@@ -38,10 +38,23 @@ export type UnorderedListBlock = {
 
 export type StructuredListBlock = OrderedListBlock | UnorderedListBlock
 
+export type StructuredImageBlock = {
+  type: "image"
+  path: string
+  alt: string
+  id?: string
+  chapter?: number
+  width_mm?: number
+  caption?: ParagraphInput
+  source_citation_key?: string
+}
+
 /**
- * Text and list blocks supported by the restricted body editor.
- * Images and other contract blocks intentionally stay outside this surface.
+ * Contract blocks supported by the restricted body editor.
  */
-export type StructuredTextBlock = ParagraphInput | StructuredListBlock
+export type StructuredTextBlock =
+  | ParagraphInput
+  | StructuredListBlock
+  | StructuredImageBlock
 
 export type StructuredBodyValue = StructuredTextBlock[]

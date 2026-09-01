@@ -4,6 +4,7 @@ import type { Node as ProseMirrorNode } from "@tiptap/pm/model"
 import { Plugin } from "@tiptap/pm/state"
 import {
   Extension,
+  Node,
   type Editor,
   type JSONContent,
 } from "@tiptap/react"
@@ -12,6 +13,7 @@ import StarterKit from "@tiptap/starter-kit"
 import type {
   ParagraphInput,
   StructuredBodyValue,
+  StructuredImageBlock,
   StructuredListBlock,
   StructuredRun,
 } from "@/types/structured-content"
@@ -36,6 +38,7 @@ export function editorShortcutLabels(platform: string) {
 }
 
 const LIST_NODE_NAMES = new Set(["orderedList", "bulletList"])
+const FIGURE_REFERENCE_PATTERN = /\{\{fig:(fig-[A-Za-z0-9_-]{8,96})\}\}/g
 const ALLOWED_MARK_NAMES = new Set([
   "bold",
   "italic",
@@ -157,12 +160,41 @@ function isStructuredListBlock(value: unknown, depth: number): boolean {
   })
 }
 
+function isStructuredImageBlock(value: unknown): value is StructuredImageBlock {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false
+  }
+  const image = value as Record<string, unknown>
+  return (
+    image.type === "image" &&
+    typeof image.path === "string" &&
+    image.path.trim().length > 0 &&
+    typeof image.alt === "string" &&
+    image.alt.trim().length > 0 &&
+    (image.id === undefined ||
+      (typeof image.id === "string" &&
+        /^fig-[A-Za-z0-9_-]{8,96}$/.test(image.id))) &&
+    (image.chapter === undefined ||
+      (Number.isInteger(image.chapter) && Number(image.chapter) >= 1 && Number(image.chapter) <= 99)) &&
+    (image.width_mm === undefined ||
+      (typeof image.width_mm === "number" && image.width_mm >= 20 && image.width_mm <= 146)) &&
+    (image.caption === undefined || isParagraphInput(image.caption)) &&
+    (image.source_citation_key === undefined ||
+      (typeof image.source_citation_key === "string" &&
+        image.source_citation_key.length <= 200 &&
+        /^[A-Za-z0-9_:.+/-]+$/.test(image.source_citation_key)))
+  )
+}
+
 /** Runtime guard for the text-only subset exposed by the workbench editor. */
 export function isStructuredBodyValue(value: unknown): value is StructuredBodyValue {
   return (
     Array.isArray(value) &&
     value.every(
-      (block) => isParagraphInput(block) || isStructuredListBlock(block, 1),
+      (block) =>
+        isParagraphInput(block) ||
+        isStructuredListBlock(block, 1) ||
+        isStructuredImageBlock(block),
     )
   )
 }
@@ -210,6 +242,106 @@ function expandLegacyScientificText(
   return runs
 }
 
+function figureReferenceNodes(text: string, marks?: NonNullable<JSONContent["marks"]>): JSONContent[] {
+  const nodes: JSONContent[] = []
+  let cursor = 0
+  for (const match of text.matchAll(FIGURE_REFERENCE_PATTERN)) {
+    const index = match.index ?? 0
+    if (index > cursor) {
+      nodes.push({ type: "text", text: text.slice(cursor, index), ...(marks ? { marks } : {}) })
+    }
+    nodes.push({
+      type: "figureReference",
+      attrs: { figureId: match[1], label: "图（待编号）" },
+    })
+    cursor = index + match[0].length
+  }
+  if (cursor < text.length) {
+    nodes.push({ type: "text", text: text.slice(cursor), ...(marks ? { marks } : {}) })
+  }
+  return nodes
+}
+
+function paragraphPlainText(paragraph: ParagraphInput | undefined): string {
+  if (paragraph === undefined) return ""
+  if (typeof paragraph === "string") return paragraph
+  return paragraph.runs.map((run) => run.text).join("")
+}
+
+export type StructuredFigureCatalogItem = {
+  id: string
+  label: string
+  caption: string
+  chapter: number
+}
+
+export type FigureNumberingContext = {
+  startCounts?: Readonly<Record<number, number>>
+  knownLabels?: Readonly<Record<string, string>>
+}
+
+export function structuredFigureCatalog(
+  ...bodyGroups: StructuredBodyValue[]
+): StructuredFigureCatalogItem[] {
+  const counters = new Map<number, number>()
+  const catalog: StructuredFigureCatalogItem[] = []
+  for (const body of bodyGroups) {
+    for (const block of body) {
+      if (!isStructuredImageBlock(block)) continue
+      const chapter = block.chapter ?? 1
+      const sequence = (counters.get(chapter) ?? 0) + 1
+      counters.set(chapter, sequence)
+      if (!block.id) continue
+      catalog.push({
+        id: block.id,
+        label: `图 ${chapter}-${sequence}`,
+        caption: paragraphPlainText(block.caption),
+        chapter,
+      })
+    }
+  }
+  return catalog
+}
+
+export function structuredFigureChapterCounts(
+  ...bodyGroups: StructuredBodyValue[]
+): Record<number, number> {
+  const counts: Record<number, number> = {}
+  for (const body of bodyGroups) {
+    for (const block of body) {
+      if (!isStructuredImageBlock(block)) continue
+      const chapter = block.chapter ?? 1
+      counts[chapter] = (counts[chapter] ?? 0) + 1
+    }
+  }
+  return counts
+}
+
+function managedFigurePreviewUrl(imagePath: string): string {
+  const fileName = imagePath.split(/[\\/]/).at(-1) ?? ""
+  return /^([a-f0-9]{64})\.(png|jpe?g)$/i.test(fileName)
+    ? `sztu-asset://asset/${encodeURIComponent(fileName)}`
+    : ""
+}
+
+function imageToTiptap(image: StructuredImageBlock): JSONContent {
+  return {
+    type: "figureBlock",
+    attrs: {
+      figureId: image.id ?? "",
+      path: image.path,
+      previewUrl: managedFigurePreviewUrl(image.path),
+      alt: image.alt,
+      chapter: image.chapter ?? 1,
+      widthMm: image.width_mm ?? 120,
+      caption: image.caption ?? "",
+      captionText: paragraphPlainText(image.caption),
+      sourceCitationKey: image.source_citation_key ?? "",
+      label: "图（待编号）",
+    },
+  }
+}
+
 function paragraphToTiptap(paragraph: ParagraphInput): JSONContent {
   const sourceRuns: StructuredRun[] =
     typeof paragraph === "string"
@@ -219,13 +351,7 @@ function paragraphToTiptap(paragraph: ParagraphInput): JSONContent {
     expandLegacyScientificText(run.text, run).flatMap((expanded) => {
       if (!expanded.text) return []
       const marks = marksForRun(expanded)
-      return [
-        {
-          type: "text",
-          text: expanded.text,
-          ...(marks ? { marks } : {}),
-        },
-      ]
+      return figureReferenceNodes(expanded.text, marks)
     }),
   )
 
@@ -277,8 +403,11 @@ function listToTiptap(
 }
 
 /** Convert the repository-owned body contract into editor view state. */
-export function structuredBodyToTiptap(value: StructuredBodyValue): JSONContent {
-  return {
+export function structuredBodyToTiptap(
+  value: StructuredBodyValue,
+  numbering: FigureNumberingContext = {},
+): JSONContent {
+  const document: JSONContent = {
     type: "doc",
     content: value.length
       ? value.map((block) => {
@@ -286,6 +415,7 @@ export function structuredBodyToTiptap(value: StructuredBodyValue): JSONContent 
             typeof block !== "string" &&
             (block.type === "ordered_list" || block.type === "unordered_list")
           if (isList) return listToTiptap(block, 1)
+          if (isStructuredImageBlock(block)) return imageToTiptap(block)
           if (isParagraphInput(block)) {
             return paragraphToTiptap(block as ParagraphInput)
           }
@@ -293,6 +423,33 @@ export function structuredBodyToTiptap(value: StructuredBodyValue): JSONContent 
         })
       : [{ type: "paragraph" }],
   }
+  const counters = new Map<number, number>(
+    Object.entries(numbering.startCounts ?? {}).map(([chapter, count]) => [Number(chapter), count]),
+  )
+  const labels = new Map<string, string>(Object.entries(numbering.knownLabels ?? {}))
+  const visit = (node: JSONContent, callback: (item: JSONContent) => void) => {
+    callback(node)
+    for (const child of node.content ?? []) visit(child, callback)
+  }
+  visit(document, (node) => {
+    if (node.type !== "figureBlock") return
+    const chapter = Number(node.attrs?.chapter ?? 1)
+    const sequence = (counters.get(chapter) ?? 0) + 1
+    counters.set(chapter, sequence)
+    const label = `图 ${chapter}-${sequence}`
+    node.attrs = { ...node.attrs, label }
+    const figureId = node.attrs.figureId
+    if (typeof figureId === "string" && figureId) labels.set(figureId, label)
+  })
+  visit(document, (node) => {
+    if (node.type !== "figureReference") return
+    const figureId = String(node.attrs?.figureId ?? "")
+    node.attrs = {
+      ...node.attrs,
+      label: labels.get(figureId) ?? "图（引用失效）",
+    }
+  })
+  return document
 }
 
 function styleForTextNode(node: JSONContent): Omit<StructuredRun, "text"> {
@@ -334,6 +491,22 @@ function paragraphFromTiptap(node: JSONContent): ParagraphInput {
 
   const runs: StructuredRun[] = []
   for (const child of node.content ?? []) {
+    if (child.type === "figureReference") {
+      const figureId = child.attrs?.figureId
+      if (typeof figureId !== "string" || !/^fig-[A-Za-z0-9_-]{8,96}$/.test(figureId)) {
+        throw new TypeError("正文包含无效的图片引用。")
+      }
+      const token: StructuredRun = {
+        text: `{{fig:${figureId}}}`,
+        bold: false,
+        italic: false,
+        script: "normal",
+      }
+      const previous = runs.at(-1)
+      if (previous && sameRunStyle(previous, token)) previous.text += token.text
+      else runs.push(token)
+      continue
+    }
     if (child.type !== "text") {
       throw new TypeError(`正文段落包含不受支持的节点：${child.type ?? "未知"}。`)
     }
@@ -359,6 +532,23 @@ function paragraphFromTiptap(node: JSONContent): ParagraphInput {
     type: "paragraph",
     runs,
   }
+}
+
+function imageFromTiptap(node: JSONContent): StructuredImageBlock {
+  const attrs = node.attrs ?? {}
+  const image: StructuredImageBlock = {
+    type: "image",
+    path: String(attrs.path ?? ""),
+    alt: String(attrs.alt ?? ""),
+    width_mm: Number(attrs.widthMm ?? 120),
+    chapter: Number(attrs.chapter ?? 1),
+    caption: (attrs.caption ?? "") as ParagraphInput,
+  }
+  if (typeof attrs.figureId === "string" && attrs.figureId) image.id = attrs.figureId
+  if (typeof attrs.sourceCitationKey === "string" && attrs.sourceCitationKey) {
+    image.source_citation_key = attrs.sourceCitationKey
+  }
+  return image
 }
 
 function paragraphHasText(paragraph: ParagraphInput): boolean {
@@ -426,6 +616,10 @@ export function tiptapToStructuredBody(document: JSONContent): StructuredBodyVal
       if (paragraphHasText(paragraph)) blocks.push(paragraph)
       continue
     }
+    if (node.type === "figureBlock") {
+      blocks.push(imageFromTiptap(node))
+      continue
+    }
     if (LIST_NODE_NAMES.has(node.type ?? "")) {
       blocks.push(listFromTiptap(node, 1))
       continue
@@ -481,6 +675,16 @@ function isRestrictedDocument(
       }
     }
 
+    if (node.type.name === "figureBlock") {
+      if (mode !== "body") valid = false
+      return
+    }
+
+    if (node.type.name === "figureReference") {
+      if (mode !== "body") valid = false
+      return
+    }
+
     if (node.isText) {
       const markNames = new Set(node.marks.map((mark) => mark.type.name))
       if (
@@ -513,6 +717,111 @@ const ContractListMarker = Extension.create({
           },
         },
       },
+    ]
+  },
+})
+
+function figureLabelPlugin(numbering: FigureNumberingContext) {
+  return new Plugin({
+    appendTransaction(transactions, _oldState, newState) {
+      if (!transactions.some((transaction) => transaction.docChanged)) return null
+      const counters = new Map<number, number>(
+        Object.entries(numbering.startCounts ?? {}).map(([chapter, count]) => [Number(chapter), count]),
+      )
+      const labels = new Map<string, string>(Object.entries(numbering.knownLabels ?? {}))
+      const figureUpdates: Array<{ position: number; label: string }> = []
+      newState.doc.descendants((node, position) => {
+        if (node.type.name !== "figureBlock") return
+        const chapter = Number.isInteger(node.attrs.chapter) && node.attrs.chapter > 0
+          ? Number(node.attrs.chapter)
+          : 1
+        const sequence = (counters.get(chapter) ?? 0) + 1
+        counters.set(chapter, sequence)
+        const label = `图 ${chapter}-${sequence}`
+        if (typeof node.attrs.figureId === "string" && node.attrs.figureId) {
+          labels.set(node.attrs.figureId, label)
+        }
+        if (node.attrs.label !== label) figureUpdates.push({ position, label })
+      })
+      const referenceUpdates: Array<{ position: number; label: string }> = []
+      newState.doc.descendants((node, position) => {
+        if (node.type.name !== "figureReference") return
+        const label = labels.get(String(node.attrs.figureId)) ?? "图（引用失效）"
+        if (node.attrs.label !== label) referenceUpdates.push({ position, label })
+      })
+      if (!figureUpdates.length && !referenceUpdates.length) return null
+      const transaction = newState.tr
+      for (const update of [...figureUpdates, ...referenceUpdates]) {
+        const node = transaction.doc.nodeAt(update.position)
+        if (node) transaction.setNodeMarkup(update.position, undefined, { ...node.attrs, label: update.label })
+      }
+      return transaction.docChanged ? transaction : null
+    },
+  })
+}
+
+function createFigureBlock(numbering: FigureNumberingContext) {
+  return Node.create({
+    name: "figureBlock",
+    group: "block",
+    atom: true,
+    selectable: true,
+    draggable: true,
+    addAttributes() {
+      return {
+        figureId: { default: "" },
+        path: { default: "" },
+        previewUrl: { default: "" },
+        alt: { default: "" },
+        chapter: { default: 1 },
+        widthMm: { default: 120 },
+        caption: { default: "" },
+        captionText: { default: "" },
+        sourceCitationKey: { default: "" },
+        label: { default: "图（待编号）" },
+      }
+    },
+    parseHTML() {
+      return [{ tag: "figure[data-figure-id]" }]
+    },
+    renderHTML({ node }) {
+      const caption = `${node.attrs.label}${node.attrs.captionText ? ` ${node.attrs.captionText}` : ""}`
+      const source = node.attrs.sourceCitationKey ? ` [${node.attrs.sourceCitationKey}]` : ""
+      const children: unknown[] = [
+        "figure",
+        { "data-figure-id": node.attrs.figureId, "data-chapter": node.attrs.chapter },
+      ]
+      if (node.attrs.previewUrl) {
+        children.push(["img", { src: node.attrs.previewUrl, alt: node.attrs.alt }])
+      } else {
+        children.push(["div", { "data-figure-placeholder": "" }, `图片：${node.attrs.alt}`])
+      }
+      children.push(["figcaption", {}, caption + source])
+      return children as never
+    },
+    addProseMirrorPlugins() {
+      return [figureLabelPlugin(numbering)]
+    },
+  })
+}
+
+const FigureReference = Node.create({
+  name: "figureReference",
+  group: "inline",
+  inline: true,
+  atom: true,
+  selectable: true,
+  addAttributes() {
+    return { figureId: { default: "" }, label: { default: "图（待编号）" } }
+  },
+  parseHTML() {
+    return [{ tag: "span[data-figure-reference]" }]
+  },
+  renderHTML({ node }) {
+    return [
+      "span",
+      { "data-figure-reference": node.attrs.figureId, class: node.attrs.label.includes("失效") ? "text-destructive" : "" },
+      node.attrs.label,
     ]
   },
 })
@@ -583,6 +892,7 @@ function createRestrictedDocumentBehavior(mode: StructuredEditorMode) {
 
 export function createRestrictedEditorExtensions(
   mode: StructuredEditorMode = "body",
+  figureNumbering: FigureNumberingContext = {},
 ) {
   const listsEnabled = mode === "body"
   return [
@@ -604,6 +914,7 @@ export function createRestrictedEditorExtensions(
       underline: false,
     }),
     ...(listsEnabled ? [ContractListMarker] : []),
+    ...(listsEnabled ? [createFigureBlock(figureNumbering), FigureReference] : []),
     Subscript,
     Superscript,
     createRestrictedDocumentBehavior(mode),
