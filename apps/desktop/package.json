@@ -8,7 +8,7 @@
     "dev": "pnpm run build:electron && concurrently -k -s first \"vite --host 127.0.0.1\" \"wait-on tcp:127.0.0.1:5173 && electron .\"",
     "build:electron": "tsc -p tsconfig.electron.json",
     "build": "tsc -b && pnpm run build:electron && vite build",
-    "lint": "oxlint electron src",
+    "lint": "node ../../scripts/check_frontend_design_system.mjs && oxlint electron src",
     "test": "vitest run",
     "preview": "vite preview"
   },

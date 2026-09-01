@@ -103,6 +103,7 @@ export function NavDocuments({
     task_book: activeType === "task_book",
     midterm: activeType === "midterm",
   })
+  const [thesisExpanded, setThesisExpanded] = useState(false)
   const [trashExpanded, setTrashExpanded] = useState(false)
   const [createType, setCreateType] = useState<DocumentType | null>(null)
   const [createTitle, setCreateTitle] = useState("")
@@ -250,13 +251,27 @@ export function NavDocuments({
           <SidebarMenuItem>
             <SidebarMenuButton
               tooltip="毕业论文"
-              aria-disabled="true"
-              tabIndex={-1}
-              className="text-muted-foreground"
+              aria-expanded={thesisExpanded}
+              onClick={() => setThesisExpanded((current) => !current)}
             >
+              <ChevronRightIcon
+                className={thesisExpanded ? "rotate-90 transition-transform" : "transition-transform"}
+              />
               <FolderIcon />
               <span>毕业论文</span>
             </SidebarMenuButton>
+            {thesisExpanded ? (
+              <SidebarMenuSub className="mr-0 pr-0">
+                <SidebarMenuSubItem>
+                  <span
+                    aria-label="毕业论文暂无文档"
+                    className="block px-2 py-1 text-xs text-muted-foreground"
+                  >
+                    暂无文档
+                  </span>
+                </SidebarMenuSubItem>
+              </SidebarMenuSub>
+            ) : null}
           </SidebarMenuItem>
 
           <SidebarMenuItem>

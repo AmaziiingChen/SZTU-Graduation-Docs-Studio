@@ -722,33 +722,48 @@ describe("M3 workbench persistence", () => {
     expect(screen.queryByText("可用")).not.toBeInTheDocument()
     expect(screen.queryByText("待接入")).not.toBeInTheDocument()
     expect(screen.queryByText("数据默认仅保存在本机")).not.toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "毕业论文" })).toHaveAttribute(
-      "aria-disabled",
-      "true",
-    )
-    expect(screen.getByRole("button", { name: "毕业论文" })).toHaveClass(
-      "text-muted-foreground",
-    )
+    const thesisFolder = screen.getByRole("button", { name: "毕业论文" })
+    expect(thesisFolder).toHaveAttribute("aria-expanded", "false")
+    fireEvent.click(thesisFolder)
+    expect(thesisFolder).toHaveAttribute("aria-expanded", "true")
+    expect(screen.getByLabelText("毕业论文暂无文档")).toBeInTheDocument()
     const header = container.querySelector("header")
     expect(header).not.toBeNull()
     expect(within(header!).getByRole("button", { name: "检查内容" })).toBeInTheDocument()
-    expect(within(header!).getByRole("button", { name: "预览&导出" })).toBeInTheDocument()
+    expect(within(header!).getByRole("button", { name: "预览&导出" })).toHaveClass(
+      "bg-primary",
+      "text-primary-foreground",
+    )
     expect(within(header!).queryByRole("button", { name: "导出" })).not.toBeInTheDocument()
     const sectionNavigation = screen.getByRole("navigation", {
       name: "当前文档板块",
     }).closest('[data-slot="document-section-nav"]')
     expect(sectionNavigation).toHaveClass(
-      "w-(--sidebar-width)",
+      "w-48",
       "shrink-0",
     )
     expect(
+      sectionNavigation?.querySelector('[data-slot="document-section-header"]'),
+    ).toHaveClass("h-(--header-height)", "items-center")
+    expect(
       container.querySelector('[data-slot="resizable-handle"]'),
     ).not.toBeInTheDocument()
+    const immersiveTextbox = await screen.findByRole("textbox", {
+      name: "本选题的意义及国内外发展状况",
+    })
     expect(
-      (await screen.findByRole("textbox", {
-        name: "本选题的意义及国内外发展状况",
-      })).closest('[data-slot="card"]'),
-    ).toHaveClass("border-0", "shadow-none", "ring-0")
+      screen.getByRole("toolbar", {
+        name: "本选题的意义及国内外发展状况格式工具栏",
+      }),
+    ).toHaveClass("h-(--header-height)")
+    expect(immersiveTextbox.closest('[data-slot="card"]')).toBeNull()
+    const immersiveSurface = immersiveTextbox.closest(
+      '[data-slot="immersive-writing-surface"]',
+    )
+    expect(immersiveSurface).toHaveClass("min-h-0", "flex-1")
+    expect(
+      immersiveSurface?.querySelectorAll('[data-slot="scroll-area"]'),
+    ).toHaveLength(1)
     expect(
       screen.queryByRole("heading", { level: 1, name: "2026届开题报告" }),
     ).not.toBeInTheDocument()
@@ -760,6 +775,31 @@ describe("M3 workbench persistence", () => {
     ).toHaveClass("sr-only")
     expect(screen.queryByRole("button", { name: "预览与检查" })).not.toBeInTheDocument()
     expect(await openSharedThesisTitle()).toHaveTextContent("合成开题报告")
+  })
+
+  it("keeps document-section navigation visible when the app sidebar collapses at minimum width", async () => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 1100,
+    })
+    const { container } = renderApp()
+
+    const sectionNavigation = (
+      await screen.findByRole("navigation", { name: "当前文档板块" })
+    ).closest('[data-slot="document-section-nav"]')
+    expect(sectionNavigation).toHaveClass("w-48", "shrink-0")
+    expect(
+      screen.queryByRole("combobox", { name: "选择文档板块" }),
+    ).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }))
+
+    expect(
+      container.querySelector('[data-slot="document-section-nav"]'),
+    ).toBe(sectionNavigation)
+    expect(
+      within(sectionNavigation!).getByRole("button", { name: "研究内容已填写" }),
+    ).toBeEnabled()
   })
 
   it("keeps profile suggestions editable and applies the selected cohort to workspace titles", async () => {
@@ -1080,9 +1120,9 @@ describe("M3 workbench persistence", () => {
       name: "排版预览第 1 页",
     })
     expect(firstPage).toBeInTheDocument()
-    expect(screen.getByLabelText("预览自动检查")).toBeInTheDocument()
-    expect(screen.getByText("PDF 文件结构")).toBeInTheDocument()
-    expect(screen.getByText("中文字形")).toBeInTheDocument()
+    expect(screen.queryByLabelText("预览自动检查")).not.toBeInTheDocument()
+    expect(screen.queryByText("PDF 文件结构")).not.toBeInTheDocument()
+    expect(screen.queryByText("中文字形")).not.toBeInTheDocument()
     expect(screen.queryByText("生成时自动完成")).not.toBeInTheDocument()
     expect(firstPage.closest('[data-slot="card"]')).toBeNull()
     const firstPageSurface = firstPage.closest<HTMLElement>(
@@ -1093,13 +1133,8 @@ describe("M3 workbench persistence", () => {
       width: "100%",
       aspectRatio: "210 / 297",
     })
-    expect(screen.getByLabelText("预览缩放")).toBeInTheDocument()
-    expect(screen.getByText("自适应")).toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: "放大预览" }))
-    expect(firstPageSurface).toHaveStyle({ width: "794px" })
-    expect(screen.getByText("100%")).toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: "适合宽度" }))
-    expect(firstPageSurface).toHaveStyle({ width: "100%" })
+    expect(screen.queryByLabelText("预览缩放")).not.toBeInTheDocument()
+    expect(screen.queryByText(/\d+ 页 · 开题报告/)).not.toBeInTheDocument()
     expect(screen.queryByText("当前有效")).not.toBeInTheDocument()
     expect(screen.queryByText(/^模板 /)).not.toBeInTheDocument()
     expect(screen.queryByText("第 1 页")).not.toBeInTheDocument()
@@ -1417,12 +1452,12 @@ describe("M3 workbench persistence", () => {
   number={1},
   pages={1--8}
 }`
-    fireEvent.click(screen.getByRole("button", { name: "高级源码" }))
+    fireEvent.click(screen.getByRole("button", { name: "添加参考文献" }))
     fireEvent.change(
-      screen.getByRole("textbox", { name: "参考文献高级 BibTeX 源码" }),
+      screen.getByRole("textbox", { name: "参考文献 BibTeX" }),
       { target: { value: source } },
     )
-    fireEvent.click(screen.getByRole("button", { name: "保存源码" }))
+    fireEvent.click(screen.getByRole("button", { name: "添加 1 条参考文献" }))
 
     expect(
       screen.getByText(
@@ -1455,7 +1490,7 @@ describe("M3 workbench persistence", () => {
     })
   })
 
-  it("retains the last valid generated references for invalid BibTeX and clears them with the source", async () => {
+  it("rejects invalid BibTeX edits and clears generated references through deletion", async () => {
     const api = mockApi()
     installApi(api)
     renderApp()
@@ -1463,49 +1498,31 @@ describe("M3 workbench persistence", () => {
     fireEvent.click(await screen.findByRole("button", { name: /参考文献/ }))
     const validSource =
       "@article{valid, author={张三}, title={可用条目}, journal={合成期刊}, year={2026}}"
-    fireEvent.click(screen.getByRole("button", { name: "高级源码" }))
+    fireEvent.click(screen.getByRole("button", { name: "添加参考文献" }))
     fireEvent.change(
-      screen.getByRole("textbox", { name: "参考文献高级 BibTeX 源码" }),
+      screen.getByRole("textbox", { name: "参考文献 BibTeX" }),
       { target: { value: validSource } },
     )
-    fireEvent.click(screen.getByRole("button", { name: "保存源码" }))
+    fireEvent.click(screen.getByRole("button", { name: "添加 1 条参考文献" }))
 
     await waitFor(() => expect(api.saveDraft).toHaveBeenCalledTimes(1), {
       timeout: 2_000,
     })
-    const validReferences = (
-      vi.mocked(api.saveDraft).mock.calls[0][0].content.sections as JsonObject
-    ).references
     vi.mocked(api.saveDraft).mockClear()
 
     const invalidSource = "@article{broken, title={缺少作者和期刊}}"
-    fireEvent.click(screen.getByRole("button", { name: "高级源码" }))
+    fireEvent.click(screen.getByRole("button", { name: /\[1\].*可用条目/ }))
+    fireEvent.click(screen.getByRole("button", { name: "编辑 valid" }))
     fireEvent.change(
-      screen.getByRole("textbox", { name: "参考文献高级 BibTeX 源码" }),
+      screen.getByRole("textbox", { name: "单条参考文献 BibTeX" }),
       { target: { value: invalidSource } },
     )
-    fireEvent.click(screen.getByRole("button", { name: "保存源码" }))
-    await waitFor(() => expect(api.saveDraft).toHaveBeenCalledTimes(1), {
-      timeout: 2_000,
-    })
-    const invalidContent = vi.mocked(api.saveDraft).mock.calls[0][0].content
-    expect(invalidContent).toMatchObject({
-      editor_state: {
-        bibliography: {
-          source_text: invalidSource,
-          parse_status: "invalid",
-        },
-      },
-      sections: { references: validReferences },
-    })
-    vi.mocked(api.saveDraft).mockClear()
+    expect(screen.getByRole("button", { name: "完成" })).toBeDisabled()
+    fireEvent.click(screen.getByRole("button", { name: "取消" }))
+    expect(api.saveDraft).not.toHaveBeenCalled()
 
-    fireEvent.click(screen.getByRole("button", { name: "高级源码" }))
-    fireEvent.change(
-      screen.getByRole("textbox", { name: "参考文献高级 BibTeX 源码" }),
-      { target: { value: "" } },
-    )
-    fireEvent.click(screen.getByRole("button", { name: "保存源码" }))
+    fireEvent.click(screen.getByRole("button", { name: "删除 valid" }))
+    fireEvent.click(screen.getByRole("button", { name: "删除" }))
     await waitFor(() => expect(api.saveDraft).toHaveBeenCalledTimes(1), {
       timeout: 2_000,
     })
@@ -1870,31 +1887,12 @@ describe("M3 workbench persistence", () => {
     ).toBeGreaterThan(0)
   })
 
-  it("renders compact history actions, reveals artifacts, and records only explicit manual QA", async () => {
+  it("renders compact history actions and reveals artifacts without manual QA controls", async () => {
     const api = mockApi()
-    const verifiedTargetEditorCheck = {
-      ...pendingTargetEditorCheck,
-      check_id: "target-editor-wps",
-      status: "pass" as const,
-      message: "WPS Office 人工验收已记录。",
-    }
-    vi.mocked(api.listExportHistory)
-      .mockResolvedValueOnce({
-        schema_version: "1.0",
-        history: [historyJob],
-      })
-      .mockResolvedValue({
-        schema_version: "1.0",
-        history: [
-          {
-            ...historyJob,
-            artifacts: historyJob.artifacts.map((artifact) => ({
-              ...artifact,
-              checks: [docxStructureCheck, verifiedTargetEditorCheck],
-            })),
-          },
-        ],
-      })
+    vi.mocked(api.listExportHistory).mockResolvedValue({
+      schema_version: "1.0",
+      history: [historyJob],
+    })
     installApi(api)
     renderApp()
 
@@ -1903,7 +1901,10 @@ describe("M3 workbench persistence", () => {
     expect(screen.getByText(/文件结构通过 · Word\/WPS待验收/)).toBeInTheDocument()
     expect(screen.getByRole("columnheader", { name: "产物" })).toBeInTheDocument()
     expect(screen.getByRole("columnheader", { name: "状态" })).toBeInTheDocument()
-    expect(screen.getByText("可用")).toBeInTheDocument()
+    expect(screen.getByLabelText("导出状态：可用")).toHaveClass(
+      "bg-emerald-50",
+      "text-emerald-700",
+    )
     expect(api.recordQa).not.toHaveBeenCalled()
 
     fireEvent.click(screen.getByRole("button", { name: /管理导出记录/ }))
@@ -1911,26 +1912,11 @@ describe("M3 workbench persistence", () => {
     await waitFor(() =>
       expect(api.revealExportArtifact).toHaveBeenCalledWith("artifact-docx-fixture"),
     )
-
     fireEvent.click(screen.getByRole("button", { name: /管理导出记录/ }))
-    fireEvent.click(await screen.findByRole("menuitem", { name: "记录人工验收" }))
-    expect(await screen.findByText("记录 Word/WPS 人工验收")).toBeInTheDocument()
-    fireEvent.change(screen.getByLabelText("验收备注（可选）"), {
-      target: { value: "已在虚构环境逐页检查。" },
-    })
-    fireEvent.click(screen.getByRole("button", { name: "WPS 验收通过" }))
-
-    await waitFor(() => expect(api.recordQa).toHaveBeenCalledTimes(1))
-    expect(api.recordQa).toHaveBeenCalledWith({
-      artifactId: "artifact-docx-fixture",
-      gate: "target_editor",
-      status: "pass",
-      editor: "wps",
-      message: "已在虚构环境逐页检查。",
-    })
     expect(
-      await screen.findByText(/文件结构通过 · Word\/WPS通过/),
-    ).toBeInTheDocument()
+      screen.queryByRole("menuitem", { name: "记录人工验收" }),
+    ).not.toBeInTheDocument()
+    expect(screen.queryByText("记录 Word/WPS 人工验收")).not.toBeInTheDocument()
   })
 
   it("marks missing artifacts and deletes only their history record", async () => {
@@ -2038,7 +2024,7 @@ describe("M3 workbench persistence", () => {
       documents: [proposal, taskBook],
     })
     installApi(api)
-    renderApp()
+    const { container } = renderApp()
 
     fireEvent.click(await screen.findByRole("button", { name: "任务书" }))
     fireEvent.click(await screen.findByRole("button", { name: "合成任务书" }))
@@ -2062,7 +2048,22 @@ describe("M3 workbench persistence", () => {
       "完成文献调研和需求分析。",
     )
     expect(screen.getByLabelText("第 2 项时间范围")).toHaveValue("第3—6周")
+    fireEvent.click(screen.getByRole("button", { name: /所需资料/ }))
+    expect(
+      screen.getByRole("toolbar", {
+        name: "需收集的资料及主要参考文献资料格式工具栏",
+      }).parentElement,
+    ).not.toHaveClass("rounded-lg", "border")
     fireEvent.click(screen.getByRole("button", { name: /选题信息/ }))
+    expect(
+      container.querySelector('[data-slot="task-topic-surface"]'),
+    ).toHaveClass("h-full", "items-center", "justify-center")
+    expect(
+      container.querySelector('[data-slot="task-topic-form"]'),
+    ).toHaveClass("grid", "max-w-xl")
+    expect(
+      container.querySelector('[data-slot="task-topic-form"]'),
+    ).not.toHaveClass("md:grid-cols-2")
     expect(screen.getByLabelText("选题性质")).toHaveTextContent("毕业设计")
     expect(screen.getByLabelText("课题来源")).toHaveTextContent("科研项目")
     expect(screen.getByLabelText("科研项目级别")).toHaveTextContent("省部级")
@@ -2446,6 +2447,7 @@ describe("M3 workbench persistence", () => {
     fireEvent.click(screen.getByRole("button", { name: /30/ }))
     expect(checkDate).toHaveTextContent("2026年3月30日")
     fireEvent.click(screen.getByRole("button", { name: /论文目录/ }))
+    expect(screen.getAllByText("论文目录")).toHaveLength(1)
     expect(screen.getByLabelText("第 1 条目录编号")).toHaveValue("1")
     expect(
       screen.getByRole("button", { name: "第 1 条目录标题" }),

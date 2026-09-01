@@ -43,6 +43,8 @@ These rules apply to every frontend prototype, screenshot, and production page i
    - Keep the installer-selected default color system, typography, radii, spacing, focus treatment, and light/dark behavior.
    - Do not introduce a custom brand palette, custom font family, gradients, decorative backgrounds, glass effects, bespoke shadows, or ornamental motion.
    - The only approved semantic color exception is the saved-state badge: use the restrained Tailwind `emerald` scale for its background, border, icon, and text in light and dark modes, and do not reuse it as a brand accent or general decoration.
+   - Keep one global UI font stack: Geist first, then explicit system CJK fallbacks for PingFang SC, Microsoft YaHei, and Noto Sans CJK/SC. Do not bundle a Chinese UI font or override font families inside business components.
+   - Keep the typography roles narrow: `text-base font-medium` for the workbench title, `text-sm font-medium` for section titles and labels, `text-sm leading-6` for body/editing content, `text-xs text-muted-foreground` for supporting copy, and `font-mono text-xs` only for BibTeX source editing. Do not add a Typography primitive.
    - Start page-level work from an official shadcn Block. The workbench baseline is the official `dashboard-01` composition, not a hand-designed shell.
 2. Do not create custom UI primitives or a parallel component library.
    - Use an existing `shadcn/ui` component whenever one covers the interaction.
@@ -53,7 +55,7 @@ These rules apply to every frontend prototype, screenshot, and production page i
    - In inset mode, `SidebarProvider` owns the viewport height and clips page-level overflow. `SidebarInset` must flex inside that height so the default shadcn margins remain within the viewport; do not assign `h-svh` to the inset or create a second window scrollbar. The document/editor `ScrollArea` is the normal scrolling surface.
    - Keep Block-derived page composition in `components/workbench/` and default generated primitives in `components/ui/`; never mix business code into a forked primitive.
    - Use the standard workbench layout: application sidebar, a fixed-width document-section navigation column, the document editor main area, and a restrained top action bar. The document-section navigation width is not user-resizable. The top action bar carries content check and one `预览&导出` entry without adding a second toolbar row. Paginated preview and export-format selection reuse one business flow inside the right-side shadcn `Sheet`. Environment checks, quality gates, export status, history, and related explanations reuse one `InspectionPanel`, reached from `检查与导出` at the bottom of `SidebarFooter` and displayed in the main content area.
-   - At narrow widths, use the official Sidebar mobile mechanism and replace the fixed document-section column with the existing compact `Select`. Open the same paginated-preview `Sheet`; do not add a draggable split, a second preview implementation, or a second inspection surface.
+   - At narrow widths, only the application `Sidebar` may collapse or use its official mobile mechanism. The fixed document-section navigation column must remain visible so section jumping is always available; do not replace it with a `Select`, hide it, or make it independently collapsible. Open the same paginated-preview `Sheet`; do not add a draggable split, a second preview implementation, or a second inspection surface.
    - Never render a preview on every keystroke. The user explicitly clicks `预览&导出`; the application opens the right-side `Sheet` and, when no current valid preview exists, automatically saves and checks the current input before running the same trusted PDF pipeline used by export. Reopening a current valid preview must reuse it without rendering again. Export-format selection stays in the `Sheet` footer and remains disabled until that preview is current.
    - Editing the document, changing the shared profile, or changing the template after preview generation must mark the preview stale. Export remains unavailable until a fresh preview matches both the current input hash and template snapshot hash.
    - A generated PDF preview is internal review evidence only. It must not imply that the corresponding DOCX has passed full-page inspection or Word/WPS verification.
@@ -62,6 +64,7 @@ These rules apply to every frontend prototype, screenshot, and production page i
 4. Avoid custom CSS when Tailwind utilities and shadcn theme tokens are sufficient.
    - Do not use arbitrary color values or one-off pixel styling for visual polish.
    - Custom CSS is limited to functional needs that shadcn/Tailwind cannot express, and must be documented next to the rule that requires it.
+   - Keep `scripts/check_frontend_design_system.mjs` in the desktop lint path. New fixed palette classes, literal colors, or font-family overrides require an explicit rule change rather than a local suppression.
 5. Preserve usability without visual invention.
    - All actions must have visible keyboard focus and useful accessible names.
    - Forms must show field-level validation and actionable error messages.

@@ -465,8 +465,14 @@ describe("StructuredContentEditor", () => {
       </div>,
     )
 
-    expect(screen.getByRole("toolbar", { name: "沉浸式正文格式工具栏" })).toHaveClass(
-      "shrink-0",
+    const toolbar = screen.getByRole("toolbar", {
+      name: "沉浸式正文格式工具栏",
+    })
+    expect(toolbar).toHaveClass("shrink-0", "border-b")
+    expect(toolbar.parentElement).not.toHaveClass(
+      "rounded-lg",
+      "border",
+      "focus-within:ring-3",
     )
     expect(screen.getByRole("textbox", { name: "沉浸式正文" })).toHaveClass(
       "min-h-full",
@@ -503,7 +509,7 @@ describe("StructuredContentEditor", () => {
     ]) {
       expect(screen.getByRole("button", { name: label })).toBeInTheDocument()
     }
-    expect(screen.getByText("正文")).toBeInTheDocument()
+    expect(screen.queryByText("正文")).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: /标题|链接|图片|表格/ })).toBeNull()
   })
 
@@ -568,7 +574,7 @@ describe("StructuredContentEditor", () => {
     expect(textbox.className).toContain("[&>p+p]:mt-2")
     expect(textbox).toHaveTextContent("第一段")
     expect(textbox).toHaveTextContent("第二段")
-    expect(screen.getByText("多段内容")).toBeInTheDocument()
+    expect(screen.queryByText("多段内容")).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "有序列表" })).toBeNull()
     expect(screen.queryByRole("button", { name: "无序列表" })).toBeNull()
     expect(screen.queryByRole("button", { name: "增加缩进" })).toBeNull()

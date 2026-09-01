@@ -26,15 +26,35 @@ function renderImporter(source = "", onChange = vi.fn()) {
 
 describe("ReferenceImporter", () => {
   it("renders each parsed reference as a collapsed formatted item", () => {
-    renderImporter(
+    const { container } = renderImporter(
       "@article{demo, author={张三}, title={合成论文}, journal={合成期刊}, year={2026}}",
     )
 
+    expect(container.querySelector('[data-slot="reference-toolbar"]')).toHaveClass(
+      "h-(--header-height)",
+      "items-center",
+    )
+    expect(container.querySelector('[data-slot="scroll-area"]')).not.toHaveClass(
+      "rounded-lg",
+      "border",
+    )
     expect(screen.getByText("1 条")).toBeInTheDocument()
     expect(
       screen.getByText("[1] 张三. 合成论文[J]. 合成期刊, 2026."),
     ).toBeInTheDocument()
     expect(screen.queryByText("@article{demo")).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole("button", { name: "批量粘贴 BibTeX" }),
+    ).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "高级源码" })).not.toBeInTheDocument()
+  })
+
+  it("keeps the empty reference state borderless", () => {
+    const { container } = renderImporter()
+
+    expect(
+      container.querySelector('[data-slot="reference-empty-state"]'),
+    ).not.toHaveClass("rounded-lg", "border", "border-dashed")
   })
 
   it("renders BibTeX title styles and scripts in the collapsed preview", () => {
@@ -76,26 +96,55 @@ describe("ReferenceImporter", () => {
     const { onChange } = renderImporter()
 
     fireEvent.click(screen.getByRole("button", { name: "添加第一条参考文献" }))
-    fireEvent.change(screen.getByRole("textbox", { name: "单条参考文献 BibTeX" }), {
+    fireEvent.change(screen.getByRole("textbox", { name: "参考文献 BibTeX" }), {
       target: { value: "@book{demo, title={书名}, year={2026}}" },
     })
-    fireEvent.click(screen.getByRole("button", { name: "完成" }))
+    fireEvent.click(screen.getByRole("button", { name: "添加 1 条参考文献" }))
 
     expect(onChange).toHaveBeenCalledWith(
       "@book{demo, title={书名}, year={2026}}",
     )
   })
 
-  it("appends and separates multiple entries through batch paste", () => {
+  it("appends and separates multiple entries through the default add dialog", () => {
     const { onChange } = renderImporter(first)
 
-    fireEvent.click(screen.getByRole("button", { name: "批量粘贴 BibTeX" }))
-    fireEvent.change(screen.getByRole("textbox", { name: "批量参考文献 BibTeX" }), {
-      target: { value: second },
+    fireEvent.click(screen.getByRole("button", { name: "添加参考文献" }))
+    fireEvent.change(screen.getByRole("textbox", { name: "参考文献 BibTeX" }), {
+      target: { value: `${second}\n\n@book{third, title={第三篇}, year={2026}}` },
     })
-    fireEvent.click(screen.getByRole("button", { name: "添加这些条目" }))
+    fireEvent.click(screen.getByRole("button", { name: "添加 2 条参考文献" }))
 
-    expect(onChange).toHaveBeenCalledWith(`${first}\n\n${second}`)
+    expect(onChange).toHaveBeenCalledWith(
+      `${first}\n\n${second}\n\n@book{third, title={第三篇}, year={2026}}`,
+    )
+  })
+
+  it("keeps a long BibTeX entry inside the viewport-bound edit dialog", () => {
+    const longSource = `@article{long, author={张三}, title={长文献}, journal={合成期刊}, year={2026}, abstract={${"long content ".repeat(200)}}}`
+    const { container } = renderImporter(longSource)
+
+    fireEvent.click(screen.getByRole("button", { name: /\[1\].*长文献/ }))
+    fireEvent.click(screen.getByRole("button", { name: "编辑 long" }))
+
+    const textbox = screen.getByRole("textbox", { name: "单条参考文献 BibTeX" })
+    const dialog = textbox.closest('[data-slot="dialog-content"]')
+    const body = container.ownerDocument.querySelector(
+      '[data-slot="reference-entry-dialog-body"]',
+    )
+
+    expect(dialog).toHaveClass(
+      "max-h-[calc(100dvh-2rem)]",
+      "grid-rows-[auto_minmax(0,1fr)_auto]",
+      "overflow-hidden",
+    )
+    expect(body).toHaveClass("min-h-0", "overflow-y-auto")
+    expect(textbox).toHaveClass(
+      "field-sizing-fixed",
+      "h-72",
+      "resize-none",
+      "overflow-y-auto",
+    )
   })
 
   it("moves entries with accessible up and down controls", () => {
@@ -107,18 +156,23 @@ describe("ReferenceImporter", () => {
     expect(onChange).toHaveBeenCalledWith(`${second}\n\n${first}`)
   })
 
-  it("keeps macros in advanced source mode and disables lossy item edits", () => {
+  it("protects extension source while keeping multi-entry addition available", () => {
     const source = `@string{journalName = {合成期刊}}\n\n@article{macro, author={张三}, title={宏测试}, journal=journalName, year={2026}}`
     const { onChange } = renderImporter(source)
 
-    expect(screen.getByText("当前文献包含宏、注释或其他高级源码")).toBeInTheDocument()
+    expect(screen.getByText("当前文献包含宏、注释或其他扩展内容")).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: /\[1\].*宏测试/ }))
     expect(screen.getByRole("button", { name: "编辑 macro" })).toBeDisabled()
+    expect(screen.queryByRole("button", { name: "高级源码" })).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole("button", { name: "批量粘贴 BibTeX" }),
+    ).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole("button", { name: "高级源码" }))
-    const editor = screen.getByRole("textbox", { name: "参考文献高级 BibTeX 源码" })
-    expect(editor).toHaveValue(source)
-    fireEvent.click(screen.getByRole("button", { name: "保存源码" }))
-    expect(onChange).toHaveBeenCalledWith(source)
+    fireEvent.click(screen.getByRole("button", { name: "添加参考文献" }))
+    fireEvent.change(screen.getByRole("textbox", { name: "参考文献 BibTeX" }), {
+      target: { value: second },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "添加 1 条参考文献" }))
+    expect(onChange).toHaveBeenCalledWith(`${source}\n\n${second}`)
   })
 })

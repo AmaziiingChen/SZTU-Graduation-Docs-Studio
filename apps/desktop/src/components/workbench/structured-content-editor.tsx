@@ -26,7 +26,6 @@ import {
   Undo2Icon,
 } from "lucide-react"
 
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Kbd, KbdGroup } from "@/components/ui/kbd"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -258,7 +257,9 @@ export function StructuredContentEditor({
     mode === "inline"
       ? "min-h-12 whitespace-pre-wrap break-words px-3 py-3 text-sm leading-6 outline-none [&_p]:min-h-6"
       : cn(
-          fillHeight ? "min-h-full" : "min-h-96",
+          fillHeight
+            ? "min-h-full focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-ring/50"
+            : "min-h-96",
           "whitespace-pre-wrap break-words px-3 py-3 text-sm leading-6 outline-none [&>p+p]:mt-2 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:min-h-6 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-6",
         )
 
@@ -435,20 +436,13 @@ export function StructuredContentEditor({
     if (toolbarState.bulletList) editor.chain().focus().toggleBulletList().run()
   }
 
-  const status = mode === "paragraphs"
-    ? "多段内容"
-    : toolbarState.orderedList
-    ? `有序列表 · 第 ${toolbarState.listDepth} 级`
-    : toolbarState.bulletList
-      ? `无序列表 · 第 ${toolbarState.listDepth} 级`
-      : "正文"
-
   return (
     <TooltipProvider>
       <div
         className={cn(
-          "overflow-clip rounded-lg border border-input bg-background transition-all focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50",
-          fillHeight && "flex h-full min-h-0 flex-col",
+          fillHeight
+            ? "flex h-full min-h-0 min-w-0 flex-col bg-background"
+            : "overflow-clip rounded-lg border border-input bg-background transition-all focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50",
           disabled && "opacity-75",
           className,
         )}
@@ -491,7 +485,7 @@ export function StructuredContentEditor({
         <div
           role="toolbar"
           aria-label={`${ariaLabel}格式工具栏`}
-          className="z-10 flex shrink-0 flex-wrap items-center gap-1 border-b bg-muted/30 p-1.5"
+          className="z-10 flex h-(--header-height) shrink-0 flex-wrap items-center gap-1 border-b bg-muted/30 px-1.5"
         >
           <ToggleGroup
             multiple
@@ -634,11 +628,6 @@ export function StructuredContentEditor({
             <Redo2Icon />
           </ToolbarButton>
 
-          {mode === "inline" ? null : (
-            <Badge variant="outline" className="ml-auto">
-              {status}
-            </Badge>
-          )}
         </div>
 
         {fillHeight ? (

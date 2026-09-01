@@ -1,13 +1,6 @@
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 
 export type DocumentSectionState = "complete" | "incomplete" | "error"
 
@@ -22,7 +15,6 @@ type DocumentSectionNavProps = {
   sections: DocumentSectionOption[]
   activeSection: string
   onSectionChange: (sectionId: string) => void
-  compact?: boolean
 }
 
 function stateLabel(state: DocumentSectionState | undefined) {
@@ -35,41 +27,16 @@ export function DocumentSectionNav({
   sections,
   activeSection,
   onSectionChange,
-  compact = false,
 }: DocumentSectionNavProps) {
-  const active = sections.find((section) => section.id === activeSection)
-
-  if (compact) {
-    return (
-      <div className="grid gap-1 border-b p-3">
-        <p className="text-xs font-medium text-muted-foreground">当前板块</p>
-        <Select
-          value={activeSection}
-          onValueChange={(value) => {
-            if (value !== null) onSectionChange(value)
-          }}
-        >
-          <SelectTrigger className="w-full" aria-label="选择文档板块">
-            <SelectValue>{active?.label ?? "选择板块"}</SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {sections.map((section) => (
-              <SelectItem key={section.id} value={section.id}>
-                {section.label} · {stateLabel(section.state)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-    )
-  }
-
   return (
     <div
       data-slot="document-section-nav"
-      className="flex h-full min-h-0 w-(--sidebar-width) shrink-0 flex-col border-r bg-muted/30"
+      className="flex h-full min-h-0 w-48 shrink-0 flex-col border-r bg-muted/30"
     >
-      <div className="border-b p-4">
+      <div
+        data-slot="document-section-header"
+        className="flex h-(--header-height) shrink-0 items-center border-b px-4"
+      >
         <p className="text-sm font-medium">文档板块</p>
       </div>
       <ScrollArea className="min-h-0 flex-1">

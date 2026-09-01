@@ -3,7 +3,6 @@ import {
   ArrowDownIcon,
   ArrowUpIcon,
   BookOpenCheckIcon,
-  BracesIcon,
   PencilIcon,
   PlusIcon,
   Trash2Icon,
@@ -38,7 +37,6 @@ import type {
 } from "@/types/structured-content"
 
 export type ReferenceImporterProps = {
-  label?: string
   source: string
   legacyReferences?: readonly ParagraphInput[]
   maximumEntries: number
@@ -142,7 +140,6 @@ const EMPTY_ENTRY =
   "@article{key,\n  author = {作者},\n  title = {题名},\n  journal = {期刊},\n  year = {2026}\n}"
 
 export function ReferenceImporter({
-  label = "参考文献",
   source,
   legacyReferences = [],
   maximumEntries,
@@ -151,8 +148,6 @@ export function ReferenceImporter({
   onChange,
 }: ReferenceImporterProps) {
   const [entryEditor, setEntryEditor] = useState<EntryEditorState | null>(null)
-  const [batchSource, setBatchSource] = useState<string | null>(null)
-  const [advancedSource, setAdvancedSource] = useState<string | null>(null)
   const [deleteIndex, setDeleteIndex] = useState<number | null>(null)
 
   const result = useMemo(() => formatBibtex(source), [source])
@@ -180,25 +175,27 @@ export function ReferenceImporter({
     ? [
         ...validationMessages(
           entryCandidate,
-          1,
+          entryEditor.mode === "add" ? maximumEntries : 1,
           maximumReferenceLength,
         ),
-        ...(entryCandidate.entries.length > 1
-          ? ["每次只能编辑一条参考文献。"]
+        ...(entryEditor.mode === "edit" && entryCandidate.entries.length > 1
+          ? ["编辑时只能保留一条参考文献。"]
           : []),
         ...(sourceRemainder(entryCandidateSource, entryCandidate.entries).trim()
-          ? ["单条编辑器只接受一个完整条目；宏、注释等内容请使用高级源码模式。"]
+          ? ["仅支持完整的 BibTeX 条目，暂不支持宏、注释或其他扩展源码。"]
           : []),
       ]
     : []
 
   const nextEntrySource = (() => {
     if (!entryEditor || entryMessages.length > 0) return null
-    const raw = entryCandidate.entries[0]?.raw
-    if (!raw) return null
-    if (entryEditor.mode === "add") return appendSource(source, raw)
+    const entriesToSave = entryCandidate.entries.map((entry) => entry.raw)
+    if (entriesToSave.length === 0) return null
+    if (entryEditor.mode === "add") {
+      return appendSource(source, joinEntries(entriesToSave))
+    }
     const entries = result.entries.map((entry) => entry.raw)
-    entries[entryEditor.index] = raw
+    entries[entryEditor.index] = entriesToSave[0]
     return joinEntries(entries)
   })()
   const nextEntryMessages = nextEntrySource
@@ -208,17 +205,6 @@ export function ReferenceImporter({
         maximumReferenceLength,
       )
     : []
-
-  const combinedBatchSource = batchSource === null
-    ? null
-    : appendSource(source, batchSource)
-  const batchMessages = combinedBatchSource === null
-    ? []
-    : validationMessages(
-        formatBibtex(combinedBatchSource),
-        maximumEntries,
-        maximumReferenceLength,
-      )
 
   const openAdd = () => setEntryEditor({ mode: "add", source: "" })
   const openEdit = (index: number) => {
@@ -248,38 +234,17 @@ export function ReferenceImporter({
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <Badge variant={valid || (!sourcePresent && legacyReferences.length > 0) ? "secondary" : "outline"}>
-            {result.entries.length || legacyReferences.length} 条
-          </Badge>
-          {sourceIsAdvanced ? <Badge variant="outline">高级源码</Badge> : null}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button type="button" size="sm" onClick={openAdd} disabled={disabled}>
-            <PlusIcon />
-            添加参考文献
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() => setBatchSource("")}
-            disabled={disabled}
-          >
-            批量粘贴 BibTeX
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            onClick={() => setAdvancedSource(source)}
-            disabled={disabled}
-          >
-            <BracesIcon />
-            高级源码
-          </Button>
-        </div>
+      <div
+        data-slot="reference-toolbar"
+        className="flex h-(--header-height) shrink-0 items-center justify-between gap-2 border-b px-4"
+      >
+        <Badge variant={valid || (!sourcePresent && legacyReferences.length > 0) ? "secondary" : "outline"}>
+          {result.entries.length || legacyReferences.length} 条
+        </Badge>
+        <Button type="button" size="sm" onClick={openAdd} disabled={disabled}>
+          <PlusIcon />
+          添加参考文献
+        </Button>
       </div>
 
       {sourcePresent && currentMessages.length > 0 ? (
@@ -301,10 +266,10 @@ export function ReferenceImporter({
 
       {sourceIsAdvanced ? (
         <Alert>
-          <BracesIcon />
-          <AlertTitle>当前文献包含宏、注释或其他高级源码</AlertTitle>
+          <TriangleAlertIcon />
+          <AlertTitle>当前文献包含宏、注释或其他扩展内容</AlertTitle>
           <AlertDescription>
-            为避免破坏 BibTeX 依赖，条目编辑、删除和调整顺序已关闭；请在“高级源码”中修改。仍可继续添加独立条目或批量导入。
+            为避免破坏 BibTeX 依赖，现有条目的编辑、删除和调整顺序已关闭；仍可继续添加一条或多条独立文献。
           </AlertDescription>
         </Alert>
       ) : null}
@@ -320,7 +285,7 @@ export function ReferenceImporter({
       ) : null}
 
       {editableEntries.length > 0 ? (
-        <ScrollArea className="min-h-0 flex-1 rounded-lg border">
+        <ScrollArea className="min-h-0 flex-1">
           <Accordion className="px-3">
             {editableEntries.map((reference) => (
               <AccordionItem key={reference.id} value={reference.id}>
@@ -399,7 +364,7 @@ export function ReferenceImporter({
           </div>
         </ScrollArea>
       ) : legacyReferences.length > 0 ? (
-        <ScrollArea className="min-h-0 flex-1 rounded-lg border">
+        <ScrollArea className="min-h-0 flex-1">
           <div className="divide-y">
             {legacyReferences.map((paragraph, index) => (
               <div className="flex items-start gap-3 p-3" key={`legacy-${index}`}>
@@ -410,13 +375,16 @@ export function ReferenceImporter({
           </div>
         </ScrollArea>
       ) : (
-        <div className="grid min-h-64 flex-1 place-items-center rounded-lg border border-dashed p-6 text-center">
+        <div
+          data-slot="reference-empty-state"
+          className="grid min-h-64 flex-1 place-items-center p-6 text-center"
+        >
           <div className="grid max-w-sm justify-items-center gap-3">
             <BookOpenCheckIcon className="size-8 text-muted-foreground" />
             <div className="grid gap-1">
               <p className="text-sm font-medium">还没有参考文献</p>
               <p className="text-sm text-muted-foreground">
-                逐条添加便于检查和排序；已有多条 BibTeX 时可直接批量粘贴。
+                可一次粘贴一条或多条 BibTeX，完成后自动生成引用格式。
               </p>
             </div>
             <Button type="button" onClick={openAdd} disabled={disabled}>
@@ -435,40 +403,51 @@ export function ReferenceImporter({
         open={entryEditor !== null}
         onOpenChange={(open) => !open && setEntryEditor(null)}
       >
-        <DialogContent>
+        <DialogContent className="max-h-[calc(100dvh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>
               {entryEditor?.mode === "edit" ? "编辑参考文献" : "添加参考文献"}
             </DialogTitle>
             <DialogDescription>
-              输入一个完整 BibTeX 条目，完成后自动生成引用格式。
+              {entryEditor?.mode === "edit"
+                ? "编辑一个完整的 BibTeX 条目，完成后自动更新引用格式。"
+                : "可一次粘贴一条或多条完整的 BibTeX，通过检查后会追加到列表末尾。"}
             </DialogDescription>
           </DialogHeader>
-          <Textarea
-            aria-label="单条参考文献 BibTeX"
-            className="min-h-64 resize-y font-mono text-xs"
-            value={entryCandidateSource}
-            spellCheck={false}
-            placeholder={EMPTY_ENTRY}
-            onChange={(event) =>
-              setEntryEditor((current) =>
-                current ? { ...current, source: event.target.value } : current,
-              )
-            }
-          />
-          {[...entryMessages, ...nextEntryMessages].length > 0 ? (
-            <Alert variant="destructive">
-              <TriangleAlertIcon />
-              <AlertTitle>这条 BibTeX 还不能保存</AlertTitle>
-              <AlertDescription>
-                <ul className="list-disc space-y-1 pl-5">
-                  {[...entryMessages, ...nextEntryMessages].map((message, index) => (
-                    <li key={`${message}-${index}`}>{message}</li>
-                  ))}
-                </ul>
-              </AlertDescription>
-            </Alert>
-          ) : null}
+          <div
+            data-slot="reference-entry-dialog-body"
+            className="grid min-h-0 gap-4 overflow-y-auto"
+          >
+            <Textarea
+              aria-label={
+                entryEditor?.mode === "edit"
+                  ? "单条参考文献 BibTeX"
+                  : "参考文献 BibTeX"
+              }
+              className="field-sizing-fixed h-72 min-h-48 resize-none overflow-y-auto font-mono text-xs"
+              value={entryCandidateSource}
+              spellCheck={false}
+              placeholder={EMPTY_ENTRY}
+              onChange={(event) =>
+                setEntryEditor((current) =>
+                  current ? { ...current, source: event.target.value } : current,
+                )
+              }
+            />
+            {[...entryMessages, ...nextEntryMessages].length > 0 ? (
+              <Alert variant="destructive">
+                <TriangleAlertIcon />
+                <AlertTitle>BibTeX 还不能保存</AlertTitle>
+                <AlertDescription>
+                  <ul className="list-disc space-y-1 pl-5">
+                    {[...entryMessages, ...nextEntryMessages].map((message, index) => (
+                      <li key={`${message}-${index}`}>{message}</li>
+                    ))}
+                  </ul>
+                </AlertDescription>
+              </Alert>
+            ) : null}
+          </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setEntryEditor(null)}>
               取消
@@ -482,92 +461,9 @@ export function ReferenceImporter({
                 setEntryEditor(null)
               }}
             >
-              完成
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={batchSource !== null} onOpenChange={(open) => !open && setBatchSource(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>批量粘贴 BibTeX</DialogTitle>
-            <DialogDescription>
-              可一次粘贴多条内容；通过检查后会追加到现有参考文献末尾。
-            </DialogDescription>
-          </DialogHeader>
-          <Textarea
-            aria-label="批量参考文献 BibTeX"
-            className="min-h-72 resize-y font-mono text-xs"
-            value={batchSource ?? ""}
-            spellCheck={false}
-            placeholder={EMPTY_ENTRY}
-            onChange={(event) => setBatchSource(event.target.value)}
-          />
-          {batchSource !== null && batchSource.trim() && batchMessages.length > 0 ? (
-            <Alert variant="destructive">
-              <TriangleAlertIcon />
-              <AlertTitle>批量内容尚未通过检查</AlertTitle>
-              <AlertDescription>
-                <ul className="list-disc space-y-1 pl-5">
-                  {batchMessages.map((message, index) => (
-                    <li key={`${message}-${index}`}>{message}</li>
-                  ))}
-                </ul>
-              </AlertDescription>
-            </Alert>
-          ) : null}
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setBatchSource(null)}>
-              取消
-            </Button>
-            <Button
-              type="button"
-              disabled={!batchSource?.trim() || batchMessages.length > 0}
-              onClick={() => {
-                if (!combinedBatchSource) return
-                onChange(separateBibtexEntries(combinedBatchSource))
-                setBatchSource(null)
-              }}
-            >
-              添加这些条目
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={advancedSource !== null}
-        onOpenChange={(open) => !open && setAdvancedSource(null)}
-      >
-        <DialogContent className="sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>高级 BibTeX 源码</DialogTitle>
-            <DialogDescription>
-              用于批量校对以及编辑 @string、注释、宏或其他复杂内容。源码即使暂未通过检查也可保存为草稿。
-            </DialogDescription>
-          </DialogHeader>
-          <Textarea
-            aria-label={`${label}高级 BibTeX 源码`}
-            className="min-h-96 resize-y font-mono text-xs"
-            value={advancedSource ?? ""}
-            spellCheck={false}
-            placeholder={EMPTY_ENTRY}
-            onChange={(event) => setAdvancedSource(event.target.value)}
-          />
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setAdvancedSource(null)}>
-              取消
-            </Button>
-            <Button
-              type="button"
-              onClick={() => {
-                if (advancedSource === null) return
-                onChange(separateBibtexEntries(advancedSource))
-                setAdvancedSource(null)
-              }}
-            >
-              保存源码
+              {entryEditor?.mode === "add"
+                ? `添加 ${entryCandidate.entries.length} 条参考文献`
+                : "完成"}
             </Button>
           </DialogFooter>
         </DialogContent>

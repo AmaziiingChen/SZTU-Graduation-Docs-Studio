@@ -11,11 +11,13 @@
 
 ## 决策
 
-使用默认 `shadcn/ui` 主题和组件，并采用官方 `dashboard-01` Block 作为页面级骨架。固定层级为 `SidebarProvider`、inset `AppSidebar`、`SidebarInset`、`SiteHeader` 和业务内容容器；业务区由固定宽度的文档板块导航、文档编辑主区及克制的顶部操作区组成。文档板块导航不向用户提供拖拽调宽。内容检查和唯一的“预览&导出”入口集中在 `SiteHeader` 右侧，不再占用第二行工具栏。分页预览和导出格式选择通过该入口进入右侧默认 shadcn `Sheet`，复用唯一的 `PaginatedPreviewPanel`。环境检查、质量门禁、导出状态、历史记录和相关说明复用一个 `InspectionPanel`，通过 `SidebarFooter` 底部的“检查与导出”入口在主内容区显示。
+使用默认 `shadcn/ui` 主题和组件，并采用官方 `dashboard-01` Block 作为页面级骨架。固定层级为 `SidebarProvider`、inset `AppSidebar`、`SidebarInset`、`SiteHeader` 和业务内容容器；业务区由固定宽度的文档板块导航、文档编辑主区及克制的顶部操作区组成。文档板块导航不向用户提供拖拽调宽。内容检查和唯一的“预览&导出”入口集中在 `SiteHeader` 右侧，不再占用第二行工具栏；“预览&导出”使用默认 shadcn 主按钮样式。分页预览和导出格式选择通过该入口进入右侧默认 shadcn `Sheet`，复用唯一的 `PaginatedPreviewPanel`。环境检查、质量门禁、导出状态、历史记录和相关说明复用一个 `InspectionPanel`，通过 `SidebarFooter` 底部的“检查与导出”入口在主内容区显示。编辑器工具栏只保留可操作的格式按钮，不显示“正文”“多段内容”等模式标签。
 
 inset 模式由 `SidebarProvider` 独占视口高度并截断页面级溢出；`SidebarInset` 在该高度内弹性伸展，让 shadcn 默认的上下边距计入视口，不再单独设置 `h-svh`。因此窗口本身不产生第二条滚动条，文档正文和编辑器的 `ScrollArea` 才是常规滚动面。
 
 窄窗口只使用官方 Sidebar 自身的移动端机制，并把固定的文档板块导航替换为紧凑 `Select`。排版预览继续使用同一个右侧 `Sheet`，不复制检查或预览业务实现，也不增加可拖拽分栏。
+
+上述窄窗口文档板块导航策略已由 ADR 0009 替代；原段落仅保留为历史决策记录。
 
 预览不随输入实时变化。用户点击“预览&导出”后，工作台立即打开 `Sheet`；没有当前有效预览时自动保存并检查当前输入，使用与正式 PDF 导出相同的受信任模板快照生成 150 DPI 分页图，已有有效结果时直接复用。导出格式放在 `Sheet` 固定底部；继续编辑后旧预览立即标记为过期，下次打开时自动重新生成。详细一致性和安全边界见 ADR 0007。
 

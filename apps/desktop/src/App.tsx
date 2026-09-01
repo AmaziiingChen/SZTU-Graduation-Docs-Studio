@@ -11,9 +11,7 @@ import {
   ArrowDownIcon,
   ArrowUpIcon,
   CalendarIcon,
-  CheckCircle2Icon,
   ChevronDownIcon,
-  CircleDashedIcon,
   FileCheck2Icon,
   FileClockIcon,
   FileTextIcon,
@@ -27,8 +25,6 @@ import {
   Trash2Icon,
   TriangleAlertIcon,
   UserRoundIcon,
-  ZoomInIcon,
-  ZoomOutIcon,
 } from "lucide-react"
 import { format, isValid, parseISO } from "date-fns"
 import { zhCN } from "date-fns/locale"
@@ -36,6 +32,7 @@ import { zhCN } from "date-fns/locale"
 import { AppSidebar } from "@/components/workbench/app-sidebar"
 import type { CreateDocumentRequest } from "@/components/workbench/nav-documents"
 import { DiagnosticSupport } from "@/components/workbench/diagnostic-support"
+import { ExportHistoryStatusBadge } from "@/components/workbench/export-history-status-badge"
 import {
   DocumentSectionNav,
   type DocumentSectionOption,
@@ -52,10 +49,13 @@ import {
   type EditorSelectionSnapshot,
 } from "@/components/workbench/structured-content-editor"
 import { ReferenceImporter } from "@/components/workbench/reference-importer"
+import {
+  SaveStatusBadge,
+  type SaveState,
+} from "@/components/workbench/save-status-badge"
 import { TaskScheduleEditor } from "@/components/workbench/task-schedule-editor"
 import { SiteHeader } from "@/components/workbench/site-header"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
 import {
@@ -102,7 +102,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Separator } from "@/components/ui/separator"
 import {
   Sheet,
   SheetContent,
@@ -114,7 +113,6 @@ import {
   SidebarProvider,
 } from "@/components/ui/sidebar"
 import { Toaster } from "@/components/ui/sonner"
-import { Textarea } from "@/components/ui/textarea"
 import {
   Table,
   TableBody,
@@ -241,14 +239,6 @@ type TextDraftField = Exclude<
   | "taskReferences"
 >
 
-type SaveState =
-  | "loading"
-  | "dirty"
-  | "saving"
-  | "saved"
-  | "error"
-  | "conflict"
-
 type ExportState =
   | { status: "idle" }
   | {
@@ -267,8 +257,6 @@ type PreviewState =
   | { status: "ready"; result: PreviewResult; stale: boolean }
   | { status: "error"; message: string }
 
-type PreviewZoom = "fit" | 75 | 100 | 125 | 150 | 200
-
 type ExportHistoryState =
   | { status: "loading"; jobs: ExportJobSummary[] }
   | { status: "ready"; jobs: ExportJobSummary[] }
@@ -284,10 +272,6 @@ type PendingExport = {
   outputDirectory: string
   formats: ExportFormat[]
   preflightToken: string
-}
-
-type QaTarget = {
-  artifact: ExportArtifactRecord
 }
 
 type WorkspaceLoadState =
@@ -348,19 +332,6 @@ async function loadEnvironmentState(): Promise<EnvironmentState> {
   }
 }
 
-function useCompactWorkbench() {
-  const [compact, setCompact] = useState(false)
-  useEffect(() => {
-    if (typeof window.matchMedia !== "function") return
-    const media = window.matchMedia("(max-width: 1199px)")
-    const sync = () => setCompact(media.matches)
-    sync()
-    media.addEventListener("change", sync)
-    return () => media.removeEventListener("change", sync)
-  }, [])
-  return compact
-}
-
 const emptyDraft: Draft = {
   title: [],
   studentName: "",
@@ -411,14 +382,6 @@ const PREVIEW_DRAWER_DEFAULT_WIDTH = 512
 const PREVIEW_DRAWER_MIN_WIDTH = 384
 const PREVIEW_DRAWER_KEYBOARD_STEP = 32
 const PREVIEW_ACCEPTANCE_BOUNDARY_TOAST_ID = "preview-acceptance-boundary"
-const PREVIEW_A4_WIDTH_CSS_PX = 794
-const PREVIEW_ZOOM_LEVELS: Exclude<PreviewZoom, "fit">[] = [
-  75,
-  100,
-  125,
-  150,
-  200,
-]
 
 function showPreviewAcceptanceBoundary(): void {
   toast.info("验收边界", {
@@ -2263,7 +2226,12 @@ function DocumentEditor({
   const isTaskBook = documentType === "task_book"
   const scrollRootRef = useRef<HTMLDivElement>(null)
   const immersiveSection = isTaskBook
-    ? ["task_basic", "task_materials", "task_references"].includes(activeSection)
+    ? [
+        "task_basic",
+        "task_materials",
+        "task_references",
+        "task_topic",
+      ].includes(activeSection)
     : isMidterm
       ? activeSection === "midterm_research" || activeSection === "midterm_progress"
       : [
@@ -2316,14 +2284,17 @@ function DocumentEditor({
     onSelectionChange: (selection: EditorSelectionSnapshot) =>
       rememberSelection(field, selection),
   })
+  const DocumentScrollContainer = immersiveSection ? "div" : ScrollArea
+  const EditorSurface = immersiveSection ? "div" : Card
+  const EditorSurfaceContent = immersiveSection ? "div" : CardContent
 
   return (
     <div className="h-full" ref={scrollRootRef}>
-    <ScrollArea className="h-full">
+    <DocumentScrollContainer className="h-full">
       <div
         className={cn(
           immersiveSection
-            ? "flex h-full min-h-0 w-full flex-col gap-4 p-4"
+            ? "flex h-full min-h-0 w-full flex-col"
             : "mx-auto grid max-w-4xl gap-6 p-6",
         )}
       >
@@ -2436,8 +2407,19 @@ function DocumentEditor({
         ) : null}
 
         {activeSection !== "document_info" ? (
-        <Card className={cn("border-0 shadow-none ring-0", immersiveSection && "min-h-0 flex-1 py-0")}>
-          <CardContent className={cn("grid gap-6", immersiveSection && "h-full min-h-0 px-0")}>
+        <EditorSurface
+          className={cn(
+            immersiveSection ? "min-h-0 flex-1" : "border-0 shadow-none ring-0",
+          )}
+          {...(immersiveSection
+            ? { "data-slot": "immersive-writing-surface" }
+            : {})}
+        >
+          <EditorSurfaceContent
+            className={cn(
+              immersiveSection ? "h-full min-h-0" : "grid gap-6",
+            )}
+          >
             {isTaskBook ? (
               <>
                 {activeSection === "task_basic" ? (
@@ -2480,11 +2462,11 @@ function DocumentEditor({
                     }
                     onChange={onStructuredBodyChange}
                     disabled={disabled}
+                    fillHeight
                   />
                 ) : null}
                 {activeSection === "task_references" ? (
                   <ReferenceImporter
-                    label="参考文献"
                     source={draft.taskReferencesBibtex}
                     legacyReferences={draft.taskReferences}
                     maximumEntries={TASK_BOOK_REFERENCE_RULES.maximumEntries}
@@ -2498,9 +2480,14 @@ function DocumentEditor({
                   />
                 ) : null}
                 {activeSection === "task_topic" ? (
-                <>
-                <Separator />
-                <div className="grid gap-4 md:grid-cols-2">
+                <div
+                  data-slot="task-topic-surface"
+                  className="flex h-full min-h-0 items-center justify-center p-6"
+                >
+                <div
+                  data-slot="task-topic-form"
+                  className="grid w-full max-w-xl gap-4"
+                >
                   <SelectField
                     id="taskNature"
                     label="选题性质"
@@ -2552,7 +2539,7 @@ function DocumentEditor({
                         disabled={disabled}
                       />
                       {draft.taskResearchLevel === "other" ? (
-                        <div className="md:col-span-2">
+                        <div>
                           <Field
                             id="taskOtherResearchLevel"
                             label="其他项目级别"
@@ -2588,14 +2575,13 @@ function DocumentEditor({
                     />
                   ) : null}
                 </div>
-                </>
+                </div>
                 ) : null}
               </>
             ) : isMidterm ? (
               <>
                 {activeSection === "midterm_directory" ? (
                 <div className="grid gap-2">
-                  <p className="text-sm font-medium">论文目录</p>
                   <OutlineEditor
                     value={draft.directory}
                     onChange={onDirectoryChange}
@@ -2688,7 +2674,6 @@ function DocumentEditor({
                 ) : null}
                 {activeSection === "proposal_references" ? (
                 <ReferenceImporter
-                  label="参考文献"
                   source={draft.referencesBibtex}
                   legacyReferences={draft.references}
                   maximumEntries={PROPOSAL_REFERENCE_RULES.maximumEntries}
@@ -2701,11 +2686,11 @@ function DocumentEditor({
                 ) : null}
               </>
             )}
-          </CardContent>
-        </Card>
+          </EditorSurfaceContent>
+        </EditorSurface>
         ) : null}
       </div>
-    </ScrollArea>
+    </DocumentScrollContainer>
     </div>
   )
 }
@@ -2731,43 +2716,6 @@ const checkStatusLabels: Record<CheckResult["status"], string> = {
   warn: "需注意",
   fail: "未通过",
   blocked: "受阻",
-}
-
-function DocumentCheckStatus({
-  check,
-  label,
-}: {
-  check: CheckResult
-  label: string
-}) {
-  return (
-    <div className="flex items-center justify-between gap-3 py-2">
-      <div className="flex min-w-0 items-center gap-2 text-sm">
-        {check.status === "pass" ? (
-          <CheckCircle2Icon className="size-4 shrink-0 text-muted-foreground" />
-        ) : check.status === "running" ? (
-          <LoaderCircleIcon className="size-4 shrink-0 animate-spin text-muted-foreground" />
-        ) : check.status === "fail" || check.status === "blocked" ? (
-          <TriangleAlertIcon className="size-4 shrink-0 text-destructive" />
-        ) : (
-          <CircleDashedIcon className="size-4 shrink-0 text-muted-foreground" />
-        )}
-        <span>{label}</span>
-      </div>
-      <Badge
-        variant={
-          check.status === "fail" || check.status === "blocked"
-            ? "destructive"
-            : check.status === "pass"
-              ? "outline"
-              : "secondary"
-        }
-        title={check.message}
-      >
-        {checkStatusLabels[check.status]}
-      </Badge>
-    </div>
-  )
 }
 
 function ArtifactCheckSummary({ artifact }: { artifact: ExportArtifactRecord }) {
@@ -2815,14 +2763,6 @@ function PaginatedPreviewPanel({
   blockedMessage?: string
   onGenerate: () => void
 }) {
-  const [zoom, setZoom] = useState<PreviewZoom>("fit")
-  const previewChecks =
-    previewState.status === "ready"
-      ? previewState.result.checks.filter((check) =>
-          ["structure", "cjk_glyph"].includes(check.gate),
-        )
-      : []
-
   return (
     <ScrollArea className="h-full">
       <div className="grid gap-3 p-4">
@@ -2905,78 +2845,6 @@ function PaginatedPreviewPanel({
                 </Button>
               </>
             ) : null}
-            <p className="text-sm font-medium text-foreground">
-              {previewState.result.pages.length} 页 · {documentTypeLabels[documentType]}
-            </p>
-            <div
-              aria-label="预览缩放"
-              className="flex items-center justify-end gap-1"
-            >
-              <Button
-                variant={zoom === "fit" ? "secondary" : "ghost"}
-                size="sm"
-                onClick={() => setZoom("fit")}
-              >
-                适合宽度
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="缩小预览"
-                disabled={zoom === "fit" || zoom === PREVIEW_ZOOM_LEVELS[0]}
-                onClick={() => {
-                  if (zoom === "fit") return
-                  const index = PREVIEW_ZOOM_LEVELS.indexOf(zoom)
-                  setZoom(PREVIEW_ZOOM_LEVELS[Math.max(0, index - 1)])
-                }}
-              >
-                <ZoomOutIcon />
-              </Button>
-              <span className="min-w-12 text-center text-sm text-muted-foreground">
-                {zoom === "fit" ? "自适应" : `${zoom}%`}
-              </span>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="放大预览"
-                disabled={zoom === PREVIEW_ZOOM_LEVELS.at(-1)}
-                onClick={() => {
-                  const current = zoom === "fit" ? 75 : zoom
-                  const index = PREVIEW_ZOOM_LEVELS.indexOf(current)
-                  setZoom(
-                    PREVIEW_ZOOM_LEVELS[
-                      Math.min(PREVIEW_ZOOM_LEVELS.length - 1, index + 1)
-                    ],
-                  )
-                }}
-              >
-                <ZoomInIcon />
-              </Button>
-            </div>
-            {!previewState.stale && previewChecks.length > 0 ? (
-              <div
-                aria-label="预览自动检查"
-                className="rounded-lg border px-3"
-              >
-                <div className="py-3">
-                  <span className="text-sm font-medium">预览检查</span>
-                </div>
-                <Separator />
-                <div className="divide-y">
-                  {previewChecks.map((check) => (
-                    <DocumentCheckStatus
-                      check={check}
-                      key={check.check_id}
-                      label={
-                        check.gate === "structure"
-                          ? "PDF 文件结构"
-                          : "中文字形"
-                      }
-                    />
-                  ))}
-                </div>
-              </div>
-            ) : null}
             {previewState.result.pages.map((page) => (
               <div
                 key={page.page_number}
@@ -2987,10 +2855,7 @@ function PaginatedPreviewPanel({
                   data-slot="preview-page"
                   className="mx-auto overflow-hidden border bg-background"
                   style={{
-                    width:
-                      zoom === "fit"
-                        ? "100%"
-                        : `${PREVIEW_A4_WIDTH_CSS_PX * (zoom / 100)}px`,
+                    width: "100%",
                     aspectRatio: "210 / 297",
                   }}
                 >
@@ -3024,7 +2889,6 @@ function InspectionPanel({
   onRefreshHistory,
   onRevealArtifact,
   onDeleteHistory,
-  onRecordQa,
 }: {
   environment: EnvironmentState
   templateCheck: EnvironmentCheck | undefined
@@ -3037,7 +2901,6 @@ function InspectionPanel({
   onRefreshHistory: () => void
   onRevealArtifact: (artifactId: string) => void
   onDeleteHistory: (exportId: string) => Promise<boolean>
-  onRecordQa: (artifact: ExportArtifactRecord) => void
 }) {
   const [deleteTarget, setDeleteTarget] = useState<ExportJobSummary | null>(null)
   const [deletingExportId, setDeletingExportId] = useState<string | null>(null)
@@ -3212,29 +3075,6 @@ function InspectionPanel({
                       const availableArtifact = job.artifacts.find(
                         (artifact) => artifact.file_state === "available",
                       )
-                      const docxArtifact = job.artifacts.find(
-                        (artifact) => artifact.format === "docx",
-                      )
-                      const missingCount = job.artifacts.filter(
-                        (artifact) => artifact.file_state === "missing",
-                      ).length
-                      const modifiedCount = job.artifacts.filter(
-                        (artifact) => artifact.file_state === "modified",
-                      ).length
-                      const statusLabel =
-                        job.status === "failed"
-                          ? "导出失败"
-                          : job.status === "cancelled"
-                            ? "已取消"
-                            : job.status === "queued" || job.status === "running"
-                              ? "处理中"
-                              : missingCount === job.artifacts.length && missingCount > 0
-                                ? "已删除或移动"
-                                : missingCount > 0
-                                  ? "部分文件已删除或移动"
-                                  : modifiedCount > 0
-                                    ? "文件已修改"
-                                    : "可用"
                       return (
                         <TableRow key={job.export_id}>
                           <TableCell className="min-w-48 whitespace-normal">
@@ -3260,11 +3100,7 @@ function InspectionPanel({
                             {new Date(job.completed_at ?? job.created_at).toLocaleString()}
                           </TableCell>
                           <TableCell>
-                            <Badge
-                              variant={job.status === "failed" ? "destructive" : "outline"}
-                            >
-                              {statusLabel}
-                            </Badge>
+                            <ExportHistoryStatusBadge job={job} />
                           </TableCell>
                           <TableCell className="text-right">
                             <DropdownMenu>
@@ -3290,12 +3126,6 @@ function InspectionPanel({
                                   <FolderOpenIcon />
                                   打开本地位置
                                 </DropdownMenuItem>
-                                {docxArtifact ? (
-                                  <DropdownMenuItem onClick={() => onRecordQa(docxArtifact)}>
-                                    <FileCheck2Icon />
-                                    记录人工验收
-                                  </DropdownMenuItem>
-                                ) : null}
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
                                   variant="destructive"
@@ -3368,7 +3198,6 @@ function InspectionPanel({
 
 export default function App() {
   const isMobile = useIsMobile()
-  const compactWorkbench = useCompactWorkbench()
   const [draft, setDraft] = useState(emptyDraft)
   const [activeSections, setActiveSections] = useState<Record<DocumentType, string>>(
     defaultDocumentSections,
@@ -3414,9 +3243,6 @@ export default function App() {
   })
   const [pendingExport, setPendingExport] = useState<PendingExport | null>(null)
   const [templateInstalling, setTemplateInstalling] = useState(false)
-  const [qaTarget, setQaTarget] = useState<QaTarget | null>(null)
-  const [qaNotes, setQaNotes] = useState("")
-  const [qaSubmitting, setQaSubmitting] = useState(false)
   const [privacyNotice, setPrivacyNotice] = useState<PrivacyNoticeState>({
     status: "loading",
   })
@@ -3639,7 +3465,6 @@ export default function App() {
       setExportState({ status: "idle" })
       setHistory({ status: "loading", jobs: [] })
       setPendingExport(null)
-      setQaTarget(null)
       editVersion.current = 0
       const initialFingerprints = autosaveFingerprintsForDraft(
         resolvedDraft,
@@ -4280,51 +4105,6 @@ export default function App() {
     }
   }
 
-  const recordQa = async (
-    editor: "word" | "wps",
-    status: "pass" | "fail",
-  ) => {
-    const api = getDesktopApi()
-    if (!api || !qaTarget || qaSubmitting) return
-    setQaSubmitting(true)
-    try {
-      await api.recordQa({
-        artifactId: qaTarget.artifact.artifact_id,
-        gate: "target_editor",
-        status,
-        editor,
-        message:
-          qaNotes.trim() ||
-          (status === "pass" ? "已完成逐页人工验收。" : "人工验收未通过。"),
-      })
-      setQaTarget(null)
-      setQaNotes("")
-      toast.success(
-        status === "pass"
-          ? `${editor === "word" ? "Word" : "WPS"} 人工验收已记录。`
-          : `${editor === "word" ? "Word" : "WPS"} 未通过已记录。`,
-      )
-      recordTelemetry({
-        name: "document_action",
-        action: "qa_record",
-        documentType: activeDocumentType,
-        outcome: "success",
-      })
-      await refreshHistory()
-    } catch (error) {
-      recordTelemetry({
-        name: "document_action",
-        action: "qa_record",
-        documentType: activeDocumentType,
-        outcome: "failure",
-        errorCode: telemetryErrorCode(error),
-      })
-      toast.error(error instanceof Error ? error.message : "人工验收记录失败。")
-    } finally {
-      setQaSubmitting(false)
-    }
-  }
-
   const executeExport = async (
     pending: PendingExport,
     overwriteConfirmed: boolean,
@@ -4562,15 +4342,6 @@ export default function App() {
     }
   }
 
-  const saveLabels: Record<SaveState, string> = {
-    loading: "正在载入",
-    dirty: "未保存",
-    saving: "正在保存",
-    saved: "已保存",
-    error: "保存失败",
-    conflict: "修订冲突",
-  }
-
   const workspaceDisabled = workspace.status !== "ready"
   const templateCheck = activeTemplateCheck(environment, activeDocumentType)
   const templateReady = templateCheck?.status === "pass"
@@ -4674,10 +4445,6 @@ export default function App() {
       onRefreshHistory={() => void refreshHistory()}
       onRevealArtifact={(artifactId) => void revealArtifact(artifactId)}
       onDeleteHistory={deleteHistoryRecord}
-      onRecordQa={(artifact) => {
-        setQaNotes("")
-        setQaTarget({ artifact })
-      }}
     />
   )
 
@@ -4691,7 +4458,6 @@ export default function App() {
           [activeDocumentType]: sectionId,
         }))
       }
-      compact={compactWorkbench || isMobile}
     />
   )
 
@@ -4773,34 +4539,7 @@ export default function App() {
                       ? `${graduationCohort}开题报告`
                       : `${graduationCohort}开题报告工作台`
           }
-          status={
-            <Badge
-              aria-label={`保存状态：${saveLabels[saveState]}`}
-              variant={
-                saveState === "error" || saveState === "conflict"
-                  ? "destructive"
-                  : saveState === "dirty" ||
-                      saveState === "saving" ||
-                      saveState === "saved"
-                    ? "outline"
-                    : "secondary"
-              }
-              className={
-                saveState === "saved"
-                  ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800/60 dark:bg-emerald-950/40 dark:text-emerald-300"
-                  : undefined
-              }
-            >
-              {saveState === "loading" || saveState === "saving" ? (
-                <LoaderCircleIcon className="animate-spin" />
-              ) : saveState === "error" || saveState === "conflict" ? (
-                <TriangleAlertIcon />
-              ) : (
-                <SaveIcon />
-              )}
-              {saveLabels[saveState]}
-            </Badge>
-          }
+          status={<SaveStatusBadge state={saveState} />}
           actions={
             activePane === "document" ? (
               <>
@@ -4823,7 +4562,6 @@ export default function App() {
                   {isMobile ? null : <span>检查内容</span>}
                 </Button>
                 <Button
-                  variant="outline"
                   size={isMobile ? "icon-sm" : "sm"}
                   aria-label="预览&导出"
                   title="预览&导出"
@@ -4848,11 +4586,6 @@ export default function App() {
               <div className="min-h-0 flex-1">{mainPanel}</div>
             ) : activePane === "inspection" ? (
               <div className="min-h-0 flex-1">{mainPanel}</div>
-            ) : compactWorkbench || isMobile ? (
-              <div className="flex min-h-0 flex-1 flex-col">
-                {sectionNavigation}
-                <div className="min-h-0 flex-1">{mainPanel}</div>
-              </div>
             ) : (
               <div className="flex min-h-0 flex-1">
                 {sectionNavigation}
@@ -5080,64 +4813,6 @@ export default function App() {
               }}
             >
               确认覆盖并导出
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      <Dialog
-        open={qaTarget !== null}
-        onOpenChange={(open) => {
-          if (!open && !qaSubmitting) {
-            setQaTarget(null)
-            setQaNotes("")
-          }
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>记录 Word/WPS 人工验收</DialogTitle>
-            <DialogDescription>
-              请先在对应编辑器中逐页检查。打开文件或自动渲染不会自动标记为通过。
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-2">
-            <label className="text-sm font-medium" htmlFor="qa-notes">
-              验收备注（可选）
-            </label>
-            <Textarea
-              id="qa-notes"
-              value={qaNotes}
-              maxLength={1000}
-              disabled={qaSubmitting}
-              onChange={(event) => setQaNotes(event.target.value)}
-            />
-          </div>
-          <DialogFooter className="sm:grid sm:grid-cols-2">
-            <Button
-              variant="outline"
-              disabled={qaSubmitting}
-              onClick={() => void recordQa("word", "fail")}
-            >
-              Word 未通过
-            </Button>
-            <Button
-              variant="outline"
-              disabled={qaSubmitting}
-              onClick={() => void recordQa("wps", "fail")}
-            >
-              WPS 未通过
-            </Button>
-            <Button
-              disabled={qaSubmitting}
-              onClick={() => void recordQa("word", "pass")}
-            >
-              Word 验收通过
-            </Button>
-            <Button
-              disabled={qaSubmitting}
-              onClick={() => void recordQa("wps", "pass")}
-            >
-              WPS 验收通过
             </Button>
           </DialogFooter>
         </DialogContent>
