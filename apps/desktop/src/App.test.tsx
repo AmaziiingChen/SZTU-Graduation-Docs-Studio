@@ -401,6 +401,7 @@ function mockApi(): SztuDesktopApi {
     recordTelemetry: vi.fn().mockResolvedValue(null),
     getUpdateStatus: vi.fn().mockResolvedValue({ state: "unconfigured" }),
     revealDownloadedUpdate: vi.fn().mockResolvedValue(null),
+    openToolLink: vi.fn().mockResolvedValue(null),
     onUpdateStatus: vi.fn().mockReturnValue(() => undefined),
     openWorkspace: vi.fn().mockResolvedValue({
       mode: "persistent",
@@ -775,6 +776,30 @@ describe("M3 workbench persistence", () => {
     ).toHaveClass("sr-only")
     expect(screen.queryByRole("button", { name: "预览与检查" })).not.toBeInTheDocument()
     expect(await openSharedThesisTitle()).toHaveTextContent("合成开题报告")
+  })
+
+  it("opens the thesis tool directory from the application sidebar", async () => {
+    const api = mockApi()
+    installApi(api)
+    renderApp()
+
+    fireEvent.click(await screen.findByRole("button", { name: "论文工具台" }))
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "论文工具台" }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole("heading", { level: 2, name: "论文工具台" }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "效率工具" })).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "浏览器扩展" })).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "文献管理" })).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "AI 工具" })).toBeInTheDocument()
+    expect(screen.queryByLabelText("保存状态：已保存")).not.toBeInTheDocument()
+    expect(screen.queryByRole("navigation", { name: "当前文档板块" })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "打开 Xmind" }))
+    await waitFor(() => expect(api.openToolLink).toHaveBeenCalledWith("xmind"))
   })
 
   it("keeps document-section navigation visible when the app sidebar collapses at minimum width", async () => {

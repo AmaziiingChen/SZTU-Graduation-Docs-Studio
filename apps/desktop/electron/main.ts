@@ -45,6 +45,29 @@ let shutdownStarted = false
 const approvedExportDirectories = new Set<string>()
 const activeCancellationFiles = new Map<string, string>()
 const activePreviewCancellationFiles = new Map<string, string>()
+const TOOL_LINKS = {
+  xmind: "https://xmind.com/",
+  "draw-io": "https://app.diagrams.net/",
+  simpletex: "https://www.simpletex.cn/ai/latex_ocr",
+  seekall: "https://seekall.ai/",
+  vcaptions:
+    "https://chromewebstore.google.com/detail/vcaptions-%E2%80%93-video-caption/bciglihaegkdhoogebcdblfhppoilclp",
+  voyager: "https://voyager.nagi.fun/",
+  "immersive-translate": "https://immersivetranslate.com/",
+  easyscholar: "https://www.easyscholar.cc/",
+  tabbit: "https://www.tabbit.com/?lang=zh",
+  deepl: "https://www.deepl.com/translator",
+  islide: "https://www.islide.cc/",
+  zotero: "https://www.zotero.org/",
+  metaso: "https://metaso.cn/",
+  perplexity: "https://www.perplexity.ai/",
+  deepseek: "https://chat.deepseek.com/",
+  doubao: "https://www.doubao.com/",
+  qianwen: "https://www.qianwen.com/",
+  gemini: "https://gemini.google.com/",
+} as const
+
+type ToolLinkId = keyof typeof TOOL_LINKS
 
 type JsonValue = string | number | boolean | null | JsonObject | JsonValue[]
 type JsonObject = { [key: string]: JsonValue }
@@ -621,6 +644,20 @@ function registerIpc(): void {
       const downloadedPath = updateService?.revealDownloadedPath()
       if (!downloadedPath) throw new IpcValidationError("当前没有已校验的更新文件。")
       shell.showItemInFolder(downloadedPath)
+      return null
+    })
+  })
+
+  ipcMain.handle("sztu:tool-open", (event, toolId: unknown) => {
+    assertTrustedSender(event)
+    return runBridge(async () => {
+      if (
+        typeof toolId !== "string" ||
+        !Object.prototype.hasOwnProperty.call(TOOL_LINKS, toolId)
+      ) {
+        throw new IpcValidationError("未识别的论文工具链接。")
+      }
+      await shell.openExternal(TOOL_LINKS[toolId as ToolLinkId])
       return null
     })
   })

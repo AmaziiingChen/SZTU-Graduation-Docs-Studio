@@ -55,6 +55,7 @@ import {
 } from "@/components/workbench/save-status-badge"
 import { TaskScheduleEditor } from "@/components/workbench/task-schedule-editor"
 import { SiteHeader } from "@/components/workbench/site-header"
+import { ToolDirectory } from "@/components/workbench/tool-directory"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
@@ -181,6 +182,7 @@ import type {
   WorkspaceMode,
   WorkspaceState as WorkspaceSnapshot,
 } from "@/types/desktop-api"
+import type { ToolLinkId } from "@/types/desktop-api"
 import type {
   ParagraphInput,
   StructuredBodyValue,
@@ -279,7 +281,7 @@ type WorkspaceLoadState =
   | { status: "ready" }
   | { status: "error"; message: string }
 
-type ActivePane = "profile" | "document" | "inspection"
+type ActivePane = "profile" | "document" | "inspection" | "tools"
 
 type DocumentViewState = {
   scrollTop: number
@@ -3547,6 +3549,7 @@ export default function App() {
 
   useEffect(() => {
     if (privacyNotice.status !== "accepted") return
+    if (activePane === "tools") return
     const view =
       activePane === "profile"
         ? "profile"
@@ -4361,7 +4364,7 @@ export default function App() {
     previewState.status === "checking" || previewState.status === "generating"
   const previewTriggerDisabled =
     workspaceDisabled ||
-    activePane === "profile" ||
+    activePane !== "document" ||
     !document ||
     saveState === "loading" ||
     saveState === "saving" ||
@@ -4372,7 +4375,7 @@ export default function App() {
   const draftExportReady = draftIsExportReady(draft, activeDocumentType)
   const exportDisabled =
     workspaceDisabled ||
-    activePane === "profile" ||
+    activePane !== "document" ||
     !document ||
     saveState !== "saved" ||
     !environmentReady ||
@@ -4400,6 +4403,19 @@ export default function App() {
       showPreviewAcceptanceBoundary()
     } else if (!previewBusy && !previewGenerationDisabled) {
       void generatePreview()
+    }
+  }
+
+  const openToolLink = async (toolId: ToolLinkId) => {
+    const api = getDesktopApi()
+    if (!api) {
+      toast.error("当前不是受支持的 Electron 桌面环境。")
+      return
+    }
+    try {
+      await api.openToolLink(toolId)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "无法打开外部工具。")
     }
   }
 
@@ -4482,7 +4498,14 @@ export default function App() {
     />
   )
 
-  const mainPanel = activePane === "inspection" ? inspectionPanel : editor
+  const mainPanel =
+    activePane === "inspection" ? (
+      inspectionPanel
+    ) : activePane === "tools" ? (
+      <ToolDirectory onOpenTool={(toolId) => void openToolLink(toolId)} />
+    ) : (
+      editor
+    )
 
   return (
     <SidebarProvider
@@ -4497,11 +4520,13 @@ export default function App() {
       <AppSidebar
         variant="inset"
         profileActive={activePane === "profile"}
+        toolsActive={activePane === "tools"}
         inspectionActive={activePane === "inspection"}
-        activeDocumentId={activeDocumentId ?? null}
+        activeDocumentId={activePane === "document" ? activeDocumentId ?? null : null}
         documents={documents}
         deletedDocuments={deletedDocuments}
         onSelectProfile={() => setActivePane("profile")}
+        onSelectTools={() => setActivePane("tools")}
         onSelectInspection={() => setActivePane("inspection")}
         onSelectDocument={selectDocumentFile}
         onCreateDocument={createDocumentFile}
@@ -4525,6 +4550,8 @@ export default function App() {
           title={
             activePane === "profile"
               ? "学生档案"
+              : activePane === "tools"
+                ? "论文工具台"
               : activePane === "inspection"
                 ? "检查与导出"
                 : activeDocumentType === "task_book"
@@ -4539,7 +4566,7 @@ export default function App() {
                       ? `${graduationCohort}开题报告`
                       : `${graduationCohort}开题报告工作台`
           }
-          status={<SaveStatusBadge state={saveState} />}
+          status={activePane === "tools" ? undefined : <SaveStatusBadge state={saveState} />}
           actions={
             activePane === "document" ? (
               <>
@@ -4582,7 +4609,7 @@ export default function App() {
 
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="@container/main flex min-h-0 flex-1 flex-col gap-2">
-            {activePane === "profile" ? (
+            {activePane === "profile" || activePane === "tools" ? (
               <div className="min-h-0 flex-1">{mainPanel}</div>
             ) : activePane === "inspection" ? (
               <div className="min-h-0 flex-1">{mainPanel}</div>

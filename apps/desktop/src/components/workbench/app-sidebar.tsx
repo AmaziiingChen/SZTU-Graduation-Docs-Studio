@@ -20,11 +20,13 @@ import type { DocumentRecord } from "@/types/desktop-api"
 
 export function AppSidebar({
   profileActive,
+  toolsActive,
   inspectionActive,
   activeDocumentId,
   documents,
   deletedDocuments,
   onSelectProfile,
+  onSelectTools,
   onSelectInspection,
   onSelectDocument,
   onCreateDocument,
@@ -37,11 +39,13 @@ export function AppSidebar({
   ...props
 }: React.ComponentProps<typeof Sidebar> & {
   profileActive: boolean
+  toolsActive: boolean
   inspectionActive: boolean
   activeDocumentId: string | null
   documents: DocumentRecord[]
   deletedDocuments: DocumentRecord[]
   onSelectProfile: () => void
+  onSelectTools: () => void
   onSelectInspection: () => void
   onSelectDocument: (documentId: string) => Promise<void>
   onCreateDocument: (request: CreateDocumentRequest) => Promise<void>
@@ -86,8 +90,10 @@ export function AppSidebar({
       <SidebarContent>
         <NavMain
           profileActive={profileActive}
+          toolsActive={toolsActive}
           disabled={disabled}
           onSelectProfile={() => finishNavigation(onSelectProfile)}
+          onSelectTools={() => finishNavigation(onSelectTools)}
         />
         <NavDocuments
           profileActive={profileActive}

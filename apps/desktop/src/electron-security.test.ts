@@ -62,6 +62,7 @@ describe("Electron security boundary", () => {
       "recordTelemetry",
       "getUpdateStatus",
       "revealDownloadedUpdate",
+      "openToolLink",
       "onUpdateStatus",
       "openWorkspace",
       "saveProfileDraft",
@@ -103,6 +104,7 @@ describe("Electron security boundary", () => {
       "sztu:telemetry-record",
       "sztu:update-status",
       "sztu:update-reveal",
+      "sztu:tool-open",
       "sztu:workspace-save-profile-draft",
       "sztu:workspace-save-profile",
       "sztu:workspace-create-document",
@@ -135,6 +137,16 @@ describe("Electron security boundary", () => {
     expect(mainSource.match(/assertTrustedSender\(event\)/g)?.length).toBeGreaterThanOrEqual(24)
     expect(mainSource).toContain("assertExactKeys")
     expect(mainSource).toContain("assertJsonValue")
+  })
+
+  it("opens only allowlisted thesis tool links in the operating system browser", () => {
+    expect(preloadSource).toContain(
+      'openToolLink: (toolId: unknown) => invoke("sztu:tool-open", toolId)',
+    )
+    expect(mainSource).toContain("const TOOL_LINKS = {")
+    expect(mainSource).toContain("Object.prototype.hasOwnProperty.call(TOOL_LINKS, toolId)")
+    expect(mainSource).toContain("await shell.openExternal(TOOL_LINKS[toolId as ToolLinkId])")
+    expect(mainSource).not.toContain("shell.openExternal(toolId)")
   })
 
   it("allows the shared advisor title and graduation cohort through profile IPC validation", () => {

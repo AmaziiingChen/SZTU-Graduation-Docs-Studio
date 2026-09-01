@@ -80,6 +80,25 @@ export type UpdateStatus =
 
 export type WorkspaceMode = "persistent" | "temporary"
 export type DocumentType = "proposal" | "task_book" | "midterm"
+export type ToolLinkId =
+  | "xmind"
+  | "draw-io"
+  | "simpletex"
+  | "seekall"
+  | "vcaptions"
+  | "voyager"
+  | "immersive-translate"
+  | "easyscholar"
+  | "tabbit"
+  | "deepl"
+  | "islide"
+  | "zotero"
+  | "metaso"
+  | "perplexity"
+  | "deepseek"
+  | "doubao"
+  | "qianwen"
+  | "gemini"
 
 export type StudentProfileInput = {
   id?: string
@@ -401,6 +420,7 @@ export type SztuDesktopApi = {
   recordTelemetry: (input: TelemetryUsageEvent) => Promise<null>
   getUpdateStatus: () => Promise<UpdateStatus>
   revealDownloadedUpdate: () => Promise<null>
+  openToolLink: (toolId: ToolLinkId) => Promise<null>
   onUpdateStatus: (callback: (status: UpdateStatus) => void) => () => void
   openWorkspace: (mode: WorkspaceMode) => Promise<WorkspaceState>
   saveProfileDraft: (profile: StudentProfileDraft) => Promise<StudentProfileDraft>

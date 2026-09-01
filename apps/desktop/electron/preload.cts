@@ -44,6 +44,7 @@ contextBridge.exposeInMainWorld("sztuDesktop", {
   recordTelemetry: (input: unknown) => invoke("sztu:telemetry-record", input),
   getUpdateStatus: () => invoke("sztu:update-status"),
   revealDownloadedUpdate: () => invoke("sztu:update-reveal"),
+  openToolLink: (toolId: unknown) => invoke("sztu:tool-open", toolId),
   onUpdateStatus: (callback: unknown) => {
     if (typeof callback !== "function") {
       throw new DesktopApiError("INVALID_CALLBACK", "更新状态监听器必须是函数。")
