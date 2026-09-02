@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import uuid
 from dataclasses import dataclass
@@ -684,6 +685,22 @@ def _workspace_identity(document_type: str, pack_sha256: str) -> tuple[str, str]
     return template_id, f"{base_version}+workspace.{pack_sha256[:12]}"
 
 
+def _workspace_snapshot_directory_name(
+    document_type: str,
+    version: str,
+    pack_sha256: str,
+) -> str:
+    """Keep immutable snapshots distinct when the engine base version changes."""
+    base_version = version.split("+", 1)[0]
+    safe_version = re.sub(r"[^0-9A-Za-z._-]+", "-", base_version).strip("._-")
+    if not safe_version:
+        raise TemplateEngineError(
+            "TEMPLATE_ENGINE_INVALID",
+            "模板引擎版本无效，无法创建本地快照。",
+        )
+    return f"{document_type}-{safe_version}-{pack_sha256}"
+
+
 def _snapshot_workspace_engine(
     data_directory: Path,
     selected: Path,
@@ -698,7 +715,11 @@ def _snapshot_workspace_engine(
         data_directory / "template-engines" / WORKSPACE_SNAPSHOTS_DIRECTORY
     )
     prepare_private_directory(snapshots_root)
-    destination = snapshots_root / f"{document_type}-{pack_sha256}"
+    destination = snapshots_root / _workspace_snapshot_directory_name(
+        document_type,
+        version,
+        pack_sha256,
+    )
     created = False
     if not destination.exists():
         staging = snapshots_root / f".sync-{uuid.uuid4().hex}"
