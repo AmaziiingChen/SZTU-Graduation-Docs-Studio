@@ -345,7 +345,7 @@ def _expected_paragraphs(proposal: dict[str, Any]) -> list[tuple[str, list[dict[
                 result,
                 sections.get(section),
                 f"sections.{section}",
-                allow_image=False,
+                allow_image=True,
             )
             continue
         values = sections.get(section)

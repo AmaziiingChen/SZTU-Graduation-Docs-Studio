@@ -2144,6 +2144,22 @@ describe("M3 workbench persistence", () => {
     await waitFor(() => expect(api.checkEnvironment).toHaveBeenCalledTimes(2))
   })
 
+  it("exposes the existing image tool only in proposal body sections", async () => {
+    renderApp()
+
+    await screen.findByRole("heading", { name: "2026届开题报告工作台" })
+    fireEvent.click(screen.getByRole("button", { name: /选题意义/ }))
+    expect(screen.queryByRole("button", { name: "插入图片" })).toBeNull()
+
+    for (const sectionName of [/研究内容/, /研究方法/, /研究步骤/]) {
+      fireEvent.click(screen.getByRole("button", { name: sectionName }))
+      expect(screen.getByRole("button", { name: "插入图片" })).toBeInTheDocument()
+    }
+
+    fireEvent.click(screen.getByRole("button", { name: /参考文献/ }))
+    expect(screen.queryByRole("button", { name: "插入图片" })).toBeNull()
+  })
+
   it("switches to the submitted task-book template without repeating shared profile fields", async () => {
     const api = mockApi()
     vi.mocked(api.checkEnvironment).mockResolvedValue(
@@ -2184,19 +2200,23 @@ describe("M3 workbench persistence", () => {
     ).toHaveTextContent(
       "完成统一数据模型和双路文档渲染。",
     )
+    expect(screen.getByRole("button", { name: "插入图片" })).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: /进度安排/ }))
+    expect(screen.queryByRole("button", { name: "插入图片" })).toBeNull()
     expect(screen.getByLabelText("第 1 项时间范围")).toHaveValue("第1—2周")
     expect(screen.getByRole("textbox", { name: "第 1 项进度内容" })).toHaveTextContent(
       "完成文献调研和需求分析。",
     )
     expect(screen.getByLabelText("第 2 项时间范围")).toHaveValue("第3—6周")
     fireEvent.click(screen.getByRole("button", { name: /所需资料/ }))
+    expect(screen.getByRole("button", { name: "插入图片" })).toBeInTheDocument()
     expect(
       screen.getByRole("toolbar", {
         name: "需收集的资料及主要参考文献资料格式工具栏",
       }).parentElement,
     ).not.toHaveClass("rounded-lg", "border")
     fireEvent.click(screen.getByRole("button", { name: /选题信息/ }))
+    expect(screen.queryByRole("button", { name: "插入图片" })).toBeNull()
     expect(
       container.querySelector('[data-slot="task-topic-surface"]'),
     ).toHaveClass("h-full", "items-center", "justify-center")

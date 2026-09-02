@@ -75,6 +75,7 @@ TASK_BOOK_ENGINE_FILE_HASHES = {
 }
 WORKSPACE_SHARED_SUPPORT_FILE_NAMES = (
     "templates/common/latex/sztu-process-form.tex",
+    "templates/common/python/equation.py",
     "templates/common/python/process_form.py",
 )
 WORKSPACE_COMMON_FILE_NAMES = tuple(

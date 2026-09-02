@@ -101,6 +101,20 @@ class StructuredContentExpectationTests(unittest.TestCase):
             _expected_paragraphs(proposal)
         self.assertEqual(context.exception.code, "DOCX_EXPECTATION_INVALID")
 
+    def test_proposal_image_caption_is_included_in_expected_content(self) -> None:
+        proposal = proposal_fixture()
+        proposal["sections"]["research_content"] = [
+            {
+                "type": "image",
+                "id": "fig-proposal-example",
+                "path": "images/proposal-example.png",
+                "alt": "虚构的开题报告示意图",
+                "caption": "图 1-1 开题报告示意",
+            }
+        ]
+        fields = [field for field, _ in _expected_paragraphs(proposal)]
+        self.assertIn("sections.research_content[0].caption", fields)
+
 
 def _tag(parent: ElementTree.Element, name: str, **attributes: str) -> ElementTree.Element:
     return ElementTree.SubElement(

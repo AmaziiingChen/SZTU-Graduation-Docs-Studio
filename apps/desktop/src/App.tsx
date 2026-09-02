@@ -2339,16 +2339,20 @@ function DocumentEditor({
     onSelectionChange: (selection: EditorSelectionSnapshot) =>
       rememberSelection(field, selection),
   })
-  const figureChapters: FigureChapterOption[] = draft.directory
-    .filter((item) => item.level === 1)
-    .map((item, index) => ({
-      value: index + 1,
-      label: `${item.number.trim() || `第 ${index + 1} 章`} ${paragraphInputText(item.title).trim()}`.trim(),
-    }))
-  const figureCatalog = structuredFigureCatalog(
-    draft.mainResearchContent,
-    draft.progress,
-  )
+  const figureChapters: FigureChapterOption[] = isMidterm
+    ? draft.directory
+        .filter((item) => item.level === 1)
+        .map((item, index) => ({
+          value: index + 1,
+          label: `${item.number.trim() || `第 ${index + 1} 章`} ${paragraphInputText(item.title).trim()}`.trim(),
+        }))
+    : [{ value: 1, label: "正文" }]
+  const figureBodies = isTaskBook
+    ? [draft.taskBasicContent, draft.taskRequiredMaterials]
+    : isMidterm
+      ? [draft.mainResearchContent, draft.progress]
+      : [draft.researchContent, draft.methods, draft.steps]
+  const figureCatalog = structuredFigureCatalog(...figureBodies)
   const figureLabels = Object.fromEntries(
     figureCatalog.map((figure) => [figure.id, figure.label]),
   )
@@ -2507,6 +2511,10 @@ function DocumentEditor({
                     onChange={onStructuredBodyChange}
                     disabled={disabled}
                     fillHeight
+                    enableFigures
+                    figureChapters={figureChapters}
+                    figureCatalog={figureCatalog}
+                    figureNumbering={{ knownLabels: figureLabels }}
                   />
                 ) : null}
                 {activeSection === "task_schedule" ? (
@@ -2531,6 +2539,13 @@ function DocumentEditor({
                     onChange={onStructuredBodyChange}
                     disabled={disabled}
                     fillHeight
+                    enableFigures
+                    figureChapters={figureChapters}
+                    figureCatalog={figureCatalog}
+                    figureNumbering={{
+                      startCounts: structuredFigureChapterCounts(draft.taskBasicContent),
+                      knownLabels: figureLabels,
+                    }}
                   />
                 ) : null}
                 {activeSection === "task_references" ? (
@@ -2727,6 +2742,10 @@ function DocumentEditor({
                   onChange={onStructuredBodyChange}
                   disabled={disabled}
                   fillHeight
+                  enableFigures
+                  figureChapters={figureChapters}
+                  figureCatalog={figureCatalog}
+                  figureNumbering={{ knownLabels: figureLabels }}
                 />
                 ) : null}
                 {activeSection === "proposal_methods" ? (
@@ -2739,6 +2758,13 @@ function DocumentEditor({
                   onChange={onStructuredBodyChange}
                   disabled={disabled}
                   fillHeight
+                  enableFigures
+                  figureChapters={figureChapters}
+                  figureCatalog={figureCatalog}
+                  figureNumbering={{
+                    startCounts: structuredFigureChapterCounts(draft.researchContent),
+                    knownLabels: figureLabels,
+                  }}
                 />
                 ) : null}
                 {activeSection === "proposal_steps" ? (
@@ -2751,6 +2777,16 @@ function DocumentEditor({
                   onChange={onStructuredBodyChange}
                   disabled={disabled}
                   fillHeight
+                  enableFigures
+                  figureChapters={figureChapters}
+                  figureCatalog={figureCatalog}
+                  figureNumbering={{
+                    startCounts: structuredFigureChapterCounts(
+                      draft.researchContent,
+                      draft.methods,
+                    ),
+                    knownLabels: figureLabels,
+                  }}
                 />
                 ) : null}
                 {activeSection === "proposal_references" ? (

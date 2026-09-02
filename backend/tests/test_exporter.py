@@ -121,6 +121,26 @@ class ProposalContractTests(unittest.TestCase):
             "sections.significance_and_status[0]",
         )
 
+    def test_research_sections_accept_local_images_with_captions(self) -> None:
+        proposal = proposal_fixture()
+        image = {
+            "type": "image",
+            "id": "fig-proposal-example",
+            "path": "images/proposal-example.png",
+            "alt": "虚构的开题报告示意图",
+            "chapter": 1,
+            "width_mm": 96,
+            "caption": "开题报告示意",
+        }
+        for name in ("research_content", "methods_and_means", "research_steps"):
+            proposal["sections"][name] = [image]
+        self.assertIs(validate_proposal(proposal), proposal)
+
+        proposal["sections"]["research_content"] = [{**image, "caption": None}]
+        with self.assertRaises(ExportError) as context:
+            validate_proposal(proposal)
+        self.assertEqual(context.exception.details["reason"], "missing_caption")
+
     def test_advisor_title_is_rejected_without_echoing_content(self) -> None:
         proposal = proposal_fixture()
         proposal["metadata"]["advisor"] = "测试教师教授"
@@ -725,6 +745,21 @@ class ProposalExportIntegrationTests(unittest.TestCase):
         proposal = proposal_fixture()
         with tempfile.TemporaryDirectory(prefix="sztu-export-test-") as root:
             root_path = Path(root)
+            from PIL import Image as PILImage
+
+            image_path = root_path / "proposal-figure.png"
+            PILImage.new("RGB", (640, 360), color=(238, 242, 247)).save(image_path)
+            proposal["sections"]["research_content"].append(
+                {
+                    "type": "image",
+                    "id": "fig-proposal-export",
+                    "path": str(image_path),
+                    "alt": "虚构的开题报告导出回归图",
+                    "chapter": 1,
+                    "width_mm": 96,
+                    "caption": "开题报告导出回归图",
+                }
+            )
             output = root_path / "output"
             output.mkdir()
             workspace = Workspace.open_persistent(root_path / "data")

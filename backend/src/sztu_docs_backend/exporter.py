@@ -469,9 +469,18 @@ def _validate_proposal_text_block(value: Any, path: str) -> None:
             document_name="开题报告",
         )
         return
+    if value.get("type") == "image":
+        _validate_image_block(
+            value,
+            path,
+            5000,
+            _validate_proposal_content_paragraph,
+            document_name="开题报告",
+        )
+        return
     raise ExportError(
         "DOCUMENT_NOT_READY",
-        "开题报告正文只支持段落、有序列表和无序列表。",
+        "开题报告正文只支持段落、有序列表、无序列表和本地图片。",
         {"field": path, "reason": "unsupported_block"},
     )
 
