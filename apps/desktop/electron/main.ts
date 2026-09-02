@@ -7,9 +7,12 @@ import {
   BrowserWindow,
   dialog,
   ipcMain,
+  Menu,
+  nativeImage,
   protocol,
   session,
   shell,
+  Tray,
   type IpcMainInvokeEvent,
   type OpenDialogOptions,
   type SaveDialogOptions,
@@ -37,6 +40,7 @@ const moduleDirectory = path.dirname(fileURLToPath(import.meta.url))
 const developmentServerUrl = "http://127.0.0.1:5173"
 
 let mainWindow: BrowserWindow | undefined
+let tray: Tray | undefined
 let sidecar: SidecarClient | undefined
 let telemetry: TelemetryService | undefined
 let updateService: UpdateService | undefined
@@ -476,6 +480,49 @@ function configureSession(): void {
   })
 }
 
+function desktopAssetPath(filename: string): string {
+  return path.join(
+    moduleDirectory,
+    app.isPackaged ? "../dist" : "../public",
+    filename,
+  )
+}
+
+function showMainWindow(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    mainWindow = createWindow()
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore()
+  mainWindow.show()
+  mainWindow.focus()
+}
+
+function createTray(): Tray | undefined {
+  const iconName = process.platform === "darwin" ? "trayTemplate.png" : "app-icon.png"
+  const trayImage = nativeImage.createFromPath(desktopAssetPath(iconName))
+  if (trayImage.isEmpty()) {
+    console.error("Tray icon resource is unavailable.")
+    return undefined
+  }
+  if (process.platform === "darwin") {
+    trayImage.setTemplateImage(true)
+  }
+
+  const nextTray = new Tray(trayImage)
+  nextTray.setToolTip("SZTU文档工作台")
+  nextTray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: "打开 SZTU文档工作台", click: showMainWindow },
+      { type: "separator" },
+      { label: "退出", role: "quit" },
+    ]),
+  )
+  if (process.platform !== "darwin") {
+    nextTray.on("click", showMainWindow)
+  }
+  return nextTray
+}
+
 function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
     width: 1360,
@@ -483,6 +530,7 @@ function createWindow(): BrowserWindow {
     minWidth: 1100,
     minHeight: 700,
     show: false,
+    icon: desktopAssetPath("app-icon.png"),
     webPreferences: {
       preload: path.join(moduleDirectory, "preload.cjs"),
       contextIsolation: true,
@@ -512,6 +560,9 @@ function createWindow(): BrowserWindow {
   })
 
   window.once("ready-to-show", () => window.show())
+  window.on("closed", () => {
+    if (mainWindow === window) mainWindow = undefined
+  })
   if (app.isPackaged) {
     void window.loadFile(path.join(moduleDirectory, "../dist/index.html"))
   } else {
@@ -1331,15 +1382,13 @@ async function requestSidecar<T>(
 }
 
 app.enableSandbox()
+app.setName("SZTU文档工作台")
 
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
   app.on("second-instance", () => {
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore()
-      mainWindow.focus()
-    }
+    showMainWindow()
   })
 
   void app.whenReady().then(async () => {
@@ -1347,12 +1396,14 @@ if (!app.requestSingleInstanceLock()) {
     configureSession()
     registerIpc()
     await initializeRemoteServices()
+    if (process.platform === "darwin") {
+      app.dock?.setIcon(desktopAssetPath("app-icon.png"))
+    }
     mainWindow = createWindow()
+    tray = createTray()
 
     app.on("activate", () => {
-      if (BrowserWindow.getAllWindows().length === 0) {
-        mainWindow = createWindow()
-      }
+      showMainWindow()
     })
   })
 }
@@ -1368,6 +1419,8 @@ app.on("before-quit", (event) => {
   sidecar?.dispose()
   if (shutdownStarted) return
   shutdownStarted = true
+  tray?.destroy()
+  tray = undefined
   event.preventDefault()
   void Promise.all([
     telemetry?.stop() ?? Promise.resolve(),

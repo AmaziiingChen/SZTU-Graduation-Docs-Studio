@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from "node:fs"
+import { existsSync, readFileSync, readdirSync } from "node:fs"
 import { extname, join } from "node:path"
 import { describe, expect, it } from "vitest"
 
@@ -48,6 +48,25 @@ describe("Electron security boundary", () => {
     expect(mainSource).toContain("setWindowOpenHandler")
     expect(mainSource).toContain('on("will-navigate"')
     expect(mainSource).toContain("setPermissionRequestHandler")
+  })
+
+  it("uses the approved application artwork for the window, dock, and system tray", () => {
+    expect(mainSource).toContain('icon: desktopAssetPath("app-icon.png")')
+    expect(mainSource).toContain('app.dock?.setIcon(desktopAssetPath("app-icon.png"))')
+    expect(mainSource).toContain('"trayTemplate.png"')
+    expect(mainSource).toContain("trayImage.setTemplateImage(true)")
+    expect(mainSource).toContain("new Tray(trayImage)")
+    expect(mainSource).toContain('label: "打开 SZTU文档工作台"')
+    expect(mainSource).toContain('label: "退出", role: "quit"')
+
+    for (const asset of [
+      "app-icon.svg",
+      "app-icon.png",
+      "trayTemplate.png",
+      "trayTemplate@2x.png",
+    ]) {
+      expect(existsSync(join(applicationRoot, "public", asset))).toBe(true)
+    }
   })
 
   it("disables document-section completion motion when the operating system requests it", () => {
