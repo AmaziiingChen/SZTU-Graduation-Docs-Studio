@@ -1,11 +1,20 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs"
 import { extname, join } from "node:path"
+import { inflateSync } from "node:zlib"
 import { describe, expect, it } from "vitest"
 
 const applicationRoot = process.cwd()
 const rendererRoot = join(applicationRoot, "src")
 const themeSource = readFileSync(join(rendererRoot, "index.css"), "utf8")
 const mainSource = readFileSync(join(applicationRoot, "electron/main.ts"), "utf8")
+const iconGeneratorSource = readFileSync(
+  join(applicationRoot, "scripts/generate-icons.cjs"),
+  "utf8",
+)
+const iconRendererSource = readFileSync(
+  join(applicationRoot, "scripts/render-icon.cjs"),
+  "utf8",
+)
 const preloadSource = readFileSync(
   join(applicationRoot, "electron/preload.cts"),
   "utf8",
@@ -39,6 +48,41 @@ function rendererSources(directory: string): string[] {
   })
 }
 
+function pngTopLeftAlpha(filename: string): number {
+  const png = readFileSync(filename)
+  if (png.subarray(0, 8).toString("hex") !== "89504e470d0a1a0a") {
+    throw new Error(`${filename} is not a PNG image`)
+  }
+
+  const compressed: Buffer[] = []
+  let bitDepth = 0
+  let colorType = 0
+  let offset = 8
+
+  while (offset < png.length) {
+    const length = png.readUInt32BE(offset)
+    const type = png.subarray(offset + 4, offset + 8).toString("ascii")
+    const data = png.subarray(offset + 8, offset + 8 + length)
+
+    if (type === "IHDR") {
+      bitDepth = data[8]
+      colorType = data[9]
+    } else if (type === "IDAT") {
+      compressed.push(data)
+    }
+
+    offset += length + 12
+    if (type === "IEND") break
+  }
+
+  if (bitDepth !== 8 || colorType !== 6) {
+    throw new Error(`${filename} must use 8-bit RGBA pixels`)
+  }
+
+  const scanlines = inflateSync(Buffer.concat(compressed))
+  return scanlines[4]
+}
+
 describe("Electron security boundary", () => {
   it("keeps BrowserWindow isolation and navigation controls enabled", () => {
     expect(mainSource).toContain("contextIsolation: true")
@@ -62,11 +106,36 @@ describe("Electron security boundary", () => {
     for (const asset of [
       "app-icon.svg",
       "app-icon.png",
+      "tray-icon.svg",
       "trayTemplate.png",
       "trayTemplate@2x.png",
     ]) {
       expect(existsSync(join(applicationRoot, "public", asset))).toBe(true)
     }
+
+    expect(iconGeneratorSource).toContain('require("electron")')
+    expect(iconRendererSource).toContain("transparent: true")
+    expect(iconRendererSource).toContain('backgroundColor: "#00000000"')
+    for (const asset of [
+      "app-icon.png",
+      "trayTemplate.png",
+      "trayTemplate@2x.png",
+    ]) {
+      expect(pngTopLeftAlpha(join(applicationRoot, "public", asset))).toBe(0)
+    }
+    const trayImage = readFileSync(
+      join(applicationRoot, "public", "trayTemplate.png"),
+    )
+    const retinaTrayImage = readFileSync(
+      join(applicationRoot, "public", "trayTemplate@2x.png"),
+    )
+    expect([trayImage.readUInt32BE(16), trayImage.readUInt32BE(20)]).toEqual([
+      20, 20,
+    ])
+    expect([
+      retinaTrayImage.readUInt32BE(16),
+      retinaTrayImage.readUInt32BE(20),
+    ]).toEqual([40, 40])
   })
 
   it("disables document-section completion motion when the operating system requests it", () => {

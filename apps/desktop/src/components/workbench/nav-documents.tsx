@@ -38,11 +38,11 @@ import {
 } from "@/components/ui/select"
 import {
   SidebarGroup,
-  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarSeparator,
   SidebarMenuSub,
   SidebarMenuSubButton,
   SidebarMenuSubItem,
@@ -72,6 +72,7 @@ type ConfirmAction =
 
 export function NavDocuments({
   profileActive,
+  toolsActive,
   inspectionActive,
   activeDocumentId,
   documents,
@@ -85,6 +86,7 @@ export function NavDocuments({
   onPurgeDocument,
 }: {
   profileActive: boolean
+  toolsActive: boolean
   inspectionActive: boolean
   activeDocumentId: string | null
   documents: DocumentRecord[]
@@ -150,7 +152,6 @@ export function NavDocuments({
   return (
     <>
       <SidebarGroup>
-        <SidebarGroupLabel>毕业设计文档</SidebarGroupLabel>
         <SidebarMenu>
           {documentGroups.map((group) => {
             const groupDocuments = groupedDocuments[group.type]
@@ -197,7 +198,12 @@ export function NavDocuments({
                         <SidebarMenuSubButton
                           render={<button type="button" disabled={disabled} />}
                           className="w-full justify-start pr-8 text-left"
-                          isActive={!profileActive && !inspectionActive && item.id === activeDocumentId}
+                          isActive={
+                            !profileActive &&
+                            !toolsActive &&
+                            !inspectionActive &&
+                            item.id === activeDocumentId
+                          }
                           onClick={() => void onSelectDocument(item.id)}
                         >
                           <FileTextIcon />
@@ -273,6 +279,13 @@ export function NavDocuments({
               </SidebarMenuSub>
             ) : null}
           </SidebarMenuItem>
+
+        </SidebarMenu>
+      </SidebarGroup>
+
+      <SidebarSeparator className="mx-4 mt-auto w-auto opacity-60" />
+      <SidebarGroup>
+        <SidebarMenu>
 
           <SidebarMenuItem>
             <SidebarMenuButton

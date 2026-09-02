@@ -1,4 +1,4 @@
-import { LibraryBigIcon, UserRoundIcon } from "lucide-react"
+import { UserRoundIcon } from "lucide-react"
 
 import {
   SidebarGroup,
@@ -10,16 +10,12 @@ import {
 
 export function NavMain({
   profileActive,
-  toolsActive,
   disabled,
   onSelectProfile,
-  onSelectTools,
 }: {
   profileActive: boolean
-  toolsActive: boolean
   disabled: boolean
   onSelectProfile: () => void
-  onSelectTools: () => void
 }) {
   return (
     <SidebarGroup>
@@ -34,17 +30,6 @@ export function NavMain({
             >
               <UserRoundIcon />
               <span>学生档案</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              tooltip="工具箱"
-              isActive={toolsActive}
-              disabled={disabled}
-              onClick={onSelectTools}
-            >
-              <LibraryBigIcon />
-              <span>工具箱</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

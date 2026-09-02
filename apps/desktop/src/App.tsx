@@ -31,6 +31,7 @@ import { zhCN } from "date-fns/locale"
 import { ThinkingOrb } from "thinking-orbs"
 
 import { AppSidebar } from "@/components/workbench/app-sidebar"
+import { AppearanceSettings } from "@/components/workbench/appearance-settings"
 import type { CreateDocumentRequest } from "@/components/workbench/nav-documents"
 import { DiagnosticSupport } from "@/components/workbench/diagnostic-support"
 import { EnvironmentOnboardingDialog } from "@/components/workbench/environment-onboarding-dialog"
@@ -299,7 +300,7 @@ type WorkspaceLoadState =
   | { status: "ready" }
   | { status: "error"; message: string }
 
-type ActivePane = "profile" | "document" | "inspection" | "tools"
+type ActivePane = "profile" | "document" | "inspection" | "tools" | "appearance"
 
 type DocumentViewState = {
   scrollTop: number
@@ -3647,7 +3648,7 @@ export default function App() {
 
   useEffect(() => {
     if (privacyNotice.status !== "accepted") return
-    if (activePane === "tools") return
+    if (activePane === "tools" || activePane === "appearance") return
     const view =
       activePane === "profile"
         ? "profile"
@@ -4616,6 +4617,8 @@ export default function App() {
       inspectionPanel
     ) : activePane === "tools" ? (
       <ToolDirectory onOpenTool={(toolId) => void openToolLink(toolId)} />
+    ) : activePane === "appearance" ? (
+      <AppearanceSettings />
     ) : (
       editor
     )
@@ -4634,12 +4637,14 @@ export default function App() {
         variant="inset"
         profileActive={activePane === "profile"}
         toolsActive={activePane === "tools"}
+        appearanceActive={activePane === "appearance"}
         inspectionActive={activePane === "inspection"}
         activeDocumentId={activePane === "document" ? activeDocumentId ?? null : null}
         documents={documents}
         deletedDocuments={deletedDocuments}
         onSelectProfile={() => setActivePane("profile")}
         onSelectTools={() => setActivePane("tools")}
+        onSelectAppearance={() => setActivePane("appearance")}
         onSelectInspection={() => setActivePane("inspection")}
         onSelectDocument={selectDocumentFile}
         onCreateDocument={createDocumentFile}
@@ -4665,6 +4670,8 @@ export default function App() {
               ? "学生档案"
               : activePane === "tools"
                 ? "工具箱"
+              : activePane === "appearance"
+                ? "外观"
               : activePane === "inspection"
                 ? "检查与导出"
                 : activeDocumentType === "task_book"
@@ -4679,7 +4686,11 @@ export default function App() {
                       ? `${graduationCohort}开题报告`
                       : `${graduationCohort}开题报告工作台`
           }
-          status={activePane === "tools" ? undefined : <SaveStatusBadge state={saveState} />}
+          status={
+            activePane === "tools" || activePane === "appearance"
+              ? undefined
+              : <SaveStatusBadge state={saveState} />
+          }
           actions={
             activePane === "document" ? (
               <>
@@ -4726,7 +4737,9 @@ export default function App() {
 
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="@container/main flex min-h-0 flex-1 flex-col gap-2">
-            {activePane === "profile" || activePane === "tools" ? (
+            {activePane === "profile" ||
+            activePane === "tools" ||
+            activePane === "appearance" ? (
               <div className="min-h-0 flex-1">{mainPanel}</div>
             ) : activePane === "inspection" ? (
               <div className="min-h-0 flex-1">{mainPanel}</div>

@@ -54,6 +54,7 @@ function renderNavigation({
           <SidebarContent>
             <NavDocuments
               profileActive={false}
+              toolsActive={false}
               inspectionActive={false}
               activeDocumentId={documents[0]?.id ?? null}
               documents={documents}
