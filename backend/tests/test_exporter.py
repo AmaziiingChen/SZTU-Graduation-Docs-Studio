@@ -367,6 +367,94 @@ class MidtermContractTests(unittest.TestCase):
             "sections.progress[0].items[0].marker",
         )
 
+    def test_structured_figures_accept_stable_ids_and_cross_references(self) -> None:
+        midterm = midterm_fixture()
+        midterm["sections"]["main_research_content"] = [
+            {
+                "type": "paragraph",
+                "runs": [{"text": "总体流程见{{fig:fig-workflow_0001}}。"}],
+            },
+            {
+                "type": "image",
+                "id": "fig-workflow_0001",
+                "path": "/private/app-data/figures/workflow.png",
+                "alt": "虚构流程图",
+                "chapter": 3,
+                "width_mm": 118,
+                "caption": {
+                    "type": "paragraph",
+                    "runs": [{"text": "统一数据入口与双路渲染流程"}],
+                },
+                "source_citation_key": "SyntheticWorkflow2026",
+            },
+        ]
+        midterm["sections"]["progress"] = [
+            {
+                "type": "ordered_list",
+                "items": [
+                    {
+                        "content": {
+                            "type": "paragraph",
+                            "runs": [{"text": "验证结果同{{fig:fig-workflow_0001}}。"}],
+                        }
+                    }
+                ],
+            }
+        ]
+
+        self.assertIs(validate_midterm(midterm), midterm)
+
+    def test_referenced_figure_requires_a_caption(self) -> None:
+        midterm = midterm_fixture()
+        midterm["sections"]["progress"] = [
+            {
+                "type": "image",
+                "id": "fig-progress_0001",
+                "path": "/private/app-data/figures/progress.png",
+                "alt": "虚构进展图",
+                "chapter": 3,
+            }
+        ]
+        with self.assertRaises(ExportError) as context:
+            validate_midterm(midterm)
+        self.assertEqual(context.exception.details["reason"], "missing_caption")
+        self.assertEqual(
+            context.exception.details["field"], "sections.progress[0].caption"
+        )
+
+    def test_duplicate_figure_ids_are_rejected_without_echoing_paths(self) -> None:
+        midterm = midterm_fixture()
+        image = {
+            "type": "image",
+            "id": "fig-duplicate_0001",
+            "path": "/private/student-content/private.png",
+            "alt": "虚构图片",
+            "chapter": 3,
+            "caption": "虚构题注",
+        }
+        midterm["sections"]["main_research_content"] = [image]
+        midterm["sections"]["progress"] = [dict(image)]
+        with self.assertRaises(ExportError) as context:
+            validate_midterm(midterm)
+        self.assertEqual(
+            context.exception.details["reason"], "duplicate_figure_id"
+        )
+        self.assertNotIn(image["path"], str(context.exception.details))
+
+    def test_unknown_figure_reference_is_rejected(self) -> None:
+        midterm = midterm_fixture()
+        midterm["sections"]["progress"] = [
+            {
+                "type": "paragraph",
+                "runs": [{"text": "错误引用{{fig:fig-missing_0001}}。"}],
+            }
+        ]
+        with self.assertRaises(ExportError) as context:
+            validate_midterm(midterm)
+        self.assertEqual(
+            context.exception.details["reason"], "unknown_figure_reference"
+        )
+
 
 def task_book_fixture() -> dict:
     return {

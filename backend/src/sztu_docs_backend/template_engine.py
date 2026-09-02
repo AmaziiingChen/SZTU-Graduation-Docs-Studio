@@ -19,12 +19,12 @@ from .template_catalog import template_pack_root
 ENGINE_VERSION = "0.3+5342c1e"
 ENGINE_TEMPLATE_ID = "sztu.proposal.2026.local"
 ENGINE_DIRECTORY_NAME = "proposal-0.3-5342c1e"
-MIDTERM_ENGINE_VERSION = "0.2+13fa40e"
+MIDTERM_ENGINE_VERSION = "0.3+66c968c"
 MIDTERM_ENGINE_TEMPLATE_ID = "sztu.midterm.2026.local"
-MIDTERM_ENGINE_DIRECTORY_NAME = "midterm-0.2-13fa40e"
-TASK_BOOK_ENGINE_VERSION = "0.2+5342c1e"
+MIDTERM_ENGINE_DIRECTORY_NAME = "midterm-0.3-66c968c"
+TASK_BOOK_ENGINE_VERSION = "0.2+66c968c"
 TASK_BOOK_ENGINE_TEMPLATE_ID = "sztu.task-book.2026.local"
-TASK_BOOK_ENGINE_DIRECTORY_NAME = "task-book-0.2-5342c1e"
+TASK_BOOK_ENGINE_DIRECTORY_NAME = "task-book-0.2-66c968c"
 SUPPORTED_ENGINE_DOCUMENT_TYPES = frozenset({"proposal", "midterm", "task_book"})
 INSTALL_MANIFEST_NAME = "install-manifest.json"
 WORKSPACE_LINKS_NAME = "workspace-links.json"
@@ -39,27 +39,27 @@ ENGINE_FILE_HASHES = {
 MIDTERM_ENGINE_FILE_HASHES = {
     "templates/common/__init__.py": "b5cf6a625cd4c58cac3e8bd2636bafe769bfe6394784d9c7dbb758edec251e5c",
     "templates/common/python/__init__.py": "687b666c14d9378451c2474ddd7c9736eec9f29bf41e13a6d1702061808b13c0",
-    "templates/common/python/content.py": "8bc536783a80882ee2dcb4912b490dc0fb575ce97f09446894ba70777d6a6bef",
+    "templates/common/python/content.py": "a36f6ff73af3a8edc8727f488ddacc19a49735f67581bcbf1a3007e94bddeda4",
     "templates/common/python/font_files.py": "fe11a76d2033d1a1ae670616183c0f870cf6cd58e76ed8fa1a0a064495f86c74",
     "templates/common/python/outline_numbering.py": "d240b198a61cd1ce439c0ecf8686228a391926bd54b552917a202fdb41e9f6ec",
     "templates/common/python/typography.py": "864e8743cdde4a88b7bc4e0345c981e8fab3fc0d38933eb8fd90568a91858650",
-    "templates/common/schema/content-block.schema.json": "b43829110464ec8623129557534a0fcaa72bb5033ead36d93251959042588eca",
+    "templates/common/schema/content-block.schema.json": "60eced9ef46618174cd6070a904d6999b1c436dcad19ade785309d346255a9a7",
     "templates/common/typography/chinese-sizes.json": "46ec813ebc86f8a0b5fa0e2fc19c9e6b1e59519b7a03a53ed676f7126f0c8cc2",
     "templates/common/typography/font-policy-2026.json": "dcebfe802d687d94865972d04fa9b0581c121d22f2f46a3a31121be47e2c30f8",
-    "templates/midterm/latex/main.tex": "9e2a4fa15791fc07765110c90df7918c5db5a1115d151d4820c0173d0412674d",
-    "templates/midterm/latex/render.py": "44eaf3a08a256d48ee3abd4350d1b4a97c262530681021618c746d821ca832a6",
+    "templates/midterm/latex/main.tex": "4f5421c0f95e2efc5b183791c8ee617e7ca411ffe1f7d99c2f464ca5a5afc6c0",
+    "templates/midterm/latex/render.py": "33de1a7b2a9f2fdac4ca8d7f462f3a058136b45635c01b177683a2efeb54a83a",
     "templates/midterm/schema/midterm.schema.json": "46fb159387e7312e7b955f75b109d4cb661e60f376521d9f0b736a1aade274a6",
-    "templates/midterm/spec/layout.json": "7f42c199403b79fcc7403afc5303c761c7b26be4972cb9447fa31851e409cbee",
+    "templates/midterm/spec/layout.json": "f04e2a50c572747293451f469ad73ef7b329c6c6f4cf42bea6c4b5171b140bd3",
     "templates/midterm/word/official-template.docx": "5411d1471ba1a30def0b8c945a11674cce4616a6b3c0d3a8953e3f45b88af1a2",
-    "templates/midterm/word/render.py": "48663197397a383c12885288a2baf42d45a2df22403de94114ece76b4d9de916",
+    "templates/midterm/word/render.py": "19a445df4daa622178c86474a58f62079e39b4e29c29dc695045e71c2f369aab",
 }
 TASK_BOOK_ENGINE_FILE_HASHES = {
     "templates/common/__init__.py": "b5cf6a625cd4c58cac3e8bd2636bafe769bfe6394784d9c7dbb758edec251e5c",
     "templates/common/python/__init__.py": "687b666c14d9378451c2474ddd7c9736eec9f29bf41e13a6d1702061808b13c0",
-    "templates/common/python/content.py": "8bc536783a80882ee2dcb4912b490dc0fb575ce97f09446894ba70777d6a6bef",
+    "templates/common/python/content.py": "a36f6ff73af3a8edc8727f488ddacc19a49735f67581bcbf1a3007e94bddeda4",
     "templates/common/python/font_files.py": "fe11a76d2033d1a1ae670616183c0f870cf6cd58e76ed8fa1a0a064495f86c74",
     "templates/common/python/typography.py": "864e8743cdde4a88b7bc4e0345c981e8fab3fc0d38933eb8fd90568a91858650",
-    "templates/common/schema/content-block.schema.json": "b43829110464ec8623129557534a0fcaa72bb5033ead36d93251959042588eca",
+    "templates/common/schema/content-block.schema.json": "60eced9ef46618174cd6070a904d6999b1c436dcad19ade785309d346255a9a7",
     "templates/common/typography/chinese-sizes.json": "46ec813ebc86f8a0b5fa0e2fc19c9e6b1e59519b7a03a53ed676f7126f0c8cc2",
     "templates/common/typography/font-policy-2026.json": "dcebfe802d687d94865972d04fa9b0581c121d22f2f46a3a31121be47e2c30f8",
     "templates/task-book/render.py": "16594594f5cabdb24845a5723ba26eea837ab2c5e91618b3ca4720e15769b40b",

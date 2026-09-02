@@ -64,6 +64,7 @@ describe("Electron security boundary", () => {
       "revealDownloadedUpdate",
       "openToolLink",
       "onUpdateStatus",
+      "importImageAsset",
       "openWorkspace",
       "saveProfileDraft",
       "saveProfile",
@@ -105,6 +106,7 @@ describe("Electron security boundary", () => {
       "sztu:update-status",
       "sztu:update-reveal",
       "sztu:tool-open",
+      "sztu:asset-import-image",
       "sztu:workspace-save-profile-draft",
       "sztu:workspace-save-profile",
       "sztu:workspace-create-document",
@@ -260,6 +262,26 @@ describe("Electron security boundary", () => {
       '{ source_directory: sourceDirectory, document_type: documentType }',
     )
     expect(mainSource).not.toContain('{ source_path: sourcePath }')
+  })
+
+  it("imports only verified private PNG or JPEG assets through the main process", () => {
+    expect(preloadSource).toContain(
+      'importImageAsset: () => invoke("sztu:asset-import-image")',
+    )
+    expect(mainSource).toContain("MAX_IMAGE_ASSET_BYTES = 20 * 1024 * 1024")
+    expect(mainSource).toContain("fileStat.isSymbolicLink()")
+    expect(mainSource).toContain("detectImageMime(bytes)")
+    expect(mainSource).toContain('createHash("sha256").update(bytes).digest("hex")')
+    expect(mainSource).toContain('writeFile(target, bytes, { flag: "wx", mode: 0o600 })')
+    expect(mainSource).toContain('previewUrl: `sztu-asset://asset/${fileName}`')
+  })
+
+  it("serves imported assets only through the hash-bound private protocol", () => {
+    expect(mainSource).toContain('scheme: "sztu-asset"')
+    expect(mainSource).toContain('protocol.handle("sztu-asset"')
+    expect(mainSource).toContain("MANAGED_IMAGE_NAME_PATTERN")
+    expect(mainSource).toContain("digest !== match[1]")
+    expect(mainSource).toContain('"Cache-Control": "private, max-age=31536000, immutable"')
   })
 
   it("does not import Node built-ins in renderer source", () => {

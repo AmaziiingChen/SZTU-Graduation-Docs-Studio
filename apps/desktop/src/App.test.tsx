@@ -2232,7 +2232,7 @@ describe("M3 workbench persistence", () => {
       expect(api.createDocument).toHaveBeenCalledWith({
         profile_id: profile.id,
         document_type: "task_book",
-        template_version: "0.2+5342c1e",
+        template_version: "0.2+66c968c",
         schema_version: "0.1",
         title: "未命名任务书",
         source_document_id: undefined,
