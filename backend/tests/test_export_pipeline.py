@@ -863,7 +863,7 @@ class TemplateEngineInstallationTests(unittest.TestCase):
                     self.source, validator=validator.resolve(), source="submitted"
                 )
         self.assertEqual(verified.document_type, "task_book")
-        self.assertEqual(verified.version, "0.2+5342c1e")
+        self.assertEqual(verified.version, "0.2+66c968c")
         self.assertEqual(caught.exception.code, "TEMPLATE_ENGINE_HASH_MISMATCH")
 
     def test_midterm_workspace_uses_the_same_content_addressed_link_flow(self) -> None:
@@ -899,7 +899,7 @@ class TemplateEngineInstallationTests(unittest.TestCase):
 
         self.assertEqual(linked["status"], "linked")
         self.assertEqual(repeated["status"], "already_current")
-        self.assertTrue(linked["version"].startswith("0.2+workspace."))
+        self.assertTrue(linked["version"].startswith("0.3+workspace."))
         installation = self.workspace.list_template_installations(enabled_only=True)[0]
         engine_root = Path(installation["install_path"])
         self.assertEqual(

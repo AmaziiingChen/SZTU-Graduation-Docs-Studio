@@ -15,9 +15,11 @@ import {
 import { EditorState, TextSelection } from "@tiptap/pm/state"
 import {
   BoldIcon,
+  ImagePlusIcon,
   IndentDecreaseIcon,
   IndentIncreaseIcon,
   ItalicIcon,
+  LinkIcon,
   ListIcon,
   ListOrderedIcon,
   Redo2Icon,
@@ -25,11 +27,34 @@ import {
   SuperscriptIcon,
   Undo2Icon,
 } from "lucide-react"
+import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Input } from "@/components/ui/input"
 import { Kbd, KbdGroup } from "@/components/ui/kbd"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import {
   ToggleGroup,
   ToggleGroupItem,
@@ -48,10 +73,13 @@ import {
   structuredBodyFingerprint,
   structuredBodyToTiptap,
   tiptapToStructuredBody,
+  type FigureNumberingContext,
   type StructuredEditorMode,
+  type StructuredFigureCatalogItem,
 } from "@/lib/structured-content-editor"
 import { cn } from "@/lib/utils"
 import type { StructuredBodyValue } from "@/types/structured-content"
+import type { ImageAssetImportResult, SztuDesktopApi } from "@/types/desktop-api"
 
 type StoredExternalValue = {
   document: JSONContent
@@ -88,6 +116,21 @@ type ToolbarState = {
   canUndo: boolean
   canRedo: boolean
   empty: boolean
+  figures: Array<{ id: string; label: string; caption: string }>
+  selectedFigure: FigureFormValue | null
+}
+
+export type FigureChapterOption = { value: number; label: string }
+
+type FigureFormValue = {
+  figureId: string
+  path: string
+  previewUrl: string
+  alt: string
+  caption: string
+  chapter: number
+  widthMm: number
+  sourceCitationKey: string
 }
 
 export type StructuredContentEditorProps = {
@@ -104,6 +147,10 @@ export type StructuredContentEditorProps = {
   restoreFocus?: boolean
   onSelectionChange?: (selection: EditorSelectionSnapshot) => void
   fillHeight?: boolean
+  enableFigures?: boolean
+  figureChapters?: FigureChapterOption[]
+  figureCatalog?: StructuredFigureCatalogItem[]
+  figureNumbering?: FigureNumberingContext
 }
 
 export type EditorSelectionSnapshot = {
@@ -111,9 +158,24 @@ export type EditorSelectionSnapshot = {
   head: number
 }
 
-function selectToolbarState(editor: Editor): ToolbarState {
+function selectToolbarState(
+  editor: Editor,
+  documentFigureCatalog?: StructuredFigureCatalogItem[],
+): ToolbarState {
   const listDepth = listDepthAtSelection(editor)
   const inList = listDepth > 0
+  const figures: ToolbarState["figures"] = []
+  editor.state.doc.descendants((node) => {
+    if (node.type.name !== "figureBlock") return
+    figures.push({
+      id: String(node.attrs.figureId),
+      label: String(node.attrs.label),
+      caption: String(node.attrs.captionText ?? ""),
+    })
+  })
+  const selectedAttrs = editor.isActive("figureBlock")
+    ? editor.getAttributes("figureBlock")
+    : null
   return {
     bold: editor.isActive("bold"),
     italic: editor.isActive("italic"),
@@ -130,7 +192,113 @@ function selectToolbarState(editor: Editor): ToolbarState {
     canUndo: editor.can().undo(),
     canRedo: editor.can().redo(),
     empty: editor.isEmpty,
+    figures: documentFigureCatalog ?? figures,
+    selectedFigure: selectedAttrs
+      ? {
+          figureId: String(selectedAttrs.figureId),
+          path: String(selectedAttrs.path),
+          previewUrl: String(selectedAttrs.previewUrl ?? ""),
+          alt: String(selectedAttrs.alt),
+          caption: String(selectedAttrs.captionText ?? ""),
+          chapter: Number(selectedAttrs.chapter ?? 1),
+          widthMm: Number(selectedAttrs.widthMm ?? 120),
+          sourceCitationKey: String(selectedAttrs.sourceCitationKey ?? ""),
+        }
+      : null,
   }
+}
+
+function FigureDialog({
+  value,
+  chapters,
+  onCancel,
+  onSave,
+}: {
+  value: FigureFormValue
+  chapters: FigureChapterOption[]
+  onCancel: () => void
+  onSave: (value: FigureFormValue) => void
+}) {
+  const [draft, setDraft] = useState(value)
+  const valid = draft.alt.trim().length > 0 && draft.caption.trim().length > 0
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onCancel() }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>图片排版</DialogTitle>
+          <DialogDescription>题注位于图片下方，图号按所属章自动生成。</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-3">
+          <div className="grid gap-1.5">
+            <label className="text-sm font-medium" htmlFor="figure-caption">题注</label>
+            <Input
+              id="figure-caption"
+              value={draft.caption}
+              onChange={(event) => setDraft({ ...draft, caption: event.target.value })}
+              placeholder="输入图片标题"
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <label className="text-sm font-medium" htmlFor="figure-alt">替代文字</label>
+            <Input
+              id="figure-alt"
+              value={draft.alt}
+              onChange={(event) => setDraft({ ...draft, alt: event.target.value })}
+              placeholder="说明图片内容"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-1.5">
+              <label className="text-sm font-medium" htmlFor="figure-chapter">所属章</label>
+              <Select
+                value={String(draft.chapter)}
+                onValueChange={(value) => {
+                  if (value !== null) setDraft({ ...draft, chapter: Number(value) })
+                }}
+              >
+                <SelectTrigger id="figure-chapter" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {chapters.map((chapter) => (
+                    <SelectItem key={chapter.value} value={String(chapter.value)}>
+                      {chapter.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-1.5">
+              <label className="text-sm font-medium" htmlFor="figure-width">宽度（毫米）</label>
+              <Input
+                id="figure-width"
+                type="number"
+                min={20}
+                max={146}
+                value={draft.widthMm}
+                onChange={(event) => setDraft({ ...draft, widthMm: Number(event.target.value) })}
+              />
+            </div>
+          </div>
+          <div className="grid gap-1.5">
+            <label className="text-sm font-medium" htmlFor="figure-source">来源文献键（可选）</label>
+            <Input
+              id="figure-source"
+              value={draft.sourceCitationKey}
+              onChange={(event) => setDraft({ ...draft, sourceCitationKey: event.target.value })}
+              placeholder="例如：zhang2025"
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onCancel}>取消</Button>
+          <Button type="button" disabled={!valid || draft.widthMm < 20 || draft.widthMm > 146} onClick={() => onSave(draft)}>
+            保存图片
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
 }
 
 function ToolbarButton({
@@ -242,6 +410,10 @@ export function StructuredContentEditor({
   restoreFocus = false,
   onSelectionChange,
   fillHeight = false,
+  enableFigures = false,
+  figureChapters = [{ value: 1, label: "第 1 章" }],
+  figureCatalog,
+  figureNumbering = {},
 }: StructuredContentEditorProps) {
   const onChangeRef = useRef(onChange)
   const onSelectionChangeRef = useRef(onSelectionChange)
@@ -251,8 +423,13 @@ export function StructuredContentEditor({
   const compositionFingerprintsRef = useRef(new Set<string>())
   const pendingExternalRef = useRef<StoredExternalValue | null>(null)
   const compositionTimerRef = useRef<number | null>(null)
-  const [initialContent] = useState(() => structuredBodyToTiptap(value))
-  const [extensions] = useState(() => createRestrictedEditorExtensions(mode))
+  const effectiveFigureChapters = figureChapters.length
+    ? figureChapters
+    : [{ value: 1, label: "第 1 章" }]
+  const [initialFigureNumbering] = useState(() => figureNumbering)
+  const [initialContent] = useState(() => structuredBodyToTiptap(value, initialFigureNumbering))
+  const [figureDraft, setFigureDraft] = useState<FigureFormValue | null>(null)
+  const [extensions] = useState(() => createRestrictedEditorExtensions(mode, initialFigureNumbering))
   const editorClass =
     mode === "inline"
       ? "min-h-12 whitespace-pre-wrap break-words px-3 py-3 text-sm leading-6 outline-none [&_p]:min-h-6"
@@ -260,7 +437,7 @@ export function StructuredContentEditor({
           fillHeight
             ? "min-h-full focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-ring/50"
             : "min-h-96",
-          "whitespace-pre-wrap break-words px-3 py-3 text-sm leading-6 outline-none [&>p+p]:mt-2 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:min-h-6 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-6",
+          "whitespace-pre-wrap break-words px-3 py-3 text-sm leading-6 outline-none [&>p+p]:mt-2 [&_figure]:my-4 [&_figure]:rounded-lg [&_figure]:border [&_figure]:bg-muted/20 [&_figure]:p-3 [&_figure]:text-center [&_figure_img]:mx-auto [&_figure_img]:max-h-96 [&_figure_img]:max-w-full [&_figcaption]:mt-2 [&_figcaption]:text-muted-foreground [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:min-h-6 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-6 [&_[data-figure-reference]]:rounded [&_[data-figure-reference]]:bg-muted [&_[data-figure-reference]]:px-1",
         )
 
   const editor = useEditor(
@@ -300,7 +477,7 @@ export function StructuredContentEditor({
 
   const toolbarState = useEditorState({
     editor,
-    selector: ({ editor: currentEditor }) => selectToolbarState(currentEditor),
+    selector: ({ editor: currentEditor }) => selectToolbarState(currentEditor, figureCatalog),
   })
 
   const externalFingerprint = structuredBodyFingerprint(value)
@@ -361,7 +538,7 @@ export function StructuredContentEditor({
     }
 
     const external: StoredExternalValue = {
-      document: structuredBodyToTiptap(value),
+      document: structuredBodyToTiptap(value, initialFigureNumbering),
       fingerprint: externalFingerprint,
     }
     if (composingRef.current || editor.view.composing) {
@@ -376,7 +553,7 @@ export function StructuredContentEditor({
 
     pendingExternalRef.current = null
     replaceExternalContent(editor, external.document)
-  }, [editor, externalFingerprint, value])
+  }, [editor, externalFingerprint, initialFigureNumbering, value])
 
   useEffect(
     () => () => {
@@ -434,6 +611,54 @@ export function StructuredContentEditor({
     }
     if (toolbarState.orderedList) editor.chain().focus().toggleOrderedList().run()
     if (toolbarState.bulletList) editor.chain().focus().toggleBulletList().run()
+  }
+
+  const importFigure = async () => {
+    if (toolbarState.selectedFigure) {
+      setFigureDraft(toolbarState.selectedFigure)
+      return
+    }
+    const api = (window as Window & { sztuDesktop?: SztuDesktopApi }).sztuDesktop
+    if (!api) {
+      toast.error("当前环境不能选择本机图片。")
+      return
+    }
+    try {
+      const asset: ImageAssetImportResult | null = await api.importImageAsset()
+      if (!asset) return
+      const defaultTitle = asset.originalName.replace(/\.[^.]+$/, "")
+      setFigureDraft({
+        figureId: `fig-${crypto.randomUUID()}`,
+        path: asset.path,
+        previewUrl: asset.previewUrl,
+        alt: defaultTitle,
+        caption: defaultTitle,
+        chapter: effectiveFigureChapters[0].value,
+        widthMm: 120,
+        sourceCitationKey: "",
+      })
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "图片导入失败。")
+    }
+  }
+
+  const saveFigure = (next: FigureFormValue) => {
+    const attrs = {
+      ...next,
+      previewUrl: next.previewUrl || `sztu-asset://asset/${encodeURIComponent(next.path.split(/[\\/]/).at(-1) ?? "")}`,
+      caption: next.caption,
+      captionText: next.caption,
+      label: toolbarState.selectedFigure ? editor.getAttributes("figureBlock").label : "图（待编号）",
+    }
+    if (toolbarState.selectedFigure) {
+      editor.chain().focus().updateAttributes("figureBlock", attrs).run()
+    } else {
+      editor.chain().focus().insertContent([
+        { type: "figureBlock", attrs },
+        { type: "paragraph" },
+      ]).run()
+    }
+    setFigureDraft(null)
   }
 
   return (
@@ -590,6 +815,51 @@ export function StructuredContentEditor({
             </>
           ) : null}
 
+          {mode === "body" && enableFigures ? (
+            <>
+              <Separator orientation="vertical" className="mx-1 h-5 data-vertical:self-center" />
+              <ToolbarButton
+                label={toolbarState.selectedFigure ? "编辑图片" : "插入图片"}
+                variant="ghost"
+                disabled={disabled}
+                onClick={() => void importFigure()}
+              >
+                <ImagePlusIcon />
+              </ToolbarButton>
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <Button
+                      type="button"
+                      size="icon-sm"
+                      variant="ghost"
+                      aria-label="引用图片"
+                      disabled={disabled || toolbarState.figures.length === 0}
+                    />
+                  }
+                >
+                  <LinkIcon />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  {toolbarState.figures.map((figure) => (
+                    <DropdownMenuItem
+                      key={figure.id}
+                      onClick={() => editor.chain().focus().insertContent([
+                        {
+                          type: "figureReference",
+                          attrs: { figureId: figure.id, label: figure.label },
+                        },
+                        { type: "text", text: " " },
+                      ]).run()}
+                    >
+                      {figure.label}{figure.caption ? ` ${figure.caption}` : ""}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </>
+          ) : null}
+
           <Separator
             orientation="vertical"
             className="mx-1 h-5 data-vertical:self-center"
@@ -658,6 +928,15 @@ export function StructuredContentEditor({
           </div>
         )}
       </div>
+      {figureDraft ? (
+        <FigureDialog
+          key={`${figureDraft.figureId}-${figureDraft.path}`}
+          value={figureDraft}
+          chapters={effectiveFigureChapters}
+          onCancel={() => setFigureDraft(null)}
+          onSave={saveFigure}
+        />
+      ) : null}
     </TooltipProvider>
   )
 }

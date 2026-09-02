@@ -61,12 +61,13 @@ JSON 响应。stdout 仅用于协议；诊断和 traceback 写 stderr。协议�
 `templates/common` 的相对 `$ref` 改为同目录 `content-block.schema.json`。这里不导入
 官方 DOCX、商业字体、生成文档或私人学生材料。
 
-`midterm.schema.json` 与 `content-block.schema.json` 导入自同一模板工作树快照。为使
+`midterm.schema.json` 与 `content-block.schema.json` 导入自模板仓库提交 `66c968c`。为使
 应用合同目录可独立解析，仅把中期合同中指向 `templates/common` 的相对 `$ref` 改为同目录
-`content-block.schema.json`；字段、约束和语义未改动。源 SHA-256 分别为
-`17924cfa9daf2e1a56e29ab883bbe5fd93482c2a3afa88591f0ad3a355707d58` 和
-`b43829110464ec8623129557534a0fcaa72bb5033ead36d93251959042588eca`，导入日期为
-`2026-08-30`。来源仍是未提交工作树快照，不代表已发布模板包。
+`content-block.schema.json`。公共图片内容块现包含稳定图片标识、章节号、来源引用键和
+自动交叉引用所需约束。源 SHA-256 分别为
+`46fb159387e7312e7b955f75b109d4cb661e60f376521d9f0b736a1aade274a6` 和
+`60eced9ef46618174cd6070a904d6999b1c436dcad19ade785309d346255a9a7`，导入日期为
+`2026-09-02`。来源仍是本地可信模板工程，不代表已发布模板包。
 
 `task-book.schema.json` 导入自模板仓库提交 `46b6d97` 的
 `templates/task-book/schema/task-book.schema.json`。为使应用合同目录可独立解析，仅把

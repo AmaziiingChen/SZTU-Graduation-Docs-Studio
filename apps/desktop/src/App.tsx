@@ -55,6 +55,7 @@ import {
 import {
   StructuredContentEditor,
   type EditorSelectionSnapshot,
+  type FigureChapterOption,
 } from "@/components/workbench/structured-content-editor"
 import { ReferenceImporter } from "@/components/workbench/reference-importer"
 import {
@@ -163,7 +164,11 @@ import { paragraphInputText } from "@/lib/paragraph"
 import {
   isParagraphInput,
   isStructuredBodyValue,
+  structuredFigureCatalog,
+  structuredFigureChapterCounts,
+  type FigureNumberingContext,
   type StructuredEditorMode,
+  type StructuredFigureCatalogItem,
 } from "@/lib/structured-content-editor"
 import {
   createTaskScheduleEditorItem,
@@ -1671,6 +1676,10 @@ function StructuredBodyField({
   selectionSnapshot,
   onSelectionChange,
   fillHeight = false,
+  enableFigures = false,
+  figureChapters,
+  figureCatalog,
+  figureNumbering,
 }: {
   id: StructuredDraftField
   label: string
@@ -1683,6 +1692,10 @@ function StructuredBodyField({
   selectionSnapshot?: EditorSelectionSnapshot
   onSelectionChange?: (selection: EditorSelectionSnapshot) => void
   fillHeight?: boolean
+  enableFigures?: boolean
+  figureChapters?: FigureChapterOption[]
+  figureCatalog?: StructuredFigureCatalogItem[]
+  figureNumbering?: FigureNumberingContext
 }) {
   const describedBy = error ? `${id}-description ${id}-error` : `${id}-description`
   const editorSupported =
@@ -1711,6 +1724,10 @@ function StructuredBodyField({
           selectionSnapshot={selectionSnapshot}
           onSelectionChange={onSelectionChange}
           fillHeight={fillHeight}
+          enableFigures={enableFigures}
+          figureChapters={figureChapters}
+          figureCatalog={figureCatalog}
+          figureNumbering={figureNumbering}
           className={fillHeight ? "min-h-0 flex-1" : undefined}
         />
       ) : (
@@ -2321,6 +2338,19 @@ function DocumentEditor({
     onSelectionChange: (selection: EditorSelectionSnapshot) =>
       rememberSelection(field, selection),
   })
+  const figureChapters: FigureChapterOption[] = draft.directory
+    .filter((item) => item.level === 1)
+    .map((item, index) => ({
+      value: index + 1,
+      label: `${item.number.trim() || `第 ${index + 1} 章`} ${paragraphInputText(item.title).trim()}`.trim(),
+    }))
+  const figureCatalog = structuredFigureCatalog(
+    draft.mainResearchContent,
+    draft.progress,
+  )
+  const figureLabels = Object.fromEntries(
+    figureCatalog.map((figure) => [figure.id, figure.label]),
+  )
   const DocumentScrollContainer = immersiveSection ? "div" : ScrollArea
   const EditorSurface = immersiveSection ? "div" : Card
   const EditorSurfaceContent = immersiveSection ? "div" : CardContent
@@ -2638,6 +2668,10 @@ function DocumentEditor({
                   onChange={onStructuredBodyChange}
                   disabled={disabled}
                   fillHeight
+                  enableFigures
+                  figureChapters={figureChapters}
+                  figureCatalog={figureCatalog}
+                  figureNumbering={{ knownLabels: figureLabels }}
                 />
                 ) : null}
                 {activeSection === "midterm_progress" ? (
@@ -2650,6 +2684,13 @@ function DocumentEditor({
                   onChange={onStructuredBodyChange}
                   disabled={disabled}
                   fillHeight
+                  enableFigures
+                  figureChapters={figureChapters}
+                  figureCatalog={figureCatalog}
+                  figureNumbering={{
+                    startCounts: structuredFigureChapterCounts(draft.mainResearchContent),
+                    knownLabels: figureLabels,
+                  }}
                 />
                 ) : null}
               </>
@@ -3760,9 +3801,9 @@ export default function App() {
       document_type: request.type,
       template_version:
         request.type === "task_book"
-          ? "0.2+5342c1e"
+          ? "0.2+66c968c"
           : request.type === "midterm"
-            ? "0.2+13fa40e"
+            ? "0.3+66c968c"
             : "0.1.0-dev.1",
       schema_version: request.type === "proposal" ? "0.2" : "0.1",
       title: request.title,

@@ -70,6 +70,9 @@ MIDTERM_OUTLINE_STYLE_DEPTHS = {
     "part_chapter_section_hierarchy": 6,
     "decimal_hierarchy": 6,
 }
+FIGURE_ID_PATTERN = re.compile(r"fig-[A-Za-z0-9_-]{8,96}")
+FIGURE_REFERENCE_PATTERN = re.compile(r"\{\{fig:(fig-[A-Za-z0-9_-]{8,96})\}\}")
+FIGURE_SOURCE_KEY_PATTERN = re.compile(r"[A-Za-z0-9_:.+/-]{1,200}")
 DRAFT_PARAGRAPH_SECTION_NAMES = {
     "proposal": {
         "significance_and_status",
@@ -377,7 +380,17 @@ def _validate_image_block(
 ) -> None:
     if (
         not isinstance(value, dict)
-        or set(value) - {"type", "path", "alt", "width_mm", "caption"}
+        or set(value)
+        - {
+            "type",
+            "id",
+            "path",
+            "alt",
+            "chapter",
+            "width_mm",
+            "caption",
+            "source_citation_key",
+        }
         or not {"type", "path", "alt"} <= set(value)
         or value.get("type") != "image"
     ):
@@ -386,8 +399,29 @@ def _validate_image_block(
             f"{document_name}图片内容块格式无效。",
             {"field": path, "reason": "invalid_block"},
         )
+    figure_id = value.get("id")
+    if figure_id is not None and (
+        not isinstance(figure_id, str)
+        or FIGURE_ID_PATTERN.fullmatch(figure_id) is None
+    ):
+        raise ExportError(
+            "DOCUMENT_NOT_READY",
+            f"{document_name}图片标识格式无效。",
+            {"field": f"{path}.id", "reason": "invalid_figure_id"},
+        )
     _require_text(value.get("path"), f"{path}.path", maximum=1000)
     _require_text(value.get("alt"), f"{path}.alt", maximum=500)
+    chapter = value.get("chapter", 1)
+    if (
+        isinstance(chapter, bool)
+        or not isinstance(chapter, int)
+        or not 1 <= chapter <= 99
+    ):
+        raise ExportError(
+            "DOCUMENT_NOT_READY",
+            f"{document_name}图片章节编号必须在 1 至 99 之间。",
+            {"field": f"{path}.chapter", "reason": "invalid_number"},
+        )
     width = value.get("width_mm", 120.0)
     if (
         isinstance(width, bool)
@@ -399,8 +433,27 @@ def _validate_image_block(
             f"{document_name}图片宽度必须在 20 至 146 毫米之间。",
             {"field": f"{path}.width_mm", "reason": "invalid_number"},
         )
+    if figure_id is not None and value.get("caption") is None:
+        raise ExportError(
+            "DOCUMENT_NOT_READY",
+            f"{document_name}可引用图片必须填写题注。",
+            {"field": f"{path}.caption", "reason": "missing_caption"},
+        )
     if value.get("caption") is not None:
         paragraph_validator(value.get("caption"), f"{path}.caption", maximum)
+    source_key = value.get("source_citation_key")
+    if source_key is not None and (
+        not isinstance(source_key, str)
+        or FIGURE_SOURCE_KEY_PATTERN.fullmatch(source_key) is None
+    ):
+        raise ExportError(
+            "DOCUMENT_NOT_READY",
+            f"{document_name}图片来源引用键格式无效。",
+            {
+                "field": f"{path}.source_citation_key",
+                "reason": "invalid_source_citation_key",
+            },
+        )
 
 
 def _validate_proposal_text_block(value: Any, path: str) -> None:
@@ -580,6 +633,84 @@ def _validate_midterm_blocks(value: Any, path: str) -> None:
         )
 
 
+def _iter_figure_reference_texts(value: Any, path: str):
+    if isinstance(value, str):
+        yield path, value
+        return
+    if not isinstance(value, dict):
+        return
+    if value.get("type", "paragraph") == "paragraph":
+        for index, run in enumerate(value.get("runs", [])):
+            if isinstance(run, dict) and isinstance(run.get("text"), str):
+                yield f"{path}.runs[{index}].text", run["text"]
+        return
+    if value.get("type") in {"ordered_list", "unordered_list"}:
+        for index, item in enumerate(value.get("items", [])):
+            if not isinstance(item, dict):
+                continue
+            item_path = f"{path}.items[{index}]"
+            yield from _iter_figure_reference_texts(
+                item.get("content"), f"{item_path}.content"
+            )
+            if "children" in item:
+                yield from _iter_figure_reference_texts(
+                    item.get("children"), f"{item_path}.children"
+                )
+
+
+def _validate_midterm_figure_graph(sections: dict[str, Any]) -> None:
+    figures: dict[str, str] = {}
+    reference_texts: list[tuple[str, str]] = []
+    for section_name in ("main_research_content", "progress"):
+        for index, block in enumerate(sections[section_name]):
+            block_path = f"sections.{section_name}[{index}]"
+            if isinstance(block, dict) and block.get("type") == "image":
+                figure_id = block.get("id")
+                if figure_id is not None:
+                    if figure_id in figures:
+                        raise ExportError(
+                            "DOCUMENT_NOT_READY",
+                            "中期检查图片标识不能重复。",
+                            {
+                                "field": f"{block_path}.id",
+                                "reason": "duplicate_figure_id",
+                            },
+                        )
+                    figures[figure_id] = block_path
+                caption = block.get("caption")
+                for caption_path, text in _iter_figure_reference_texts(
+                    caption, f"{block_path}.caption"
+                ):
+                    if "{{fig:" in text:
+                        raise ExportError(
+                            "DOCUMENT_NOT_READY",
+                            "中期检查图片题注不能包含图片引用。",
+                            {
+                                "field": caption_path,
+                                "reason": "reference_in_caption",
+                            },
+                        )
+                continue
+            reference_texts.extend(
+                _iter_figure_reference_texts(block, block_path)
+            )
+
+    for path, text in reference_texts:
+        for match in FIGURE_REFERENCE_PATTERN.finditer(text):
+            if match.group(1) not in figures:
+                raise ExportError(
+                    "DOCUMENT_NOT_READY",
+                    "中期检查正文引用了不存在的图片。",
+                    {"field": path, "reason": "unknown_figure_reference"},
+                )
+        if "{{fig:" in FIGURE_REFERENCE_PATTERN.sub("", text):
+            raise ExportError(
+                "DOCUMENT_NOT_READY",
+                "中期检查正文包含无效的图片引用。",
+                {"field": path, "reason": "invalid_figure_reference"},
+            )
+
+
 def validate_midterm(document: Any) -> dict[str, Any]:
     if not isinstance(document, dict) or set(document) != {"schema_version", "metadata", "sections"}:
         raise ExportError(
@@ -688,6 +819,7 @@ def validate_midterm(document: Any) -> dict[str, Any]:
         _validate_midterm_paragraph(item.get("title"), f"{path}.title", 200)
     _validate_midterm_blocks(sections.get("main_research_content"), "sections.main_research_content")
     _validate_midterm_blocks(sections.get("progress"), "sections.progress")
+    _validate_midterm_figure_graph(sections)
     return document
 
 
