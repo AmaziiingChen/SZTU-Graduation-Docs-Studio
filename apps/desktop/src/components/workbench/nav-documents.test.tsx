@@ -79,11 +79,17 @@ describe("NavDocuments file tree", () => {
     const submenu = fileButton.closest('[data-slot="sidebar-menu-sub"]')
 
     expect(submenu).toHaveClass("mr-0", "pr-0")
-    expect(fileButton).toHaveClass("w-full", "pr-8")
+    expect(fileButton).toHaveClass(
+      "w-full",
+      "justify-start",
+      "pr-8",
+      "text-left",
+    )
     expect(fileButton.querySelector("span")).toHaveClass(
       "min-w-0",
       "flex-1",
       "truncate",
+      "text-left",
     )
     expect(action).toHaveClass("right-1")
   })

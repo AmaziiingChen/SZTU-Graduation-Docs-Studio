@@ -1,6 +1,6 @@
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { SectionCompletionMark } from "@/components/workbench/section-completion-mark"
 
 export type DocumentSectionState = "complete" | "incomplete" | "error"
 
@@ -14,24 +14,20 @@ export type DocumentSectionOption = {
 type DocumentSectionNavProps = {
   sections: DocumentSectionOption[]
   activeSection: string
+  animationContextKey: string
   onSectionChange: (sectionId: string) => void
-}
-
-function stateLabel(state: DocumentSectionState | undefined) {
-  if (state === "complete") return "已填写"
-  if (state === "error") return "需修改"
-  return "未完成"
 }
 
 export function DocumentSectionNav({
   sections,
   activeSection,
+  animationContextKey,
   onSectionChange,
 }: DocumentSectionNavProps) {
   return (
     <div
       data-slot="document-section-nav"
-      className="flex h-full min-h-0 w-48 shrink-0 flex-col border-r bg-muted/30"
+      className="flex h-full min-h-0 w-40 shrink-0 flex-col border-r bg-muted/30"
     >
       <div
         data-slot="document-section-header"
@@ -54,12 +50,10 @@ export function DocumentSectionNav({
                 onClick={() => onSectionChange(section.id)}
               >
                 <span className="min-w-0 flex-1">{section.label}</span>
-                <Badge
-                  variant={state === "error" ? "destructive" : "outline"}
-                  className="ml-2"
-                >
-                  {stateLabel(state)}
-                </Badge>
+                <SectionCompletionMark
+                  key={`${animationContextKey}:${section.id}`}
+                  state={state}
+                />
               </Button>
             )
           })}

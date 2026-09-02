@@ -39,7 +39,12 @@ and must not reach a Word, PDF, or LaTeX renderer directly.
 4. BibTeX is parsed locally. A successful parse produces deterministic,
    repository-owned reference paragraphs for content checking, preview, and
    strict export. The formatted references are read-only output of the import
-   step rather than a second manually maintained citation source.
+   step rather than a second manually maintained citation source. Unsupported
+   TeX commands block import only when they occur in fields that can enter the
+   formatted reference; source-only metadata such as `abstract`, `file`, and
+   `keywords` remains preserved in the local draft without affecting validation.
+   Common scientific commands such as `\textcelsius` and math-mode `\mu` are
+   normalized to their Unicode symbols before structured output is generated.
 5. Raw BibTeX is draft-only editor state under
    `payload.editor_state.bibliography`, with the source format, source text, parse
    status, and entry count. Only proposal and task-book drafts may carry this

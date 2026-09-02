@@ -99,6 +99,13 @@ export type ToolLinkId =
   | "doubao"
   | "qianwen"
   | "gemini"
+  | "mactex"
+  | "texlive"
+  | "poppler"
+  | "homebrew-poppler"
+  | "font-book-help"
+  | "windows-font-help"
+  | "wps-office"
 
 export type StudentProfileInput = {
   id?: string

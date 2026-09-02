@@ -37,24 +37,18 @@ from .template_engine import (
 from .version import BACKEND_VERSION
 
 SUPPORTED_FORMATS = ("docx", "pdf", "tex")
-OUTPUT_FILENAMES = {
-    "docx": "开题报告.docx",
-    "pdf": "开题报告.pdf",
-    "tex": "开题报告-LaTeX.zip",
+DOCUMENT_OUTPUT_LABELS = {
+    "proposal": "开题报告",
+    "midterm": "中期检查表",
+    "task_book": "任务书",
 }
-DOCUMENT_OUTPUT_FILENAMES = {
-    "proposal": OUTPUT_FILENAMES,
-    "midterm": {
-        "docx": "中期检查表.docx",
-        "pdf": "中期检查表.pdf",
-        "tex": "中期检查表-LaTeX.zip",
-    },
-    "task_book": {
-        "docx": "任务书.docx",
-        "pdf": "任务书.pdf",
-        "tex": "任务书-LaTeX.zip",
-    },
+OUTPUT_FORMAT_SUFFIXES = {
+    "docx": ".docx",
+    "pdf": ".pdf",
+    "tex": "-LaTeX.zip",
 }
+UNSAFE_FILENAME_PATTERN = re.compile(r'[\x00-\x1f<>:"/\\|?*]+')
+MAX_EXPORT_TITLE_BYTES = 160
 RENDER_TIMEOUT_SECONDS = 90
 PREVIEW_CACHE_SCHEMA_VERSION = "1.0"
 PREVIEW_RENDER_DPI = 240
@@ -69,6 +63,13 @@ TASK_BOOK_CHECKBOX_FONT_FILENAMES = (
     "Wingdng2.ttf",
 )
 PROPOSAL_TITLE_DISPLAY_WIDTH_LIMIT = 64.0
+MIDTERM_OUTLINE_STYLE_DEPTHS = {
+    "chinese_hierarchy": 4,
+    "chapter_hierarchy": 5,
+    "chapter_section_hierarchy": 6,
+    "part_chapter_section_hierarchy": 6,
+    "decimal_hierarchy": 6,
+}
 DRAFT_PARAGRAPH_SECTION_NAMES = {
     "proposal": {
         "significance_and_status",
@@ -99,6 +100,50 @@ class ExportError(Exception):
         self.code = code
         self.message = message
         self.details = details or {}
+
+
+def _truncate_utf8(value: str, maximum_bytes: int) -> str:
+    encoded = value.encode("utf-8")
+    if len(encoded) <= maximum_bytes:
+        return value
+    return encoded[:maximum_bytes].decode("utf-8", errors="ignore").rstrip()
+
+
+def _safe_export_title(value: Any) -> str:
+    title = value if isinstance(value, str) else ""
+    title = UNSAFE_FILENAME_PATTERN.sub("-", title)
+    title = re.sub(r"\s+", " ", title).strip(" .-")
+    title = _truncate_utf8(title, MAX_EXPORT_TITLE_BYTES).strip(" .-")
+    return title or "未命名文档"
+
+
+def _output_filenames(
+    record: dict[str, Any],
+    formats: list[str],
+    *,
+    version: int = 1,
+) -> dict[str, str]:
+    document_label = DOCUMENT_OUTPUT_LABELS[record["document_type"]]
+    stem = f"{_safe_export_title(record.get('title'))}-{document_label}"
+    version_suffix = "" if version == 1 else f"-{version}"
+    return {
+        format_name: f"{stem}{version_suffix}{OUTPUT_FORMAT_SUFFIXES[format_name]}"
+        for format_name in formats
+    }
+
+
+def _allocate_output_filenames(
+    output: Path,
+    record: dict[str, Any],
+    formats: list[str],
+) -> tuple[dict[str, str], int]:
+    version = 1
+    while True:
+        filenames = _output_filenames(record, formats, version=version)
+        targets = [output / filenames[format_name] for format_name in formats]
+        if not any(target.exists() or target.is_symlink() for target in targets):
+            return filenames, version
+        version += 1
 
 
 def resolve_engine(document_type: str = "proposal") -> EngineDescriptor:
@@ -587,12 +632,30 @@ def validate_midterm(document: Any) -> dict[str, Any]:
     _validate_midterm_paragraph(metadata.get("title"), "metadata.title", 90)
 
     sections = document.get("sections")
-    if not isinstance(sections, dict) or set(sections) != {"directory", "main_research_content", "progress"}:
+    required_sections = {"directory", "main_research_content", "progress"}
+    allowed_sections = required_sections | {"numbering_style"}
+    if (
+        not isinstance(sections, dict)
+        or not required_sections <= set(sections)
+        or set(sections) - allowed_sections
+    ):
         raise ExportError(
             "DOCUMENT_NOT_READY",
             "中期检查正文结构不完整。",
             {"field": "sections", "reason": "invalid_shape"},
         )
+    numbering_style = sections.get("numbering_style")
+    if numbering_style is not None and numbering_style not in MIDTERM_OUTLINE_STYLE_DEPTHS:
+        raise ExportError(
+            "DOCUMENT_NOT_READY",
+            "中期检查目录编号格式不受支持。",
+            {"field": "sections.numbering_style", "reason": "unsupported"},
+        )
+    maximum_outline_depth = (
+        MIDTERM_OUTLINE_STYLE_DEPTHS[numbering_style]
+        if isinstance(numbering_style, str)
+        else 6
+    )
     directory = sections.get("directory")
     if not isinstance(directory, list) or not 1 <= len(directory) <= 150:
         raise ExportError(
@@ -606,8 +669,16 @@ def validate_midterm(document: Any) -> dict[str, Any]:
         if not isinstance(item, dict) or set(item) - {"level", "number", "title"} or not {"level", "title"} <= set(item):
             raise ExportError("DOCUMENT_NOT_READY", "中期检查目录条目格式无效。", {"field": path})
         level = item.get("level")
-        if isinstance(level, bool) or not isinstance(level, int) or not 1 <= level <= 4:
-            raise ExportError("DOCUMENT_NOT_READY", "中期检查目录层级必须为 1 至 4。", {"field": f"{path}.level"})
+        if (
+            isinstance(level, bool)
+            or not isinstance(level, int)
+            or not 1 <= level <= maximum_outline_depth
+        ):
+            raise ExportError(
+                "DOCUMENT_NOT_READY",
+                f"中期检查目录层级必须为 1 至 {maximum_outline_depth}。",
+                {"field": f"{path}.level"},
+            )
         if (index == 0 and level != 1) or level > previous_level + 1:
             raise ExportError("DOCUMENT_NOT_READY", "中期检查目录层级不能跳级。", {"field": f"{path}.level"})
         previous_level = level
@@ -1697,7 +1768,7 @@ def _validate_export_request(
         )
     record = workspace.get_document(document_id)
     document_type = record["document_type"]
-    if document_type not in DOCUMENT_OUTPUT_FILENAMES or not isinstance(record.get("content"), dict):
+    if document_type not in DOCUMENT_OUTPUT_LABELS or not isinstance(record.get("content"), dict):
         raise ExportError(
             "DOCUMENT_NOT_READY",
             "当前文档尚未保存完整内容。",
@@ -1727,7 +1798,7 @@ def preflight_export(
             raise ExportError("INVALID_EXPORT_FORMAT", "请选择有效的导出格式。")
         record = workspace.get_document(document_id)
         document_type = record["document_type"]
-        if document_type not in DOCUMENT_OUTPUT_FILENAMES or not isinstance(record.get("content"), dict):
+        if document_type not in DOCUMENT_OUTPUT_LABELS or not isinstance(record.get("content"), dict):
             raise ExportError("DOCUMENT_NOT_READY", "当前文档尚未保存完整内容。")
         proposal = build_export_document(workspace, record)
         validate_document(document_type, proposal)
@@ -1750,22 +1821,19 @@ def preflight_export(
     _require_task_book_docx_font(
         record["document_type"], ordered_formats, descriptor
     )
-    output_filenames = DOCUMENT_OUTPUT_FILENAMES[record["document_type"]]
     targets: list[dict[str, Any]] = []
+    allocated_version = 1
     if output is not None:
+        output_filenames, allocated_version = _allocate_output_filenames(
+            output, record, ordered_formats
+        )
         for format_name in ordered_formats:
             target = output / output_filenames[format_name]
-            if target.is_symlink():
-                raise ExportError(
-                    "OUTPUT_TARGET_INVALID",
-                    "目标文件不能是符号链接。",
-                    {"format": format_name},
-                )
             targets.append(
                 {
                     "format": format_name,
                     "filename": target.name,
-                    "exists": target.exists(),
+                    "exists": False,
                 }
             )
     input_sha256 = hashlib.sha256(canonical_json(proposal)).hexdigest()
@@ -1778,10 +1846,8 @@ def preflight_export(
         "preview_id": preview_id,
         "formats": ordered_formats,
         "output_directory": str(output) if output is not None else None,
-        "targets": targets,
     }
     preflight_token = hashlib.sha256(canonical_json(token_payload)).hexdigest()
-    conflicts = [item["format"] for item in targets if item["exists"]]
     live_workspace = descriptor.source in {
         "development-workspace",
         "environment-workspace",
@@ -1811,15 +1877,22 @@ def preflight_export(
             "schema_version": "1.0",
             "check_id": "output-targets",
             "gate": "environment",
-            "status": "warn" if conflicts else ("pass" if output is not None else "not_checked"),
+            "status": "pass" if output is not None else "not_checked",
             "blocking": False,
             "message": (
-                "目标文件已存在，执行前必须明确确认覆盖。"
-                if conflicts
-                else "输出目标可用。" if output is not None else "尚未选择输出目录。"
+                (
+                    f"已自动分配第 {allocated_version} 版文件名，不会覆盖已有文件。"
+                    if allocated_version > 1
+                    else "输出目标可用，不会覆盖已有文件。"
+                )
+                if output is not None
+                else "尚未选择输出目录。"
             ),
-            **({"code": "OUTPUT_EXISTS"} if conflicts else {}),
-            "details": {"targets": targets, "conflicting_formats": conflicts},
+            "details": {
+                "targets": targets,
+                "conflicting_formats": [],
+                "allocated_version": allocated_version,
+            },
             "checked_at": utc_now() if output is not None else None,
         },
     ]
@@ -2646,7 +2719,6 @@ def run_export(
         if preview_id is not None
         else None
     )
-    output_filenames = DOCUMENT_OUTPUT_FILENAMES[record["document_type"]]
     if preflight_token is not None:
         current_preflight = preflight_export(
             workspace,
@@ -2681,17 +2753,6 @@ def run_export(
             if cancel_path.parent != allowed_parent:
                 raise ExportError("INVALID_CANCEL_PATH", "取消控制文件不属于当前工作区。")
 
-    conflicting = [
-        format_name
-        for format_name in ordered_formats
-        if (output / output_filenames[format_name]).exists()
-    ]
-    if conflicting and not overwrite_confirmed:
-        raise ExportError(
-            "OUTPUT_EXISTS",
-            "目标文件已存在；请确认覆盖后重试。",
-            {"formats": conflicting},
-        )
     input_sha256 = hashlib.sha256(canonical_json(proposal)).hexdigest()
     export_id = _create_job(
         workspace,
@@ -2702,7 +2763,7 @@ def run_export(
         proposal=proposal,
         record=record,
         descriptor=descriptor,
-        overwrite_confirmed=overwrite_confirmed,
+        overwrite_confirmed=False,
     )
     placements: list[tuple[Path, Path | None]] = []
     staged_paths: list[Path] = []
@@ -2855,6 +2916,9 @@ def run_export(
                     )
                 )
 
+            output_filenames, _allocated_version = _allocate_output_filenames(
+                output, record, ordered_formats
+            )
             artifacts: list[dict[str, Any]] = []
             for format_name in ordered_formats:
                 _check_cancelled(cancel_path)
@@ -2864,13 +2928,6 @@ def run_export(
                     raise ExportError(
                         "OUTPUT_TARGET_INVALID",
                         "目标文件不能是符号链接。",
-                        {"format": format_name},
-                    )
-                existed = destination.exists()
-                if existed and not overwrite_confirmed:
-                    raise ExportError(
-                        "OUTPUT_EXISTS",
-                        "目标文件在导出期间出现；未执行覆盖。",
                         {"format": format_name},
                     )
                 staging = output / f".sztu-{export_id}-{format_name}.tmp"
@@ -2886,18 +2943,17 @@ def run_export(
                 except Exception:
                     staging.unlink(missing_ok=True)
                     raise
-                backup = None
-                if existed:
-                    backup = work / "replaced" / format_name
-                    backup.parent.mkdir(parents=True, exist_ok=True)
-                    os.replace(destination, backup)
                 try:
-                    os.replace(staging, destination)
-                except Exception:
-                    if backup is not None and backup.exists():
-                        os.replace(backup, destination)
-                    raise
-                placements.append((destination, backup))
+                    os.link(staging, destination)
+                except FileExistsError as exc:
+                    raise ExportError(
+                        "OUTPUT_TARGET_RACE",
+                        "输出文件名刚被其他程序占用，请重新导出以自动使用下一版本号。",
+                        {"format": format_name},
+                    ) from exc
+                finally:
+                    staging.unlink(missing_ok=True)
+                placements.append((destination, None))
                 shared_check_ids = {"full-page-layout"}
                 if format_name == "docx":
                     format_check_ids = {"docx-deep-structure", "docx-structure", "target-editor"}
@@ -2918,7 +2974,7 @@ def run_export(
                         "sha256": sha256_file(destination),
                         "size_bytes": destination.stat().st_size,
                         "checks": artifact_checks,
-                        "replaced_existing": existed,
+                        "replaced_existing": False,
                     }
                 )
 

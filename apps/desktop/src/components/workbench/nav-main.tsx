@@ -38,13 +38,13 @@ export function NavMain({
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
-              tooltip="论文工具台"
+              tooltip="工具箱"
               isActive={toolsActive}
               disabled={disabled}
               onClick={onSelectTools}
             >
               <LibraryBigIcon />
-              <span>论文工具台</span>
+              <span>工具箱</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

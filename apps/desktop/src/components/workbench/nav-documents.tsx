@@ -196,12 +196,12 @@ export function NavDocuments({
                       <SidebarMenuSubItem key={item.id}>
                         <SidebarMenuSubButton
                           render={<button type="button" disabled={disabled} />}
-                          className="w-full pr-8"
+                          className="w-full justify-start pr-8 text-left"
                           isActive={!profileActive && !inspectionActive && item.id === activeDocumentId}
                           onClick={() => void onSelectDocument(item.id)}
                         >
                           <FileTextIcon />
-                          <span className="min-w-0 flex-1 truncate">{item.title}</span>
+                          <span className="min-w-0 flex-1 truncate text-left">{item.title}</span>
                         </SidebarMenuSubButton>
                         <DropdownMenu>
                           <DropdownMenuTrigger

@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import platform
 import shutil
+import subprocess
 import sys
 import tempfile
 from importlib.util import find_spec
@@ -18,6 +19,80 @@ from .exporter import (
     resolve_engine,
 )
 from .template_catalog import discover_trusted_template_packs
+
+
+CORE_DOCUMENT_FONT_GROUPS = {
+    "宋体": ("simsun.ttc", "simsun.ttf"),
+    "黑体": ("simhei.ttf",),
+    "Times New Roman 常规": ("times.ttf", "Times New Roman.ttf"),
+    "Times New Roman 粗体": ("timesbd.ttf", "Times New Roman Bold.ttf"),
+    "Times New Roman 斜体": ("timesi.ttf", "Times New Roman Italic.ttf"),
+    "Times New Roman 粗斜体": (
+        "timesbi.ttf",
+        "Times New Roman Bold Italic.ttf",
+    ),
+}
+SPECIAL_DOCUMENT_FONT_GROUPS = {
+    "华文行楷": ("STXINGKA.ttf", "STXingkai.ttf", "华文行楷.ttf"),
+    "方正小标宋简体": ("方正小标宋简体.ttf", "FZXiaoBiaoSong-B05S.ttf"),
+}
+FONT_OVERRIDE_ENVIRONMENTS = (
+    "SZTU_STXINGKAI_FONT",
+    "SZTU_FZXIAOBIAOSONG_FONT",
+    "SZTU_SIMSUN_FONT",
+    "SZTU_SIMHEI_FONT",
+    "SZTU_TIMES_REGULAR_FONT",
+    "SZTU_TIMES_BOLD_FONT",
+    "SZTU_TIMES_ITALIC_FONT",
+    "SZTU_TIMES_BOLD_ITALIC_FONT",
+)
+PROCESS_TEX_PACKAGE_FILES = (
+    "adjustbox.sty",
+    "amssymb.sty",
+    "array.sty",
+    "changepage.sty",
+    "fontspec.sty",
+    "geometry.sty",
+    "graphicx.sty",
+    "needspace.sty",
+    "ragged2e.sty",
+    "setspace.sty",
+    "tabularray.sty",
+    "tcolorbox.sty",
+    "tikz.sty",
+    "xcolor.sty",
+    "xeCJK.sty",
+)
+THESIS_TEX_PACKAGE_FILES = (
+    "algorithm.sty",
+    "amsmath.sty",
+    "bigdelim.sty",
+    "bigstrut.sty",
+    "bm.sty",
+    "booktabs.sty",
+    "caption.sty",
+    "chngcntr.sty",
+    "cprotect.sty",
+    "ctex.sty",
+    "enumitem.sty",
+    "etoolbox.sty",
+    "fancyhdr.sty",
+    "float.sty",
+    "gbt7714.sty",
+    "hyperref.sty",
+    "indentfirst.sty",
+    "lastpage.sty",
+    "listings.sty",
+    "longtable.sty",
+    "multirow.sty",
+    "ntheorem.sty",
+    "subcaption.sty",
+    "titletoc.sty",
+    "titlesec.sty",
+    "ulem.sty",
+    "varwidth.sty",
+    "xstring.sty",
+)
 
 
 def _check_python() -> dict[str, Any]:
@@ -109,6 +184,228 @@ def _check_pdf_tools() -> dict[str, Any]:
         ),
         "details": tools,
     }
+
+
+def _font_search_roots() -> list[Path]:
+    roots: list[Path] = []
+    configured = os.environ.get("SZTU_FONT_DIR")
+    if configured:
+        roots.extend(
+            Path(item).expanduser()
+            for item in configured.split(os.pathsep)
+            if item
+        )
+    for environment_name in FONT_OVERRIDE_ENVIRONMENTS:
+        configured_font = os.environ.get(environment_name)
+        if configured_font:
+            roots.append(Path(configured_font).expanduser().parent)
+    for document_type in ("proposal", "task_book", "midterm"):
+        try:
+            descriptor = resolve_engine(document_type)
+        except ExportError:
+            continue
+        roots.extend(descriptor.font_directories)
+
+    if sys.platform == "darwin":
+        roots.extend(
+            [
+                Path.home() / "Library" / "Fonts",
+                Path("/Library/Fonts"),
+                Path("/System/Library/Fonts"),
+                Path("/System/Library/Fonts/Supplemental"),
+                Path("/Applications/Microsoft Word.app/Contents/Resources/DFonts"),
+                Path("/Applications/Microsoft Excel.app/Contents/Resources/DFonts"),
+                Path(
+                    "/Applications/Microsoft PowerPoint.app/Contents/Resources/DFonts"
+                ),
+                Path("/Applications/wpsoffice.app/Contents/Resources/office6/fonts"),
+            ]
+        )
+    elif os.name == "nt":
+        roots.extend(
+            [
+                Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts",
+                Path(os.environ.get("LOCALAPPDATA", ""))
+                / "Microsoft"
+                / "Windows"
+                / "Fonts",
+            ]
+        )
+    else:
+        roots.extend(
+            [
+                Path.home() / ".local" / "share" / "fonts",
+                Path.home() / ".fonts",
+                Path("/usr/local/share/fonts"),
+                Path("/usr/share/fonts"),
+            ]
+        )
+
+    unique: list[Path] = []
+    for root in roots:
+        if root.is_dir() and root not in unique:
+            unique.append(root)
+    return unique
+
+
+def _font_index() -> dict[str, Path]:
+    index: dict[str, Path] = {}
+    for root in _font_search_roots():
+        for path in root.rglob("*"):
+            if path.is_file():
+                index.setdefault(path.name.casefold(), path.resolve())
+    return index
+
+
+def _check_font_groups(
+    check_id: str,
+    groups: dict[str, tuple[str, ...]],
+    *,
+    required: bool,
+    index: dict[str, Path] | None = None,
+) -> dict[str, Any]:
+    available_fonts = index if index is not None else _font_index()
+    resolved = {
+        label: next(
+            (
+                str(available_fonts[candidate.casefold()])
+                for candidate in candidates
+                if candidate.casefold() in available_fonts
+            ),
+            None,
+        )
+        for label, candidates in groups.items()
+    }
+    missing = [label for label, path in resolved.items() if path is None]
+    if not missing:
+        return {
+            "id": check_id,
+            "required": required,
+            "status": "pass",
+            "message": "、".join(groups) + "均可用。",
+            "details": {"fonts": resolved, "missing": []},
+        }
+    return {
+        "id": check_id,
+        "required": required,
+        "status": "fail" if required else "warn",
+        "message": "缺少字体：" + "、".join(missing) + "。",
+        "details": {"fonts": resolved, "missing": missing},
+    }
+
+
+def _check_core_document_fonts(
+    index: dict[str, Path] | None = None,
+) -> dict[str, Any]:
+    return _check_font_groups(
+        "core_document_fonts",
+        CORE_DOCUMENT_FONT_GROUPS,
+        required=True,
+        index=index,
+    )
+
+
+def _check_special_document_fonts(
+    index: dict[str, Path] | None = None,
+) -> dict[str, Any]:
+    return _check_font_groups(
+        "special_document_fonts",
+        SPECIAL_DOCUMENT_FONT_GROUPS,
+        required=False,
+        index=index,
+    )
+
+
+def _check_tex_packages(
+    check_id: str,
+    filenames: tuple[str, ...],
+    *,
+    required: bool,
+    label: str,
+) -> dict[str, Any]:
+    kpsewhich = shutil.which("kpsewhich")
+    if kpsewhich is None:
+        return {
+            "id": check_id,
+            "required": required,
+            "status": "fail" if required else "warn",
+            "message": f"未找到 kpsewhich，无法检查{label}。",
+            "details": {"kpsewhich": None, "missing": list(filenames)},
+        }
+    try:
+        completed = subprocess.run(
+            [kpsewhich, *filenames],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return {
+            "id": check_id,
+            "required": required,
+            "status": "fail" if required else "warn",
+            "message": f"{label}检查未完成。",
+            "details": {"error_type": type(exc).__name__, "missing": list(filenames)},
+        }
+    outputs = completed.stdout.splitlines()[: len(filenames)]
+    outputs.extend([""] * (len(filenames) - len(outputs)))
+    missing = [
+        filename
+        for filename, resolved in zip(filenames, outputs, strict=True)
+        if not resolved.strip()
+    ]
+    return {
+        "id": check_id,
+        "required": required,
+        "status": "pass" if not missing else ("fail" if required else "warn"),
+        "message": (
+            f"{label}可用。"
+            if not missing
+            else f"{label}缺少：" + "、".join(missing) + "。"
+        ),
+        "details": {
+            "kpsewhich": kpsewhich,
+            "checked": list(filenames),
+            "missing": missing,
+        },
+    }
+
+
+def _check_process_tex_packages() -> dict[str, Any]:
+    return _check_tex_packages(
+        "process_tex_packages",
+        PROCESS_TEX_PACKAGE_FILES,
+        required=True,
+        label="过程文档 TeX 宏包",
+    )
+
+
+def _check_thesis_toolchain() -> dict[str, Any]:
+    tools = {
+        name: shutil.which(name) for name in ("xelatex", "bibtex", "latexmk")
+    }
+    missing = [name for name, path in tools.items() if path is None]
+    return {
+        "id": "thesis_toolchain",
+        "required": False,
+        "status": "pass" if not missing else "warn",
+        "message": (
+            "毕业论文 XeLaTeX、BibTeX 和 latexmk 工具链可用。"
+            if not missing
+            else "毕业论文编译工具缺少：" + "、".join(missing) + "。"
+        ),
+        "details": {"tools": tools, "missing": missing},
+    }
+
+
+def _check_thesis_tex_packages() -> dict[str, Any]:
+    return _check_tex_packages(
+        "thesis_tex_packages",
+        THESIS_TEX_PACKAGE_FILES,
+        required=False,
+        label="毕业论文 TeX 宏包",
+    )
 
 
 def _check_proposal_engine() -> dict[str, Any]:
@@ -321,12 +618,18 @@ def _check_template_packs() -> dict[str, Any]:
 
 
 def check_environment() -> dict[str, Any]:
+    fonts = _font_index()
     checks = [
         _check_python(),
         _check_temp_directory(),
         _check_document_dependencies(),
         _check_xelatex(),
+        _check_process_tex_packages(),
+        _check_thesis_toolchain(),
+        _check_thesis_tex_packages(),
         _check_pdf_tools(),
+        _check_core_document_fonts(fonts),
+        _check_special_document_fonts(fonts),
         _check_office_editor(),
         _check_template_packs(),
         _check_proposal_engine(),

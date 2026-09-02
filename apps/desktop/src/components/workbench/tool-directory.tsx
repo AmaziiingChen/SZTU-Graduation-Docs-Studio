@@ -24,13 +24,10 @@ export function ToolDirectory({
 }) {
   return (
     <ScrollArea className="h-full">
-      <main className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-6 py-8 lg:px-8">
-        <div className="space-y-2">
-          <h2 className="text-2xl font-semibold tracking-tight">论文工具台</h2>
-          <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
-            集中打开毕业论文写作常用的网站、应用和浏览器扩展。外部工具仅作为效率参考，使用前请自行核对内容与数据政策。
-          </p>
-        </div>
+      <main className="mx-auto flex w-full max-w-6xl flex-col gap-5 px-6 py-5 lg:px-8">
+        <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
+          集中打开毕业论文写作常用的网站、应用和浏览器扩展。外部工具仅作为效率参考，使用前请自行核对内容与数据政策。
+        </p>
 
         {TOOL_CATEGORY_ORDER.map((category) => {
           const items = TOOL_DIRECTORY.filter((item) => item.category === category)
@@ -44,7 +41,7 @@ export function ToolDirectory({
               </div>
               <div className="grid grid-cols-1 gap-3 @3xl/main:grid-cols-2 @6xl/main:grid-cols-3">
                 {items.map((item) => (
-                  <Card key={item.id} size="sm" className="min-h-28">
+                  <Card key={item.id} size="sm">
                     <CardHeader className="grid-cols-[auto_1fr_auto] items-center gap-x-3">
                       <div className="flex size-10 items-center justify-center overflow-hidden rounded-lg bg-muted p-1.5">
                         <img

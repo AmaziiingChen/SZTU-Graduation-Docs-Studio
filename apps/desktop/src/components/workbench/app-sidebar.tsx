@@ -1,11 +1,23 @@
-import type * as React from "react"
-import { BookOpenIcon, ClipboardCheckIcon } from "lucide-react"
+import * as React from "react"
+import {
+  BookOpenIcon,
+  ClipboardCheckIcon,
+  MessageCircleIcon,
+} from "lucide-react"
 
+import maintainerWechatQr from "@/assets/maintainer-wechat-qr.jpg"
 import {
   NavDocuments,
   type CreateDocumentRequest,
 } from "@/components/workbench/nav-documents"
 import { NavMain } from "@/components/workbench/nav-main"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   Sidebar,
   SidebarContent,
@@ -57,6 +69,7 @@ export function AppSidebar({
   inspectionDisabled: boolean
 }) {
   const { isMobile, setOpenMobile } = useSidebar()
+  const [contactOpen, setContactOpen] = React.useState(false)
   const finishNavigation = (navigate: () => void) => {
     navigate()
     if (isMobile) setOpenMobile(false)
@@ -74,13 +87,13 @@ export function AppSidebar({
             <SidebarMenuButton
               size="lg"
               className="data-[slot=sidebar-menu-button]:p-1.5!"
-              tooltip="毕业设计文档工作台"
+              tooltip="SZTU文档工作台"
             >
               <BookOpenIcon className="size-5!" />
               <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate text-base font-semibold">SZTU 文档工作台</span>
+                <span className="truncate text-base font-semibold">SZTU文档工作台</span>
                 <span className="truncate text-xs text-muted-foreground">
-                  本地毕业设计文档工具
+                  让毕业论文自然成章
                 </span>
               </div>
             </SidebarMenuButton>
@@ -116,6 +129,15 @@ export function AppSidebar({
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
+              tooltip="联系维护者"
+              onClick={() => setContactOpen(true)}
+            >
+              <MessageCircleIcon />
+              <span>联系维护者</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton
               tooltip="检查与导出"
               isActive={inspectionActive}
               disabled={inspectionDisabled}
@@ -127,6 +149,27 @@ export function AppSidebar({
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
+      <Dialog open={contactOpen} onOpenChange={setContactOpen}>
+        <DialogContent className="sm:max-w-xs">
+          <DialogHeader>
+            <DialogTitle>联系维护者</DialogTitle>
+            <DialogDescription>
+              使用过程中遇到问题，可以扫码添加维护者微信。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col items-center gap-3">
+            <img
+              src={maintainerWechatQr}
+              alt="维护者微信二维码"
+              className="w-full max-w-56 rounded-lg border"
+              draggable={false}
+            />
+            <p className="text-center text-xs text-muted-foreground">
+              添加时请备注年级、学院、专业和姓名。软件不会自动上传文档或问题内容。
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Sidebar>
   )
 }

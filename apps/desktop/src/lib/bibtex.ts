@@ -43,6 +43,32 @@ const requiredFields: Record<string, readonly string[]> = {
   patent: ["author", "title", "year"],
 }
 
+// Only fields that can enter a generated reference may block import because of
+// unsupported TeX. Source-only metadata such as abstract, file, and keywords is
+// preserved in the draft BibTeX but never reaches the formatted reference.
+const renderedFields = new Set([
+  "author",
+  "editor",
+  "title",
+  "year",
+  "date",
+  "journal",
+  "booktitle",
+  "pages",
+  "volume",
+  "number",
+  "issue",
+  "address",
+  "location",
+  "publisher",
+  "institution",
+  "school",
+  "doi",
+  "url",
+  "urldate",
+  "accessed",
+])
+
 function stableId(value: string): string {
   let hash = 0x811c9dc5
   for (let index = 0; index < value.length; index += 1) {
@@ -512,7 +538,7 @@ export function parseBibtex(source: string): BibtexParseResult {
     for (const [field, expression] of Object.entries(pending.fieldExpressions)) {
       const resolved = resolveParts(expression, [], usedMacros)
       fields[field] = resolved.ok ? resolved.value : fallbackValue(expression)
-      if (!resolved.ok) {
+      if (!resolved.ok && renderedFields.has(field)) {
         const failure = resolved.failure
         issues.push(
           issue(
@@ -526,8 +552,10 @@ export function parseBibtex(source: string): BibtexParseResult {
         )
         continue
       }
-      const unsupportedCommands =
-        analyzeBibtexText(resolved.value).unsupportedCommands
+      if (!resolved.ok || !renderedFields.has(field)) continue
+      const unsupportedCommands = analyzeBibtexText(
+        resolved.value,
+      ).unsupportedCommands
       for (const command of new Set(unsupportedCommands)) {
         issues.push(
           issue(
@@ -640,6 +668,8 @@ const directTextCommands: Record<string, string> = {
   L: "Ł",
   TeX: "TeX",
   LaTeX: "LaTeX",
+  mu: "μ",
+  textcelsius: "℃",
 }
 
 const escapedTextCharacters: Record<string, string> = {

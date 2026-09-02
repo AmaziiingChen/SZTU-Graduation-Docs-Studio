@@ -145,8 +145,9 @@ class ExportPipelineTests(unittest.TestCase):
             output.write_bytes(b"synthetic-docx-render-v2")
         return "synthetic renderer completed"
 
-    def test_preflight_uses_stable_ordered_filenames(self) -> None:
-        existing_pdf = self.output / "开题报告.pdf"
+    def test_preflight_uses_tree_title_and_allocates_one_shared_version(self) -> None:
+        stem = f"{self.proposal['metadata']['title']}-开题报告"
+        existing_pdf = self.output / f"{stem}.pdf"
         existing_pdf.write_bytes(b"existing")
         result = preflight_export(
             self.workspace,
@@ -172,14 +173,15 @@ class ExportPipelineTests(unittest.TestCase):
         )
         self.assertEqual(
             [target["filename"] for target in targets],
-            ["开题报告.docx", "开题报告.pdf", "开题报告-LaTeX.zip"],
+            [f"{stem}-2.docx", f"{stem}-2.pdf", f"{stem}-2-LaTeX.zip"],
         )
         self.assertEqual(
             [target["exists"] for target in targets],
-            [False, True, False],
+            [False, False, False],
         )
-        self.assertEqual(output_check["code"], "OUTPUT_EXISTS")
-        self.assertEqual(output_check["details"]["conflicting_formats"], ["pdf"])
+        self.assertNotIn("code", output_check)
+        self.assertEqual(output_check["details"]["conflicting_formats"], [])
+        self.assertEqual(output_check["details"]["allocated_version"], 2)
         self.assertEqual(result["preflight_token"], repeated["preflight_token"])
 
     def test_shared_profile_overrides_stale_identity_fields_in_export_input(self) -> None:
@@ -348,7 +350,11 @@ class ExportPipelineTests(unittest.TestCase):
         )["details"]["targets"]
         self.assertEqual(
             [target["filename"] for target in targets],
-            ["中期检查表.docx", "中期检查表.pdf", "中期检查表-LaTeX.zip"],
+            [
+                "中期检查表-中期检查表.docx",
+                "中期检查表-中期检查表.pdf",
+                "中期检查表-中期检查表-LaTeX.zip",
+            ],
         )
         self.assertEqual(result["template"]["template_id"], "sztu.midterm.synthetic")
 
@@ -454,7 +460,7 @@ class ExportPipelineTests(unittest.TestCase):
         )["details"]["targets"]
         self.assertEqual(
             [target["filename"] for target in targets],
-            ["任务书.docx", "任务书.pdf", "任务书-LaTeX.zip"],
+            ["任务书-任务书.docx", "任务书-任务书.pdf", "任务书-任务书-LaTeX.zip"],
         )
 
         with patch(
@@ -579,28 +585,10 @@ class ExportPipelineTests(unittest.TestCase):
         self.assertEqual(caught.exception.code, "TEMPLATE_ENGINE_INCOMPLETE")
         self.assertIn("模板快照", caught.exception.message)
 
-    def test_existing_target_is_not_overwritten_without_confirmation(self) -> None:
-        target = self.output / "开题报告.docx"
-        target.write_bytes(b"original-user-file")
-        with patch("sztu_docs_backend.exporter._run") as renderer:
-            with self.assertRaises(ExportError) as caught:
-                run_export(
-                    self.workspace,
-                    document_id=self.document_id,
-                    output_directory=str(self.output),
-                    formats=["docx"],
-                    engine=self.engine,
-                    request_id=str(uuid.uuid4()),
-                )
-        self.assertEqual(caught.exception.code, "OUTPUT_EXISTS")
-        renderer.assert_not_called()
-        self.assertEqual(target.read_bytes(), b"original-user-file")
-        self.assertEqual(self.workspace.list_export_jobs(), [])
-        self.assertEqual([path.name for path in self.output.iterdir()], [target.name])
-
-    def test_confirmed_overwrite_round_trips_receipt_snapshot_and_history(self) -> None:
-        target = self.output / "开题报告.docx"
-        target.write_bytes(b"original-user-file")
+    def test_existing_target_allocates_next_version_without_overwriting(self) -> None:
+        stem = f"{self.proposal['metadata']['title']}-开题报告"
+        original_target = self.output / f"{stem}.docx"
+        original_target.write_bytes(b"original-user-file")
         request_id = str(uuid.uuid4())
         with patch(
             "sztu_docs_backend.exporter._run", side_effect=self.fake_render
@@ -619,11 +607,13 @@ class ExportPipelineTests(unittest.TestCase):
                 app_version="synthetic-app",
             )
 
-        self.assertEqual(target.read_bytes(), b"synthetic-docx-render-v2")
+        versioned_target = self.output / f"{stem}-2.docx"
+        self.assertEqual(original_target.read_bytes(), b"original-user-file")
+        self.assertEqual(versioned_target.read_bytes(), b"synthetic-docx-render-v2")
         self.assertEqual(receipt["status"], "succeeded")
         self.assertEqual(receipt["request_id"], request_id)
         self.assertEqual(
-            Path(receipt["artifacts"][0]["path"]).resolve(), target.resolve()
+            Path(receipt["artifacts"][0]["path"]).resolve(), versioned_target.resolve()
         )
 
         stored = self.workspace.get_export_job(receipt["export_id"])
@@ -638,9 +628,9 @@ class ExportPipelineTests(unittest.TestCase):
                 "thesis_title": None,
             },
         )
-        self.assertTrue(stored["overwrite_confirmed"])
-        self.assertTrue(stored["artifacts"][0]["replaced_existing"])
-        self.assertEqual(stored["artifacts"][0]["relative_path"], target.name)
+        self.assertFalse(stored["overwrite_confirmed"])
+        self.assertFalse(stored["artifacts"][0]["replaced_existing"])
+        self.assertEqual(stored["artifacts"][0]["relative_path"], versioned_target.name)
 
         history = list_export_history(
             self.workspace, document_id=self.document_id, limit=10
@@ -649,7 +639,7 @@ class ExportPipelineTests(unittest.TestCase):
         self.assertEqual(history[0]["export_id"], receipt["export_id"])
         self.assertEqual(history[0]["status"], "completed")
         self.assertTrue(history[0]["snapshot_available"])
-        self.assertTrue(history[0]["overwrite_confirmed"])
+        self.assertFalse(history[0]["overwrite_confirmed"])
         self.assertEqual(history[0]["artifacts"][0]["file_state"], "available")
 
         deleted = delete_export_history_record(
@@ -664,7 +654,27 @@ class ExportPipelineTests(unittest.TestCase):
             )["history"],
             [],
         )
-        self.assertEqual(target.read_bytes(), b"synthetic-docx-render-v2")
+        self.assertEqual(original_target.read_bytes(), b"original-user-file")
+        self.assertEqual(versioned_target.read_bytes(), b"synthetic-docx-render-v2")
+
+    def test_preflight_sanitizes_tree_title_and_advances_past_multiple_versions(self) -> None:
+        self.workspace.rename_document(self.document_id, " 方案/A:*? ")
+        (self.output / "方案-A-开题报告.docx").write_bytes(b"version-one")
+        (self.output / "方案-A-开题报告-2.docx").write_bytes(b"version-two")
+
+        result = preflight_export(
+            self.workspace,
+            document_id=self.document_id,
+            output_directory=str(self.output),
+            formats=["docx"],
+            engine=self.engine,
+        )
+        target = next(
+            check for check in result["checks"] if check["check_id"] == "output-targets"
+        )["details"]["targets"][0]
+
+        self.assertEqual(target["filename"], "方案-A-开题报告-3.docx")
+        self.assertFalse(target["exists"])
 
     def test_existing_cancel_marker_cancels_without_partial_artifacts(self) -> None:
         cancellation_directory = self.data_dir / "cancellations"

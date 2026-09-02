@@ -17,6 +17,12 @@ const exportHistoryStatusPath = path.join(
   "workbench",
   "export-history-status-badge.tsx",
 )
+const sectionCompletionMarkPath = path.join(
+  rendererRoot,
+  "components",
+  "workbench",
+  "section-completion-mark.tsx",
+)
 const referenceImporterPath = path.join(
   rendererRoot,
   "components",
@@ -54,9 +60,11 @@ const approvedExportHistoryStateClasses = new Set([
   "dark:bg-sky-950/40",
   "dark:text-sky-300",
 ])
+const approvedSectionCompletionClasses = new Set(["fill-emerald-500"])
 const approvedPaletteClassesByFile = new Map([
   [savedStatusPath, approvedSavedStateClasses],
   [exportHistoryStatusPath, approvedExportHistoryStateClasses],
+  [sectionCompletionMarkPath, approvedSectionCompletionClasses],
 ])
 const paletteClassPattern =
   /\b(?:dark:)?(?:bg|text|border|ring|fill|stroke)-(?:red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|slate|gray|zinc|neutral|stone)-[0-9]+(?:\/[0-9]+)?\b/g
@@ -137,6 +145,15 @@ for (const filePath of await collectFiles(rendererRoot)) {
       if (!source.includes(className)) {
         issues.push(
           `${path.relative(repositoryRoot, filePath)} is missing approved export-history state class ${className}.`,
+        )
+      }
+    }
+  }
+  if (filePath === sectionCompletionMarkPath) {
+    for (const className of approvedSectionCompletionClasses) {
+      if (!source.includes(className)) {
+        issues.push(
+          `${path.relative(repositoryRoot, filePath)} is missing approved document-section completion class ${className}.`,
         )
       }
     }

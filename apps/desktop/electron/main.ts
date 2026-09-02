@@ -65,6 +65,15 @@ const TOOL_LINKS = {
   doubao: "https://www.doubao.com/",
   qianwen: "https://www.qianwen.com/",
   gemini: "https://gemini.google.com/",
+  mactex: "https://tug.org/mactex/",
+  texlive: "https://tug.org/texlive/",
+  poppler: "https://poppler.freedesktop.org/",
+  "homebrew-poppler": "https://formulae.brew.sh/formula/poppler",
+  "font-book-help":
+    "https://support.apple.com/guide/font-book/install-and-validate-fonts-fntbk1000/mac",
+  "windows-font-help":
+    "https://support.microsoft.com/office/add-a-font-b7c5f17c-4426-4b53-967f-455339c564c1",
+  "wps-office": "https://www.wps.cn/",
 } as const
 
 type ToolLinkId = keyof typeof TOOL_LINKS
@@ -655,7 +664,7 @@ function registerIpc(): void {
         typeof toolId !== "string" ||
         !Object.prototype.hasOwnProperty.call(TOOL_LINKS, toolId)
       ) {
-        throw new IpcValidationError("未识别的论文工具链接。")
+        throw new IpcValidationError("未识别的外部指引链接。")
       }
       await shell.openExternal(TOOL_LINKS[toolId as ToolLinkId])
       return null

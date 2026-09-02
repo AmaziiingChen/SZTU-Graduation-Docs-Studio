@@ -98,7 +98,7 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "level": {"type": "integer", "minimum": 1, "maximum": 4},
+        "level": {"type": "integer", "minimum": 1, "maximum": 6},
         "number": {"type": "string", "maxLength": 20},
         "title": {"$ref": "#/$defs/paragraph"}
       }
@@ -332,6 +332,15 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
+            "numbering_style": {
+              "enum": [
+                "chinese_hierarchy",
+                "chapter_hierarchy",
+                "chapter_section_hierarchy",
+                "part_chapter_section_hierarchy",
+                "decimal_hierarchy"
+              ]
+            },
             "directory": {
               "type": "array",
               "maxItems": 150,

@@ -120,6 +120,26 @@ describe("ReferenceImporter", () => {
     )
   })
 
+  it("allows source-only abstract commands without blocking the add flow", () => {
+    const source = String.raw`@article{metadataOnly,
+  author={合成作者},
+  title={微通道散热研究},
+  journal={合成期刊},
+  year={2026},
+  abstract={深度为 130 {$\mu$}m，温度为 46.96\textcelsius，另有 \sourceonly{来源说明}}
+}`
+    const { onChange } = renderImporter()
+
+    fireEvent.click(screen.getByRole("button", { name: "添加参考文献" }))
+    fireEvent.change(screen.getByRole("textbox", { name: "参考文献 BibTeX" }), {
+      target: { value: source },
+    })
+
+    expect(screen.queryByText("BibTeX 还不能保存")).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "添加 1 条参考文献" }))
+    expect(onChange).toHaveBeenCalledWith(source)
+  })
+
   it("keeps a long BibTeX entry inside the viewport-bound edit dialog", () => {
     const longSource = `@article{long, author={张三}, title={长文献}, journal={合成期刊}, year={2026}, abstract={${"long content ".repeat(200)}}}`
     const { container } = renderImporter(longSource)

@@ -28,10 +28,12 @@ import {
 } from "lucide-react"
 import { format, isValid, parseISO } from "date-fns"
 import { zhCN } from "date-fns/locale"
+import { ThinkingOrb } from "thinking-orbs"
 
 import { AppSidebar } from "@/components/workbench/app-sidebar"
 import type { CreateDocumentRequest } from "@/components/workbench/nav-documents"
 import { DiagnosticSupport } from "@/components/workbench/diagnostic-support"
+import { EnvironmentOnboardingDialog } from "@/components/workbench/environment-onboarding-dialog"
 import { ExportHistoryStatusBadge } from "@/components/workbench/export-history-status-badge"
 import {
   DocumentSectionNav,
@@ -41,9 +43,15 @@ import {
   createOutlineEditorItem,
   OutlineEditor,
   type OutlineEditorItem,
-  type OutlineLevel,
   validateOutlineItems,
 } from "@/components/workbench/outline-editor"
+import {
+  DEFAULT_OUTLINE_NUMBERING_STYLE,
+  isOutlineNumberingStyle,
+  numberOutlineItems,
+  type OutlineLevel,
+  type OutlineNumberingStyle,
+} from "@/lib/outline-numbering"
 import {
   StructuredContentEditor,
   type EditorSelectionSnapshot,
@@ -137,6 +145,10 @@ import {
   reconcileAutosaveFingerprints,
 } from "@/lib/autosave-coordinator"
 import { formatBibtex } from "@/lib/bibtex"
+import {
+  completeEnvironmentOnboarding,
+  environmentOnboardingIsComplete,
+} from "@/lib/environment-onboarding"
 import { cn } from "@/lib/utils"
 import {
   checkNavigationTarget,
@@ -205,6 +217,7 @@ type Draft = {
   referencesBibtex: string
   className: string
   checkDate: string
+  directoryNumberingStyle: OutlineNumberingStyle | null
   directory: OutlineEditorItem[]
   mainResearchContent: StructuredBodyValue
   progress: StructuredBodyValue
@@ -351,6 +364,7 @@ const emptyDraft: Draft = {
   referencesBibtex: "",
   className: "",
   checkDate: "",
+  directoryNumberingStyle: null,
   directory: [createOutlineEditorItem()],
   mainResearchContent: [],
   progress: [],
@@ -1053,7 +1067,10 @@ function draftIsExportReady(draft: Draft, documentType: DocumentType): boolean {
     )
   }
   if (documentType === "midterm") {
-    const directoryErrors = validateOutlineItems(draft.directory)
+    const directoryErrors = validateOutlineItems(
+      draft.directory,
+      draft.directoryNumberingStyle,
+    )
     return (
       draft.checkDate.trim().length > 0 &&
       isValidDraftDate(draft.checkDate) &&
@@ -1117,6 +1134,9 @@ function draftToContent(draft: Draft, documentType: DocumentType): JsonObject {
     }
   }
   if (documentType === "midterm") {
+    const directory = draft.directoryNumberingStyle
+      ? numberOutlineItems(draft.directory, draft.directoryNumberingStyle)
+      : draft.directory
     return {
       metadata: {
         title: inlineParagraphFromBody(draft.title),
@@ -1128,7 +1148,10 @@ function draftToContent(draft: Draft, documentType: DocumentType): JsonObject {
         check_date: draft.checkDate,
       },
       sections: {
-        directory: directoryItems(draft.directory),
+        ...(draft.directoryNumberingStyle
+          ? { numbering_style: draft.directoryNumberingStyle }
+          : {}),
+        directory: directoryItems(directory),
         main_research_content: structuredBodyJson(draft.mainResearchContent),
         progress: structuredBodyJson(draft.progress),
       },
@@ -1307,6 +1330,16 @@ function draftFromRecords(
       legacyContent.checkDate ||
       fallback?.checkDate ||
       "",
+    directoryNumberingStyle: isOutlineNumberingStyle(
+      sections.numbering_style,
+    )
+      ? sections.numbering_style
+      : isOutlineNumberingStyle(legacyContent.directoryNumberingStyle)
+        ? legacyContent.directoryNumberingStyle
+        : Array.isArray(sections.directory) || legacyContent.directory
+          ? null
+          : fallback?.directoryNumberingStyle ??
+            DEFAULT_OUTLINE_NUMBERING_STYLE,
     directory: Array.isArray(sections.directory)
       ? legacyDirectoryItems(sections.directory)
       : legacyDirectoryItems(legacyContent.directory ?? fallback?.directory),
@@ -2196,6 +2229,7 @@ function DocumentEditor({
   onChange,
   onStructuredBodyChange,
   onDirectoryChange,
+  onDirectoryNumberingStyleChange,
   onTaskScheduleChange,
   disabled,
   workspace,
@@ -2217,6 +2251,7 @@ function DocumentEditor({
     value: StructuredBodyValue,
   ) => void
   onDirectoryChange: (value: OutlineEditorItem[]) => void
+  onDirectoryNumberingStyleChange: (value: OutlineNumberingStyle) => void
   onTaskScheduleChange: (value: TaskScheduleEditorItem[]) => void
   disabled: boolean
   workspace: WorkspaceLoadState
@@ -2586,7 +2621,9 @@ function DocumentEditor({
                 <div className="grid gap-2">
                   <OutlineEditor
                     value={draft.directory}
+                    numberingStyle={draft.directoryNumberingStyle}
                     onChange={onDirectoryChange}
+                    onNumberingStyleChange={onDirectoryNumberingStyleChange}
                     disabled={disabled}
                   />
                 </div>
@@ -2789,22 +2826,42 @@ function PaginatedPreviewPanel({
         ) : null}
 
         {previewState.status === "checking" ? (
-          <Alert aria-live="polite">
-            <LoaderCircleIcon className="animate-spin" />
-            <AlertTitle>正在保存并检查内容</AlertTitle>
-            <AlertDescription>
-              内容检查通过后，将自动生成{documentTypeLabels[documentType]}分页预览。
-            </AlertDescription>
+          <Alert
+            aria-live="polite"
+            className="grid-cols-[auto_1fr] items-center gap-x-3"
+          >
+            <ThinkingOrb
+              state="solving"
+              size={20}
+              className="shrink-0"
+              aria-label="正在保存并检查内容"
+            />
+            <div className="min-w-0">
+              <AlertTitle>正在保存并检查内容</AlertTitle>
+              <AlertDescription>
+                内容检查通过后，将自动生成{documentTypeLabels[documentType]}分页预览。
+              </AlertDescription>
+            </div>
           </Alert>
         ) : null}
 
         {previewState.status === "generating" ? (
-          <Alert aria-live="polite">
-            <LoaderCircleIcon className="animate-spin" />
-            <AlertTitle>正在生成分页预览</AlertTitle>
-            <AlertDescription>
-              正在调用{documentTypeLabels[documentType]}模板并检查 PDF 中文字形。
-            </AlertDescription>
+          <Alert
+            aria-live="polite"
+            className="grid-cols-[auto_1fr] items-center gap-x-3"
+          >
+            <ThinkingOrb
+              state="solving"
+              size={20}
+              className="shrink-0"
+              aria-label="正在生成分页预览"
+            />
+            <div className="min-w-0">
+              <AlertTitle>正在生成分页预览</AlertTitle>
+              <AlertDescription>
+                正在调用{documentTypeLabels[documentType]}模板并检查 PDF 中文字形。
+              </AlertDescription>
+            </div>
           </Alert>
         ) : null}
 
@@ -3243,12 +3300,13 @@ export default function App() {
     status: "loading",
     jobs: [],
   })
-  const [pendingExport, setPendingExport] = useState<PendingExport | null>(null)
   const [templateInstalling, setTemplateInstalling] = useState(false)
   const [privacyNotice, setPrivacyNotice] = useState<PrivacyNoticeState>({
     status: "loading",
   })
   const [privacySubmitting, setPrivacySubmitting] = useState(false)
+  const [environmentOnboardingCompleted, setEnvironmentOnboardingCompleted] =
+    useState(environmentOnboardingIsComplete)
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({
     state: "unconfigured",
   })
@@ -3466,7 +3524,6 @@ export default function App() {
       setPreviewState({ status: "idle" })
       setExportState({ status: "idle" })
       setHistory({ status: "loading", jobs: [] })
-      setPendingExport(null)
       editVersion.current = 0
       const initialFingerprints = autosaveFingerprintsForDraft(
         resolvedDraft,
@@ -3808,6 +3865,23 @@ export default function App() {
     setSaveState("dirty")
   }
 
+  const updateDirectoryNumberingStyle = (value: OutlineNumberingStyle) => {
+    setDraft((current) => ({
+      ...current,
+      directoryNumberingStyle: value,
+      directory: numberOutlineItems(current.directory, value),
+    }))
+    setPreviewState((current) =>
+      current.status === "ready" ? { ...current, stale: true } : current,
+    )
+    editVersion.current += 1
+    autosaveVersions.current = markAutosaveEdited(
+      autosaveVersions.current,
+      "document",
+    )
+    setSaveState("dirty")
+  }
+
   const updateTaskSchedule = (value: TaskScheduleEditorItem[]) => {
     setDraft((current) => ({ ...current, taskSchedule: value }))
     setPreviewState((current) =>
@@ -4108,10 +4182,7 @@ export default function App() {
     }
   }
 
-  const executeExport = async (
-    pending: PendingExport,
-    overwriteConfirmed: boolean,
-  ) => {
+  const executeExport = async (pending: PendingExport) => {
     const api = getDesktopApi()
     if (!api) return
     const previewMatchesPending =
@@ -4124,7 +4195,6 @@ export default function App() {
       !isCurrentSavedRevision(pending.documentId, pending.editVersion) ||
       !previewMatchesPending
     ) {
-      setPendingExport(null)
       if (activeDocumentIdRef.current === pending.documentId) {
         setPreviewState((current) =>
           current.status === "ready" ? { ...current, stale: true } : current,
@@ -4133,7 +4203,6 @@ export default function App() {
       }
       return
     }
-    setPendingExport(null)
     setExportState({
       status: "exporting",
       formats: pending.formats,
@@ -4147,7 +4216,7 @@ export default function App() {
         previewId: pending.previewId,
         outputDirectory: pending.outputDirectory,
         formats: pending.formats,
-        overwriteConfirmed,
+        overwriteConfirmed: false,
         preflightToken: pending.preflightToken,
       })
       setExportState({ status: "succeeded", receipt })
@@ -4260,11 +4329,7 @@ export default function App() {
         formats: preflight.targets.map((target) => target.format),
         preflightToken: preflight.preflight_token,
       }
-      if (preflight.overwrite_required) {
-        setPendingExport(pending)
-        return
-      }
-      await executeExport(pending, false)
+      await executeExport(pending)
     } catch (error) {
       if (
         activeDocumentIdRef.current === documentIdAtStart &&
@@ -4419,6 +4484,11 @@ export default function App() {
     }
   }
 
+  const finishEnvironmentOnboarding = () => {
+    completeEnvironmentOnboarding()
+    setEnvironmentOnboardingCompleted(true)
+  }
+
   const editor =
     activePane === "profile" ? (
       <StudentProfileEditor
@@ -4439,6 +4509,7 @@ export default function App() {
         onChange={updateDraft}
         onStructuredBodyChange={updateStructuredBody}
         onDirectoryChange={updateDirectory}
+        onDirectoryNumberingStyleChange={updateDirectoryNumberingStyle}
         onTaskScheduleChange={updateTaskSchedule}
         disabled={workspaceDisabled}
         workspace={workspace}
@@ -4468,6 +4539,7 @@ export default function App() {
     <DocumentSectionNav
       sections={sections}
       activeSection={activeSection}
+      animationContextKey={document?.id ?? activeDocumentType}
       onSectionChange={(sectionId) =>
         setActiveSections((current) => ({
           ...current,
@@ -4551,7 +4623,7 @@ export default function App() {
             activePane === "profile"
               ? "学生档案"
               : activePane === "tools"
-                ? "论文工具台"
+                ? "工具箱"
               : activePane === "inspection"
                 ? "检查与导出"
                 : activeDocumentType === "task_book"
@@ -4596,7 +4668,11 @@ export default function App() {
                   disabled={previewTriggerDisabled}
                 >
                   {previewBusy ? (
-                    <LoaderCircleIcon className="animate-spin" />
+                    <ThinkingOrb
+                      state="solving"
+                      size={20}
+                      aria-label="正在生成预览"
+                    />
                   ) : (
                     <FileTextIcon />
                   )}
@@ -4778,6 +4854,17 @@ export default function App() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <EnvironmentOnboardingDialog
+        open={
+          privacyNotice.status === "accepted" &&
+          !environmentOnboardingCompleted
+        }
+        environment={environment}
+        onRefresh={() => void refreshEnvironment()}
+        onComplete={finishEnvironmentOnboarding}
+        onQuit={() => void getDesktopApi()?.quitApp()}
+        onOpenGuide={(toolId) => void openToolLink(toolId)}
+      />
       <Dialog
         open={
           updateStatus.state === "downloaded" &&
@@ -4812,34 +4899,6 @@ export default function App() {
             <Button onClick={() => void revealDownloadedUpdate()}>
               <FolderOpenIcon />
               显示更新文件
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      <Dialog
-        open={pendingExport !== null}
-        onOpenChange={(open) => {
-          if (!open) setPendingExport(null)
-        }}
-      >
-        <DialogContent showCloseButton={false}>
-          <DialogHeader>
-            <DialogTitle>目标文件已存在</DialogTitle>
-            <DialogDescription>
-              所选目录中已有同名产物。只有明确确认后才会覆盖这些文件；取消不会修改现有文件。
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setPendingExport(null)}>
-              取消导出
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => {
-                if (pendingExport) void executeExport(pendingExport, true)
-              }}
-            >
-              确认覆盖并导出
             </Button>
           </DialogFooter>
         </DialogContent>

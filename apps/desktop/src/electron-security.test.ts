@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest"
 
 const applicationRoot = process.cwd()
 const rendererRoot = join(applicationRoot, "src")
+const themeSource = readFileSync(join(rendererRoot, "index.css"), "utf8")
 const mainSource = readFileSync(join(applicationRoot, "electron/main.ts"), "utf8")
 const preloadSource = readFileSync(
   join(applicationRoot, "electron/preload.cts"),
@@ -47,6 +48,12 @@ describe("Electron security boundary", () => {
     expect(mainSource).toContain("setWindowOpenHandler")
     expect(mainSource).toContain('on("will-navigate"')
     expect(mainSource).toContain("setPermissionRequestHandler")
+  })
+
+  it("disables document-section completion motion when the operating system requests it", () => {
+    expect(themeSource).toContain("@media (prefers-reduced-motion: reduce)")
+    expect(themeSource).toContain('[data-slot="section-completion-mark"]')
+    expect(themeSource).toContain("animation: none")
   })
 
   it("exposes only the declared narrow preload methods", () => {

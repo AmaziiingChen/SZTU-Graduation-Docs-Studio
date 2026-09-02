@@ -5,13 +5,18 @@ import {
   ArrowRightIcon,
   ArrowUpIcon,
   ListPlusIcon,
-  RefreshCwIcon,
   Trash2Icon,
 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { StructuredContentEditor } from "@/components/workbench/structured-content-editor"
 import {
@@ -21,13 +26,21 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { paragraphInputText } from "@/lib/paragraph"
+import {
+  DEFAULT_OUTLINE_NUMBERING_STYLE,
+  numberOutlineItems,
+  outlineStyleMaxDepth,
+  OUTLINE_NUMBERING_STYLE_OPTIONS,
+  type OutlineLevel,
+  type OutlineNumberingStyle,
+} from "@/lib/outline-numbering"
 import { isParagraphInput } from "@/lib/structured-content-editor"
 import type {
   ParagraphInput,
   StructuredBodyValue,
 } from "@/types/structured-content"
 
-export type OutlineLevel = 1 | 2 | 3 | 4
+export type { OutlineLevel, OutlineNumberingStyle }
 
 export type OutlineEditorItem = {
   id: string
@@ -38,7 +51,9 @@ export type OutlineEditorItem = {
 
 type OutlineEditorProps = {
   value: OutlineEditorItem[]
+  numberingStyle: OutlineNumberingStyle | null
   onChange: (value: OutlineEditorItem[]) => void
+  onNumberingStyleChange: (value: OutlineNumberingStyle) => void
   disabled?: boolean
   error?: string
 }
@@ -68,14 +83,20 @@ function inlineParagraph(value: StructuredBodyValue): ParagraphInput {
   return paragraph === undefined ? "" : structuredClone(paragraph)
 }
 
-export function validateOutlineItems(value: OutlineEditorItem[]): string[] {
+export function validateOutlineItems(
+  value: OutlineEditorItem[],
+  numberingStyle: OutlineNumberingStyle | null = null,
+): string[] {
   if (value.length === 0) return ["论文目录至少需要一个条目。"]
   const errors: string[] = []
+  const maximumLevel = numberingStyle
+    ? outlineStyleMaxDepth(numberingStyle)
+    : 6
   let previousLevel = 1
   value.forEach((item, index) => {
     const level = Number(item.level)
-    if (!Number.isInteger(level) || level < 1 || level > 4) {
-      errors.push(`第 ${index + 1} 条目录层级必须是 1 至 4。`)
+    if (!Number.isInteger(level) || level < 1 || level > maximumLevel) {
+      errors.push(`第 ${index + 1} 条目录层级必须是 1 至 ${maximumLevel}。`)
     } else if (index === 0 && level !== 1) {
       errors.push("第一条目录必须是一级目录。")
     } else if (index > 0 && level > previousLevel + 1) {
@@ -84,7 +105,7 @@ export function validateOutlineItems(value: OutlineEditorItem[]): string[] {
     if (!paragraphInputText(item.title).trim()) {
       errors.push(`第 ${index + 1} 条目录缺少标题。`)
     }
-    if (Number.isInteger(level) && level >= 1 && level <= 4) {
+    if (Number.isInteger(level) && level >= 1 && level <= maximumLevel) {
       previousLevel = level
     }
   })
@@ -111,16 +132,9 @@ function previousSubtreeStart(
 
 export function renumberOutlineItems(
   value: OutlineEditorItem[],
+  style: OutlineNumberingStyle = DEFAULT_OUTLINE_NUMBERING_STYLE,
 ): OutlineEditorItem[] {
-  const counters = [0, 0, 0, 0]
-  return value.map((item) => {
-    counters[item.level - 1] += 1
-    counters.fill(0, item.level)
-    return {
-      ...item,
-      number: counters.slice(0, item.level).join("."),
-    }
-  })
+  return numberOutlineItems(value, style)
 }
 
 const levelPadding: Record<OutlineLevel, string> = {
@@ -128,6 +142,8 @@ const levelPadding: Record<OutlineLevel, string> = {
   2: "pl-6",
   3: "pl-12",
   4: "pl-16",
+  5: "pl-20",
+  6: "pl-24",
 }
 
 function IconAction({
@@ -164,39 +180,59 @@ function IconAction({
 
 export function OutlineEditor({
   value,
+  numberingStyle,
   onChange,
+  onNumberingStyleChange,
   disabled = false,
   error,
 }: OutlineEditorProps) {
   const [selectedId, setSelectedId] = useState(value[0]?.id ?? "")
-  const validationErrors = useMemo(() => validateOutlineItems(value), [value])
+  const validationErrors = useMemo(
+    () => validateOutlineItems(value, numberingStyle),
+    [numberingStyle, value],
+  )
+  const maximumLevel = numberingStyle
+    ? outlineStyleMaxDepth(numberingStyle)
+    : 6
+  const displayedValue = useMemo(
+    () => (numberingStyle ? numberOutlineItems(value, numberingStyle) : value),
+    [numberingStyle, value],
+  )
   const selectedIndex = Math.max(
     0,
     value.findIndex((item) => item.id === selectedId),
   )
   const selectedItem = value[selectedIndex]
 
+  const commit = (next: OutlineEditorItem[]) => {
+    onChange(numberingStyle ? numberOutlineItems(next, numberingStyle) : next)
+  }
+
   const replaceItem = (index: number, item: OutlineEditorItem) => {
     const next = [...value]
     next[index] = item
-    onChange(next)
+    commit(next)
   }
 
   const insertAfter = (index: number) => {
     const item = createOutlineEditorItem(value[index]?.level ?? 1)
     setSelectedId(item.id)
-    onChange([...value.slice(0, index + 1), item, ...value.slice(index + 1)])
+    commit([...value.slice(0, index + 1), item, ...value.slice(index + 1)])
   }
 
   const changeLevel = (index: number, direction: -1 | 1) => {
     const item = value[index]
     const nextLevel = item.level + direction
-    if (nextLevel < 1 || nextLevel > 4) return
+    if (nextLevel < 1 || nextLevel > maximumLevel) return
     const end = subtreeEnd(value, index)
     if (
       value
         .slice(index, end)
-        .some((entry) => entry.level + direction < 1 || entry.level + direction > 4)
+        .some(
+          (entry) =>
+            entry.level + direction < 1 ||
+            entry.level + direction > maximumLevel,
+        )
     ) {
       return
     }
@@ -210,7 +246,7 @@ export function OutlineEditor({
         level: (entry.level + direction) as OutlineLevel,
       }
     })
-    onChange(next)
+    commit(next)
   }
 
   const moveSubtree = (index: number, direction: -1 | 1) => {
@@ -219,7 +255,7 @@ export function OutlineEditor({
     if (direction === -1) {
       const previous = previousSubtreeStart(value, index)
       if (previous === null) return
-      onChange([
+      commit([
         ...value.slice(0, previous),
         ...moving,
         ...value.slice(previous, index),
@@ -229,7 +265,7 @@ export function OutlineEditor({
     }
     if (end >= value.length || value[end].level !== value[index].level) return
     const nextEnd = subtreeEnd(value, end)
-    onChange([
+    commit([
       ...value.slice(0, index),
       ...value.slice(end, nextEnd),
       ...moving,
@@ -244,11 +280,11 @@ export function OutlineEditor({
     if (next.length === 0) {
       const replacement = createOutlineEditorItem()
       setSelectedId(replacement.id)
-      onChange([replacement])
+      commit([replacement])
       return
     }
     setSelectedId(next[Math.min(index, next.length - 1)].id)
-    onChange(next)
+    commit(next)
   }
 
   return (
@@ -261,11 +297,42 @@ export function OutlineEditor({
                 第 {selectedIndex + 1} 条目录标题
               </p>
               <p className="text-xs text-muted-foreground">
-                标题支持粗体、斜体和上下标；目录层级与编号在下方对应条目中维护。
+                标题支持粗体、斜体和上下标；目录编号根据层级自动生成。
               </p>
             </div>
           ) : null}
           <div className="flex flex-wrap items-center gap-2">
+            <Select
+              value={numberingStyle}
+              onValueChange={(nextStyle) => {
+                if (!nextStyle) return
+                const style = nextStyle as OutlineNumberingStyle
+                onNumberingStyleChange(style)
+              }}
+              disabled={disabled}
+            >
+              <SelectTrigger aria-label="目录编号格式" className="w-full sm:w-auto">
+                <SelectValue placeholder="选择编号格式">
+                  {numberingStyle
+                    ? OUTLINE_NUMBERING_STYLE_OPTIONS.find(
+                        (option) => option.value === numberingStyle,
+                      )?.label
+                    : "选择编号格式"}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent
+                align="end"
+                alignItemWithTrigger={false}
+                className="w-auto min-w-80"
+              >
+                {OUTLINE_NUMBERING_STYLE_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    <span>{option.label}</span>
+                    <span className="text-muted-foreground">{option.example}</span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Button
               type="button"
               variant="outline"
@@ -274,21 +341,11 @@ export function OutlineEditor({
               onClick={() => {
                 const item = createOutlineEditorItem()
                 setSelectedId(item.id)
-                onChange([...value, item])
+                commit([...value, item])
               }}
             >
               <ListPlusIcon data-icon="inline-start" />
               新增目录
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={disabled || validationErrors.length > 0}
-              onClick={() => onChange(renumberOutlineItems(value))}
-            >
-              <RefreshCwIcon data-icon="inline-start" />
-              重新编号
             </Button>
           </div>
         </div>
@@ -314,7 +371,7 @@ export function OutlineEditor({
         <Separator />
 
         <div className="grid gap-2" aria-label="论文目录条目">
-          {value.map((item, index) => {
+          {displayedValue.map((item, index) => {
             const end = subtreeEnd(value, index)
             const hasChildren = end > index + 1
             const subtreeMaxLevel = Math.max(
@@ -322,7 +379,7 @@ export function OutlineEditor({
             )
             const canIndent =
               index > 0 &&
-              subtreeMaxLevel < 4 &&
+              subtreeMaxLevel < maximumLevel &&
               item.level <= value[index - 1].level
             const canOutdent = item.level > 1
             const canMoveUp = previousSubtreeStart(value, index) !== null
@@ -334,17 +391,12 @@ export function OutlineEditor({
                   <Badge variant="secondary" className="shrink-0">
                     {item.level} 级
                   </Badge>
-                  <Input
+                  <span
                     aria-label={`第 ${index + 1} 条目录编号`}
-                    className="w-24 shrink-0"
-                    value={item.number}
-                    disabled={disabled}
-                    placeholder="编号"
-                    maxLength={20}
-                    onChange={(event) =>
-                      replaceItem(index, { ...item, number: event.target.value })
-                    }
-                  />
+                    className="w-24 shrink-0 truncate text-sm tabular-nums text-muted-foreground"
+                  >
+                    {item.number || "未编号"}
+                  </span>
                   <Button
                     type="button"
                     variant={index === selectedIndex ? "secondary" : "ghost"}

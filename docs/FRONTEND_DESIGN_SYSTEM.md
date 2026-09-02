@@ -15,11 +15,13 @@ shadcn 组件和 Tailwind 语义类的使用约束。
   `secondary`、`muted`、`accent`、`destructive`、`border`、`input`、`ring` 和
   `sidebar` 等 shadcn 语义 token。
 - 业务代码不得直接使用 Hex、RGB、HSL、OKLCH 或 Tailwind 固定色阶。
-- 固定色阶只允许出现在两个集中管理的状态组件中：
+- 固定色阶只允许出现在三个集中管理的状态组件中：
   `save-status-badge.tsx` 使用 `emerald` 表示内容已持久化；
   `export-history-status-badge.tsx` 使用 `emerald`、`amber` 和 `sky` 分别表示
   产物可用、文件状态发生变化和正在处理。缺失与失败继续使用 shadcn
-  `destructive`。这些颜色只表达状态，不得作为品牌色或主按钮色。
+  `destructive`；`section-completion-mark.tsx` 使用单一 `emerald` 圆形对勾表示
+  文档板块已完成。未完成板块不显示可见状态，需修改板块使用 `destructive`。
+  这些颜色只表达状态，不得作为品牌色或主按钮色。
 - 错误、冲突和校验失败继续使用 shadcn `destructive`，禁用和辅助状态使用
   `muted`，不要为相近状态新增颜色。
 
@@ -48,6 +50,9 @@ macOS、Windows 和常见 Linux 环境中的随机回退，但不承诺不同平
   `components/workbench/`。
 - 保存状态统一通过 `SaveStatusBadge` 展示，业务页面不重复状态颜色、图标和标签判断。
 - 导出历史状态统一通过 `ExportHistoryStatusBadge` 展示，不在表格中散落颜色判断。
+- 文档板块状态统一通过 `SectionCompletionMark` 展示。对勾动画只在同一文档的
+  板块状态从未完成或需修改变为完成时播放；初次载入和切换文档时静态显示，系统启用
+  “减少动态效果”后禁用动画。可见文字由 Tooltip 补充，无障碍名称继续保留状态语义。
 - 等宽字体是源码语义，不是视觉装饰；当前只允许参考文献 BibTeX 编辑器使用。
 
 ## 自动检查与人工复核

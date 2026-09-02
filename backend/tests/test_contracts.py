@@ -125,7 +125,7 @@ class ContractTests(unittest.TestCase):
         )
         self.assertEqual(
             hashlib.sha256(midterm.read_bytes()).hexdigest(),
-            "b36eaf3479fec1720c08db8c3fb37ebfc15a7b2ad7498a47ab251f3aafee9915",
+            "e5fa6677a0b878b59e21b13a3e8fb4174df4ee8c611a1f403902e5c692d6a0dd",
         )
         source_form = midterm.read_text(encoding="utf-8").replace(
             "content-block.schema.json#",
@@ -133,7 +133,7 @@ class ContractTests(unittest.TestCase):
         )
         self.assertEqual(
             hashlib.sha256(source_form.encode("utf-8")).hexdigest(),
-            "17924cfa9daf2e1a56e29ab883bbe5fd93482c2a3afa88591f0ad3a355707d58",
+            "46fb159387e7312e7b955f75b109d4cb661e60f376521d9f0b736a1aade274a6",
         )
         thesis_root = os.environ.get("SZTU_THESIS_ROOT")
         if thesis_root:

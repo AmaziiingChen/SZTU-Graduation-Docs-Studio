@@ -9,6 +9,12 @@ import {
 } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
+vi.mock("thinking-orbs", () => ({
+  ThinkingOrb: ({ "aria-label": ariaLabel }: { "aria-label"?: string }) => (
+    <div role="img" aria-label={ariaLabel} />
+  ),
+}))
+
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { ACADEMIC_OPTIONS } from "@/data/academic-options"
 import type {
@@ -21,6 +27,7 @@ import type {
   StudentProfileDraft,
   SztuDesktopApi,
 } from "@/types/desktop-api"
+import { completeEnvironmentOnboarding } from "@/lib/environment-onboarding"
 
 import App from "./App"
 
@@ -38,6 +45,12 @@ const environmentResult = {
       required: true,
       status: "pass" as const,
       message: "Python 3.14.4 is supported.",
+    },
+    {
+      id: "xelatex",
+      required: true,
+      status: "pass" as const,
+      message: "XeLaTeX is available.",
     },
     {
       id: "template_pack",
@@ -543,6 +556,11 @@ function renderApp() {
   )
 }
 
+beforeEach(() => {
+  window.localStorage.clear()
+  completeEnvironmentOnboarding()
+})
+
 function replaceRichText(element: HTMLElement, value: string) {
   element.focus()
   fireEvent.keyDown(element, {
@@ -677,6 +695,86 @@ describe("M3 workbench persistence", () => {
     )
   })
 
+  it("shows the environment guide after the privacy notice on first launch", async () => {
+    window.localStorage.clear()
+    const api = mockApi()
+    vi.mocked(api.getPrivacyNoticeStatus).mockResolvedValue({
+      noticeVersion: "1.1",
+      acknowledged: false,
+      acceptedAt: null,
+      telemetryConfigured: true,
+      updateConfigured: false,
+      configurationRequired: false,
+    })
+    installApi(api)
+
+    renderApp()
+
+    expect(
+      await screen.findByRole("dialog", {
+        name: "使用说明与隐私告知",
+      }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole("dialog", { name: "准备本机文档环境" }),
+    ).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "同意并继续" }))
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "准备本机文档环境",
+    })
+    expect(dialog).toBeInTheDocument()
+    expect(screen.getByText("基础环境可以使用")).toBeInTheDocument()
+    expect(within(dialog).getByText("XeLaTeX")).toBeInTheDocument()
+    expect(within(dialog).queryByText("XeLaTeX is available.")).toBeNull()
+    expect(dialog.querySelector('[data-slot="badge"]')).toBeNull()
+    expect(
+      dialog.querySelector('[data-slot="section-completion-mark"]'),
+    ).toHaveAttribute("data-animate", "true")
+
+    fireEvent.click(screen.getByRole("button", { name: "进入工作台" }))
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "准备本机文档环境" }),
+      ).not.toBeInTheDocument(),
+    )
+  })
+
+  it("offers an installation guide when a required environment item is missing", async () => {
+    window.localStorage.clear()
+    const api = mockApi()
+    vi.mocked(api.checkEnvironment).mockResolvedValue({
+      ...environmentResult,
+      ready: false,
+      checks: [
+        ...environmentResult.checks,
+        {
+          id: "xelatex",
+          required: true,
+          status: "fail",
+          message: "未找到 xelatex 可执行文件。",
+        },
+      ],
+    })
+    installApi(api)
+
+    renderApp()
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "准备本机文档环境",
+    })
+    expect(within(dialog).getByText("还有 1 项必要环境缺失")).toBeInTheDocument()
+
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "打开 TeX 安装页面" }),
+    )
+    expect(api.openToolLink).toHaveBeenCalledWith("mactex")
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "稍后配置" }))
+    await waitFor(() => expect(dialog).not.toBeInTheDocument())
+  })
+
   it("restores the active persistent profile and document", async () => {
     renderApp()
 
@@ -740,7 +838,7 @@ describe("M3 workbench persistence", () => {
       name: "当前文档板块",
     }).closest('[data-slot="document-section-nav"]')
     expect(sectionNavigation).toHaveClass(
-      "w-48",
+      "w-40",
       "shrink-0",
     )
     expect(
@@ -778,28 +876,46 @@ describe("M3 workbench persistence", () => {
     expect(await openSharedThesisTitle()).toHaveTextContent("合成开题报告")
   })
 
-  it("opens the thesis tool directory from the application sidebar", async () => {
+  it("opens the tool directory from the application sidebar", async () => {
     const api = mockApi()
     installApi(api)
     renderApp()
 
-    fireEvent.click(await screen.findByRole("button", { name: "论文工具台" }))
+    fireEvent.click(await screen.findByRole("button", { name: "工具箱" }))
 
     expect(
-      await screen.findByRole("heading", { level: 1, name: "论文工具台" }),
+      await screen.findByRole("heading", { level: 1, name: "工具箱" }),
     ).toBeInTheDocument()
     expect(
-      screen.getByRole("heading", { level: 2, name: "论文工具台" }),
-    ).toBeInTheDocument()
+      screen.queryByRole("heading", { level: 2, name: "工具箱" }),
+    ).not.toBeInTheDocument()
+    expect(screen.getByText(/集中打开毕业论文写作常用的网站/)).toBeInTheDocument()
     expect(screen.getByRole("heading", { name: "效率工具" })).toBeInTheDocument()
     expect(screen.getByRole("heading", { name: "浏览器扩展" })).toBeInTheDocument()
     expect(screen.getByRole("heading", { name: "文献管理" })).toBeInTheDocument()
     expect(screen.getByRole("heading", { name: "AI 工具" })).toBeInTheDocument()
     expect(screen.queryByLabelText("保存状态：已保存")).not.toBeInTheDocument()
-    expect(screen.queryByRole("navigation", { name: "当前文档板块" })).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole("navigation", { name: "当前文档板块" }),
+    ).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole("button", { name: "打开 Xmind" }))
     await waitFor(() => expect(api.openToolLink).toHaveBeenCalledWith("xmind"))
+  })
+
+  it("shows the local maintainer contact without a feedback backend", async () => {
+    renderApp()
+
+    fireEvent.click(await screen.findByRole("button", { name: "联系维护者" }))
+
+    const dialog = await screen.findByRole("dialog", { name: "联系维护者" })
+    expect(
+      within(dialog).getByRole("img", { name: "维护者微信二维码" }),
+    ).toHaveAttribute("src", expect.stringContaining("maintainer-wechat-qr"))
+    expect(
+      within(dialog).getByText(/添加时请备注年级、学院、专业和姓名/),
+    ).toBeInTheDocument()
+    expect(within(dialog).queryByRole("button", { name: /复制 QQ/ })).toBeNull()
   })
 
   it("keeps document-section navigation visible when the app sidebar collapses at minimum width", async () => {
@@ -812,7 +928,7 @@ describe("M3 workbench persistence", () => {
     const sectionNavigation = (
       await screen.findByRole("navigation", { name: "当前文档板块" })
     ).closest('[data-slot="document-section-nav"]')
-    expect(sectionNavigation).toHaveClass("w-48", "shrink-0")
+    expect(sectionNavigation).toHaveClass("w-40", "shrink-0")
     expect(
       screen.queryByRole("combobox", { name: "选择文档板块" }),
     ).not.toBeInTheDocument()
@@ -1246,6 +1362,9 @@ describe("M3 workbench persistence", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "预览&导出" }))
     await waitFor(() => expect(api.generatePreview).toHaveBeenCalledTimes(1))
+    expect(
+      await screen.findByRole("img", { name: "正在生成分页预览" }),
+    ).toBeInTheDocument()
     replaceRichText(
       screen.getByLabelText("本选题的意义及国内外发展状况"),
       "预览生成期间修改的选题意义",
@@ -1849,19 +1968,19 @@ describe("M3 workbench persistence", () => {
     ).not.toBeInTheDocument()
   })
 
-  it("requires explicit confirmation before overwriting an existing output", async () => {
+  it("exports an automatically versioned target without an overwrite dialog", async () => {
     const api = mockApi()
     vi.mocked(api.preflightExport).mockResolvedValue({
       ...preflightResult,
       targets: [
         {
           format: "docx",
-          filename: "开题报告.docx",
-          path: "/tmp/sztu-export-test/开题报告.docx",
-          exists: true,
+          filename: "未命名开题报告-开题报告-2.docx",
+          path: "/tmp/sztu-export-test/未命名开题报告-开题报告-2.docx",
+          exists: false,
         },
       ],
-      overwrite_required: true,
+      overwrite_required: false,
     })
     installApi(api)
     renderApp()
@@ -1870,14 +1989,11 @@ describe("M3 workbench persistence", () => {
     fireEvent.click(await screen.findByRole("button", { name: "导出" }))
     fireEvent.click(await screen.findByRole("menuitem", { name: "导出 Word" }))
 
-    expect(await screen.findByText("目标文件已存在")).toBeInTheDocument()
-    expect(api.exportDocument).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByRole("button", { name: "确认覆盖并导出" }))
-
     await waitFor(() => expect(api.exportDocument).toHaveBeenCalledTimes(1))
     expect(api.exportDocument).toHaveBeenCalledWith(
-      expect.objectContaining({ overwriteConfirmed: true }),
+      expect.objectContaining({ overwriteConfirmed: false }),
     )
+    expect(screen.queryByText("目标文件已存在")).not.toBeInTheDocument()
   })
 
   it("can request cancellation for an in-progress export", async () => {
@@ -2473,11 +2589,11 @@ describe("M3 workbench persistence", () => {
     expect(checkDate).toHaveTextContent("2026年3月30日")
     fireEvent.click(screen.getByRole("button", { name: /论文目录/ }))
     expect(screen.getAllByText("论文目录")).toHaveLength(1)
-    expect(screen.getByLabelText("第 1 条目录编号")).toHaveValue("1")
+    expect(screen.getByLabelText("第 1 条目录编号")).toHaveTextContent("1")
     expect(
       screen.getByRole("button", { name: "第 1 条目录标题" }),
     ).toHaveTextContent("绪论")
-    expect(screen.getByLabelText("第 2 条目录编号")).toHaveValue("1.1")
+    expect(screen.getByLabelText("第 2 条目录编号")).toHaveTextContent("1.1")
     expect(
       screen.getByRole("button", { name: "第 2 条目录标题" }),
     ).toHaveTextContent("研究背景")

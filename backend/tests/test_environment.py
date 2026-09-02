@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 from pathlib import Path
+from subprocess import CompletedProcess
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -10,6 +11,72 @@ from sztu_docs_backend.environment import check_environment
 
 
 class EnvironmentTests(unittest.TestCase):
+    def test_document_font_checks_distinguish_required_and_optional_fonts(self) -> None:
+        core_index = {
+            candidates[0].casefold(): Path("fonts") / candidates[0]
+            for candidates in environment_module.CORE_DOCUMENT_FONT_GROUPS.values()
+        }
+        complete = environment_module._check_core_document_fonts(core_index)
+
+        missing_times_bold_italic = {
+            name: path
+            for name, path in core_index.items()
+            if name != "timesbi.ttf"
+        }
+        missing = environment_module._check_core_document_fonts(
+            missing_times_bold_italic
+        )
+        optional = environment_module._check_special_document_fonts({})
+
+        self.assertTrue(complete["required"])
+        self.assertEqual(complete["status"], "pass")
+        self.assertEqual(missing["status"], "fail")
+        self.assertIn("Times New Roman 粗斜体", missing["details"]["missing"])
+        self.assertFalse(optional["required"])
+        self.assertEqual(optional["status"], "warn")
+
+    def test_tex_package_check_reports_the_exact_missing_package(self) -> None:
+        with patch.object(
+            environment_module.shutil,
+            "which",
+            return_value="/usr/local/bin/kpsewhich",
+        ), patch.object(
+            environment_module.subprocess,
+            "run",
+            return_value=CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout="/tex/geometry.sty\n\n",
+                stderr="",
+            ),
+        ):
+            result = environment_module._check_tex_packages(
+                "test_tex_packages",
+                ("geometry.sty", "xeCJK.sty"),
+                required=True,
+                label="测试 TeX 宏包",
+            )
+
+        self.assertEqual(result["status"], "fail")
+        self.assertEqual(result["details"]["missing"], ["xeCJK.sty"])
+
+    def test_thesis_toolchain_is_advisory_until_thesis_is_enabled(self) -> None:
+        tools = {
+            "xelatex": "/usr/local/bin/xelatex",
+            "bibtex": None,
+            "latexmk": None,
+        }
+        with patch.object(
+            environment_module.shutil,
+            "which",
+            side_effect=lambda name: tools.get(name),
+        ):
+            result = environment_module._check_thesis_toolchain()
+
+        self.assertFalse(result["required"])
+        self.assertEqual(result["status"], "warn")
+        self.assertEqual(result["details"]["missing"], ["bibtex", "latexmk"])
+
     def test_process_document_engines_return_independent_success_checks(self) -> None:
         engine = SimpleNamespace(
             version="0.1+test",
@@ -73,7 +140,12 @@ class EnvironmentTests(unittest.TestCase):
         checks = {check["id"]: check for check in result["checks"]}
         self.assertTrue(checks["document_dependencies"]["required"])
         self.assertTrue(checks["xelatex"]["required"])
+        self.assertTrue(checks["process_tex_packages"]["required"])
         self.assertTrue(checks["pdf_tools"]["required"])
+        self.assertTrue(checks["core_document_fonts"]["required"])
+        self.assertFalse(checks["special_document_fonts"]["required"])
+        self.assertFalse(checks["thesis_toolchain"]["required"])
+        self.assertFalse(checks["thesis_tex_packages"]["required"])
         self.assertIn("task_book_engine", checks)
         self.assertFalse(checks["task_book_engine"]["required"])
         self.assertIn("task_book_docx_font", checks)

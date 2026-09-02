@@ -190,6 +190,39 @@ describe("BibTeX reference import", () => {
     )
   })
 
+  it("does not block source-only metadata containing unsupported TeX commands", () => {
+    const result = formatBibtex(String.raw`
+@article{metadataOnly,
+  author={合成作者},
+  title={微通道散热研究},
+  journal={合成期刊},
+  year={2026},
+  abstract={深度为 130 {$\mu$}m，温度为 46.96\textcelsius，来源还包含 \sourceonly{说明}},
+  file={/private/fixture/reference.pdf},
+  keywords={\sourceonly{热管理}}
+}`)
+
+    expect(result.issues).toEqual([])
+    expect(result.references[0].text).toBe(
+      "[1] 合成作者. 微通道散热研究[J]. 合成期刊, 2026.",
+    )
+    expect(result.references[0].text).not.toContain("abstract")
+    expect(result.entries[0].fields.abstract).toContain("\\sourceonly")
+  })
+
+  it("decodes common scientific temperature and micro symbols", () => {
+    const value = String.raw`46.96\textcelsius 与 130 {$\mu$}m`
+
+    expect(decodeBibtexText(value)).toBe("46.96℃ 与 130 μm")
+    expect(parseBibtex(String.raw`
+@article{scientificSymbols,
+  author={合成作者},
+  title={46.96\textcelsius 与 130 {$\mu$}m 条件下的研究},
+  journal={合成期刊},
+  year={2026}
+}`).issues).toEqual([])
+  })
+
   it("accepts a CNKI-style article with a journal macro and common math roman text", () => {
     const result = formatBibtex(String.raw`
 @string{CNKIJournal = "计算机工程与应用"}

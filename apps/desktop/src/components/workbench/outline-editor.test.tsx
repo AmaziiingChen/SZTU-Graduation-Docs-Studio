@@ -9,8 +9,8 @@ import {
 } from "./outline-editor"
 
 const items: OutlineEditorItem[] = [
-  { id: "one", level: 1, number: "1", title: "绪论" },
-  { id: "two", level: 1, number: "2", title: "研究方法" },
+  { id: "one", level: 1, number: "1.", title: "绪论" },
+  { id: "two", level: 1, number: "2.", title: "研究方法" },
 ]
 
 afterEach(cleanup)
@@ -18,7 +18,14 @@ afterEach(cleanup)
 describe("OutlineEditor", () => {
   it("uses semantic levels instead of leading whitespace", () => {
     const onChange = vi.fn()
-    render(<OutlineEditor value={items} onChange={onChange} />)
+    render(
+      <OutlineEditor
+        value={items}
+        numberingStyle="decimal_hierarchy"
+        onChange={onChange}
+        onNumberingStyleChange={vi.fn()}
+      />,
+    )
 
     const secondTitle = screen.getByRole("button", {
       name: "第 2 条目录标题",
@@ -27,13 +34,20 @@ describe("OutlineEditor", () => {
 
     expect(onChange).toHaveBeenCalledWith([
       items[0],
-      { ...items[1], level: 2 },
+      { ...items[1], level: 2, number: "1.1" },
     ])
   })
 
   it("adds a same-level item with Enter", () => {
     const onChange = vi.fn()
-    render(<OutlineEditor value={items} onChange={onChange} />)
+    render(
+      <OutlineEditor
+        value={items}
+        numberingStyle="decimal_hierarchy"
+        onChange={onChange}
+        onNumberingStyleChange={vi.fn()}
+      />,
+    )
 
     fireEvent.keyDown(screen.getByRole("button", { name: "第 2 条目录标题" }), {
       key: "Enter",
@@ -41,12 +55,33 @@ describe("OutlineEditor", () => {
 
     const next = onChange.mock.calls[0][0] as OutlineEditorItem[]
     expect(next).toHaveLength(3)
-    expect(next[2]).toMatchObject({ level: 1, number: "", title: "" })
+    expect(next[2]).toMatchObject({ level: 1, number: "3.", title: "" })
+  })
+
+  it("switches the whole outline to an official numbering preset", async () => {
+    const onNumberingStyleChange = vi.fn()
+    render(
+      <OutlineEditor
+        value={items}
+        numberingStyle={null}
+        onChange={vi.fn()}
+        onNumberingStyleChange={onNumberingStyleChange}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole("combobox", { name: "目录编号格式" }))
+    fireEvent.click(
+      await screen.findByRole("option", {
+        name: /第一种/,
+      }),
+    )
+
+    expect(onNumberingStyleChange).toHaveBeenCalledWith("chinese_hierarchy")
   })
 })
 
 describe("outline helpers", () => {
-  it("renumbers four-level outline items deterministically", () => {
+  it("renumbers outline items with the selected style", () => {
     expect(
       renumberOutlineItems([
         { id: "1", level: 1, number: "", title: "一" },
@@ -54,7 +89,7 @@ describe("outline helpers", () => {
         { id: "3", level: 2, number: "", title: "三" },
         { id: "4", level: 1, number: "", title: "四" },
       ]).map((item) => item.number),
-    ).toEqual(["1", "1.1", "1.2", "2"])
+    ).toEqual(["1.", "1.1", "1.2", "2."])
   })
 
   it("rejects skipped levels and empty titles", () => {
@@ -72,12 +107,12 @@ describe("outline helpers", () => {
         { id: "1", level: 1, number: "1", title: "绪论" },
         {
           id: "2",
-          level: 5 as OutlineEditorItem["level"],
-          number: "1.1.1.1.1",
-          title: "非法五级目录",
+          level: 7 as OutlineEditorItem["level"],
+          number: "1.1.1.1.1.1.1",
+          title: "非法七级目录",
         },
       ]),
-    ).toContain("第 2 条目录层级必须是 1 至 4。")
+    ).toContain("第 2 条目录层级必须是 1 至 6。")
   })
 
   it("does not indent a subtree whose descendants would exceed four levels", () => {
@@ -91,7 +126,14 @@ describe("outline helpers", () => {
       { id: "6", level: 3, number: "1.2.1", title: "F" },
       { id: "7", level: 4, number: "1.2.1.1", title: "G" },
     ]
-    render(<OutlineEditor value={nested} onChange={onChange} />)
+    render(
+      <OutlineEditor
+        value={nested}
+        numberingStyle="chinese_hierarchy"
+        onChange={onChange}
+        onNumberingStyleChange={vi.fn()}
+      />,
+    )
 
     expect(
       screen.getByRole("button", { name: "第 5 条目录：增加缩进" }),
@@ -136,7 +178,14 @@ describe("outline helpers", () => {
         },
       },
     ]
-    render(<OutlineEditor value={richItems} onChange={vi.fn()} />)
+    render(
+      <OutlineEditor
+        value={richItems}
+        numberingStyle="decimal_hierarchy"
+        onChange={vi.fn()}
+        onNumberingStyleChange={vi.fn()}
+      />,
+    )
 
     fireEvent.click(
       screen.getByRole("button", { name: "第 2 条目录标题" }),

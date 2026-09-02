@@ -285,8 +285,9 @@ def midterm_fixture() -> dict:
             "title": {"type": "paragraph", "runs": [{"text": "虚构中期检查课题"}]},
         },
         "sections": {
+            "numbering_style": "decimal_hierarchy",
             "directory": [
-                {"level": 1, "number": "1", "title": "绪论"},
+                {"level": 1, "number": "1.", "title": "绪论"},
                 {"level": 2, "number": "1.1", "title": "研究背景"},
             ],
             "main_research_content": [
@@ -315,6 +316,33 @@ class MidtermContractTests(unittest.TestCase):
         self.assertEqual(
             context.exception.details["field"],
             "sections.directory[1].level",
+        )
+
+    def test_directory_style_controls_the_maximum_depth(self) -> None:
+        midterm = midterm_fixture()
+        midterm["sections"]["numbering_style"] = "chinese_hierarchy"
+        midterm["sections"]["directory"] = [
+            {"level": 1, "title": "一级"},
+            {"level": 2, "title": "二级"},
+            {"level": 3, "title": "三级"},
+            {"level": 4, "title": "四级"},
+            {"level": 5, "title": "五级"},
+        ]
+        with self.assertRaises(ExportError) as context:
+            validate_midterm(midterm)
+        self.assertEqual(
+            context.exception.details["field"],
+            "sections.directory[4].level",
+        )
+
+    def test_directory_rejects_an_unknown_numbering_style(self) -> None:
+        midterm = midterm_fixture()
+        midterm["sections"]["numbering_style"] = "mixed"
+        with self.assertRaises(ExportError) as context:
+            validate_midterm(midterm)
+        self.assertEqual(
+            context.exception.details["field"],
+            "sections.numbering_style",
         )
 
     def test_teacher_fields_are_not_part_of_student_input(self) -> None:
