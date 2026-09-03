@@ -447,11 +447,11 @@ docs/                  架构、隐私、模板开发和验收证据
 
 ### P9.1 Python sidecar 打包
 
-- [ ] `P9-001` 选择并记录 Python sidecar 打包方案及其许可证。
+- [x] `P9-001` 选择并记录 Python sidecar 打包方案及其许可证。
 - [ ] `P9-002` macOS arm64/x64 与 Windows x64 构建在干净环境执行。
-- [ ] `P9-003` sidecar 自带的 Python 与第三方包版本写入构建清单。
+- [x] `P9-003` sidecar 自带的 Python 与第三方包版本写入构建清单。
 - [ ] `P9-004` 应用启动前验证 sidecar 文件哈希和协议版本。
-- [ ] `P9-005` 不把本机字体、TeX Live、学生数据和开发路径打入 sidecar。
+- [x] `P9-005` 不把本机字体、TeX Live、学生数据和开发路径打入 sidecar。
 
 ### P9.2 Electron 安装包
 

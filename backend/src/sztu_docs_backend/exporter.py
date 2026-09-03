@@ -1851,7 +1851,7 @@ def _run_cjk_gate(
     cancellation_file: Path | None = None,
 ) -> dict[str, Any]:
     _run(
-        [sys.executable, str(validator), str(pdf)],
+        _python_script_command(validator, str(pdf)),
         cwd=pdf.parent,
         timeout=45,
         cancellation_file=cancellation_file,
@@ -1865,6 +1865,14 @@ def _run_cjk_gate(
         "message": "PDF 中文字形门禁通过。",
         "checked_at": utc_now(),
     }
+
+
+def _python_script_command(script: Path, *arguments: str) -> list[str]:
+    """Run trusted renderer scripts through source or frozen sidecar Python."""
+
+    if getattr(sys, "frozen", False):
+        return [sys.executable, "--run-python-script", str(script), *arguments]
+    return [sys.executable, str(script), *arguments]
 
 
 def _not_checked(check_id: str, gate: str, message: str) -> dict[str, Any]:
@@ -2948,15 +2956,14 @@ def run_export(
                 _check_cancelled(cancel_path)
                 docx_path = work / f"{record['document_type']}.docx"
                 _run(
-                    [
-                        sys.executable,
-                        str(descriptor.root / "word" / "render.py"),
+                    _python_script_command(
+                        descriptor.root / "word" / "render.py",
                         "--data",
                         str(data_path),
                         "--output",
                         str(docx_path),
                         "--overwrite",
-                    ],
+                    ),
                     cwd=work,
                     cancellation_file=cancel_path,
                     environment=_engine_renderer_environment(descriptor),
@@ -2986,15 +2993,14 @@ def run_export(
             ):
                 _check_cancelled(cancel_path)
                 latex_dir = work / "latex"
-                latex_command = [
-                    sys.executable,
-                    str(descriptor.root / "latex" / "render.py"),
+                latex_command = _python_script_command(
+                    descriptor.root / "latex" / "render.py",
                     "--data",
                     str(data_path),
                     "--output-dir",
                     str(latex_dir),
                     "--overwrite",
-                ]
+                )
                 if "pdf" in ordered_formats and preview_pdf is None:
                     latex_command.append("--compile")
                 _run(

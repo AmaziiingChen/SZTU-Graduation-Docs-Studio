@@ -82,14 +82,21 @@ export function resolveSidecarPython(
   backendRoot: string,
   configured = process.env.SZTU_DOCS_PYTHON,
   platform = process.platform,
+  fileExists: (candidate: string) => boolean = existsSync,
 ): string {
   if (configured) return configured
   const repositoryRoot = path.resolve(backendRoot, "..")
+  const packagedSidecar = path.join(
+    repositoryRoot,
+    "sidecar",
+    platform === "win32" ? "sztu-docs-backend.exe" : "sztu-docs-backend",
+  )
+  if (fileExists(packagedSidecar)) return packagedSidecar
   const virtualenvPython =
     platform === "win32"
       ? path.join(repositoryRoot, ".venv", "Scripts", "python.exe")
       : path.join(repositoryRoot, ".venv", "bin", "python")
-  return existsSync(virtualenvPython) ? virtualenvPython : "python3"
+  return fileExists(virtualenvPython) ? virtualenvPython : "python3"
 }
 
 type SuccessEnvelope<T> = {
@@ -290,7 +297,9 @@ export class SidecarClient {
     const sourceRoot = path.join(this.backendRoot, "src")
     this.buffer = ""
     const generation = ++this.generation
-    const child = spawn(this.pythonExecutable, ["-m", "sztu_docs_backend"], {
+    const packagedSidecar = path.basename(this.pythonExecutable).startsWith("sztu-docs-backend")
+    const sidecarArguments = packagedSidecar ? [] : ["-m", "sztu_docs_backend"]
+    const child = spawn(this.pythonExecutable, sidecarArguments, {
       cwd: this.backendRoot,
       env: {
         PATH: process.env.PATH,

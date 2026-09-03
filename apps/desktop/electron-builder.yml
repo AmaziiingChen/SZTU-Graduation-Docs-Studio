@@ -1,0 +1,46 @@
+appId: org.sztu.docs.studio
+productName: SZTU文档工作台
+asar: true
+npmRebuild: false
+
+directories:
+  output: ../../release
+  buildResources: build
+
+files:
+  - dist/**/*
+  - dist-electron/**/*
+  - package.json
+
+extraResources:
+  - from: ../../backend/pyproject.toml
+    to: backend/pyproject.toml
+  - from: ../../template-packs
+    to: template-packs
+    filter:
+      - "**/*"
+  - from: ../../build/sidecar/darwin-arm64
+    to: sidecar
+    filter:
+      - sztu-docs-backend
+      - build-manifest.json
+  - from: ../../config/remote-services.production.json
+    to: remote-services.json
+
+mac:
+  category: public.app-category.productivity
+  icon: build/icon.icns
+  identity: null
+  hardenedRuntime: false
+  target:
+    - target: dmg
+      arch:
+        - arm64
+    - target: zip
+      arch:
+        - arm64
+
+dmg:
+  title: "SZTU文档工作台 ${version}"
+
+artifactName: "SZTU-Docs-Studio-${version}-mac-${arch}.${ext}"

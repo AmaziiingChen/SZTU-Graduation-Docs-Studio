@@ -222,7 +222,7 @@ export function AppSidebar({
                 <span
                   data-slot="latex-wordmark"
                   aria-hidden="true"
-                  className="inline-flex items-baseline font-serif text-base leading-none font-medium tracking-tight text-foreground"
+                  className="inline-flex items-baseline text-base leading-none font-medium tracking-tight text-foreground"
                 >
                   L
                   <span className="-mx-0.5 -translate-y-0.5 text-[0.625rem]">A</span>

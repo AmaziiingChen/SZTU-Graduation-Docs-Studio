@@ -1,5 +1,8 @@
 packages:
   - "apps/*"
 
+allowBuilds:
+  electron-winstaller: false
+
 onlyBuiltDependencies:
   - electron

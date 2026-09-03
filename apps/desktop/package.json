@@ -9,6 +9,7 @@
     "dev": "pnpm run build:electron && concurrently -k -s first \"vite --host 127.0.0.1\" \"wait-on tcp:127.0.0.1:5173 && electron .\"",
     "build:electron": "tsc -p tsconfig.electron.json",
     "build": "tsc -b && pnpm run build:electron && vite build",
+    "package:mac": "electron-builder --mac dmg zip --arm64",
     "lint": "node ../../scripts/check_frontend_design_system.mjs && oxlint electron src",
     "test": "vitest run",
     "preview": "vite preview"
@@ -52,6 +53,7 @@
     "@vitejs/plugin-react": "^6.1.0",
     "concurrently": "^10.0.5",
     "electron": "^44.0.0",
+    "electron-builder": "26.15.3",
     "jsdom": "^30.0.1",
     "oxlint": "^1.79.0",
     "typescript": "~6.0.2",

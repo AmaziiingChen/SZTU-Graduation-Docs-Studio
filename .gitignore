@@ -27,6 +27,7 @@ node_modules/
 dist/
 dist-electron/
 build/
+release/
 coverage/
 *.tsbuildinfo
 *.log

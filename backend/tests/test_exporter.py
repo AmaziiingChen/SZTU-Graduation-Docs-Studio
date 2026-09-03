@@ -14,6 +14,7 @@ from unittest.mock import patch
 from sztu_docs_backend.exporter import (
     ExportError,
     _graduation_year_from_cohort,
+    _python_script_command,
     _preview_cache_identity,
     _render_content_without_editor_state,
     canonical_json,
@@ -42,6 +43,15 @@ def proposal_fixture() -> dict:
 
 
 class ProposalContractTests(unittest.TestCase):
+    def test_python_script_command_uses_frozen_sidecar_runner(self) -> None:
+        script = Path("/private/template/render.py")
+        with patch("sztu_docs_backend.exporter.sys.frozen", True, create=True):
+            command = _python_script_command(script, "--data", "input.json")
+        self.assertEqual(
+            command[1:],
+            ["--run-python-script", str(script), "--data", "input.json"],
+        )
+
     def test_preview_cache_identity_changes_with_content_or_template(self) -> None:
         first = _preview_cache_identity("document-1", "a" * 64, "b" * 64)
         repeated = _preview_cache_identity("document-1", "a" * 64, "b" * 64)
