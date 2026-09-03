@@ -16,17 +16,19 @@ export function ToolDraftActions({
   saveState,
   draftName,
   onClear,
+  showSaveStatus = true,
 }: {
   saveState: SaveState
   draftName: string
   onClear: () => void
+  showSaveStatus?: boolean
 }) {
   const [open, setOpen] = useState(false)
 
   return (
     <>
       <div className="flex shrink-0 items-center gap-2">
-        <SaveStatusBadge state={saveState} />
+        {showSaveStatus ? <SaveStatusBadge state={saveState} /> : null}
         <Button type="button" variant="outline" size="sm" onClick={() => setOpen(true)}>
           <EraserIcon />
           清空草稿

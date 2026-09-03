@@ -170,3 +170,16 @@ export async function copyTablePreviewPng(options: TablePreviewImageOptions): Pr
   const blob = await renderTablePreviewPng(options)
   await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })])
 }
+
+export async function downloadTablePreviewPng(
+  options: TablePreviewImageOptions,
+  filename: string,
+): Promise<void> {
+  const blob = await renderTablePreviewPng(options)
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement("a")
+  anchor.href = url
+  anchor.download = filename
+  anchor.click()
+  URL.revokeObjectURL(url)
+}

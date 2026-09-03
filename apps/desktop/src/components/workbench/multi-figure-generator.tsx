@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { SaveStatusBadge } from "@/components/workbench/save-status-badge"
 import {
   Select,
   SelectContent,
@@ -168,12 +169,15 @@ export function MultiFigureGenerator() {
       <main className="mx-auto grid w-full max-w-6xl gap-6 p-6" aria-labelledby="multi-figure-title">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="space-y-1">
-            <h2 id="multi-figure-title" className="text-xl font-semibold">多图排版</h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 id="multi-figure-title" className="text-xl font-semibold">多图排版</h2>
+              <SaveStatusBadge state={saveState} />
+            </div>
             <p className="text-sm text-muted-foreground">
               选择本机图片、调整顺序和列数，生成 figure 与 subfigure 源码。
             </p>
           </div>
-          <ToolDraftActions saveState={saveState} draftName="多图排版" onClear={clearAll} />
+          <ToolDraftActions saveState={saveState} draftName="多图排版" onClear={clearAll} showSaveStatus={false} />
         </div>
 
         <div className="grid items-start gap-6 xl:grid-cols-[minmax(20rem,0.85fr)_minmax(28rem,1.15fr)]">
