@@ -395,10 +395,6 @@ export function ReferenceImporter({
         </div>
       )}
 
-      <p className="text-xs text-muted-foreground">
-        条目按列表顺序进入 Word、PDF 和 LaTeX；调整顺序不会自动修改正文中手动输入的引用编号。
-      </p>
-
       <Dialog
         open={entryEditor !== null}
         onOpenChange={(open) => !open && setEntryEditor(null)}

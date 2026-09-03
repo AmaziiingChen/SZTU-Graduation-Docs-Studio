@@ -31,12 +31,19 @@ describe("TaskScheduleEditor", () => {
   it("uses one shared inline editor for the selected schedule item", () => {
     render(<TaskScheduleEditor value={items} onChange={vi.fn()} />)
 
+    expect(screen.getByLabelText("第 1 项时间范围")).toHaveValue("第1—2周")
     expect(screen.getByRole("textbox", { name: "第 1 项进度内容" })).toHaveTextContent(
       "完成文献调研。",
     )
+    expect(
+      screen.getByRole("button", { name: "拖动第 1 项进度调整顺序" }),
+    ).toBeInTheDocument()
+    expect(screen.queryByLabelText("第 2 项时间范围")).toBeNull()
     fireEvent.click(
       screen.getByRole("button", { name: "编辑第 2 项进度内容" }),
     )
+    expect(screen.queryByLabelText("第 1 项时间范围")).toBeNull()
+    expect(screen.getByLabelText("第 2 项时间范围")).toHaveValue("第3—6周")
     expect(screen.getByRole("textbox", { name: "第 2 项进度内容" })).toHaveTextContent(
       "完成 H2O 模型。",
     )

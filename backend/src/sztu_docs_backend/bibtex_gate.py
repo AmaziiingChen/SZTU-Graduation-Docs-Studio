@@ -19,13 +19,17 @@ SUPPORTED_TYPES = frozenset(
         "incollection",
         "inproceedings",
         "conference",
+        "proceedings",
         "mastersthesis",
         "phdthesis",
         "techreport",
         "manual",
         "misc",
         "online",
+        "electronic",
+        "www",
         "patent",
+        "standard",
     }
 )
 
@@ -36,13 +40,17 @@ REQUIRED_FIELDS: dict[str, frozenset[str]] = {
     "incollection": frozenset({"author", "title", "booktitle", "year"}),
     "inproceedings": frozenset({"author", "title", "booktitle", "year"}),
     "conference": frozenset({"author", "title", "booktitle", "year"}),
+    "proceedings": frozenset({"title", "year"}),
     "mastersthesis": frozenset({"author", "title", "school", "year"}),
     "phdthesis": frozenset({"author", "title", "school", "year"}),
     "techreport": frozenset({"author", "title", "institution", "year"}),
     "manual": frozenset({"title"}),
     "misc": frozenset({"title"}),
     "online": frozenset({"title"}),
+    "electronic": frozenset({"title"}),
+    "www": frozenset({"title"}),
     "patent": frozenset({"author", "title", "year"}),
+    "standard": frozenset({"title", "year"}),
 }
 
 DIRECTIVE_TYPES = frozenset({"comment", "preamble", "string"})

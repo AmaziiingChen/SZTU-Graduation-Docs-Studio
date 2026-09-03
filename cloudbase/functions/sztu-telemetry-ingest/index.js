@@ -10,7 +10,8 @@ const RATE_LIMIT_MAX_BATCHES = 30;
 const RATE_LIMIT_MAX_KEYS = 5000;
 const ENV_ID = process.env.CLOUDBASE_ENV_ID;
 const API_KEY = process.env.CLOUDBASE_API_KEY;
-const SERVICE_VERSION = '1.0.0';
+const SERVICE_VERSION = '1.2.0';
+const DIAGNOSTIC_RETENTION_DAYS = 30;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SEMVER_RE = /^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$/;
@@ -25,7 +26,28 @@ const ACTIONS = new Set(['check', 'preview', 'template_sync', 'export', 'qa_reco
 const DOCUMENT_TYPES = new Set(['proposal', 'task_book', 'midterm']);
 const OUTCOMES = new Set(['success', 'failure', 'cancelled']);
 const UPDATE_OUTCOMES = new Set(['up_to_date', 'available', 'downloaded', 'failed']);
+const DIAGNOSTIC_PLATFORMS = new Set(['darwin', 'win32', 'linux']);
+const DIAGNOSTIC_ARCHES = new Set(['arm64', 'x64']);
+const CPU_BUCKETS = new Set(['1_to_2', '3_to_4', '5_to_8', '9_to_16', 'over_16']);
+const MEMORY_BUCKETS = new Set(['under_4gb', '4_to_8gb', '8_to_16gb', '16_to_32gb', 'over_32gb']);
+const CHECK_STATUSES = new Set(['pass', 'warn', 'fail']);
+const OPERATION_OUTCOMES = new Set(['success', 'failure', 'cancelled']);
+const DURATION_BUCKETS = new Set(['under_100ms', '100ms_to_1s', '1s_to_5s', '5s_to_30s', 'over_30s']);
+const DIAGNOSTIC_OPERATIONS = new Set([
+  'app.lifecycle', 'renderer.process', 'system.ping', 'system.version',
+  'environment.check', 'workspace.open', 'workspace.saveProfileDraft',
+  'workspace.saveProfile', 'workspace.createDocument', 'workspace.selectDocument',
+  'workspace.saveDraft', 'workspace.closeTemporary', 'document.check',
+  'preview.generate', 'export.preflight', 'export.run', 'export.history',
+  'export.deleteHistory', 'export.resolveArtifact', 'template.install', 'qa.record',
+  'diagnostic.prepare', 'diagnostic.save', 'diagnostic.send', 'telemetry.service', 'update.service',
+]);
+const ENVIRONMENT_CHECKS = new Set([
+  'python', 'temporary_directory', 'document_dependencies', 'xelatex', 'pdf_tools',
+  'office_editor', 'template_pack', 'proposal_engine', 'midterm_engine', 'task_book_engine',
+]);
 const rateWindows = new Map();
+let diagnosticRateWindow = { startedAt: 0, count: 0 };
 
 function exactKeys(value, required, optional = []) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
@@ -85,6 +107,10 @@ function validAttributes(name, attributes) {
       if (attributes.format_count !== undefined && (!Number.isInteger(attributes.format_count) || attributes.format_count < 1 || attributes.format_count > 3)) return false;
       return true;
     }
+    if (attributes?.event_name === 'document_completed') {
+      return exactKeys(attributes, ['event_name', 'document_type'])
+        && DOCUMENT_TYPES.has(attributes.document_type);
+    }
     return false;
   }
   if (name === 'update_event') {
@@ -114,6 +140,122 @@ function validateBatch(batch) {
   return null;
 }
 
+function safeText(value, maximum, pattern) {
+  return typeof value === 'string' && value.length <= maximum && pattern.test(value);
+}
+
+function validateDiagnosticReport(report) {
+  if (!exactKeys(report, [
+    'schema_version', 'report_id', 'created_at', 'application', 'device',
+    'environment', 'services', 'operations', 'privacy',
+  ])) return 'INVALID_DIAGNOSTIC_SHAPE';
+  if (report.schema_version !== '1.0' || !UUID_RE.test(report.report_id) || !isDateTime(report.created_at)) {
+    return 'INVALID_DIAGNOSTIC_METADATA';
+  }
+  if (!exactKeys(report.application, ['version', 'electron_version', 'packaged'])
+      || !safeText(report.application.version, 64, /^[0-9A-Za-z][0-9A-Za-z.+_-]*$/)
+      || !safeText(report.application.electron_version, 64, /^[0-9A-Za-z][0-9A-Za-z.+_-]*$/)
+      || typeof report.application.packaged !== 'boolean') return 'INVALID_DIAGNOSTIC_APPLICATION';
+  if (!exactKeys(report.device, ['platform', 'architecture', 'os_release', 'cpu_count_bucket', 'memory_bucket'])
+      || !DIAGNOSTIC_PLATFORMS.has(report.device.platform)
+      || !DIAGNOSTIC_ARCHES.has(report.device.architecture)
+      || !safeText(report.device.os_release, 96, /^[0-9A-Za-z][0-9A-Za-z._()+ -]*$/)
+      || !CPU_BUCKETS.has(report.device.cpu_count_bucket)
+      || !MEMORY_BUCKETS.has(report.device.memory_bucket)) return 'INVALID_DIAGNOSTIC_DEVICE';
+  if (!exactKeys(report.environment, ['ready', 'python_version', 'checks'])
+      || typeof report.environment.ready !== 'boolean'
+      || !safeText(report.environment.python_version, 64, /^[0-9A-Za-z][0-9A-Za-z.+_-]*$/)
+      || !Array.isArray(report.environment.checks)
+      || report.environment.checks.length > 20) return 'INVALID_DIAGNOSTIC_ENVIRONMENT';
+  for (const check of report.environment.checks) {
+    if (!exactKeys(check, ['id', 'required', 'status'])
+        || !ENVIRONMENT_CHECKS.has(check.id)
+        || typeof check.required !== 'boolean'
+        || !CHECK_STATUSES.has(check.status)) return 'INVALID_DIAGNOSTIC_CHECK';
+  }
+  if (!exactKeys(report.services, ['telemetry_configured', 'update_configured'])
+      || typeof report.services.telemetry_configured !== 'boolean'
+      || typeof report.services.update_configured !== 'boolean') return 'INVALID_DIAGNOSTIC_SERVICES';
+  if (!Array.isArray(report.operations) || report.operations.length > 200) return 'INVALID_DIAGNOSTIC_OPERATIONS';
+  for (const operation of report.operations) {
+    if (!exactKeys(operation, ['occurred_at', 'operation', 'outcome', 'duration_bucket'], ['error_code'])
+        || !isDateTime(operation.occurred_at)
+        || !DIAGNOSTIC_OPERATIONS.has(operation.operation)
+        || !OPERATION_OUTCOMES.has(operation.outcome)
+        || !DURATION_BUCKETS.has(operation.duration_bucket)
+        || (operation.error_code !== undefined
+          && (typeof operation.error_code !== 'string' || !ERROR_CODE_RE.test(operation.error_code)))) {
+      return 'INVALID_DIAGNOSTIC_OPERATION';
+    }
+  }
+  if (!exactKeys(report.privacy, ['scan_status', 'source_fields_removed', 'blocked_findings'])
+      || report.privacy.scan_status !== 'passed'
+      || !Number.isInteger(report.privacy.source_fields_removed)
+      || report.privacy.source_fields_removed < 0
+      || report.privacy.blocked_findings !== 0) return 'INVALID_DIAGNOSTIC_PRIVACY';
+  return null;
+}
+
+function scanDiagnosticReport(report) {
+  const serialized = JSON.stringify(report);
+  const forbiddenKeys = /"(?:full_name|student_number|thesis_title|content|filename|absolute_path|clipboard|hostname|username|ip_address|mac_address|serial_number|raw_log|message|details)"\s*:/i;
+  const pathLike = /(?:\/Users\/|\/home\/|[A-Za-z]:\\Users\\|file:\/\/)/i;
+  const credentialLike = /(?:Bearer\s+[A-Za-z0-9._-]+|BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY|(?:secret|token|password)\s*[=:])/i;
+  return !forbiddenKeys.test(serialized) && !pathLike.test(serialized) && !credentialLike.test(serialized);
+}
+
+function consumeDiagnosticRateLimit() {
+  const now = Date.now();
+  if (now - diagnosticRateWindow.startedAt >= RATE_LIMIT_WINDOW_MS) {
+    diagnosticRateWindow = { startedAt: now, count: 0 };
+  }
+  if (diagnosticRateWindow.count >= 60) {
+    return Math.max(1, Math.ceil((RATE_LIMIT_WINDOW_MS - (now - diagnosticRateWindow.startedAt)) / 1000));
+  }
+  diagnosticRateWindow.count += 1;
+  return 0;
+}
+
+function databaseEndpoint(table) {
+  return `https://${ENV_ID}.api.tcloudbasegateway.com/v1/rdb/rest/${table}`;
+}
+
+async function databaseRequest(table, options) {
+  const response = await fetch(`${databaseEndpoint(table)}${options.query || ''}`, {
+    method: options.method,
+    redirect: 'error',
+    headers: {
+      Authorization: `Bearer ${API_KEY}`,
+      'Content-Type': 'application/json',
+      Prefer: options.prefer || 'return=minimal',
+    },
+    ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!response.ok) {
+    console.error(JSON.stringify({ code: options.errorCode, status: response.status }));
+    const error = new Error(options.errorCode);
+    error.code = options.errorCode;
+    error.upstreamStatus = response.status;
+    throw error;
+  }
+}
+
+async function persistDiagnosticReport(report) {
+  await databaseRequest('diagnostic_reports', {
+    method: 'POST',
+    query: '?on_conflict=report_id',
+    prefer: 'resolution=ignore-duplicates,return=minimal',
+    body: {
+      report_id: report.report_id,
+      schema_version: report.schema_version,
+      created_at: report.created_at,
+      report,
+    },
+    errorCode: 'DIAGNOSTIC_WRITE_FAILED',
+  });
+}
+
 function sendJson(res, status, payload, extraHeaders = {}) {
   const body = JSON.stringify(payload);
   res.writeHead(status, {
@@ -122,11 +264,43 @@ function sendJson(res, status, payload, extraHeaders = {}) {
     'Cache-Control': 'no-store',
     'X-Content-Type-Options': 'nosniff',
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
     ...extraHeaders,
   });
   res.end(body);
+}
+
+async function fetchCompletionCount() {
+  const endpoint = new URL(`https://${ENV_ID}.api.tcloudbasegateway.com/v1/rdb/rest/telemetry_events`);
+  endpoint.searchParams.set('select', 'event_id');
+  endpoint.searchParams.set('event_name', 'eq.usage_event');
+  endpoint.searchParams.set('attributes->>event_name', 'eq.document_completed');
+  endpoint.searchParams.set('limit', '1');
+  const response = await fetch(endpoint, {
+    method: 'GET',
+    redirect: 'error',
+    headers: {
+      Authorization: `Bearer ${API_KEY}`,
+      Prefer: 'count=exact',
+      Range: '0-0',
+    },
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!response.ok) {
+    const error = new Error('database count failed');
+    error.code = 'DB_COUNT_FAILED';
+    error.upstreamStatus = response.status;
+    throw error;
+  }
+  const contentRange = response.headers.get('content-range') || '';
+  const match = contentRange.match(/\/(\d+)$/);
+  if (!match) {
+    const error = new Error('database count unavailable');
+    error.code = 'DB_COUNT_INVALID';
+    throw error;
+  }
+  return Number(match[1]);
 }
 
 function readBody(req) {
@@ -196,7 +370,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'OPTIONS') {
       res.writeHead(204, {
         'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type',
         'Access-Control-Max-Age': '86400',
       });
@@ -205,6 +379,63 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'GET' && url.pathname.endsWith('/health')) {
       sendJson(res, 200, { ok: true, service: 'telemetry-ingest', version: SERVICE_VERSION });
+      return;
+    }
+    if (req.method === 'POST' && url.pathname.endsWith('/v1/reports')) {
+      if (!String(req.headers['content-type'] || '').toLowerCase().startsWith('application/json')) {
+        sendJson(res, 415, { ok: false, code: 'UNSUPPORTED_MEDIA_TYPE' });
+        return;
+      }
+      if (!ENV_ID || !API_KEY) {
+        sendJson(res, 503, { ok: false, code: 'SERVICE_UNAVAILABLE' });
+        return;
+      }
+      const retryAfter = consumeDiagnosticRateLimit();
+      if (retryAfter > 0) {
+        sendJson(res, 429, { ok: false, code: 'RATE_LIMITED' }, { 'Retry-After': String(retryAfter) });
+        return;
+      }
+      const rawBody = await readBody(req);
+      let report;
+      try {
+        report = JSON.parse(rawBody);
+      } catch {
+        sendJson(res, 400, { ok: false, code: 'INVALID_JSON' });
+        return;
+      }
+      const validationError = validateDiagnosticReport(report);
+      if (validationError) {
+        sendJson(res, 422, { ok: false, code: validationError });
+        return;
+      }
+      if (!scanDiagnosticReport(report)) {
+        sendJson(res, 422, { ok: false, code: 'DIAGNOSTIC_PRIVACY_SCAN_FAILED' });
+        return;
+      }
+      await persistDiagnosticReport(report);
+      sendJson(res, 202, {
+        ok: true,
+        report_id: report.report_id,
+        retention_days: DIAGNOSTIC_RETENTION_DAYS,
+      });
+      return;
+    }
+    if (
+      req.method === 'GET'
+      && url.pathname.endsWith('/v1/events')
+      && url.searchParams.get('aggregate') === 'completed_documents'
+    ) {
+      if (!ENV_ID || !API_KEY) {
+        sendJson(res, 503, { ok: false, code: 'SERVICE_UNAVAILABLE' });
+        return;
+      }
+      const completedDocuments = await fetchCompletionCount();
+      sendJson(
+        res,
+        200,
+        { ok: true, completed_documents: completedDocuments },
+        { 'Cache-Control': 'public, max-age=60, stale-while-revalidate=300' },
+      );
       return;
     }
     if (req.method !== 'POST' || !url.pathname.endsWith('/v1/events')) {
@@ -252,6 +483,18 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 503, { ok: false, code: `DB_WRITE_FAILED_${error.upstreamStatus}` });
       return;
     }
+    if (typeof error?.code === 'string' && error.code.startsWith('DIAGNOSTIC_')) {
+      sendJson(res, 503, { ok: false, code: `${error.code}_${error.upstreamStatus || 0}` });
+      return;
+    }
+    if (error?.code === 'DB_COUNT_FAILED') {
+      sendJson(res, 503, { ok: false, code: `DB_COUNT_FAILED_${error.upstreamStatus}` });
+      return;
+    }
+    if (error?.code === 'DB_COUNT_INVALID') {
+      sendJson(res, 503, { ok: false, code: 'DB_COUNT_INVALID' });
+      return;
+    }
     sendJson(res, 503, { ok: false, code: 'INGEST_FAILED' });
   }
 });
@@ -262,4 +505,11 @@ if (require.main === module) {
   });
 }
 
-module.exports = { validateBatch, consumeRateLimit };
+module.exports = {
+  validateBatch,
+  validateDiagnosticReport,
+  scanDiagnosticReport,
+  consumeRateLimit,
+  consumeDiagnosticRateLimit,
+  fetchCompletionCount,
+};

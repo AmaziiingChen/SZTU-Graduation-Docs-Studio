@@ -43,6 +43,12 @@ export type DiagnosticSaveResult = {
   saved: boolean
 }
 
+export type DiagnosticSendResult = {
+  sent: true
+  reportId: string
+  retentionDays: number
+}
+
 export type PrivacyNoticeStatus = {
   noticeVersion: string
   acknowledged: boolean
@@ -65,6 +71,16 @@ export type TelemetryUsageEvent =
       errorCode?: string
       formatCount?: number
     }
+
+export type DocumentCompletionInput = {
+  documentId: string
+  documentType: DocumentType
+}
+
+export type DocumentCompletionResult = {
+  recorded: boolean
+  total: number | null
+}
 
 export type UpdateStatus =
   | { state: "unconfigured" }
@@ -430,10 +446,15 @@ export type SztuDesktopApi = {
   checkEnvironment: () => Promise<EnvironmentResult>
   prepareDiagnosticReport: () => Promise<DiagnosticSummary>
   saveDiagnosticReport: (reportId: string) => Promise<DiagnosticSaveResult>
+  sendDiagnosticReport: (reportId: string) => Promise<DiagnosticSendResult>
   getPrivacyNoticeStatus: () => Promise<PrivacyNoticeStatus>
   acceptPrivacyNotice: () => Promise<PrivacyNoticeStatus>
   quitApp: () => Promise<null>
   recordTelemetry: (input: TelemetryUsageEvent) => Promise<null>
+  getAnonymousDocumentCount: () => Promise<number | null>
+  recordDocumentCompletion: (
+    input: DocumentCompletionInput,
+  ) => Promise<DocumentCompletionResult>
   getUpdateStatus: () => Promise<UpdateStatus>
   revealDownloadedUpdate: () => Promise<null>
   openToolLink: (toolId: ToolLinkId) => Promise<null>

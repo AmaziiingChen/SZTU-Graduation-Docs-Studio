@@ -165,7 +165,7 @@ function listBlock(node: MarkdownNode, depth = 1): JsonObject {
           ? item.children?.find((child) => child.type === "list")
           : undefined
       return {
-        ...(ordered ? { marker: `${start + index}、` } : {}),
+        ...(ordered ? { marker: `${start + index}.` } : {}),
         content: listItemContent(item),
         ...(nestedList ? { children: listBlock(nestedList, depth + 1) } : {}),
       }
@@ -217,7 +217,7 @@ export function markdownToParagraphs(value: string): JsonObject[] {
           ? record.marker
           : block.type === "unordered_list"
             ? "• "
-            : `${index + 1}、`
+            : `${index + 1}.`
       const prefix = `${"　".repeat(depth)}${marker}`
       let paragraph: JsonObject
       if (

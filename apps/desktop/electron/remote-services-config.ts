@@ -3,15 +3,19 @@ import path from "node:path"
 
 export const DEFAULT_TELEMETRY_ENDPOINT =
   "https://amazingapp-d5giro9ac73398410-1412347033.ap-shanghai.app.tcloudbase.com/api/telemetry/v1/events"
+export const DEFAULT_DIAGNOSTIC_ENDPOINT =
+  "https://amazingapp-d5giro9ac73398410-1412347033.ap-shanghai.app.tcloudbase.com/api/diagnostics/v1/reports"
 
 export type RemoteServicesConfig = {
   telemetryEndpoint?: string
+  diagnosticEndpoint?: string
   updateManifestUrl?: string
   updatePublicKeyPem?: string
 }
 
 type RawRemoteServicesConfig = {
   telemetry_endpoint?: unknown
+  diagnostic_endpoint?: unknown
   update_manifest_url?: unknown
   update_public_key_pem?: unknown
 }
@@ -36,6 +40,7 @@ function parseConfig(
 ): RemoteServicesConfig {
   const allowed = new Set([
     "telemetry_endpoint",
+    "diagnostic_endpoint",
     "update_manifest_url",
     "update_public_key_pem",
   ])
@@ -45,6 +50,10 @@ function parseConfig(
   const telemetryEndpoint =
     typeof raw.telemetry_endpoint === "string" && raw.telemetry_endpoint.trim()
       ? validRemoteUrl(raw.telemetry_endpoint, allowLoopback)
+      : undefined
+  const diagnosticEndpoint =
+    typeof raw.diagnostic_endpoint === "string" && raw.diagnostic_endpoint.trim()
+      ? validRemoteUrl(raw.diagnostic_endpoint, allowLoopback)
       : undefined
   const updateManifestUrl =
     typeof raw.update_manifest_url === "string" && raw.update_manifest_url.trim()
@@ -59,7 +68,7 @@ function parseConfig(
   if (Boolean(updateManifestUrl) !== Boolean(updatePublicKeyPem)) {
     throw new Error("Update manifest URL and Ed25519 public key must be configured together.")
   }
-  return { telemetryEndpoint, updateManifestUrl, updatePublicKeyPem }
+  return { telemetryEndpoint, diagnosticEndpoint, updateManifestUrl, updatePublicKeyPem }
 }
 
 export async function loadRemoteServicesConfig(input: {
@@ -73,6 +82,8 @@ export async function loadRemoteServicesConfig(input: {
       {
         telemetry_endpoint:
           environment.SZTU_TELEMETRY_ENDPOINT ?? DEFAULT_TELEMETRY_ENDPOINT,
+        diagnostic_endpoint:
+          environment.SZTU_DIAGNOSTIC_ENDPOINT ?? DEFAULT_DIAGNOSTIC_ENDPOINT,
         update_manifest_url: environment.SZTU_UPDATE_MANIFEST_URL,
         update_public_key_pem: environment.SZTU_UPDATE_PUBLIC_KEY_PEM,
       },

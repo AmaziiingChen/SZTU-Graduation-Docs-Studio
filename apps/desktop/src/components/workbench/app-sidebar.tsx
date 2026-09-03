@@ -37,6 +37,7 @@ export function AppSidebar({
   toolsActive,
   appearanceActive,
   inspectionActive,
+  generatedDocumentCount,
   activeDocumentId,
   documents,
   deletedDocuments,
@@ -58,6 +59,7 @@ export function AppSidebar({
   toolsActive: boolean
   appearanceActive: boolean
   inspectionActive: boolean
+  generatedDocumentCount: number | null
   activeDocumentId: string | null
   documents: DocumentRecord[]
   deletedDocuments: DocumentRecord[]
@@ -175,6 +177,15 @@ export function AppSidebar({
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
+        {generatedDocumentCount !== null ? (
+          <p className="px-2 pt-1 text-center text-xs text-muted-foreground" aria-live="polite">
+            已帮助生成{" "}
+            <span className="font-medium text-foreground tabular-nums">
+              {generatedDocumentCount.toLocaleString("zh-CN")}
+            </span>{" "}
+            份过程文档
+          </p>
+        ) : null}
       </SidebarFooter>
       <Dialog open={contactOpen} onOpenChange={setContactOpen}>
         <DialogContent className="sm:max-w-xs">

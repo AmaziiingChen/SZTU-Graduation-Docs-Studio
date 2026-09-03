@@ -1,15 +1,22 @@
 import { useState } from "react"
+import { DragDropProvider } from "@dnd-kit/react"
+import { isSortable, useSortable } from "@dnd-kit/react/sortable"
 import {
   ArrowDownIcon,
   ArrowUpIcon,
-  CalendarRangeIcon,
+  GripVerticalIcon,
   ListPlusIcon,
   Trash2Icon,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Separator } from "@/components/ui/separator"
 import { StructuredContentEditor } from "@/components/workbench/structured-content-editor"
 import { paragraphInputText } from "@/lib/paragraph"
 import { isParagraphInput } from "@/lib/structured-content-editor"
@@ -39,6 +46,104 @@ function inlineBody(value: ParagraphInput): StructuredBodyValue {
 function inlineParagraph(value: StructuredBodyValue): ParagraphInput {
   const paragraph = value.find(isParagraphInput)
   return paragraph === undefined ? "" : structuredClone(paragraph)
+}
+
+type SortableScheduleRowProps = {
+  item: TaskScheduleEditorItem
+  index: number
+  selected: boolean
+  disabled: boolean
+  last: boolean
+  onSelect: () => void
+  onMove: (direction: -1 | 1) => void
+  onRemove: () => void
+}
+
+function SortableScheduleRow({
+  item,
+  index,
+  selected,
+  disabled,
+  last,
+  onSelect,
+  onMove,
+  onRemove,
+}: SortableScheduleRowProps) {
+  const { ref, handleRef, isDragging } = useSortable({
+    id: item.id,
+    index,
+    disabled,
+  })
+  const content = paragraphInputText(item.content).trim()
+
+  return (
+    <div
+      ref={ref}
+      className={`flex min-w-0 items-center gap-1 rounded-lg border p-1 ${
+        isDragging ? "opacity-50" : ""
+      }`}
+    >
+      <Button
+        ref={handleRef}
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        className="cursor-grab active:cursor-grabbing"
+        aria-label={`拖动第 ${index + 1} 项进度调整顺序`}
+        disabled={disabled}
+      >
+        <GripVerticalIcon />
+      </Button>
+      <Button
+        type="button"
+        variant={selected ? "secondary" : "ghost"}
+        className="h-auto min-w-0 flex-1 justify-start px-3 py-2"
+        aria-label={`编辑第 ${index + 1} 项进度内容`}
+        disabled={disabled}
+        onClick={onSelect}
+      >
+        <span className="grid min-w-0 flex-1 gap-1 text-left sm:grid-cols-[4rem_12rem_minmax(0,1fr)] sm:items-center sm:gap-3">
+          <span className="font-medium">第 {index + 1} 项</span>
+          <span className="truncate text-muted-foreground">
+            {item.period.trim() || "未填写时间范围"}
+          </span>
+          <span className="truncate font-normal text-muted-foreground">
+            {content || "未填写进度内容"}
+          </span>
+        </span>
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        aria-label={`第 ${index + 1} 项进度：上移`}
+        disabled={disabled || index === 0}
+        onClick={() => onMove(-1)}
+      >
+        <ArrowUpIcon />
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        aria-label={`第 ${index + 1} 项进度：下移`}
+        disabled={disabled || last}
+        onClick={() => onMove(1)}
+      >
+        <ArrowDownIcon />
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        aria-label={`第 ${index + 1} 项进度：删除`}
+        disabled={disabled}
+        onClick={onRemove}
+      >
+        <Trash2Icon />
+      </Button>
+    </div>
+  )
 }
 
 export function TaskScheduleEditor({
@@ -85,132 +190,106 @@ export function TaskScheduleEditor({
 
   return (
     <div className="grid min-h-0 gap-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        {selectedItem ? (
-          <div className="grid gap-1">
-            <p className="text-sm font-medium">
-              第 {selectedIndex + 1} 项进度内容
-            </p>
-            <p className="text-xs text-muted-foreground">
-              内容支持粗体、斜体和上下标；时间范围在下方对应条目中填写。
-            </p>
-          </div>
-        ) : null}
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={disabled || value.length >= 60}
-            onClick={() => {
-              const item = createTaskScheduleEditorItem()
-              setSelectedId(item.id)
-              onChange([...value, item])
-            }}
-          >
-            <ListPlusIcon data-icon="inline-start" />
-            新增进度
-          </Button>
-        </div>
-      </div>
-
       {selectedItem ? (
-        <StructuredContentEditor
-          key={selectedItem.id}
-          value={inlineBody(selectedItem.content)}
-          onChange={(content) =>
-            replaceItem(selectedIndex, {
-              ...selectedItem,
-              content: inlineParagraph(content),
-            })
-          }
-          mode="inline"
-          disabled={disabled}
-          ariaLabel={`第 ${selectedIndex + 1} 项进度内容`}
-          ariaInvalid={!paragraphInputText(selectedItem.content).trim()}
-          placeholder="输入本阶段要完成的工作"
-        />
-      ) : null}
-
-      <Separator />
-
-      <div className="grid gap-2" aria-label="进度安排条目">
-        {value.map((item, index) => {
-          const content = paragraphInputText(item.content).trim()
-          const selected = index === selectedIndex
-          return (
-            <div
-              className="grid gap-2 rounded-lg border p-2 md:grid-cols-[minmax(8rem,0.35fr)_minmax(0,1fr)_auto] md:items-center"
-              key={item.id}
-            >
+        <Card className="bg-background" size="sm" key={selectedItem.id}>
+          <CardHeader className="border-b">
+            <div className="flex flex-wrap items-center gap-3">
+              <CardTitle className="mr-1 shrink-0">
+                第 {selectedIndex + 1} 项进度
+              </CardTitle>
+              <label
+                className="shrink-0 text-sm font-medium"
+                htmlFor={`task-schedule-period-${selectedItem.id}`}
+              >
+                时间范围
+              </label>
               <Input
-                aria-label={`第 ${index + 1} 项时间范围`}
-                value={item.period}
+                className="w-full sm:w-64"
+                id={`task-schedule-period-${selectedItem.id}`}
+                aria-label={`第 ${selectedIndex + 1} 项时间范围`}
+                value={selectedItem.period}
                 disabled={disabled}
+                autoFocus
                 placeholder="例如：第1—2周"
                 maxLength={50}
                 onChange={(event) =>
-                  replaceItem(index, { ...item, period: event.target.value })
+                  replaceItem(selectedIndex, {
+                    ...selectedItem,
+                    period: event.target.value,
+                  })
                 }
               />
               <Button
+                className="sm:ml-auto"
                 type="button"
-                variant={selected ? "secondary" : "ghost"}
-                className="min-w-0 justify-start"
-                aria-label={`编辑第 ${index + 1} 项进度内容`}
-                disabled={disabled}
-                onClick={() => setSelectedId(item.id)}
+                variant="outline"
+                size="sm"
+                disabled={disabled || value.length >= 60}
+                onClick={() => {
+                  const item = createTaskScheduleEditorItem()
+                  setSelectedId(item.id)
+                  onChange([...value, item])
+                }}
               >
-                <CalendarRangeIcon />
-                <span className="truncate">
-                  {content || "选择后填写本阶段进度内容"}
-                </span>
+                <ListPlusIcon data-icon="inline-start" />
+                新增进度
               </Button>
-              <div className="flex items-center justify-end">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={`第 ${index + 1} 项进度：上移`}
-                  disabled={disabled || index === 0}
-                  onClick={() => moveItem(index, -1)}
-                >
-                  <ArrowUpIcon />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={`第 ${index + 1} 项进度：下移`}
-                  disabled={disabled || index === value.length - 1}
-                  onClick={() => moveItem(index, 1)}
-                >
-                  <ArrowDownIcon />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={`第 ${index + 1} 项进度：删除`}
-                  disabled={disabled}
-                  onClick={() => removeItem(index)}
-                >
-                  <Trash2Icon />
-                </Button>
-              </div>
             </div>
-          )
-        })}
-      </div>
+          </CardHeader>
+          <CardContent className="min-w-0">
+            <StructuredContentEditor
+              key={selectedItem.id}
+              value={inlineBody(selectedItem.content)}
+              onChange={(nextContent) =>
+                replaceItem(selectedIndex, {
+                  ...selectedItem,
+                  content: inlineParagraph(nextContent),
+                })
+              }
+              mode="inline"
+              disabled={disabled}
+              ariaLabel={`第 ${selectedIndex + 1} 项进度内容`}
+              ariaInvalid={!paragraphInputText(selectedItem.content).trim()}
+              placeholder="输入本阶段要完成的工作"
+            />
+          </CardContent>
+        </Card>
+      ) : null}
+
+      <DragDropProvider
+        onDragEnd={(event) => {
+          if (event.canceled) return
+          const { source } = event.operation
+          if (!isSortable(source)) return
+          const { initialIndex, index } = source
+          if (initialIndex === index) return
+          const next = [...value]
+          const [moved] = next.splice(initialIndex, 1)
+          next.splice(index, 0, moved)
+          onChange(next)
+        }}
+      >
+        <div className="grid gap-2" aria-label="进度安排预览">
+          {value.map((item, index) => (
+            <SortableScheduleRow
+              key={item.id}
+              item={item}
+              index={index}
+              selected={item.id === selectedItem?.id}
+              disabled={disabled}
+              last={index === value.length - 1}
+              onSelect={() => setSelectedId(item.id)}
+              onMove={(direction) => moveItem(index, direction)}
+              onRemove={() => removeItem(index)}
+            />
+          ))}
+        </div>
+      </DragDropProvider>
 
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
       {validationErrors.length ? (
         <p className="text-xs text-destructive">{validationErrors[0]}</p>
-      ) : (
-        <p className="text-xs text-muted-foreground">
-          条目按当前顺序写入任务书；不再使用“时间范围 | 内容”的文本协议。
-        </p>
-      )}
+      ) : null}
     </div>
   )
 }

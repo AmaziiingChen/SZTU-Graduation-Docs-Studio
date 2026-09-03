@@ -18,13 +18,17 @@ const supportedTypes = new Set([
   "incollection",
   "inproceedings",
   "conference",
+  "proceedings",
   "mastersthesis",
   "phdthesis",
   "techreport",
   "manual",
   "misc",
   "online",
+  "electronic",
+  "www",
   "patent",
+  "standard",
 ])
 
 const requiredFields: Record<string, readonly string[]> = {
@@ -34,13 +38,17 @@ const requiredFields: Record<string, readonly string[]> = {
   incollection: ["author", "title", "booktitle", "year"],
   inproceedings: ["author", "title", "booktitle", "year"],
   conference: ["author", "title", "booktitle", "year"],
+  proceedings: ["title", "year"],
   mastersthesis: ["author", "title", "school", "year"],
   phdthesis: ["author", "title", "school", "year"],
   techreport: ["author", "title", "institution", "year"],
   manual: ["title"],
   misc: ["title"],
   online: ["title"],
+  electronic: ["title"],
+  www: ["title"],
   patent: ["author", "title", "year"],
+  standard: ["title", "year"],
 }
 
 // Only fields that can enter a generated reference may block import because of
@@ -63,6 +71,11 @@ const renderedFields = new Set([
   "publisher",
   "institution",
   "school",
+  "organization",
+  "edition",
+  "translator",
+  "month",
+  "howpublished",
   "doi",
   "url",
   "urldate",
@@ -334,7 +347,7 @@ export function parseBibtex(source: string): BibtexParseResult {
 
   while (!scanner.done) {
     scanner.skipSpaceAndComments()
-    if (scanner.done) break
+    if (scanner.done || !scanner.source.slice(scanner.index).trim()) break
     const entryOffset = scanner.index
     if (scanner.peek() !== "@") {
       issues.push(issue("syntax", "BibTeX 条目必须以 @ 开始。", entryOffset))
@@ -1002,6 +1015,15 @@ function authors(value: string | undefined): string {
   return `${names.slice(0, 3).join(", ")}${chinese ? ", 等" : ", et al."}`
 }
 
+function creator(fields: Record<string, string>): string {
+  if (fields.author) return authors(fields.author)
+  if (fields.editor) {
+    const editor = authors(fields.editor)
+    return editor ? `${editor}, 编` : ""
+  }
+  return ""
+}
+
 function joinNonEmpty(parts: Array<string | undefined>, separator: string): string {
   return parts.filter((part): part is string => Boolean(part?.trim())).join(separator)
 }
@@ -1010,6 +1032,39 @@ function locationAndPublisher(fields: Record<string, string>): string {
   const place = decodeBibtexText(fields.address ?? fields.location ?? "")
   const publisher = decodeBibtexText(fields.publisher ?? fields.institution ?? fields.school ?? "")
   return place && publisher ? `${place}: ${publisher}` : place || publisher
+}
+
+function publicationDate(fields: Record<string, string>): string {
+  const date = decodeBibtexText(fields.date ?? "")
+  if (date) return date
+  return joinNonEmpty(
+    [decodeBibtexText(fields.year ?? ""), decodeBibtexText(fields.month ?? "")],
+    "-",
+  )
+}
+
+function edition(fields: Record<string, string>, title: string): string {
+  const value = decodeBibtexText(fields.edition ?? "")
+  if (!value || /版|\bed(?:ition)?\.?$/i.test(value)) return value
+  return /[\u3400-\u9fff]/.test(title) ? `${value}版` : `${value} ed.`
+}
+
+function publicationDetails(
+  fields: Record<string, string>,
+  title: string,
+  includePages = false,
+): string {
+  return joinNonEmpty(
+    [
+      edition(fields, title),
+      locationAndPublisher(fields),
+      publicationDate(fields),
+      includePages
+        ? decodeBibtexText(fields.pages ?? "").replace(/--/g, "-")
+        : "",
+    ],
+    ", ",
+  )
 }
 
 function volumeIssuePages(fields: Record<string, string>): string {
@@ -1042,14 +1097,16 @@ export function formatBibtexEntry(
   index: number,
 ): FormattedReference {
   const fields = entry.fields
-  const creator = authors(fields.author ?? fields.editor)
+  const formattedCreator = creator(fields)
   const rawTitle = fields.title ?? entry.citationKey
   const title = decodeBibtexText(rawTitle)
-  const year = decodeBibtexText(fields.year ?? fields.date ?? "")
+  const year = publicationDate(fields)
   const journal = decodeBibtexText(fields.journal ?? "")
   const booktitle = decodeBibtexText(fields.booktitle ?? "")
   const pages = decodeBibtexText(fields.pages ?? "").replace(/--/g, "-")
-  const prefix = `[${index + 1}] ${creator ? `${creator}. ` : ""}`
+  const prefix = `[${index + 1}] ${formattedCreator ? `${formattedCreator}. ` : ""}`
+  const translator = authors(fields.translator)
+  const translatedResponsibility = translator ? `${translator}, 译. ` : ""
   const formatWithTitle = (formattedTitle: string): string => {
     let body: string
     switch (entry.type) {
@@ -1060,19 +1117,21 @@ export function formatBibtexEntry(
         )}.`
         break
       case "book":
-        body = `${prefix}${formattedTitle}[M]. ${joinNonEmpty(
-          [locationAndPublisher(fields), year],
-          ", ",
-        )}.`
+        body = `${prefix}${formattedTitle}[M]. ${translatedResponsibility}${publicationDetails(fields, title, true)}.`
         break
       case "inbook":
       case "incollection":
+        body = `${prefix}${formattedTitle}[M]//${booktitle}. ${publicationDetails(fields, booktitle || title, true)}.`
+        break
       case "inproceedings":
       case "conference":
         body = `${prefix}${formattedTitle}[C]//${booktitle}. ${joinNonEmpty(
           [locationAndPublisher(fields), year, pages],
           ", ",
         )}.`
+        break
+      case "proceedings":
+        body = `${prefix}${formattedTitle}[C]. ${publicationDetails(fields, title, true)}.`
         break
       case "mastersthesis":
       case "phdthesis":
@@ -1094,12 +1153,30 @@ export function formatBibtexEntry(
         )}.`
         break
       case "online":
-      case "misc":
+      case "electronic":
+      case "www":
         body = `${prefix}${formattedTitle}[EB/OL]. ${year ? `${year}.` : ""}`
         break
-      case "manual":
-        body = `${prefix}${formattedTitle}[M]. ${year ? `${year}.` : ""}`
+      case "misc":
+        body = fields.url
+          ? `${prefix}${formattedTitle}[EB/OL]. ${year ? `${year}.` : ""}`
+          : `${prefix}${formattedTitle}[Z]. ${year ? `${year}.` : ""}`
         break
+      case "manual":
+        body = `${prefix}${formattedTitle}[M]. ${publicationDetails(fields, title, true)}.`
+        break
+      case "standard": {
+        const number = decodeBibtexText(fields.number ?? "")
+        const standardTitle =
+          number && !title.includes(number)
+            ? `${formattedTitle}: ${number}`
+            : formattedTitle
+        body = `${prefix}${standardTitle}[S]. ${joinNonEmpty(
+          [decodeBibtexText(fields.organization ?? ""), year],
+          ", ",
+        )}.`
+        break
+      }
       default:
         body = `${prefix}${formattedTitle}[Z]. ${year ? `${year}.` : ""}`
     }

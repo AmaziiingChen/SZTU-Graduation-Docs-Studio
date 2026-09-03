@@ -266,6 +266,68 @@ describe("BibTeX reference import", () => {
     ])
   })
 
+  it("formats books, book chapters, proceedings, and standards without collapsing their carrier types", () => {
+    const result = formatBibtex(`
+@book{book2026,
+  author={张三}, translator={李四}, title={结构化文档工程}, edition={2},
+  address={北京}, publisher={测试出版社}, year={2026}, pages={10--20}
+}
+@incollection{chapter2025,
+  author={王五}, title={连续表格分页}, booktitle={文档自动化手册}, edition={3},
+  address={上海}, publisher={合成出版社}, year={2025}, pages={30--45}
+}
+@inproceedings{paper2026,
+  author={赵六}, title={本地排版研究}, booktitle={文档工程会议论文集},
+  address={深圳}, publisher={测试学会}, year={2026}, pages={50--60}
+}
+@proceedings{proceedings2026,
+  editor={陈七}, title={文档工程会议论文集}, address={深圳},
+  publisher={测试学会}, year={2026}
+}
+@standard{standard2025,
+  title={信息与文献 参考文献著录规则}, number={GB/T 7714-2025},
+  organization={国家标准委}, year={2025}
+}`)
+
+    expect(result.issues).toEqual([])
+    expect(result.references.map((item) => item.text)).toEqual([
+      "[1] 张三. 结构化文档工程[M]. 李四, 译. 2版, 北京: 测试出版社, 2026, 10-20.",
+      "[2] 王五. 连续表格分页[M]//文档自动化手册. 3版, 上海: 合成出版社, 2025, 30-45.",
+      "[3] 赵六. 本地排版研究[C]//文档工程会议论文集. 深圳: 测试学会, 2026, 50-60.",
+      "[4] 陈七, 编. 文档工程会议论文集[C]. 深圳: 测试学会, 2026.",
+      "[5] 信息与文献 参考文献著录规则: GB/T 7714-2025[S]. 国家标准委, 2025.",
+    ])
+  })
+
+  it("distinguishes online aliases from non-network misc entries", () => {
+    const source = `
+@online{site2026,
+  author={测试作者}, title={本地文档指南}, date={2026-08-01},
+  url={https://example.invalid/guide}, urldate={2026-09-02}
+}
+@electronic{archive2025,
+  title={电子资料}, year={2025}, url={https://example.invalid/archive}
+}
+@www{website2024,
+  title={网站资料}, year={2024}, url={https://example.invalid/site}
+}
+@misc{networkMisc,
+  title={带网址的其他资料}, year={2023}, url={https://example.invalid/misc}
+}
+@misc{plainMisc, title={未分类内部资料}, year={2022}}
+`
+    const result = formatBibtex(source)
+
+    expect(result.issues).toEqual([])
+    expect(result.references.map((item) => item.text)).toEqual([
+      "[1] 测试作者. 本地文档指南[EB/OL]. 2026-08-01. https://example.invalid/guide [2026-09-02].",
+      "[2] 电子资料[EB/OL]. 2025. https://example.invalid/archive.",
+      "[3] 网站资料[EB/OL]. 2024. https://example.invalid/site.",
+      "[4] 带网址的其他资料[EB/OL]. 2023. https://example.invalid/misc.",
+      "[5] 未分类内部资料[Z]. 2022.",
+    ])
+  })
+
   it("embeds rich title runs into the complete generated reference paragraph", () => {
     const [reference] = formatBibtex(String.raw`
 @article{rich,

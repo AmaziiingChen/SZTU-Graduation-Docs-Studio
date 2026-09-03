@@ -24,7 +24,7 @@ import type { DiagnosticSummary, SztuDesktopApi } from "@/types/desktop-api"
 type DiagnosticState =
   | { status: "idle" }
   | { status: "preparing" }
-  | { status: "ready"; summary: DiagnosticSummary; saved: boolean }
+  | { status: "ready"; summary: DiagnosticSummary; saved: boolean; sent: boolean }
   | { status: "error"; message: string }
 
 function desktopApi(): SztuDesktopApi | undefined {
@@ -40,6 +40,7 @@ export function DiagnosticSupport() {
   const [state, setState] = useState<DiagnosticState>({ status: "idle" })
   const [dialogOpen, setDialogOpen] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [sending, setSending] = useState(false)
 
   const prepare = async () => {
     const api = desktopApi()
@@ -50,13 +51,37 @@ export function DiagnosticSupport() {
     setState({ status: "preparing" })
     try {
       const summary = await api.prepareDiagnosticReport()
-      setState({ status: "ready", summary, saved: false })
+      setState({ status: "ready", summary, saved: false, sent: false })
       setDialogOpen(true)
     } catch (error) {
       setState({
         status: "error",
         message: error instanceof Error ? error.message : "诊断包创建失败，请重试。",
       })
+    }
+  }
+
+  const send = async (summary?: DiagnosticSummary) => {
+    const api = desktopApi()
+    if (!api) return
+    setSending(true)
+    try {
+      const prepared = summary ?? (state.status === "ready" ? state.summary : undefined)
+      const nextSummary = prepared ?? (await api.prepareDiagnosticReport())
+      await api.sendDiagnosticReport(nextSummary.reportId)
+      const saved = state.status === "ready" && state.summary.reportId === nextSummary.reportId
+        ? state.saved
+        : false
+      setState({ status: "ready", summary: nextSummary, saved, sent: true })
+      setDialogOpen(false)
+    } catch (error) {
+      setState({
+        status: "error",
+        message: error instanceof Error ? error.message : "诊断包发送失败，请重试。",
+      })
+      setDialogOpen(false)
+    } finally {
+      setSending(false)
     }
   }
 
@@ -90,8 +115,8 @@ export function DiagnosticSupport() {
       {state.status === "error" ? (
         <Alert variant="destructive">
           <TriangleAlertIcon />
-          <AlertTitle>无法创建诊断包</AlertTitle>
-          <AlertDescription>{state.message}</AlertDescription>
+          <AlertTitle className="text-sm font-medium">诊断操作失败</AlertTitle>
+          <AlertDescription className="text-xs">{state.message}</AlertDescription>
         </Alert>
       ) : null}
       <div className="flex flex-wrap gap-2">
@@ -109,22 +134,25 @@ export function DiagnosticSupport() {
         </Button>
         <Button
           variant="outline"
-          disabled
-          title="后端留存、访问审计和自动删除机制验证后开放"
+          onClick={() => void send()}
+          disabled={state.status === "preparing" || sending}
         >
-          <SendIcon />
-          发送诊断包
+          {sending ? <LoaderCircleIcon className="animate-spin" /> : <SendIcon />}
+          {sending ? "正在发送" : "发送诊断包"}
         </Button>
       </div>
-      <p className="text-xs text-muted-foreground">
-        远程发送将在后端留存、访问审计和自动删除机制验证后开放。
-      </p>
+      {state.status === "ready" && state.sent ? (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <CheckCircle2Icon className="size-4" />
+          诊断包已发送，将在 30 天后自动删除。
+        </div>
+      ) : null}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>诊断包已通过隐私扫描</DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-xs">
               请确认摘要后保存到本机。诊断包将在十分钟后失效，需要时可重新创建。
             </DialogDescription>
           </DialogHeader>
@@ -132,8 +160,8 @@ export function DiagnosticSupport() {
             <div className="grid gap-3">
               <Alert>
                 <ShieldCheckIcon />
-                <AlertTitle>未发现敏感内容</AlertTitle>
-                <AlertDescription>
+                <AlertTitle className="text-sm font-medium">未发现敏感内容</AlertTitle>
+                <AlertDescription className="text-xs">
                   已移除 {state.summary.sourceFieldsRemoved} 个原始说明或扩展字段。
                 </AlertDescription>
               </Alert>
@@ -168,6 +196,13 @@ export function DiagnosticSupport() {
             <Button onClick={() => void save()} disabled={saving || state.status !== "ready"}>
               {saving ? <LoaderCircleIcon className="animate-spin" /> : <FileJsonIcon />}
               {saving ? "正在保存" : "保存到本机"}
+            </Button>
+            <Button
+              onClick={() => void send()}
+              disabled={sending || state.status !== "ready"}
+            >
+              {sending ? <LoaderCircleIcon className="animate-spin" /> : <SendIcon />}
+              {sending ? "正在发送" : "发送诊断包"}
             </Button>
           </DialogFooter>
         </DialogContent>

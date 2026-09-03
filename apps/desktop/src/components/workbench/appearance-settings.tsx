@@ -1,151 +1,134 @@
+import { useState } from "react"
 import { useTheme } from "next-themes"
-import {
-  CheckIcon,
-  MonitorIcon,
-  MoonIcon,
-  SunIcon,
-  type LucideIcon,
-} from "lucide-react"
+import { CheckIcon, MonitorIcon, MoonIcon, SunIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import {
+  appearancePresets,
+  applyAppearancePreset,
+  getStoredAppearancePreset,
+  type AppearancePalette,
+  type AppearancePreset,
+} from "@/lib/appearance-themes"
 import { cn } from "@/lib/utils"
 
-type ThemeOption = {
-  value: "system" | "light" | "dark"
-  label: string
-  description: string
-  icon: LucideIcon
-}
+const baseThemes = [
+  { value: "system", label: "跟随系统", icon: MonitorIcon },
+  { value: "light", label: "浅色", icon: SunIcon },
+  { value: "dark", label: "深色", icon: MoonIcon },
+] as const
 
-const themeOptions: ThemeOption[] = [
-  {
-    value: "system",
-    label: "跟随系统",
-    description: "随 macOS 或 Windows 的外观设置自动切换。",
-    icon: MonitorIcon,
-  },
-  {
-    value: "light",
-    label: "浅色",
-    description: "保持清晰明亮，适合白天和光线充足的环境。",
-    icon: SunIcon,
-  },
-  {
-    value: "dark",
-    label: "深色",
-    description: "降低大面积亮度，适合夜间或弱光环境。",
-    icon: MoonIcon,
-  },
-]
-
-function ThemePreview({ theme }: { theme: ThemeOption["value"] }) {
-  if (theme === "system") {
-    return (
-      <div
-        className="grid h-20 grid-cols-2 overflow-hidden rounded-lg border"
-        aria-hidden="true"
-      >
-        <div className="grid bg-background p-2 dark:bg-foreground">
-          <div className="rounded-sm bg-muted dark:bg-background/10" />
-          <div className="mt-2 h-2 w-3/4 rounded-full bg-muted-foreground/30 dark:bg-background/30" />
-        </div>
-        <div className="grid bg-foreground p-2 dark:bg-background">
-          <div className="rounded-sm bg-background/15 dark:bg-foreground/15" />
-          <div className="mt-2 h-2 w-3/4 rounded-full bg-background/30 dark:bg-foreground/30" />
-        </div>
-      </div>
-    )
-  }
-
-  const isDark = theme === "dark"
+function PalettePreview({ palette }: { palette: AppearancePalette }) {
   return (
-    <div
-      className={cn(
-        "grid h-20 grid-cols-[1.6rem_1fr] gap-2 rounded-lg border p-2",
-        isDark
-          ? "border-foreground/20 bg-foreground dark:bg-background"
-          : "bg-background dark:bg-foreground",
-      )}
+    <span
+      className="grid h-16 grid-cols-[1.35rem_1fr] gap-2 p-2"
+      style={{ backgroundColor: palette.background, color: palette.foreground }}
       aria-hidden="true"
     >
-      <div
-        className={cn(
-          "rounded-sm",
-          isDark
-            ? "bg-background/15 dark:bg-foreground/15"
-            : "bg-muted dark:bg-background/10",
-        )}
-      />
-      <div className="grid gap-2">
-        <div
-          className={cn(
-            "rounded-sm",
-            isDark
-              ? "bg-background/15 dark:bg-foreground/15"
-              : "bg-muted dark:bg-background/10",
-          )}
-        />
-        <div
-          className={cn(
-            "h-2 w-3/4 rounded-full",
-            isDark
-              ? "bg-background/30 dark:bg-foreground/30"
-              : "bg-muted-foreground/30 dark:bg-background/30",
-          )}
-        />
-      </div>
-    </div>
+      <span className="rounded-sm" style={{ backgroundColor: palette.accent }} />
+      <span className="grid gap-2">
+        <span className="rounded-sm" style={{ backgroundColor: palette.foreground + "18" }} />
+        <span className="h-2 w-2/3 rounded-full" style={{ backgroundColor: palette.foreground + "40" }} />
+      </span>
+    </span>
+  )
+}
+
+function PresetCard({ preset, selected, onSelect }: {
+  preset: AppearancePreset
+  selected: boolean
+  onSelect: () => void
+}) {
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      aria-pressed={selected}
+      onClick={onSelect}
+      className={cn(
+        "h-auto min-h-32 items-stretch justify-start p-3 text-left whitespace-normal",
+        selected && "border-ring ring-3 ring-ring/20",
+      )}
+    >
+      <span className="grid w-full gap-3">
+        <span className="grid grid-cols-2 overflow-hidden rounded-md border">
+          <PalettePreview palette={preset.light} />
+          <PalettePreview palette={preset.dark} />
+        </span>
+        <span className="flex items-center gap-2">
+          <span className="font-medium">{preset.label}</span>
+          {selected ? <CheckIcon className="ml-auto size-4" aria-hidden="true" /> : null}
+        </span>
+      </span>
+    </Button>
   )
 }
 
 export function AppearanceSettings() {
   const { theme = "system", setTheme } = useTheme()
+  const [selectedPresetId, setSelectedPresetId] = useState(
+    () => getStoredAppearancePreset().id,
+  )
+
+  const selectPreset = (preset: AppearancePreset) => {
+    applyAppearancePreset(preset)
+    setSelectedPresetId(preset.id)
+  }
 
   return (
     <ScrollArea className="h-full">
-      <div className="mx-auto grid w-full max-w-4xl gap-6 p-6">
+      <div className="mx-auto grid w-full max-w-5xl gap-6 p-6">
         <div className="grid gap-1">
           <h2 className="text-lg font-semibold">选择工作台外观</h2>
           <p className="text-sm text-muted-foreground">
-            外观会立即应用，并保存在当前设备上。
+            先选择浅色、深色或跟随系统，再选择一套配套主题。外观不会影响文档内容和导出样式。
           </p>
         </div>
 
-        <div
-          className="grid gap-3 sm:grid-cols-3"
-          role="group"
-          aria-label="工作台外观"
-        >
-          {themeOptions.map((option) => {
-            const selected = theme === option.value
-            const Icon = option.icon
-
-            return (
-              <Button
-                key={option.value}
-                type="button"
-                variant="outline"
-                aria-pressed={selected}
-                onClick={() => setTheme(option.value)}
-                className={cn(
-                  "h-auto min-h-44 flex-col items-stretch justify-start gap-3 p-3 text-left whitespace-normal",
-                  selected && "border-ring ring-3 ring-ring/20",
-                )}
-              >
-                <ThemePreview theme={option.value} />
-                <span className="flex items-center gap-2">
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">基础外观</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-2 sm:grid-cols-3">
+            {baseThemes.map((option) => {
+              const selected = theme === option.value
+              const Icon = option.icon
+              return (
+                <Button
+                  key={option.value}
+                  type="button"
+                  variant="outline"
+                  aria-pressed={selected}
+                  onClick={() => setTheme(option.value)}
+                  className={cn("justify-start", selected && "border-ring ring-3 ring-ring/20")}
+                >
                   <Icon className="size-4 text-muted-foreground" />
-                  <span className="font-medium">{option.label}</span>
+                  {option.label}
                   {selected ? <CheckIcon className="ml-auto size-4" aria-hidden="true" /> : null}
-                </span>
-                <span className="text-xs leading-relaxed font-normal text-muted-foreground">
-                  {option.description}
-                </span>
-              </Button>
-            )
-          })}
-        </div>
+                </Button>
+              )
+            })}
+          </CardContent>
+        </Card>
+
+        <section className="grid gap-3" aria-labelledby="appearance-presets">
+          <div className="flex items-center gap-2">
+            <h3 id="appearance-presets" className="text-sm font-medium">主题</h3>
+            <span className="text-xs text-muted-foreground">{appearancePresets.length} 款</span>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {appearancePresets.map((preset) => (
+              <PresetCard
+                key={preset.id}
+                preset={preset}
+                selected={selectedPresetId === preset.id}
+                onSelect={() => selectPreset(preset)}
+              />
+            ))}
+          </div>
+        </section>
       </div>
     </ScrollArea>
   )

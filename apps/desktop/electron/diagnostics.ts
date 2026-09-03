@@ -36,6 +36,7 @@ export const DIAGNOSTIC_OPERATIONS = [
   "qa.record",
   "diagnostic.prepare",
   "diagnostic.save",
+  "diagnostic.send",
   "telemetry.service",
   "update.service",
 ] as const
@@ -121,6 +122,12 @@ export type DiagnosticSummary = {
   environmentCheckCount: number
   sourceFieldsRemoved: number
   privacyStatus: "passed"
+}
+
+export type DiagnosticSendResult = {
+  sent: true
+  reportId: string
+  retentionDays: number
 }
 
 type PreparedReport = {
@@ -271,6 +278,7 @@ export class DiagnosticService {
       platform: NodeJS.Platform
       arch: string
       packaged: boolean
+      endpoint?: string
       now?: () => Date
     },
   ) {
@@ -389,6 +397,42 @@ export class DiagnosticService {
     await writeFile(absoluteTarget, prepared.serialized, { encoding: "utf8", mode: 0o600 })
     await chmod(absoluteTarget, 0o600)
     this.record("diagnostic.save", "success", Date.now() - startedAt)
+  }
+
+  async send(reportId: string): Promise<DiagnosticSendResult> {
+    const startedAt = Date.now()
+    const prepared = this.requirePrepared(reportId)
+    scanReport(prepared.report)
+    if (!this.options.endpoint) throw new Error("DIAGNOSTIC_REMOTE_UNCONFIGURED")
+    let response: Response
+    try {
+      response = await fetch(this.options.endpoint, {
+        method: "POST",
+        redirect: "error",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(prepared.report),
+        signal: AbortSignal.timeout(10_000),
+      })
+    } catch {
+      this.record("diagnostic.send", "failure", Date.now() - startedAt, "NETWORK_ERROR")
+      throw new Error("DIAGNOSTIC_SEND_FAILED")
+    }
+    if (response.status !== 202) {
+      this.record("diagnostic.send", "failure", Date.now() - startedAt, "REMOTE_REJECTED")
+      throw new Error("DIAGNOSTIC_SEND_FAILED")
+    }
+    const payload = (await response.json()) as unknown
+    if (
+      !isRecord(payload) ||
+      payload.ok !== true ||
+      payload.report_id !== reportId ||
+      payload.retention_days !== 30
+    ) {
+      this.record("diagnostic.send", "failure", Date.now() - startedAt, "REMOTE_INVALID")
+      throw new Error("DIAGNOSTIC_SEND_FAILED")
+    }
+    this.record("diagnostic.send", "success", Date.now() - startedAt)
+    return { sent: true, reportId, retentionDays: 30 }
   }
 
   async flush(): Promise<void> {

@@ -597,6 +597,7 @@ async function initializeRemoteServices(): Promise<void> {
     platform: process.platform,
     arch: process.arch,
     packaged: app.isPackaged,
+    endpoint: resolved.diagnosticEndpoint,
   })
   await diagnostics.initialize()
   telemetry = new TelemetryService({
@@ -697,6 +698,15 @@ function registerIpc(): void {
     })
   })
 
+  ipcMain.handle("sztu:diagnostic-send", async (event, reportId: unknown) => {
+    assertTrustedSender(event)
+    return runBridge(async () => {
+      if (!diagnostics) throw new Error("Diagnostics service is not initialized.")
+      assertRequestId(reportId, "reportId")
+      return diagnostics.send(reportId)
+    })
+  })
+
   ipcMain.handle("sztu:privacy-status", (event) => {
     assertTrustedSender(event)
     return runBridge(() => privacyNoticeStatus())
@@ -741,6 +751,31 @@ function registerIpc(): void {
       }
       await telemetry.recordUsage(parsed)
       return null
+    })
+  })
+
+  ipcMain.handle("sztu:telemetry-completion-count", (event) => {
+    assertTrustedSender(event)
+    return runBridge(async () => {
+      if (!telemetry) throw new Error("Telemetry service is not initialized.")
+      return telemetry.getCompletionCount()
+    })
+  })
+
+  ipcMain.handle("sztu:telemetry-complete-document", (event, input: unknown) => {
+    assertTrustedSender(event)
+    return runBridge(async () => {
+      if (!telemetry) throw new Error("Telemetry service is not initialized.")
+      if (!isRecord(input)) throw new IpcValidationError("文档完成参数必须是对象。")
+      assertExactKeys(input, ["documentId", "documentType"])
+      assertResourceId(input.documentId)
+      if (!["proposal", "task_book", "midterm"].includes(String(input.documentType))) {
+        throw new IpcValidationError("documentType 暂不支持。")
+      }
+      return telemetry.recordDocumentCompletion(
+        input.documentId,
+        input.documentType as "proposal" | "task_book" | "midterm",
+      )
     })
   })
 

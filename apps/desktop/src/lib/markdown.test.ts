@@ -27,7 +27,7 @@ describe("restricted Markdown document contract", () => {
     expect(markdownToParagraphs("第一段\n\n1. **建模**\n2. 验收")).toHaveLength(3)
     expect(markdownToContentBlocks("1. 建模\n2. 验收")[0]).toMatchObject({
       type: "ordered_list",
-      items: [{ marker: "1、" }, { marker: "2、" }],
+      items: [{ marker: "1." }, { marker: "2." }],
     })
   })
 
@@ -44,9 +44,9 @@ describe("restricted Markdown document contract", () => {
             children: {
               type: "ordered_list",
               items: [
-                { marker: "1、" },
+                { marker: "1." },
                 {
-                  marker: "2、",
+                  marker: "2.",
                   children: {
                     type: "unordered_list",
                     items: [{ content: { type: "paragraph" } }],

@@ -274,6 +274,61 @@ class ProposalContractTests(unittest.TestCase):
         )
         self.assertEqual(context.exception.details["rendered"], 1)
 
+    def test_bibtex_gate_accepts_extended_reference_type_matrix(self) -> None:
+        source = "\n".join(
+            [
+                "@standard{standard, title={测试标准}, year={2026}}",
+                "@proceedings{proceedings, title={测试会议录}, year={2026}}",
+                "@electronic{electronic, title={电子资料}, url={https://example.invalid}}",
+                "@www{website, title={网站资料}, url={https://example.invalid/site}}",
+            ]
+        )
+        references = [
+            "[1] 测试标准[S].",
+            "[2] 测试会议录[C].",
+            "[3] 电子资料[EB/OL].",
+            "[4] 网站资料[EB/OL].",
+        ]
+        content = {
+            "sections": {"references": references},
+            "editor_state": {
+                "bibliography": {
+                    "source_format": "bibtex",
+                    "source_text": source,
+                    "parse_status": "valid",
+                    "entry_count": len(references),
+                }
+            },
+        }
+
+        render_content = _render_content_without_editor_state(content, "proposal")
+
+        self.assertEqual(render_content["sections"]["references"], references)
+        self.assertNotIn("editor_state", render_content)
+
+    def test_bibtex_gate_rejects_incomplete_standard_without_echoing_source(self) -> None:
+        source = "@standard{private-standard, title={缺少年份的标准}}"
+        content = {
+            "sections": {"references": ["[1] 不应导出的标准[S]."]},
+            "editor_state": {
+                "bibliography": {
+                    "source_format": "bibtex",
+                    "source_text": source,
+                    "parse_status": "valid",
+                    "entry_count": 1,
+                }
+            },
+        }
+
+        with self.assertRaises(ExportError) as context:
+            _render_content_without_editor_state(content, "proposal")
+
+        self.assertEqual(context.exception.code, "DOCUMENT_NOT_READY")
+        self.assertEqual(
+            context.exception.details["reason"], "invalid_bibtex_source"
+        )
+        self.assertNotIn(source, str(context.exception.details))
+
     def test_invalid_bibtex_editor_state_blocks_render_without_echoing_source(self) -> None:
         source = "@article{private-invalid-source}"
         content = {

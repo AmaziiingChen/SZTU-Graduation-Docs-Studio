@@ -151,10 +151,13 @@ describe("Electron security boundary", () => {
       "checkEnvironment",
       "prepareDiagnosticReport",
       "saveDiagnosticReport",
+      "sendDiagnosticReport",
       "getPrivacyNoticeStatus",
       "acceptPrivacyNotice",
       "quitApp",
       "recordTelemetry",
+      "getAnonymousDocumentCount",
+      "recordDocumentCompletion",
       "getUpdateStatus",
       "revealDownloadedUpdate",
       "openToolLink",
@@ -194,10 +197,13 @@ describe("Electron security boundary", () => {
       "sztu:workspace-open",
       "sztu:diagnostic-prepare",
       "sztu:diagnostic-save",
+      "sztu:diagnostic-send",
       "sztu:privacy-status",
       "sztu:privacy-accept",
       "sztu:app-quit",
       "sztu:telemetry-record",
+      "sztu:telemetry-completion-count",
+      "sztu:telemetry-complete-document",
       "sztu:update-status",
       "sztu:update-reveal",
       "sztu:tool-open",
@@ -406,7 +412,8 @@ describe("Electron security boundary", () => {
     expect(diagnosticsSource).toContain("MAX_OPERATION_ENTRIES = 200")
     expect(diagnosticsSource).toContain("source_fields_removed")
     expect(diagnosticsSource).toContain("full_name|student_number|thesis_title")
-    expect(diagnosticsSource).not.toMatch(/\bfetch\s*\(/)
+    expect(diagnosticsSource).toContain("scanReport(prepared.report)")
+    expect(diagnosticsSource).not.toMatch(/req\.headers|process\.env|x-cloudbase-context/i)
 
     for (const sourcePath of rendererSources(rendererRoot)) {
       if (sourcePath.endsWith("electron-security.test.ts")) continue

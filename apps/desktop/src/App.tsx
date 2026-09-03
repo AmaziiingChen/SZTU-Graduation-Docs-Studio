@@ -42,6 +42,7 @@ import {
 } from "@/components/workbench/document-section-nav"
 import {
   createOutlineEditorItem,
+  isFixedThesisDirectoryTitle,
   OutlineEditor,
   type OutlineEditorItem,
   validateOutlineItems,
@@ -179,12 +180,10 @@ import {
 import { toast } from "sonner"
 
 import type {
-  CheckResult,
   DocumentRecord,
   DocumentType,
   EnvironmentCheck,
   EnvironmentResult,
-  ExportArtifactRecord,
   ExportFormat,
   ExportJobSummary,
   ExportReceipt,
@@ -286,6 +285,7 @@ type ExportHistoryState =
 type PendingExport = {
   requestId: string
   documentId: string
+  documentType: DocumentType
   previewId: string
   editVersion: number
   previewInputSha256: string
@@ -379,7 +379,7 @@ const emptyDraft: Draft = {
   taskRequiredMaterials: [],
   taskReferences: [],
   taskReferencesBibtex: "",
-  taskNature: "",
+  taskNature: "graduation_thesis",
   taskSourceType: "",
   taskResearchLevel: "",
   taskOtherResearchLevel: "",
@@ -710,24 +710,29 @@ function inlineParagraphFromBody(value: StructuredBodyValue): ParagraphInput {
 
 function legacyDirectoryItems(value: unknown): OutlineEditorItem[] {
   if (Array.isArray(value)) {
-    const items = value.map((rawItem, index) => {
-      const item = recordValue(rawItem)
-      const level =
-        typeof item.level === "number" &&
-        Number.isInteger(item.level) &&
-        item.level >= 1 &&
-        item.level <= 4
-          ? (item.level as OutlineLevel)
-          : 1
-      return {
-        id: `outline-loaded-${index}`,
-        level,
-        number: textValue(item.number),
-        title: isParagraphInput(item.title)
-          ? structuredClone(item.title)
-          : "",
-      }
-    })
+    const items = value
+      .map((rawItem, index) => {
+        const item = recordValue(rawItem)
+        const level =
+          typeof item.level === "number" &&
+          Number.isInteger(item.level) &&
+          item.level >= 1 &&
+          item.level <= 4
+            ? (item.level as OutlineLevel)
+            : 1
+        return {
+          id: `outline-loaded-${index}`,
+          level,
+          number: textValue(item.number),
+          title: isParagraphInput(item.title)
+            ? structuredClone(item.title)
+            : "",
+        }
+      })
+      .filter(
+        (item) =>
+          !isFixedThesisDirectoryTitle(paragraphInputText(item.title)),
+      )
     return items.length ? items : [createOutlineEditorItem()]
   }
   if (typeof value !== "string") return [createOutlineEditorItem()]
@@ -754,6 +759,9 @@ function legacyDirectoryItems(value: unknown): OutlineEditorItem[] {
         title: markdownInlineParagraphValue((match?.[2] ?? trimmed).trim()),
       }
     })
+    .filter(
+      (item) => !isFixedThesisDirectoryTitle(paragraphInputText(item.title)),
+    )
   return items.length ? items : [createOutlineEditorItem()]
 }
 
@@ -930,7 +938,12 @@ function documentSectionOptions(
         id: "task_materials",
         label: "所需资料",
         description: "需收集的资料，可留空",
-        state: "complete",
+        state:
+          draft.taskRequiredMaterials.length > 50
+            ? "error"
+            : structuredBodyHasText(draft.taskRequiredMaterials)
+              ? "complete"
+              : "optional",
       },
       {
         id: "task_references",
@@ -1390,7 +1403,7 @@ function draftFromRecords(
       textValue(topicInformation.nature) ||
       legacyContent.taskNature ||
       fallback?.taskNature ||
-      "",
+      "graduation_thesis",
     taskSourceType:
       textValue(topicSource.type) ||
       legacyContent.taskSourceType ||
@@ -1859,8 +1872,8 @@ const GRADUATION_COHORT_OPTIONS = [
   "2028届",
 ] as const
 const TASK_NATURE_OPTIONS = [
-  { value: "graduation_design", label: "毕业设计" },
   { value: "graduation_thesis", label: "毕业论文" },
+  { value: "graduation_design", label: "毕业设计" },
 ] as const
 const TASK_SOURCE_TYPE_OPTIONS = [
   { value: "research_project", label: "科研项目" },
@@ -2482,6 +2495,11 @@ function DocumentEditor({
         <EditorSurface
           className={cn(
             immersiveSection ? "min-h-0 flex-1" : "border-0 shadow-none ring-0",
+            isTaskBook && activeSection === "task_schedule"
+              ? "bg-transparent"
+              : isMidterm && activeSection === "midterm_directory"
+                ? "bg-transparent"
+              : undefined,
           )}
           {...(immersiveSection
             ? { "data-slot": "immersive-writing-surface" }
@@ -2826,45 +2844,6 @@ function activeTemplateCheck(
   return environment.result.checks.find((check) => check.id === checkId)
 }
 
-const checkStatusLabels: Record<CheckResult["status"], string> = {
-  not_checked: "待确认",
-  running: "检查中",
-  pass: "通过",
-  warn: "需注意",
-  fail: "未通过",
-  blocked: "受阻",
-}
-
-function ArtifactCheckSummary({ artifact }: { artifact: ExportArtifactRecord }) {
-  const checks = artifact.checks.filter((check) =>
-    ["structure", "cjk_glyph", "target_editor"].includes(check.gate),
-  )
-  if (checks.length === 0) return null
-
-  const summary = checks.map((check) => {
-    const label =
-      check.gate === "structure"
-        ? "文件结构"
-        : check.gate === "cjk_glyph"
-          ? "中文字形"
-          : "Word/WPS"
-    const status =
-      check.gate === "target_editor" && check.status === "not_checked"
-        ? "待验收"
-        : checkStatusLabels[check.status]
-    return `${label}${status}`
-  })
-
-  return (
-    <span
-      className="text-xs text-muted-foreground"
-      title={checks.map((check) => check.message).join("\n")}
-    >
-      {summary.join(" · ")}
-    </span>
-  )
-}
-
 function PaginatedPreviewPanel({
   activePane,
   documentType,
@@ -3051,8 +3030,8 @@ function InspectionPanel({
           <CardHeader className="gap-2">
             <div className="flex items-start justify-between gap-3">
               <div className="grid gap-1">
-                <CardTitle>当前状态</CardTitle>
-                <CardDescription>
+                <CardTitle className="text-sm font-medium">当前状态</CardTitle>
+                <CardDescription className="text-xs">
                   {environment.status === "loading"
                     ? "正在检查运行环境。"
                     : environment.status === "error"
@@ -3087,15 +3066,15 @@ function InspectionPanel({
                 {environment.status === "error" ? (
                   <Alert variant="destructive">
                     <TriangleAlertIcon />
-                    <AlertTitle>文档引擎未连接</AlertTitle>
-                    <AlertDescription>{environment.message}</AlertDescription>
+                    <AlertTitle className="text-sm font-medium">文档引擎未连接</AlertTitle>
+                    <AlertDescription className="text-xs">{environment.message}</AlertDescription>
                   </Alert>
                 ) : null}
                 {environment.status === "ready" && !environment.result.ready ? (
                   <Alert variant="destructive">
                     <TriangleAlertIcon />
-                    <AlertTitle>运行环境需要修复</AlertTitle>
-                    <AlertDescription>
+                    <AlertTitle className="text-sm font-medium">运行环境需要修复</AlertTitle>
+                    <AlertDescription className="text-xs">
                       请创建故障诊断包，并将文件发送给支持人员。
                     </AlertDescription>
                   </Alert>
@@ -3133,8 +3112,8 @@ function InspectionPanel({
         {exportState.status === "exporting" ? (
           <Alert>
             <LoaderCircleIcon className="animate-spin" />
-            <AlertTitle>正在导出</AlertTitle>
-            <AlertDescription className="grid gap-3">
+            <AlertTitle className="text-sm font-medium">正在导出</AlertTitle>
+            <AlertDescription className="grid gap-3 text-xs">
               <span>
                 {exportState.cancelRequested ? "正在请求取消" : "正在生成并检查"}
                 {exportState.formats.map((format) => format.toUpperCase()).join("、")}。
@@ -3154,8 +3133,8 @@ function InspectionPanel({
         {exportState.status === "error" ? (
           <Alert variant="destructive">
             <TriangleAlertIcon />
-            <AlertTitle>导出失败</AlertTitle>
-            <AlertDescription>{exportState.message}</AlertDescription>
+            <AlertTitle className="text-sm font-medium">导出失败</AlertTitle>
+            <AlertDescription className="text-xs">{exportState.message}</AlertDescription>
           </Alert>
         ) : null}
 
@@ -3163,8 +3142,8 @@ function InspectionPanel({
           <CardHeader className="gap-3">
             <div className="flex items-start justify-between gap-3">
               <div className="grid gap-1">
-                <CardTitle>导出历史</CardTitle>
-                <CardDescription>查看本地产物状态并管理历史记录。</CardDescription>
+                <CardTitle className="text-sm font-medium">导出历史</CardTitle>
+                <CardDescription className="text-xs">查看本地产物状态并管理历史记录。</CardDescription>
               </div>
               <Button
                 variant="ghost"
@@ -3188,8 +3167,8 @@ function InspectionPanel({
             {history.status === "error" ? (
               <Alert variant="destructive">
                 <TriangleAlertIcon />
-                <AlertTitle>导出历史读取失败</AlertTitle>
-                <AlertDescription>{history.message}</AlertDescription>
+                <AlertTitle className="text-sm font-medium">导出历史读取失败</AlertTitle>
+                <AlertDescription className="text-xs">{history.message}</AlertDescription>
               </Alert>
             ) : null}
             {history.status === "ready" && history.jobs.length === 0 ? (
@@ -3216,12 +3195,9 @@ function InspectionPanel({
                         <TableRow key={job.export_id}>
                           <TableCell className="min-w-48 whitespace-normal">
                             {job.artifacts.length > 0 ? (
-                              <div className="grid gap-0.5">
+                              <div className="grid gap-0.5 text-sm">
                                 {job.artifacts.map((artifact) => (
-                                  <span className="grid gap-0.5" key={artifact.artifact_id}>
-                                    <span>{artifact.display_name}</span>
-                                    <ArtifactCheckSummary artifact={artifact} />
-                                  </span>
+                                  <span key={artifact.artifact_id}>{artifact.display_name}</span>
                                 ))}
                               </div>
                             ) : (
@@ -3383,6 +3359,9 @@ export default function App() {
     status: "loading",
   })
   const [privacySubmitting, setPrivacySubmitting] = useState(false)
+  const [generatedDocumentCount, setGeneratedDocumentCount] = useState<number | null>(
+    null,
+  )
   const [environmentOnboardingCompleted, setEnvironmentOnboardingCompleted] =
     useState(environmentOnboardingIsComplete)
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({
@@ -3693,6 +3672,17 @@ export default function App() {
           : activeDocumentType
     recordTelemetry({ name: "view_opened", view })
   }, [activeDocumentType, activePane, privacyNotice.status, recordTelemetry])
+
+  useEffect(() => {
+    if (privacyNotice.status !== "accepted") return
+    const api = getDesktopApi()
+    if (!api) return
+    // oxlint-disable-next-line react/set-state-in-effect -- public aggregate is hydrated from the main-process telemetry service.
+    void api
+      .getAnonymousDocumentCount()
+      .then((count) => setGeneratedDocumentCount(count))
+      .catch(() => undefined)
+  }, [privacyNotice.status])
 
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect -- initial IPC hydration synchronizes React with the local workspace.
@@ -4305,6 +4295,21 @@ export default function App() {
         outcome: "success",
         formatCount: pending.formats.length,
       })
+      void api
+        .recordDocumentCompletion({
+          documentId: pending.documentId,
+          documentType: pending.documentType,
+        })
+        .then((result) => {
+          if (result.total !== null) {
+            setGeneratedDocumentCount(result.total)
+          } else if (result.recorded) {
+            setGeneratedDocumentCount((current) =>
+              current === null ? null : current + 1,
+            )
+          }
+        })
+        .catch(() => undefined)
       toast.success(
         `已导出 ${receipt.artifacts
           .map((artifact) => artifact.format.toUpperCase())
@@ -4399,6 +4404,7 @@ export default function App() {
       const pending: PendingExport = {
         requestId: newRequestId(),
         documentId: documentIdAtStart,
+        documentType: activeDocumentType,
         previewId: previewAtStart.preview_id,
         editVersion: versionAtStart,
         previewInputSha256: previewAtStart.input_sha256,
@@ -4675,6 +4681,7 @@ export default function App() {
         toolsActive={activePane === "tools"}
         appearanceActive={activePane === "appearance"}
         inspectionActive={activePane === "inspection"}
+        generatedDocumentCount={generatedDocumentCount}
         activeDocumentId={activePane === "document" ? activeDocumentId ?? null : null}
         documents={documents}
         deletedDocuments={deletedDocuments}

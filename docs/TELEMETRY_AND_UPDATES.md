@@ -10,12 +10,15 @@
 - 启动、30 分钟心跳和粗粒度运行时长分桶；
 - 学生档案/开题报告/任务书/中期检查/检查与导出页面的访问计数；
 - 内容检查、分页预览、模板同步、导出、人工验收的成功/失败/取消；
+- 每份本地过程文档第一次成功导出的匿名完成事件，用于展示全体累计生成份数；
 - 稳定且无内容的错误码；
 - 更新检查、发现版本和完整性校验后的下载结果。
 
 禁止上传：姓名、学号、学院、专业、班级、指导教师、论文题目、正文、目录、参考文献、文件名、绝对路径、模板内容、导出哈希、自由文本错误、剪贴板、硬件序列号、账号标识和原始日志。
 
 安装标识是随机 UUID，每 30 天轮换。事件队列位于 Electron `userData/telemetry`，权限为 `0700/0600`，最多保留 1000 条；网络失败不阻塞编辑、检查或导出。
+
+客户端仅在本机保存已经计数的文档 ID，用于避免同一份文档重复导出时反复累计；文档 ID 不进入上传事件。服务端只公开返回聚合后的累计数字，不返回单次事件或安装标识。重装应用或清除本机数据后，本地去重记录会丢失，因此该数字是匿名使用量指标，不是可审计的业务凭证。
 
 ## 本地故障诊断包
 
@@ -25,12 +28,13 @@
 
 写盘前必须执行最终隐私扫描，拒绝敏感键、用户目录路径、凭据形态或超出 256 KiB 的报告。诊断目录和 JSON 文件使用 `0700/0600` 权限，操作记录最多保留 200 条。准备好的报告在内存中十分钟后失效，用户只能通过系统保存对话框写入自行选择的位置。
 
-远程“发送诊断包”当前保持禁用。只有诊断接收服务完成严格 Schema、请求大小和频率限制、服务端二次隐私校验、独立访问权限与审计、14–30 天自动删除和删除验证后，才可以接入客户端。不得把诊断包改为原始日志上传，也不得复用客户端可见的长期服务端凭据。
+远程“发送诊断包”只在用户主动操作后执行。接收端重新执行严格 Schema 与隐私扫描，限制请求大小和频率；诊断报告仅允许服务端角色访问，保存 30 天后由 PostgreSQL 每日清理任务物理删除，接收和删除动作写入独立审计表。不得把诊断包改为原始日志上传，也不得在客户端放入服务端凭据。
 
 ## 部署拓扑
 
 - 腾讯 COS：公开只读的签名更新清单和安装包；使用自定义域名和 HTTPS。
 - 轻量服务器或云函数：接收遥测 `POST`。服务端必须再次校验 `contracts/telemetry-batch.schema.json`，限制请求体和频率，关闭或缩短接入层原始 IP 日志，按发布前隐私说明执行删除期限。
+- 同一遥测路由的只读 `GET ?aggregate=completed_documents` 仅返回匿名累计生成份数，不暴露原始事件或安装标识。
 - 客户端不包含 COS SecretId/SecretKey。遥测端点的公开项目标识不能被当作鉴权秘密；服务端依赖 Schema、速率限制、异常检测和批次 UUID 去重。
 
 ## 发布配置
@@ -39,6 +43,7 @@
 
 ```text
 SZTU_TELEMETRY_ENDPOINT=https://amazingapp-d5giro9ac73398410-1412347033.ap-shanghai.app.tcloudbase.com/api/telemetry/v1/events
+SZTU_DIAGNOSTIC_ENDPOINT=https://amazingapp-d5giro9ac73398410-1412347033.ap-shanghai.app.tcloudbase.com/api/diagnostics/v1/reports
 SZTU_UPDATE_MANIFEST_URL=https://downloads.example.com/stable/manifest.json
 SZTU_UPDATE_PUBLIC_KEY_PEM=-----BEGIN PUBLIC KEY-----...-----END PUBLIC KEY-----
 ```
@@ -48,6 +53,7 @@ SZTU_UPDATE_PUBLIC_KEY_PEM=-----BEGIN PUBLIC KEY-----...-----END PUBLIC KEY-----
 ```json
 {
   "telemetry_endpoint": "https://amazingapp-d5giro9ac73398410-1412347033.ap-shanghai.app.tcloudbase.com/api/telemetry/v1/events",
+  "diagnostic_endpoint": "https://amazingapp-d5giro9ac73398410-1412347033.ap-shanghai.app.tcloudbase.com/api/diagnostics/v1/reports",
   "update_manifest_url": "https://downloads.example.com/stable/manifest.json",
   "update_public_key_pem": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----\n"
 }

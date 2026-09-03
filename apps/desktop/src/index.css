@@ -117,6 +117,95 @@
     --sidebar-ring: oklch(0.556 0 0);
 }
 
+/* User-approved appearance presets. These values are the only custom palette
+   exception; workbench components continue to consume shadcn semantic tokens. */
+:root[data-theme-preset]:not([data-theme-preset="shadcn"]) {
+    --card: color-mix(in oklab, var(--background) 96%, var(--foreground));
+    --card-foreground: var(--foreground);
+    --popover: var(--card);
+    --popover-foreground: var(--foreground);
+    --primary-foreground: #ffffff;
+    --secondary: color-mix(in oklab, var(--background) 90%, var(--foreground));
+    --secondary-foreground: var(--foreground);
+    --muted: color-mix(in oklab, var(--background) 92%, var(--foreground));
+    --muted-foreground: color-mix(in oklab, var(--foreground) 66%, var(--background));
+    --accent: color-mix(in oklab, var(--primary) 12%, var(--background));
+    --accent-foreground: var(--foreground);
+    --border: color-mix(in oklab, var(--foreground) 14%, var(--background));
+    --input: color-mix(in oklab, var(--foreground) 18%, var(--background));
+    --ring: var(--primary);
+    --sidebar: color-mix(in oklab, var(--background) 97%, var(--foreground));
+    --sidebar-foreground: var(--foreground);
+    --sidebar-primary: var(--primary);
+    --sidebar-primary-foreground: var(--primary-foreground);
+    --sidebar-accent: var(--accent);
+    --sidebar-accent-foreground: var(--foreground);
+    --sidebar-border: var(--border);
+    --sidebar-ring: var(--ring);
+}
+
+:root[data-theme-preset="notion"] {
+    --background: #ffffff;
+    --foreground: #37352f;
+    --primary: #3183d8;
+}
+
+:root.dark[data-theme-preset="notion"] {
+    --background: #191919;
+    --foreground: #d9d9d8;
+    --primary: #3183d8;
+}
+
+:root[data-theme-preset="absolutely"] {
+    --background: #f9f9f7;
+    --foreground: #2d2d2b;
+    --primary: #cc7d5e;
+}
+
+:root.dark[data-theme-preset="absolutely"] {
+    --background: #2d2d2b;
+    --foreground: #f9f9f7;
+    --primary: #cc7d5e;
+}
+
+:root[data-theme-preset="github"] {
+    --background: #ffffff;
+    --foreground: #1f2328;
+    --primary: #0969da;
+}
+
+:root.dark[data-theme-preset="github"] {
+    --background: #0d1117;
+    --foreground: #e6edf3;
+    --primary: #1f6feb;
+}
+
+:root[data-theme-preset="everforest"] {
+    --background: #fdf6e3;
+    --foreground: #5c6a72;
+    --primary: #93b259;
+    --primary-foreground: #1f2d25;
+}
+
+:root.dark[data-theme-preset="everforest"] {
+    --background: #2d353b;
+    --foreground: #d3c6aa;
+    --primary: #a7c080;
+    --primary-foreground: #2d353b;
+}
+
+:root[data-theme-preset="linear"] {
+    --background: #fcfcfd;
+    --foreground: #1b1b1b;
+    --primary: #5e6ad2;
+}
+
+:root.dark[data-theme-preset="linear"] {
+    --background: #0f0f11;
+    --foreground: #e3e4e6;
+    --primary: #606acc;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -156,6 +245,25 @@
   }
 }
 
+@keyframes section-error-shake {
+  0%,
+  100% {
+    transform: translateX(0) rotate(0deg);
+  }
+  20% {
+    transform: translateX(-2px) rotate(-8deg);
+  }
+  40% {
+    transform: translateX(2px) rotate(8deg);
+  }
+  60% {
+    transform: translateX(-1.5px) rotate(-5deg);
+  }
+  80% {
+    transform: translateX(1px) rotate(3deg);
+  }
+}
+
 [data-slot="section-completion-mark"][data-animate="true"]
   .section-completion-circle {
   transform-origin: center;
@@ -169,11 +277,17 @@
     both;
 }
 
+[data-slot="section-error-mark"][data-animate="true"] {
+  transform-origin: center;
+  animation: section-error-shake 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   [data-slot="section-completion-mark"][data-animate="true"]
     .section-completion-circle,
   [data-slot="section-completion-mark"][data-animate="true"]
-    .section-completion-check {
+    .section-completion-check,
+  [data-slot="section-error-mark"][data-animate="true"] {
     animation: none;
   }
 }

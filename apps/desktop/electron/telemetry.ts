@@ -8,6 +8,7 @@ const INSTALLATION_ID_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000
 const MAX_QUEUE_LENGTH = 1_000
 const MAX_BATCH_LENGTH = 100
 const MAX_BATCH_BYTES = 256 * 1024
+const MAX_COMPLETED_DOCUMENTS = 10_000
 
 export type TelemetryView =
   | "profile"
@@ -26,6 +27,11 @@ export type TelemetryUsageEventInput =
       errorCode?: string
       formatCount?: number
     }
+
+export type DocumentCompletionResult = {
+  recorded: boolean
+  total: number | null
+}
 
 type TelemetryAttribute = string | number | boolean
 type TelemetryAttributes = Record<string, TelemetryAttribute>
@@ -51,7 +57,11 @@ type TelemetryState = {
   accepted_at: string | null
 }
 
-type FetchResponse = { ok: boolean; status: number }
+type FetchResponse = {
+  ok: boolean
+  status: number
+  json?: () => Promise<unknown>
+}
 type FetchLike = (
   input: string,
   init?: RequestInit,
@@ -83,6 +93,8 @@ const OUTCOMES = new Set(["success", "failure", "cancelled"])
 const STABLE_ERROR_CODE = /^[A-Z][A-Z0-9_]{0,63}$/
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const DOCUMENT_ID_PATTERN =
+  /^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i
 const EVENT_NAMES = new Set([
   "app_started",
   "heartbeat",
@@ -224,8 +236,10 @@ export class TelemetryService {
   private readonly directory: string
   private readonly statePath: string
   private readonly queuePath: string
+  private readonly completedDocumentsPath: string
   private state: TelemetryState | null = null
   private queue: TelemetryEvent[] = []
+  private completedDocumentIds = new Set<string>()
   private readonly sessionId = randomUUID()
   private readonly sessionStartedAt: number
   private timer: NodeJS.Timeout | undefined
@@ -246,6 +260,7 @@ export class TelemetryService {
     this.directory = path.join(options.userDataPath, "telemetry")
     this.statePath = path.join(this.directory, "state.json")
     this.queuePath = path.join(this.directory, "queue.json")
+    this.completedDocumentsPath = path.join(this.directory, "completed-documents.json")
     this.sessionStartedAt = this.now().getTime()
   }
 
@@ -257,6 +272,7 @@ export class TelemetryService {
     await mkdir(this.directory, { recursive: true, mode: 0o700 })
     this.state = await this.readState()
     this.queue = await this.readQueue()
+    this.completedDocumentIds = await this.readCompletedDocuments()
     if (Date.parse(this.state.rotates_at) <= this.now().getTime()) {
       this.state = {
         ...this.state,
@@ -330,6 +346,61 @@ export class TelemetryService {
       if (event.formatCount) attributes.format_count = event.formatCount
     }
     await this.record("usage_event", attributes)
+  }
+
+  async recordDocumentCompletion(
+    documentId: string,
+    documentType: "proposal" | "task_book" | "midterm",
+  ): Promise<DocumentCompletionResult> {
+    if (!DOCUMENT_ID_PATTERN.test(documentId) || !DOCUMENT_TYPES.has(documentType)) {
+      throw new Error("Document completion input is invalid.")
+    }
+    if (this.completedDocumentIds.has(documentId)) {
+      return { recorded: false, total: await this.getCompletionCount() }
+    }
+
+    await this.record("usage_event", {
+      event_name: "document_completed",
+      document_type: documentType,
+    })
+    this.completedDocumentIds.add(documentId)
+    await this.writeCompletedDocuments()
+    await this.flush()
+    return { recorded: true, total: await this.getCompletionCount() }
+  }
+
+  async getCompletionCount(): Promise<number | null> {
+    if (!this.options.endpoint || !this.getPrivacyStatus().acknowledged) return null
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 8_000)
+    timeout.unref()
+    try {
+      const endpoint = new URL(this.options.endpoint)
+      if (!/\/events\/?$/.test(endpoint.pathname)) return null
+      endpoint.search = ""
+      endpoint.searchParams.set("aggregate", "completed_documents")
+      const response = await (this.options.fetchImpl ?? fetch)(endpoint.toString(), {
+        method: "GET",
+        credentials: "omit",
+        redirect: "error",
+        signal: controller.signal,
+      })
+      if (!response.ok || !response.json) return null
+      const payload = (await response.json()) as unknown
+      if (
+        !isObject(payload) ||
+        payload.ok !== true ||
+        !Number.isSafeInteger(payload.completed_documents) ||
+        (payload.completed_documents as number) < 0
+      ) {
+        return null
+      }
+      return payload.completed_documents as number
+    } catch {
+      return null
+    } finally {
+      clearTimeout(timeout)
+    }
   }
 
   async recordUpdate(
@@ -458,12 +529,39 @@ export class TelemetryService {
     }
   }
 
+  private async readCompletedDocuments(): Promise<Set<string>> {
+    try {
+      const parsed = JSON.parse(
+        await readFile(this.completedDocumentsPath, "utf8"),
+      ) as unknown
+      if (!Array.isArray(parsed)) return new Set()
+      return new Set(
+        parsed
+          .filter((item): item is string =>
+            typeof item === "string" && DOCUMENT_ID_PATTERN.test(item),
+          )
+          .slice(-MAX_COMPLETED_DOCUMENTS),
+      )
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT" && !(error instanceof SyntaxError)) {
+        throw error
+      }
+      return new Set()
+    }
+  }
+
   private async writeState(): Promise<void> {
     await this.atomicWrite(this.statePath, this.requireState())
   }
 
   private async writeQueue(): Promise<void> {
     await this.atomicWrite(this.queuePath, this.queue)
+  }
+
+  private async writeCompletedDocuments(): Promise<void> {
+    const documentIds = [...this.completedDocumentIds].slice(-MAX_COMPLETED_DOCUMENTS)
+    this.completedDocumentIds = new Set(documentIds)
+    await this.atomicWrite(this.completedDocumentsPath, documentIds)
   }
 
   private async atomicWrite(target: string, value: unknown): Promise<void> {

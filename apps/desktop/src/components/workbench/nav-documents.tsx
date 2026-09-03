@@ -54,8 +54,8 @@ const documentGroups: Array<{
   label: string
   defaultTitle: string
 }> = [
-  { type: "proposal", label: "开题报告", defaultTitle: "未命名开题报告" },
   { type: "task_book", label: "任务书", defaultTitle: "未命名任务书" },
+  { type: "proposal", label: "开题报告", defaultTitle: "未命名开题报告" },
   { type: "midterm", label: "中期检查", defaultTitle: "未命名中期检查表" },
 ]
 

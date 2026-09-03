@@ -69,14 +69,29 @@ describe("OutlineEditor", () => {
       />,
     )
 
-    fireEvent.click(screen.getByRole("combobox", { name: "目录编号格式" }))
+    fireEvent.click(screen.getByRole("combobox", { name: "目录类型" }))
     fireEvent.click(
       await screen.findByRole("option", {
-        name: /第一种/,
+        name: /第一种目录类型/,
       }),
     )
 
     expect(onNumberingStyleChange).toHaveBeenCalledWith("chinese_hierarchy")
+  })
+
+  it("shows the thesis front and back matter as fixed unnumbered entries", () => {
+    render(
+      <OutlineEditor
+        value={items}
+        numberingStyle="decimal_hierarchy"
+        onChange={vi.fn()}
+        onNumberingStyleChange={vi.fn()}
+      />,
+    )
+
+    for (const title of ["摘要", "Abstract", "参考文献", "致谢"]) {
+      expect(screen.getByLabelText(`固定目录项：${title}`)).toBeInTheDocument()
+    }
   })
 })
 

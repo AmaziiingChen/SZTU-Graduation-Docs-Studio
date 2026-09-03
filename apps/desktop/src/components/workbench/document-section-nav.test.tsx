@@ -42,6 +42,27 @@ describe("DocumentSectionNav status marks", () => {
     ).not.toBeInTheDocument()
   })
 
+  it("shows an optional empty section as valid and announces that it can be left blank", () => {
+    const { container } = renderNavigation([
+      {
+        id: "research",
+        label: "所需资料",
+        description: "需收集的资料，可留空",
+        state: "optional",
+      },
+    ])
+
+    expect(
+      screen.getByRole("button", { name: "所需资料可留空" }),
+    ).toBeEnabled()
+    expect(
+      container.querySelector('[data-slot="section-completion-mark"]'),
+    ).toHaveAttribute("data-animate", "false")
+    expect(
+      container.querySelector('[data-slot="section-error-mark"]'),
+    ).not.toBeInTheDocument()
+  })
+
   it("draws the check only when the same section changes to complete", () => {
     vi.useFakeTimers()
     const incomplete: DocumentSectionOption[] = [
@@ -75,7 +96,8 @@ describe("DocumentSectionNav status marks", () => {
     expect(mark).toHaveAttribute("data-animate", "false")
   })
 
-  it("shows an existing completion statically and preserves error feedback", () => {
+  it("shows an existing completion statically and shakes once when it becomes invalid", () => {
+    vi.useFakeTimers()
     const { container, rerender } = renderNavigation([
       {
         id: "research",
@@ -110,6 +132,11 @@ describe("DocumentSectionNav status marks", () => {
     expect(
       screen.getByRole("button", { name: "研究内容需修改" }),
     ).toBeEnabled()
-    expect(container.querySelector(".text-destructive")).toBeInTheDocument()
+    const errorMark = container.querySelector('[data-slot="section-error-mark"]')
+    expect(errorMark).toHaveClass("text-destructive")
+    expect(errorMark).toHaveAttribute("data-animate", "true")
+
+    act(() => vi.advanceTimersByTime(420))
+    expect(errorMark).toHaveAttribute("data-animate", "false")
   })
 })

@@ -2,7 +2,11 @@ import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { SectionCompletionMark } from "@/components/workbench/section-completion-mark"
 
-export type DocumentSectionState = "complete" | "incomplete" | "error"
+export type DocumentSectionState =
+  | "complete"
+  | "incomplete"
+  | "optional"
+  | "error"
 
 export type DocumentSectionOption = {
   id: string

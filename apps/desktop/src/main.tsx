@@ -6,6 +6,9 @@ import { TooltipProvider } from "@/components/ui/tooltip"
 
 import "./index.css"
 import App from "./App.tsx"
+import { applyAppearancePreset, getStoredAppearancePreset } from "@/lib/appearance-themes"
+
+applyAppearancePreset(getStoredAppearancePreset())
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

@@ -585,6 +585,23 @@ describe("StructuredContentEditor", () => {
     )
     expect(screen.getByRole("status")).toHaveTextContent("字数 5")
     expect(screen.getByRole("status")).toHaveTextContent("段落 1")
+    expect(screen.getByRole("status")).not.toHaveClass("border-t")
+
+    const viewport = container.querySelector<HTMLElement>(
+      '[data-slot="scroll-area-viewport"]',
+    )
+    expect(viewport).not.toBeNull()
+    Object.defineProperties(viewport!, {
+      clientHeight: { configurable: true, value: 300 },
+      scrollHeight: { configurable: true, value: 600 },
+      scrollTop: { configurable: true, writable: true, value: 0 },
+    })
+    fireEvent.scroll(viewport!)
+    expect(container.querySelector('[data-slot="editor-bottom-fade"]')).toBeInTheDocument()
+
+    viewport!.scrollTop = 300
+    fireEvent.scroll(viewport!)
+    expect(container.querySelector('[data-slot="editor-bottom-fade"]')).not.toBeInTheDocument()
   })
 
   it("counts visible non-whitespace characters and non-empty paragraphs", () => {

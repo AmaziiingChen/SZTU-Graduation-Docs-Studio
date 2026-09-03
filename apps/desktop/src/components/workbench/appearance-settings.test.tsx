@@ -12,6 +12,8 @@ vi.mock("next-themes", () => ({
 afterEach(() => {
   cleanup()
   setTheme.mockClear()
+  window.localStorage.clear()
+  delete document.documentElement.dataset.themePreset
 })
 
 describe("AppearanceSettings", () => {
@@ -30,6 +32,12 @@ describe("AppearanceSettings", () => {
       "aria-pressed",
       "false",
     )
+    expect(screen.getByRole("button", { name: /Notion/ })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    )
+    expect(screen.getByRole("button", { name: /shadcn/ })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /GitHub/ })).toBeInTheDocument()
   })
 
   it("applies a selected theme through the shared theme provider", () => {
@@ -38,5 +46,17 @@ describe("AppearanceSettings", () => {
     fireEvent.click(screen.getByRole("button", { name: /深色/ }))
 
     expect(setTheme).toHaveBeenCalledWith("dark")
+  })
+
+  it("applies and persists an approved named theme preset", () => {
+    render(<AppearanceSettings />)
+
+    fireEvent.click(screen.getByRole("button", { name: /GitHub/ }))
+
+    expect(setTheme).not.toHaveBeenCalled()
+    expect(document.documentElement.dataset.themePreset).toBe("github")
+    expect(window.localStorage.getItem("sztu-workbench-appearance-preset")).toBe(
+      "github",
+    )
   })
 })

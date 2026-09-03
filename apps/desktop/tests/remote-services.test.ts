@@ -97,6 +97,52 @@ describe("telemetry privacy boundary", () => {
     expect(JSON.stringify(batch)).not.toContain("full_name")
     expect(JSON.parse(await readFile(path.join(userDataPath, "telemetry", "queue.json"), "utf8"))).toEqual([])
   })
+
+  it("records each local document completion once without transmitting its identifier", async () => {
+    const userDataPath = await temporaryDirectory()
+    const requests: Array<{ url: string; body: string }> = []
+    const aggregateRequests: string[] = []
+    const service = new TelemetryService({
+      userDataPath,
+      appVersion: "0.1.0",
+      platform: "darwin",
+      arch: "arm64",
+      packaged: true,
+      endpoint: "https://telemetry.example.test/v1/events",
+      fetchImpl: async (url, init) => {
+        if (init?.method === "GET") {
+          aggregateRequests.push(url)
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ ok: true, completed_documents: 42 }),
+          }
+        }
+        requests.push({ url, body: String(init?.body ?? "") })
+        return { ok: true, status: 202 }
+      },
+      now: () => new Date("2026-08-31T00:00:00.000Z"),
+    })
+    await service.initialize()
+    await service.acceptNotice()
+    const documentId = "11111111-1111-4111-8111-111111111111"
+
+    await expect(
+      service.recordDocumentCompletion(documentId, "proposal"),
+    ).resolves.toEqual({ recorded: true, total: 42 })
+    await expect(
+      service.recordDocumentCompletion(documentId, "proposal"),
+    ).resolves.toEqual({ recorded: false, total: 42 })
+
+    expect(requests).toHaveLength(1)
+    expect(aggregateRequests).toEqual([
+      "https://telemetry.example.test/v1/events?aggregate=completed_documents",
+      "https://telemetry.example.test/v1/events?aggregate=completed_documents",
+    ])
+    expect(requests[0].url).toBe("https://telemetry.example.test/v1/events")
+    expect(requests[0].body).toContain('"event_name":"document_completed"')
+    expect(requests[0].body).not.toContain(documentId)
+  })
 })
 
 describe("signed updates", () => {
@@ -207,6 +253,9 @@ describe("remote service configuration", () => {
     })
     expect(config.telemetryEndpoint).toBe(
       "https://amazingapp-d5giro9ac73398410-1412347033.ap-shanghai.app.tcloudbase.com/api/telemetry/v1/events",
+    )
+    expect(config.diagnosticEndpoint).toBe(
+      "https://amazingapp-d5giro9ac73398410-1412347033.ap-shanghai.app.tcloudbase.com/api/diagnostics/v1/reports",
     )
   })
 

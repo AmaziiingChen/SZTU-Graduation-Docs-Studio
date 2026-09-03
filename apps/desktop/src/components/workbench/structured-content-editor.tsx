@@ -439,6 +439,7 @@ export function StructuredContentEditor({
 }: StructuredContentEditorProps) {
   const onChangeRef = useRef(onChange)
   const onSelectionChangeRef = useRef(onSelectionChange)
+  const scrollAreaRef = useRef<HTMLDivElement>(null)
   const restoredSelectionRef = useRef("")
   const composingRef = useRef(false)
   const compositionBaselineRef = useRef("")
@@ -451,6 +452,7 @@ export function StructuredContentEditor({
   const [initialFigureNumbering] = useState(() => figureNumbering)
   const [initialContent] = useState(() => structuredBodyToTiptap(value, initialFigureNumbering))
   const [figureDraft, setFigureDraft] = useState<FigureFormValue | null>(null)
+  const [showBottomFade, setShowBottomFade] = useState(false)
   const [extensions] = useState(() => createRestrictedEditorExtensions(mode, initialFigureNumbering))
   const editorClass =
     mode === "inline"
@@ -534,6 +536,32 @@ export function StructuredContentEditor({
   useEffect(() => {
     editor.setEditable(!disabled, false)
   }, [disabled, editor])
+
+  useEffect(() => {
+    if (!fillHeight) return
+    const viewport = scrollAreaRef.current?.querySelector<HTMLElement>(
+      '[data-slot="scroll-area-viewport"]',
+    )
+    if (!viewport) return
+
+    const updateBottomFade = () => {
+      setShowBottomFade(
+        viewport.scrollTop + viewport.clientHeight < viewport.scrollHeight - 1,
+      )
+    }
+    updateBottomFade()
+    viewport.addEventListener("scroll", updateBottomFade, { passive: true })
+    const resizeObserver =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(updateBottomFade)
+    resizeObserver?.observe(viewport)
+    resizeObserver?.observe(editor.view.dom)
+    return () => {
+      viewport.removeEventListener("scroll", updateBottomFade)
+      resizeObserver?.disconnect()
+    }
+  }, [editor, fillHeight, toolbarState.characterCount, toolbarState.paragraphCount])
 
   useEffect(() => {
     editor.setOptions({
@@ -924,23 +952,33 @@ export function StructuredContentEditor({
 
         {fillHeight ? (
           <>
-            <ScrollArea className="min-h-0 flex-1">
-              <div className="relative min-h-full">
-                {toolbarState.empty ? (
-                  <span
-                    aria-hidden="true"
-                    className="pointer-events-none absolute top-3 left-3 text-sm text-muted-foreground"
-                  >
-                    {placeholder}
-                  </span>
-                ) : null}
-                <EditorContent className="min-h-full" editor={editor} />
-              </div>
-            </ScrollArea>
+            <div className="relative min-h-0 flex-1">
+              <ScrollArea ref={scrollAreaRef} className="h-full min-h-0 flex-1">
+                <div className="relative min-h-full">
+                  {toolbarState.empty ? (
+                    <span
+                      aria-hidden="true"
+                      className="pointer-events-none absolute top-3 left-3 text-sm text-muted-foreground"
+                    >
+                      {placeholder}
+                    </span>
+                  ) : null}
+                  <EditorContent className="min-h-full" editor={editor} />
+                </div>
+              </ScrollArea>
+              {showBottomFade ? (
+                // Functional edge fade: it softens clipped text without adding decoration.
+                <div
+                  data-slot="editor-bottom-fade"
+                  aria-hidden="true"
+                  className="pointer-events-none absolute right-2.5 bottom-0 left-0 h-8 bg-linear-to-b from-transparent to-background"
+                />
+              ) : null}
+            </div>
             <div
               role="status"
               aria-live="polite"
-              className="flex shrink-0 justify-end gap-3 border-t px-3 py-1.5 text-xs tabular-nums text-muted-foreground"
+              className="flex shrink-0 justify-end gap-3 px-3 py-1.5 text-xs tabular-nums text-muted-foreground"
             >
               <span>字数 {toolbarState.characterCount}</span>
               <span>段落 {toolbarState.paragraphCount}</span>

@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url"
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 const rendererRoot = path.join(repositoryRoot, "apps", "desktop", "src")
 const themePath = path.join(rendererRoot, "index.css")
+const appearanceThemesPath = path.join(rendererRoot, "lib", "appearance-themes.ts")
 const savedStatusPath = path.join(
   rendererRoot,
   "components",
@@ -159,7 +160,7 @@ for (const filePath of await collectFiles(rendererRoot)) {
     }
   }
 
-  if (filePath !== themePath) {
+  if (filePath !== themePath && filePath !== appearanceThemesPath) {
     for (const match of source.matchAll(literalColorPattern)) {
       report(
         issues,

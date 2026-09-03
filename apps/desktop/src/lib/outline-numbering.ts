@@ -20,31 +20,31 @@ export const DEFAULT_OUTLINE_NUMBERING_STYLE: OutlineNumberingStyle =
 export const OUTLINE_NUMBERING_STYLE_OPTIONS: readonly OutlineNumberingStyleOption[] = [
   {
     value: "chinese_hierarchy",
-    label: "第一种",
+    label: "第一种目录类型",
     example: "一、 → （一） → 1. → (1)",
     maxDepth: 4,
   },
   {
     value: "chapter_hierarchy",
-    label: "第二种",
+    label: "第二种目录类型",
     example: "第一章 → 一、 → （一） → 1. → (1)",
     maxDepth: 5,
   },
   {
     value: "chapter_section_hierarchy",
-    label: "第三种",
+    label: "第三种目录类型",
     example: "第一章 → 第一节 → 一、 → （一） → 1. → (1)",
     maxDepth: 6,
   },
   {
     value: "part_chapter_section_hierarchy",
-    label: "第四种",
+    label: "第四种目录类型",
     example: "第一篇 → 第一章 → 第一节 → 一、 → （一） → 1.",
     maxDepth: 6,
   },
   {
     value: "decimal_hierarchy",
-    label: "第五种",
+    label: "第五种目录类型",
     example: "1. → 1.1 → 1.1.1",
     maxDepth: 6,
   },

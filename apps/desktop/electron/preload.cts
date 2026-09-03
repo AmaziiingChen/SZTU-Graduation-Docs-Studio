@@ -38,10 +38,15 @@ contextBridge.exposeInMainWorld("sztuDesktop", {
   prepareDiagnosticReport: () => invoke("sztu:diagnostic-prepare"),
   saveDiagnosticReport: (reportId: unknown) =>
     invoke("sztu:diagnostic-save", reportId),
+  sendDiagnosticReport: (reportId: unknown) =>
+    invoke("sztu:diagnostic-send", reportId),
   getPrivacyNoticeStatus: () => invoke("sztu:privacy-status"),
   acceptPrivacyNotice: () => invoke("sztu:privacy-accept"),
   quitApp: () => invoke("sztu:app-quit"),
   recordTelemetry: (input: unknown) => invoke("sztu:telemetry-record", input),
+  getAnonymousDocumentCount: () => invoke("sztu:telemetry-completion-count"),
+  recordDocumentCompletion: (input: unknown) =>
+    invoke("sztu:telemetry-complete-document", input),
   getUpdateStatus: () => invoke("sztu:update-status"),
   revealDownloadedUpdate: () => invoke("sztu:update-reveal"),
   openToolLink: (toolId: unknown) => invoke("sztu:tool-open", toolId),

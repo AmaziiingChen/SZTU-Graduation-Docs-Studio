@@ -358,7 +358,7 @@ function taskBookDocumentFixture(
           { period: "第1—2周", content: "完成文献调研和需求分析。" },
           { period: "第3—6周", content: "完成系统实现和测试。" },
         ],
-        required_materials: ["学校发布的过程文档规范。"],
+        required_materials: [],
         references: ["[1] 合成任务书参考文献。"],
         topic_information: {
           nature: "graduation_design",
@@ -394,6 +394,11 @@ function mockApi(): SztuDesktopApi {
       privacyStatus: "passed",
     }),
     saveDiagnosticReport: vi.fn().mockResolvedValue({ saved: true }),
+    sendDiagnosticReport: vi.fn().mockResolvedValue({
+      sent: true,
+      reportId: "11111111-1111-4111-8111-111111111111",
+      retentionDays: 30,
+    }),
     getPrivacyNoticeStatus: vi.fn().mockResolvedValue({
       noticeVersion: "1.1",
       acknowledged: true,
@@ -412,6 +417,11 @@ function mockApi(): SztuDesktopApi {
     }),
     quitApp: vi.fn().mockResolvedValue(null),
     recordTelemetry: vi.fn().mockResolvedValue(null),
+    getAnonymousDocumentCount: vi.fn().mockResolvedValue(1286),
+    recordDocumentCompletion: vi.fn().mockResolvedValue({
+      recorded: true,
+      total: 1287,
+    }),
     getUpdateStatus: vi.fn().mockResolvedValue({ state: "unconfigured" }),
     revealDownloadedUpdate: vi.fn().mockResolvedValue(null),
     openToolLink: vi.fn().mockResolvedValue(null),
@@ -822,6 +832,13 @@ describe("M3 workbench persistence", () => {
     expect(screen.queryByText("可用")).not.toBeInTheDocument()
     expect(screen.queryByText("待接入")).not.toBeInTheDocument()
     expect(screen.queryByText("数据默认仅保存在本机")).not.toBeInTheDocument()
+    expect(
+      await screen.findByText((_, element) =>
+        element?.tagName === "P" &&
+        element.textContent?.replace(/\s+/g, " ").trim() ===
+          "已帮助生成 1,286 份过程文档",
+      ),
+    ).toBeInTheDocument()
     const thesisFolder = screen.getByRole("button", { name: "毕业论文" })
     expect(thesisFolder).toHaveAttribute("aria-expanded", "false")
     fireEvent.click(thesisFolder)
@@ -1220,7 +1237,7 @@ describe("M3 workbench persistence", () => {
     renderApp()
 
     await openOperationsPanel()
-    expect(screen.getByRole("button", { name: "发送诊断包" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "发送诊断包" })).toBeEnabled()
     fireEvent.click(screen.getByRole("button", { name: "创建诊断包" }))
 
     expect(
@@ -1236,6 +1253,21 @@ describe("M3 workbench persistence", () => {
       ),
     )
     expect(await screen.findByText("已保存到你选择的位置。")).toBeInTheDocument()
+  })
+
+  it("sends a privacy-scanned diagnostic package on explicit user action", async () => {
+    const api = mockApi()
+    installApi(api)
+    renderApp()
+
+    await openOperationsPanel()
+    fireEvent.click(screen.getByRole("button", { name: "发送诊断包" }))
+    await waitFor(() =>
+      expect(api.sendDiagnosticReport).toHaveBeenCalledWith(
+        "11111111-1111-4111-8111-111111111111",
+      ),
+    )
+    expect(screen.getByText("诊断包已发送，将在 30 天后自动删除。")).toBeInTheDocument()
   })
 
   it("opens the drawer and generates a paginated preview on the first action", async () => {
@@ -1884,6 +1916,12 @@ describe("M3 workbench persistence", () => {
       overwriteConfirmed: false,
       preflightToken: "e".repeat(64),
     })
+    await waitFor(() =>
+      expect(api.recordDocumentCompletion).toHaveBeenCalledWith({
+        documentId: "document-fixture",
+        documentType: "proposal",
+      }),
+    )
     closePreviewDrawer()
     await openOperationsPanel()
     expect(screen.queryByText("/tmp/sztu-export-test/proposal.pdf")).not.toBeInTheDocument()
@@ -2040,7 +2078,8 @@ describe("M3 workbench persistence", () => {
 
     await openOperationsPanel()
     expect(await screen.findByText("开题报告.docx")).toBeInTheDocument()
-    expect(screen.getByText(/文件结构通过 · Word\/WPS待验收/)).toBeInTheDocument()
+    expect(screen.queryByText(/文件结构通过/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/中文字形通过/)).not.toBeInTheDocument()
     expect(screen.getByRole("columnheader", { name: "产物" })).toBeInTheDocument()
     expect(screen.getByRole("columnheader", { name: "状态" })).toBeInTheDocument()
     expect(screen.getByLabelText("导出状态：可用")).toHaveClass(
@@ -2193,6 +2232,9 @@ describe("M3 workbench persistence", () => {
     expect(
       await screen.findByRole("heading", { name: "2026届任务书工作台" }),
     ).toBeInTheDocument()
+    expect(
+      screen.getByRole("button", { name: "所需资料可留空" }),
+    ).toBeEnabled()
     expect(screen.queryByRole("textbox", { name: "论文题目" })).toBeNull()
     fireEvent.click(screen.getByRole("button", { name: /内容要求/ }))
     expect(
@@ -2206,6 +2248,9 @@ describe("M3 workbench persistence", () => {
     expect(screen.getByLabelText("第 1 项时间范围")).toHaveValue("第1—2周")
     expect(screen.getByRole("textbox", { name: "第 1 项进度内容" })).toHaveTextContent(
       "完成文献调研和需求分析。",
+    )
+    fireEvent.click(
+      screen.getByRole("button", { name: "编辑第 2 项进度内容" }),
     )
     expect(screen.getByLabelText("第 2 项时间范围")).toHaveValue("第3—6周")
     fireEvent.click(screen.getByRole("button", { name: /所需资料/ }))
@@ -2355,8 +2400,11 @@ describe("M3 workbench persistence", () => {
       mode: "persistent",
       profile,
       profile_draft: null,
-      document: taskBookDocumentFixture({ id: "new-task-book" }),
-      documents: [proposal, taskBookDocumentFixture({ id: "new-task-book" })],
+      document: taskBookDocumentFixture({ id: "new-task-book", content: null }),
+      documents: [
+        proposal,
+        taskBookDocumentFixture({ id: "new-task-book", content: null }),
+      ],
       deleted_documents: [],
     })
     installApi(api)
@@ -2377,6 +2425,8 @@ describe("M3 workbench persistence", () => {
     expect(
       await screen.findByRole("heading", { name: "2026届任务书工作台" }),
     ).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: /选题信息/ }))
+    expect(screen.getByLabelText("选题性质")).toHaveTextContent("毕业论文")
   })
 
   it("validates task-book schedule fields independently", async () => {
@@ -2429,6 +2479,9 @@ describe("M3 workbench persistence", () => {
     renderApp()
 
     fireEvent.click(await screen.findByRole("button", { name: /进度安排/ }))
+    fireEvent.click(
+      screen.getByRole("button", { name: "编辑第 3 项进度内容" }),
+    )
     expect(screen.getByLabelText("第 3 项时间范围")).toHaveValue("")
     expect(screen.getByText("第 3 项缺少时间范围。")).toBeInTheDocument()
   })

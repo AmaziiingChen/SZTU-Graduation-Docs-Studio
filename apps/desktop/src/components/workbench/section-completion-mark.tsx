@@ -15,7 +15,7 @@ import {
 import type { DocumentSectionState } from "@/components/workbench/document-section-nav"
 import { cn } from "@/lib/utils"
 
-const completionAnimationDuration = 420
+const statusAnimationDuration = 420
 
 function StatusTooltip({
   label,
@@ -50,12 +50,14 @@ export function SectionCompletionMark({
   state,
   completeLabel = "已填写",
   errorLabel = "需修改",
+  optionalLabel = "可留空",
   className,
   animateOnMount = false,
 }: {
   state: DocumentSectionState
   completeLabel?: string
   errorLabel?: string
+  optionalLabel?: string
   className?: string
   animateOnMount?: boolean
 }) {
@@ -63,22 +65,29 @@ export function SectionCompletionMark({
     animateOnMount && state === "complete" ? "incomplete" : state,
   )
   const animationTimerRef = useRef<number | null>(null)
-  const [animationActive, setAnimationActive] = useState(false)
+  const [animatedState, setAnimatedState] = useState<
+    "complete" | "error" | null
+  >(null)
 
   useLayoutEffect(() => {
     const previousState = previousStateRef.current
     previousStateRef.current = state
-    if (state !== "complete" || previousState === "complete") return
+    if (
+      (state !== "complete" && state !== "error") ||
+      previousState === state
+    ) {
+      return
+    }
 
-    // oxlint-disable-next-line react/set-state-in-effect -- a layout effect starts the completion animation before the newly completed mark is painted.
-    setAnimationActive(true)
+    // oxlint-disable-next-line react/set-state-in-effect -- a layout effect starts the status animation before the newly changed mark is painted.
+    setAnimatedState(state)
     if (animationTimerRef.current !== null) {
       window.clearTimeout(animationTimerRef.current)
     }
     animationTimerRef.current = window.setTimeout(() => {
       animationTimerRef.current = null
-      setAnimationActive(false)
-    }, completionAnimationDuration)
+      setAnimatedState(null)
+    }, statusAnimationDuration)
   }, [state])
 
   useEffect(
@@ -98,10 +107,45 @@ export function SectionCompletionMark({
     )
   }
 
+  if (state === "optional") {
+    return (
+      <StatusTooltip label={optionalLabel} className={className}>
+        <svg
+          data-slot="section-completion-mark"
+          data-animate="false"
+          viewBox="0 0 20 20"
+          className="size-5 overflow-visible"
+          aria-hidden="true"
+        >
+          <circle
+            className="section-completion-circle fill-emerald-500"
+            cx="10"
+            cy="10"
+            r="8.5"
+          />
+          <path
+            className="section-completion-check stroke-white"
+            d="m6.2 10.1 2.55 2.55 5.15-5.15"
+            pathLength="1"
+            fill="none"
+            strokeWidth="2.1"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </StatusTooltip>
+    )
+  }
+
   if (state === "error") {
     return (
       <StatusTooltip label={errorLabel} className={className}>
-        <CircleAlertIcon className="size-4 text-destructive" aria-hidden="true" />
+        <CircleAlertIcon
+          data-slot="section-error-mark"
+          data-animate={animatedState === "error" ? "true" : "false"}
+          className="size-4 text-destructive"
+          aria-hidden="true"
+        />
       </StatusTooltip>
     )
   }
@@ -110,7 +154,7 @@ export function SectionCompletionMark({
     <StatusTooltip label={completeLabel} className={className}>
       <svg
         data-slot="section-completion-mark"
-        data-animate={animationActive ? "true" : "false"}
+        data-animate={animatedState === "complete" ? "true" : "false"}
         viewBox="0 0 20 20"
         className="size-5 overflow-visible"
         aria-hidden="true"
