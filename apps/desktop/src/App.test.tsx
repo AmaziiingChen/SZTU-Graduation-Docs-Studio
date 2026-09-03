@@ -935,7 +935,7 @@ describe("M3 workbench persistence", () => {
     expect(screen.getByRole("heading", { level: 2, name: "三线表生成器" })).toBeInTheDocument()
     expect(screen.getByRole("navigation", { name: "当前文档板块" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "三线表" })).toHaveAttribute("aria-current", "page")
-    expect(screen.queryByLabelText("保存状态：已保存")).not.toBeInTheDocument()
+    expect(screen.getByLabelText("保存状态：已保存")).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "检查内容" })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "预览&导出" })).not.toBeInTheDocument()
 

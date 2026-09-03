@@ -1,8 +1,6 @@
-import { useMemo, useState } from "react"
-import { Grid3X3Icon } from "lucide-react"
+import { useMemo } from "react"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Button } from "@/components/ui/button"
 import {
   Card,
   CardContent,
@@ -26,8 +24,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Textarea } from "@/components/ui/textarea"
 import { LatexSourceCard } from "@/components/workbench/latex-source-card"
+import { ToolDraftActions } from "@/components/workbench/tool-draft-actions"
+import { VisualTableEditor } from "@/components/workbench/visual-table-editor"
 import {
   generateGeneralTableLatex,
   requiredPackagesForGeneralTable,
@@ -35,6 +34,7 @@ import {
   type TableColumnAlignment,
 } from "@/lib/general-table"
 import { parseTableText } from "@/lib/three-line-table"
+import { useLocalDraft } from "@/lib/use-local-draft"
 
 const exampleData = "实验条件\t样品 A\t样品 B\n温度（℃）\t25\t50\n转化率（%）\t86.2\t92.7"
 
@@ -50,13 +50,58 @@ const modeLabels: Record<GeneralTableMode, string> = {
   long_table: "跨页表格",
 }
 
+type GeneralTableDraft = {
+  caption: string
+  label: string
+  source: string
+  headerRows: number
+  mode: GeneralTableMode
+  alignments: TableColumnAlignment[]
+  rowCount?: number
+  columnCount?: number
+}
+
+const storageKey = "sztu-docs.thesis-tools.general-table.v1"
+const initialDraft: GeneralTableDraft = {
+  caption: "",
+  label: "",
+  source: "",
+  headerRows: 1,
+  mode: "natural",
+  alignments: [],
+}
+
+function isGeneralTableDraft(value: unknown): value is GeneralTableDraft {
+  if (!value || typeof value !== "object") return false
+  const draft = value as Record<string, unknown>
+  return typeof draft.caption === "string" &&
+    typeof draft.label === "string" &&
+    typeof draft.source === "string" &&
+    typeof draft.headerRows === "number" &&
+    Number.isInteger(draft.headerRows) &&
+    ["natural", "page_width", "long_table"].includes(String(draft.mode)) &&
+    Array.isArray(draft.alignments) &&
+    draft.alignments.every((item) => ["left", "center", "right"].includes(String(item))) &&
+    (draft.rowCount === undefined || typeof draft.rowCount === "number") &&
+    (draft.columnCount === undefined || typeof draft.columnCount === "number")
+}
+
 export function GeneralTableGenerator() {
-  const [caption, setCaption] = useState("")
-  const [label, setLabel] = useState("")
-  const [source, setSource] = useState("")
-  const [headerRows, setHeaderRows] = useState(1)
-  const [mode, setMode] = useState<GeneralTableMode>("natural")
-  const [alignments, setAlignments] = useState<TableColumnAlignment[]>([])
+  const { value: draft, setValue: setDraft, saveState, clearDraft } = useLocalDraft({
+    storageKey,
+    initialValue: initialDraft,
+    isValid: isGeneralTableDraft,
+  })
+  const {
+    caption,
+    label,
+    source,
+    headerRows,
+    mode,
+    alignments,
+    rowCount,
+    columnCount: draftColumnCount,
+  } = draft
   const parsed = useMemo(() => parseTableText(source), [source])
   const columnCount = parsed.rows[0]?.length ?? 0
   const valid = parsed.rows.length > 0 && parsed.errors.length === 0
@@ -86,14 +131,17 @@ export function GeneralTableGenerator() {
   return (
     <ScrollArea className="h-full">
       <main className="mx-auto grid w-full max-w-6xl gap-6 p-6" aria-labelledby="general-table-title">
-        <div className="space-y-1">
-          <h2 id="general-table-title" className="text-xl font-semibold">表格生成器</h2>
-          <p className="text-sm text-muted-foreground">
-            生成普通网格表、通栏表或可跨页表格；适合从 Excel、WPS 直接粘贴数据。
-          </p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="space-y-1">
+            <h2 id="general-table-title" className="text-xl font-semibold">表格生成器</h2>
+            <p className="text-sm text-muted-foreground">
+              生成普通网格表、通栏表或可跨页表格；适合从 Excel、WPS 直接粘贴数据。
+            </p>
+          </div>
+          <ToolDraftActions saveState={saveState} draftName="表格" onClear={clearDraft} />
         </div>
 
-        <div className="grid items-start gap-6 xl:grid-cols-2">
+        <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.25fr)_minmax(20rem,0.75fr)]">
           <Card>
             <CardHeader>
               <CardTitle>表格数据</CardTitle>
@@ -103,13 +151,13 @@ export function GeneralTableGenerator() {
               <div className="grid gap-2 sm:grid-cols-2">
                 <label className="grid gap-2 text-sm font-medium">
                   表题（可选）
-                  <Input value={caption} onChange={(event) => setCaption(event.target.value)} />
+                  <Input value={caption} onChange={(event) => setDraft((current) => ({ ...current, caption: event.target.value }))} />
                 </label>
                 <label className="grid gap-2 text-sm font-medium">
                   引用标签（可选）
                   <Input
                     value={label}
-                    onChange={(event) => setLabel(event.target.value)}
+                    onChange={(event) => setDraft((current) => ({ ...current, label: event.target.value }))}
                     placeholder="例如：tab:result"
                   />
                 </label>
@@ -117,7 +165,7 @@ export function GeneralTableGenerator() {
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="grid gap-2 text-sm font-medium">
                   表格类型
-                  <Select value={mode} onValueChange={(value) => setMode(value as GeneralTableMode)}>
+                  <Select value={mode} onValueChange={(value) => setDraft((current) => ({ ...current, mode: value as GeneralTableMode }))}>
                     <SelectTrigger aria-label="表格类型"><span>{modeLabels[mode]}</span></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="natural">普通表格</SelectItem>
@@ -128,7 +176,7 @@ export function GeneralTableGenerator() {
                 </label>
                 <label className="grid gap-2 text-sm font-medium">
                   表头行数
-                  <Select value={String(headerRows)} onValueChange={(value) => setHeaderRows(Number(value))}>
+                  <Select value={String(headerRows)} onValueChange={(value) => setDraft((current) => ({ ...current, headerRows: Number(value) }))}>
                     <SelectTrigger aria-label="表头行数">
                       <span>{headerRows === 0 ? "无表头" : `${headerRows} 行`}</span>
                     </SelectTrigger>
@@ -140,20 +188,12 @@ export function GeneralTableGenerator() {
                   </Select>
                 </label>
               </div>
-              <label className="grid gap-2 text-sm font-medium">
-                数据
-                <Textarea
-                  value={source}
-                  onChange={(event) => setSource(event.target.value)}
-                  placeholder={exampleData}
-                  className="min-h-56 resize-y"
-                  aria-invalid={parsed.errors.length > 0 || undefined}
-                />
-              </label>
-              <Button type="button" variant="outline" className="w-fit" onClick={() => setSource(exampleData)}>
-                <Grid3X3Icon />
-                填入示例
-              </Button>
+              <VisualTableEditor
+                value={{ source, rowCount, columnCount: draftColumnCount }}
+                exampleData={exampleData}
+                headerRows={headerRows}
+                onChange={(next) => setDraft((current) => ({ ...current, ...next }))}
+              />
               {valid ? (
                 <fieldset className="grid gap-2">
                   <legend className="text-sm font-medium">各列对齐</legend>
@@ -165,10 +205,10 @@ export function GeneralTableGenerator() {
                         </span>
                         <Select
                           value={normalizedAlignments[index]}
-                          onValueChange={(value) => setAlignments((current) => {
-                            const next = [...current]
+                          onValueChange={(value) => setDraft((current) => {
+                            const next = [...current.alignments]
                             next[index] = value as TableColumnAlignment
-                            return next
+                            return { ...current, alignments: next }
                           })}
                         >
                           <SelectTrigger aria-label={`${heading || `第 ${index + 1} 列`}对齐方式`} className="w-28">

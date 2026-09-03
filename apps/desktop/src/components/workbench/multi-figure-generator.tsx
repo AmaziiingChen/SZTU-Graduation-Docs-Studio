@@ -25,13 +25,22 @@ import {
   SelectTrigger,
 } from "@/components/ui/select"
 import { LatexSourceCard } from "@/components/workbench/latex-source-card"
+import { ToolDraftActions } from "@/components/workbench/tool-draft-actions"
 import { generateMultiFigureLatex, validateFigureFilenames } from "@/lib/multi-figure"
+import {
+  clearMultiFigureSessionImages,
+  getMultiFigureSessionImages,
+  setMultiFigureSessionImages,
+  type SessionFigureItem,
+} from "@/lib/multi-figure-session"
+import { useLocalDraft } from "@/lib/use-local-draft"
 
-type FigureItem = {
-  id: string
-  file: File
-  previewUrl: string
+type MultiFigureDraft = {
+  columns: number
   caption: string
+  label: string
+  pathPrefix: string
+  images: Array<{ filename: string; caption: string }>
 }
 
 let imageSequence = 0
@@ -43,7 +52,34 @@ const previewGridClasses: Record<number, string> = {
   4: "grid-cols-4",
 }
 
-function moveItem(items: FigureItem[], from: number, to: number): FigureItem[] {
+const storageKey = "sztu-docs.thesis-tools.multi-figure.v1"
+const initialDraft: MultiFigureDraft = {
+  columns: 2,
+  caption: "",
+  label: "",
+  pathPrefix: "figures",
+  images: [],
+}
+
+function isMultiFigureDraft(value: unknown): value is MultiFigureDraft {
+  if (!value || typeof value !== "object") return false
+  const draft = value as Record<string, unknown>
+  return typeof draft.columns === "number" &&
+    Number.isInteger(draft.columns) &&
+    draft.columns >= 1 &&
+    draft.columns <= 4 &&
+    typeof draft.caption === "string" &&
+    typeof draft.label === "string" &&
+    typeof draft.pathPrefix === "string" &&
+    Array.isArray(draft.images) &&
+    draft.images.every((item) => {
+      if (!item || typeof item !== "object") return false
+      const image = item as Record<string, unknown>
+      return typeof image.filename === "string" && typeof image.caption === "string"
+    })
+}
+
+function moveItem(items: SessionFigureItem[], from: number, to: number): SessionFigureItem[] {
   if (to < 0 || to >= items.length) return items
   const next = [...items]
   const [item] = next.splice(from, 1)
@@ -52,21 +88,36 @@ function moveItem(items: FigureItem[], from: number, to: number): FigureItem[] {
 }
 
 export function MultiFigureGenerator() {
-  const [images, setImages] = useState<FigureItem[]>([])
-  const [columns, setColumns] = useState(2)
-  const [caption, setCaption] = useState("")
-  const [label, setLabel] = useState("")
-  const [pathPrefix, setPathPrefix] = useState("figures")
-  const objectUrls = useRef(new Set<string>())
+  const { value: draft, setValue: setDraft, saveState, clearDraft } = useLocalDraft({
+    storageKey,
+    initialValue: initialDraft,
+    isValid: isMultiFigureDraft,
+  })
+  const { columns, caption, label, pathPrefix } = draft
+  const [images, setImages] = useState<SessionFigureItem[]>(getMultiFigureSessionImages)
+  const objectUrls = useRef(new Set(images.map((item) => item.previewUrl)))
   const filenameErrors = useMemo(
     () => validateFigureFilenames(images.map((item) => ({ filename: item.file.name }))),
     [images],
   )
 
-  useEffect(() => () => {
-    objectUrls.current.forEach((url) => URL.revokeObjectURL(url))
-    objectUrls.current.clear()
+  useEffect(() => {
+    const releaseImages = () => {
+      clearMultiFigureSessionImages().forEach((item) => URL.revokeObjectURL(item.previewUrl))
+      objectUrls.current.clear()
+    }
+    window.addEventListener("beforeunload", releaseImages)
+    return () => window.removeEventListener("beforeunload", releaseImages)
   }, [])
+
+  const applyImages = (next: SessionFigureItem[]) => {
+    setMultiFigureSessionImages(next)
+    setImages(next)
+    setDraft((current) => ({
+      ...current,
+      images: next.map((item) => ({ filename: item.file.name, caption: item.caption })),
+    }))
+  }
 
   const addImages = (files: FileList | null) => {
     if (!files) return
@@ -76,21 +127,27 @@ export function MultiFigureGenerator() {
       const previewUrl = URL.createObjectURL(file)
       objectUrls.current.add(previewUrl)
       imageSequence += 1
-      return { id: `figure-${imageSequence}`, file, previewUrl, caption: "" }
+      const restoredCaption = draft.images.find((item) => item.filename === file.name)?.caption ?? ""
+      return { id: `figure-${imageSequence}`, file, previewUrl, caption: restoredCaption }
     })
-    setImages((current) => [...current, ...additions])
+    applyImages([...images, ...additions])
     if (accepted.length > room) toast.error("一次排版最多支持 12 张图片。")
   }
 
   const removeImage = (id: string) => {
-    setImages((current) => {
-      const target = current.find((item) => item.id === id)
-      if (target) {
-        URL.revokeObjectURL(target.previewUrl)
-        objectUrls.current.delete(target.previewUrl)
-      }
-      return current.filter((item) => item.id !== id)
-    })
+    const target = images.find((item) => item.id === id)
+    if (target) {
+      URL.revokeObjectURL(target.previewUrl)
+      objectUrls.current.delete(target.previewUrl)
+    }
+    applyImages(images.filter((item) => item.id !== id))
+  }
+
+  const clearAll = () => {
+    clearMultiFigureSessionImages().forEach((item) => URL.revokeObjectURL(item.previewUrl))
+    objectUrls.current.clear()
+    setImages([])
+    clearDraft()
   }
 
   const latex = useMemo(
@@ -109,11 +166,14 @@ export function MultiFigureGenerator() {
   return (
     <ScrollArea className="h-full">
       <main className="mx-auto grid w-full max-w-6xl gap-6 p-6" aria-labelledby="multi-figure-title">
-        <div className="space-y-1">
-          <h2 id="multi-figure-title" className="text-xl font-semibold">多图排版</h2>
-          <p className="text-sm text-muted-foreground">
-            选择本机图片、调整顺序和列数，生成 figure 与 subfigure 源码。
-          </p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="space-y-1">
+            <h2 id="multi-figure-title" className="text-xl font-semibold">多图排版</h2>
+            <p className="text-sm text-muted-foreground">
+              选择本机图片、调整顺序和列数，生成 figure 与 subfigure 源码。
+            </p>
+          </div>
+          <ToolDraftActions saveState={saveState} draftName="多图排版" onClear={clearAll} />
         </div>
 
         <div className="grid items-start gap-6 xl:grid-cols-[minmax(20rem,0.85fr)_minmax(28rem,1.15fr)]">
@@ -133,10 +193,15 @@ export function MultiFigureGenerator() {
                   event.target.value = ""
                 }}
               />
+              {images.length === 0 && draft.images.length > 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  已恢复上次的布局和 {draft.images.length} 张图片信息；重新选择原图片后可继续预览。
+                </p>
+              ) : null}
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="grid gap-2 text-sm font-medium">
                   每行图片数
-                  <Select value={String(columns)} onValueChange={(value) => setColumns(Number(value))}>
+                  <Select value={String(columns)} onValueChange={(value) => setDraft((current) => ({ ...current, columns: Number(value) }))}>
                     <SelectTrigger aria-label="每行图片数"><span>{columns} 张</span></SelectTrigger>
                     <SelectContent>
                       {[1, 2, 3, 4].map((count) => (
@@ -149,20 +214,20 @@ export function MultiFigureGenerator() {
                   图片目录
                   <Input
                     value={pathPrefix}
-                    onChange={(event) => setPathPrefix(event.target.value)}
+                    onChange={(event) => setDraft((current) => ({ ...current, pathPrefix: event.target.value }))}
                     placeholder="figures"
                   />
                 </label>
               </div>
               <label className="grid gap-2 text-sm font-medium">
                 整组图题（可选）
-                <Input value={caption} onChange={(event) => setCaption(event.target.value)} />
+                <Input value={caption} onChange={(event) => setDraft((current) => ({ ...current, caption: event.target.value }))} />
               </label>
               <label className="grid gap-2 text-sm font-medium">
                 引用标签（可选）
                 <Input
                   value={label}
-                  onChange={(event) => setLabel(event.target.value)}
+                  onChange={(event) => setDraft((current) => ({ ...current, label: event.target.value }))}
                   placeholder="例如：fig:experiment"
                 />
               </label>
@@ -183,7 +248,7 @@ export function MultiFigureGenerator() {
                           value={item.caption}
                           aria-label={`图片 ${index + 1} 子标题`}
                           placeholder="子标题（可选）"
-                          onChange={(event) => setImages((current) => current.map((image) =>
+                          onChange={(event) => applyImages(images.map((image) =>
                             image.id === item.id ? { ...image, caption: event.target.value } : image,
                           ))}
                         />
@@ -195,7 +260,7 @@ export function MultiFigureGenerator() {
                           size="icon-sm"
                           aria-label={`上移图片 ${index + 1}`}
                           disabled={index === 0}
-                          onClick={() => setImages((current) => moveItem(current, index, index - 1))}
+                          onClick={() => applyImages(moveItem(images, index, index - 1))}
                         >
                           <ArrowUpIcon />
                         </Button>
@@ -205,7 +270,7 @@ export function MultiFigureGenerator() {
                           size="icon-sm"
                           aria-label={`下移图片 ${index + 1}`}
                           disabled={index === images.length - 1}
-                          onClick={() => setImages((current) => moveItem(current, index, index + 1))}
+                          onClick={() => applyImages(moveItem(images, index, index + 1))}
                         >
                           <ArrowDownIcon />
                         </Button>
