@@ -5,6 +5,7 @@ import {
   type ComponentProps,
   type ReactNode,
 } from "react"
+import { createPortal } from "react-dom"
 import {
   EditorContent,
   useEditor,
@@ -22,6 +23,7 @@ import {
   LinkIcon,
   ListIcon,
   ListOrderedIcon,
+  PilcrowIcon,
   Redo2Icon,
   SubscriptIcon,
   SuperscriptIcon,
@@ -46,8 +48,9 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Kbd, KbdGroup } from "@/components/ui/kbd"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
+import { ContentStatistics } from "@/components/workbench/content-statistics"
+import { FadingScrollArea } from "@/components/workbench/fading-scroll-area"
 import {
   Select,
   SelectContent,
@@ -86,6 +89,17 @@ type StoredExternalValue = {
   fingerprint: string
 }
 
+type SelectionToolbarPosition = {
+  left: number
+  top: number
+  placement: "above" | "below"
+}
+
+type SelectionToolbarPresentation = {
+  position: SelectionToolbarPosition
+  state: "open" | "closing"
+}
+
 function replaceExternalContent(editor: Editor, document: JSONContent) {
   editor.commands.setContent(document, {
     emitUpdate: false,
@@ -119,7 +133,13 @@ type ToolbarState = {
   figures: Array<{ id: string; label: string; caption: string }>
   selectedFigure: FigureFormValue | null
   characterCount: number
+  chineseCharacterCount: number
+  englishWordCount: number
   paragraphCount: number
+  orderedListItemCount: number
+  bulletListItemCount: number
+  imageCount: number
+  selectedCharacterCount: number
 }
 
 function documentStatistics(editor: Editor) {
@@ -129,14 +149,31 @@ function documentStatistics(editor: Editor) {
     " ",
   )
   let paragraphCount = 0
+  let orderedListItemCount = 0
+  let bulletListItemCount = 0
+  let imageCount = 0
   editor.state.doc.descendants((node) => {
     if (node.type.name === "paragraph" && node.textContent.trim()) {
       paragraphCount += 1
     }
+    if (node.type.name === "orderedList") orderedListItemCount += node.childCount
+    if (node.type.name === "bulletList") bulletListItemCount += node.childCount
+    if (node.type.name === "figureBlock") imageCount += 1
   })
+  const characters = Array.from(text.replace(/\s/gu, ""))
+  const selection = editor.state.selection
+  const selectedText = selection.empty
+    ? ""
+    : editor.state.doc.textBetween(selection.from, selection.to, " ")
   return {
-    characterCount: Array.from(text.replace(/\s/gu, "")).length,
+    characterCount: characters.length,
+    chineseCharacterCount: characters.filter((character) => /\p{Script=Han}/u.test(character)).length,
+    englishWordCount: text.match(/[\p{Script=Latin}\p{Number}]+(?:['’-][\p{Script=Latin}\p{Number}]+)*/gu)?.length ?? 0,
     paragraphCount,
+    orderedListItemCount,
+    bulletListItemCount,
+    imageCount,
+    selectedCharacterCount: Array.from(selectedText.replace(/\s/gu, "")).length,
   }
 }
 
@@ -161,6 +198,8 @@ export type StructuredContentEditorProps = {
   ariaLabel?: string
   ariaDescribedBy?: string
   ariaInvalid?: boolean
+  footerMessage?: string
+  footerMessageId?: string
   className?: string
   mode?: StructuredEditorMode
   selectionSnapshot?: EditorSelectionSnapshot
@@ -426,6 +465,8 @@ export function StructuredContentEditor({
   ariaLabel = "正文内容",
   ariaDescribedBy,
   ariaInvalid = false,
+  footerMessage,
+  footerMessageId,
   className,
   mode = "body",
   selectionSnapshot,
@@ -439,20 +480,23 @@ export function StructuredContentEditor({
 }: StructuredContentEditorProps) {
   const onChangeRef = useRef(onChange)
   const onSelectionChangeRef = useRef(onSelectionChange)
-  const scrollAreaRef = useRef<HTMLDivElement>(null)
   const restoredSelectionRef = useRef("")
   const composingRef = useRef(false)
   const compositionBaselineRef = useRef("")
   const compositionFingerprintsRef = useRef(new Set<string>())
   const pendingExternalRef = useRef<StoredExternalValue | null>(null)
   const compositionTimerRef = useRef<number | null>(null)
+  const pointerSelectingRef = useRef(false)
+  const selectionToolbarCloseTimerRef = useRef<number | null>(null)
+  const [formattingMarksVisible, setFormattingMarksVisible] = useState(false)
+  const [selectionToolbarPresentation, setSelectionToolbarPresentation] =
+    useState<SelectionToolbarPresentation | null>(null)
   const effectiveFigureChapters = figureChapters.length
     ? figureChapters
     : [{ value: 1, label: "第 1 章" }]
   const [initialFigureNumbering] = useState(() => figureNumbering)
   const [initialContent] = useState(() => structuredBodyToTiptap(value, initialFigureNumbering))
   const [figureDraft, setFigureDraft] = useState<FigureFormValue | null>(null)
-  const [showBottomFade, setShowBottomFade] = useState(false)
   const [extensions] = useState(() => createRestrictedEditorExtensions(mode, initialFigureNumbering))
   const editorClass =
     mode === "inline"
@@ -538,30 +582,107 @@ export function StructuredContentEditor({
   }, [disabled, editor])
 
   useEffect(() => {
-    if (!fillHeight) return
-    const viewport = scrollAreaRef.current?.querySelector<HTMLElement>(
-      '[data-slot="scroll-area-viewport"]',
-    )
-    if (!viewport) return
+    const clearSelectionToolbarCloseTimer = () => {
+      if (selectionToolbarCloseTimerRef.current !== null) {
+        window.clearTimeout(selectionToolbarCloseTimerRef.current)
+        selectionToolbarCloseTimerRef.current = null
+      }
+    }
 
-    const updateBottomFade = () => {
-      setShowBottomFade(
-        viewport.scrollTop + viewport.clientHeight < viewport.scrollHeight - 1,
+    const showSelectionToolbar = (position: SelectionToolbarPosition) => {
+      clearSelectionToolbarCloseTimer()
+      setSelectionToolbarPresentation({ position, state: "open" })
+    }
+
+    const hideSelectionToolbar = () => {
+      clearSelectionToolbarCloseTimer()
+      setSelectionToolbarPresentation((current) =>
+        current ? { ...current, state: "closing" } : null,
       )
+      selectionToolbarCloseTimerRef.current = window.setTimeout(() => {
+        selectionToolbarCloseTimerRef.current = null
+        setSelectionToolbarPresentation(null)
+      }, 150)
     }
-    updateBottomFade()
-    viewport.addEventListener("scroll", updateBottomFade, { passive: true })
-    const resizeObserver =
-      typeof ResizeObserver === "undefined"
-        ? null
-        : new ResizeObserver(updateBottomFade)
-    resizeObserver?.observe(viewport)
-    resizeObserver?.observe(editor.view.dom)
+
+    const updateSelectionToolbar = () => {
+      const selection = editor.state.selection
+      if (
+        disabled ||
+        pointerSelectingRef.current ||
+        selection.empty ||
+        !editor.isFocused
+      ) {
+        hideSelectionToolbar()
+        return
+      }
+
+      try {
+        const start = editor.view.coordsAtPos(selection.from)
+        const end = editor.view.coordsAtPos(selection.to)
+        const editorRect = editor.view.dom.getBoundingClientRect()
+        const selectionTop = Math.min(start.top, end.top)
+        const selectionBottom = Math.max(start.bottom, end.bottom)
+        const menuHeight = 40
+        const canPlaceAbove =
+          selectionTop - menuHeight - 8 >= Math.max(8, editorRect.top)
+        const canPlaceBelow =
+          selectionBottom + menuHeight + 8 <= window.innerHeight - 8
+        const placement = canPlaceAbove || !canPlaceBelow ? "above" : "below"
+        showSelectionToolbar({
+          left: Math.max(
+            16,
+            Math.min(window.innerWidth - 16, (start.left + end.right) / 2),
+          ),
+          top:
+            placement === "above"
+              ? Math.max(8, selectionTop - 8)
+              : selectionBottom + 8,
+          placement,
+        })
+      } catch {
+        const editorRect = editor.view.dom.getBoundingClientRect()
+        showSelectionToolbar({
+          left: editorRect.left + editorRect.width / 2,
+          top: Math.max(8, editorRect.top),
+          placement: "below",
+        })
+      }
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (event.button !== 0) return
+      pointerSelectingRef.current = true
+      hideSelectionToolbar()
+    }
+
+    const finishPointerSelection = () => {
+      if (!pointerSelectingRef.current) return
+      pointerSelectingRef.current = false
+      window.requestAnimationFrame(updateSelectionToolbar)
+    }
+
+    editor.on("selectionUpdate", updateSelectionToolbar)
+    editor.on("focus", updateSelectionToolbar)
+    editor.on("blur", hideSelectionToolbar)
+    editor.view.dom.addEventListener("pointerdown", handlePointerDown)
+    window.addEventListener("pointerup", finishPointerSelection)
+    window.addEventListener("pointercancel", finishPointerSelection)
+    window.addEventListener("resize", updateSelectionToolbar)
+    window.addEventListener("scroll", updateSelectionToolbar, true)
     return () => {
-      viewport.removeEventListener("scroll", updateBottomFade)
-      resizeObserver?.disconnect()
+      editor.off("selectionUpdate", updateSelectionToolbar)
+      editor.off("focus", updateSelectionToolbar)
+      editor.off("blur", hideSelectionToolbar)
+      editor.view.dom.removeEventListener("pointerdown", handlePointerDown)
+      window.removeEventListener("pointerup", finishPointerSelection)
+      window.removeEventListener("pointercancel", finishPointerSelection)
+      window.removeEventListener("resize", updateSelectionToolbar)
+      window.removeEventListener("scroll", updateSelectionToolbar, true)
+      pointerSelectingRef.current = false
+      clearSelectionToolbarCloseTimer()
     }
-  }, [editor, fillHeight, toolbarState.characterCount, toolbarState.paragraphCount])
+  }, [disabled, editor])
 
   useEffect(() => {
     editor.setOptions({
@@ -627,6 +748,23 @@ export function StructuredContentEditor({
       : []
   const shortcuts = currentEditorShortcutLabels()
 
+  const toggleFormatting = (
+    format: "bold" | "italic" | "subscript" | "superscript",
+  ) => {
+    if (format === "bold") editor.chain().focus().toggleBold().run()
+    if (format === "italic") editor.chain().focus().toggleItalic().run()
+    if (format === "subscript") {
+      const chain = editor.chain().focus()
+      if (toolbarState.subscript) chain.unsetSubscript().run()
+      else chain.unsetSuperscript().setSubscript().run()
+    }
+    if (format === "superscript") {
+      const chain = editor.chain().focus()
+      if (toolbarState.superscript) chain.unsetSuperscript().run()
+      else chain.unsetSubscript().setSuperscript().run()
+    }
+  }
+
   const changeFormatting = (nextValues: string[]) => {
     const currentValues = new Set(formattingValues)
     const next = new Set(nextValues)
@@ -634,19 +772,7 @@ export function StructuredContentEditor({
       (format) => currentValues.has(format) !== next.has(format),
     )
     if (!changed) return
-
-    if (changed === "bold") editor.chain().focus().toggleBold().run()
-    if (changed === "italic") editor.chain().focus().toggleItalic().run()
-    if (changed === "subscript") {
-      const chain = editor.chain().focus()
-      if (toolbarState.subscript) chain.unsetSubscript().run()
-      else chain.unsetSuperscript().setSubscript().run()
-    }
-    if (changed === "superscript") {
-      const chain = editor.chain().focus()
-      if (toolbarState.superscript) chain.unsetSuperscript().run()
-      else chain.unsetSubscript().setSuperscript().run()
-    }
+    toggleFormatting(changed as "bold" | "italic" | "subscript" | "superscript")
   }
 
   const changeList = (nextValues: string[]) => {
@@ -714,10 +840,11 @@ export function StructuredContentEditor({
   return (
     <TooltipProvider>
       <div
+        data-formatting-marks={formattingMarksVisible ? "true" : "false"}
         className={cn(
           fillHeight
             ? "flex h-full min-h-0 min-w-0 flex-col bg-background"
-            : "overflow-clip rounded-lg border border-input bg-background transition-all focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50",
+            : "overflow-clip rounded-lg border border-input bg-background transition-[border-color,box-shadow] focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 motion-reduce:transition-none",
           disabled && "opacity-75",
           className,
         )}
@@ -910,6 +1037,24 @@ export function StructuredContentEditor({
             </>
           ) : null}
 
+          {mode !== "inline" ? (
+            <>
+              <Separator
+                orientation="vertical"
+                className="mx-1 h-5 data-vertical:self-center"
+              />
+              <ToolbarButton
+                label="显示格式标记"
+                aria-pressed={formattingMarksVisible}
+                variant={formattingMarksVisible ? "secondary" : "ghost"}
+                disabled={disabled}
+                onClick={() => setFormattingMarksVisible((visible) => !visible)}
+              >
+                <PilcrowIcon />
+              </ToolbarButton>
+            </>
+          ) : null}
+
           <Separator
             orientation="vertical"
             className="mx-1 h-5 data-vertical:self-center"
@@ -950,38 +1095,92 @@ export function StructuredContentEditor({
 
         </div>
 
+        {selectionToolbarPresentation
+          ? createPortal(
+              <div
+                role="toolbar"
+                aria-label="选中文字格式工具栏"
+                data-state={selectionToolbarPresentation.state}
+                data-placement={selectionToolbarPresentation.position.placement}
+                className="selection-toolbar fixed z-50 flex items-center gap-1 rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
+                style={{
+                  left: selectionToolbarPresentation.position.left,
+                  top: selectionToolbarPresentation.position.top,
+                }}
+                onMouseDown={(event) => event.preventDefault()}
+              >
+                {[
+                  { format: "bold", label: "选区粗体", active: toolbarState.bold, icon: <BoldIcon /> },
+                  { format: "italic", label: "选区斜体", active: toolbarState.italic, icon: <ItalicIcon /> },
+                  { format: "subscript", label: "选区下标", active: toolbarState.subscript, icon: <SubscriptIcon /> },
+                  { format: "superscript", label: "选区上标", active: toolbarState.superscript, icon: <SuperscriptIcon /> },
+                ].map((item) => (
+                  <Button
+                    key={item.format}
+                    type="button"
+                    size="icon-sm"
+                    variant={item.active ? "secondary" : "ghost"}
+                    aria-label={item.label}
+                    aria-pressed={item.active}
+                    onClick={() =>
+                      toggleFormatting(
+                        item.format as "bold" | "italic" | "subscript" | "superscript",
+                      )
+                    }
+                  >
+                    {item.icon}
+                  </Button>
+                ))}
+              </div>,
+              document.body,
+            )
+          : null}
+
         {fillHeight ? (
           <>
-            <div className="relative min-h-0 flex-1">
-              <ScrollArea ref={scrollAreaRef} className="h-full min-h-0 flex-1">
-                <div className="relative min-h-full">
-                  {toolbarState.empty ? (
-                    <span
-                      aria-hidden="true"
-                      className="pointer-events-none absolute top-3 left-3 text-sm text-muted-foreground"
-                    >
-                      {placeholder}
-                    </span>
-                  ) : null}
-                  <EditorContent className="min-h-full" editor={editor} />
-                </div>
-              </ScrollArea>
-              {showBottomFade ? (
-                // Functional edge fade: it softens clipped text without adding decoration.
-                <div
-                  data-slot="editor-bottom-fade"
-                  aria-hidden="true"
-                  className="pointer-events-none absolute right-2.5 bottom-0 left-0 h-8 bg-linear-to-b from-transparent to-background"
-                />
-              ) : null}
-            </div>
-            <div
-              role="status"
-              aria-live="polite"
-              className="flex shrink-0 justify-end gap-3 px-3 py-1.5 text-xs tabular-nums text-muted-foreground"
+            <FadingScrollArea
+              wrapperClassName="min-h-0 flex-1"
+              className="h-full min-h-0 flex-1"
             >
-              <span>字数 {toolbarState.characterCount}</span>
-              <span>段落 {toolbarState.paragraphCount}</span>
+              <div className="relative min-h-full">
+                {toolbarState.empty ? (
+                  <span
+                    aria-hidden="true"
+                    className="pointer-events-none absolute top-3 left-3 text-sm text-muted-foreground"
+                  >
+                    {placeholder}
+                  </span>
+                ) : null}
+                <EditorContent className="min-h-full" editor={editor} />
+              </div>
+            </FadingScrollArea>
+            <div className="flex min-h-8 shrink-0 items-center justify-between gap-3 px-3 py-1">
+              {footerMessage ? (
+                <p
+                  id={footerMessageId}
+                  className="min-w-0 truncate text-xs text-destructive"
+                  title={footerMessage}
+                >
+                  {footerMessage}
+                </p>
+              ) : null}
+              <ContentStatistics
+                className="ml-auto"
+                summary={
+                  toolbarState.selectedCharacterCount > 0
+                    ? `已选 ${toolbarState.selectedCharacterCount} 字`
+                    : `字数 ${toolbarState.characterCount} · 段落 ${toolbarState.paragraphCount}`
+                }
+                details={[
+                  { label: "总字数", value: toolbarState.characterCount },
+                  { label: "中文字符", value: toolbarState.chineseCharacterCount },
+                  { label: "英文单词", value: toolbarState.englishWordCount },
+                  { label: "段落", value: toolbarState.paragraphCount },
+                  { label: "有序列表项", value: toolbarState.orderedListItemCount },
+                  { label: "无序列表项", value: toolbarState.bulletListItemCount },
+                  { label: "图片", value: toolbarState.imageCount },
+                ]}
+              />
             </div>
           </>
         ) : (

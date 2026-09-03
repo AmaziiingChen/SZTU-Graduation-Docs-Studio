@@ -92,6 +92,11 @@ describe("OutlineEditor", () => {
     for (const title of ["摘要", "Abstract", "参考文献", "致谢"]) {
       expect(screen.getByLabelText(`固定目录项：${title}`)).toBeInTheDocument()
     }
+    expect(screen.getByRole("status")).toHaveTextContent("目录 6 项 · 1 级")
+
+    fireEvent.click(screen.getByRole("button", { name: /查看内容统计/ }))
+    expect(screen.getByText("可编辑条目")).toBeInTheDocument()
+    expect(screen.getByText("固定条目")).toBeInTheDocument()
   })
 })
 

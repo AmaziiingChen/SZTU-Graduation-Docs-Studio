@@ -45,14 +45,20 @@ function SaveStatusBadge({ state }: { state: SaveState }) {
       }
       className={state === "saved" ? savedStateClassName : undefined}
     >
-      {isPending ? (
-        <LoaderCircleIcon className="animate-spin" />
-      ) : isError ? (
-        <TriangleAlertIcon />
-      ) : (
-        <SaveIcon />
-      )}
-      {label}
+      <span
+        key={state}
+        data-slot="save-status-content"
+        className="inline-flex min-w-0 items-center gap-1 leading-none [&>svg]:size-3 [&>svg]:shrink-0"
+      >
+        {isPending ? (
+          <LoaderCircleIcon className="animate-spin motion-reduce:animate-none" />
+        ) : isError ? (
+          <TriangleAlertIcon />
+        ) : (
+          <SaveIcon />
+        )}
+        {label}
+      </span>
     </Badge>
   )
 }

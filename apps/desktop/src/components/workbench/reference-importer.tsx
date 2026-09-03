@@ -26,8 +26,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Textarea } from "@/components/ui/textarea"
+import { ContentStatistics } from "@/components/workbench/content-statistics"
+import { FadingScrollArea } from "@/components/workbench/fading-scroll-area"
 import { formatBibtex, parseBibtex } from "@/lib/bibtex"
 import type { BibtexEntry, FormattedBibtexResult } from "@/types/references"
 import type {
@@ -159,7 +160,6 @@ export function ReferenceImporter({
   )
   const sourceIsAdvanced =
     sourcePresent && sourceRemainder(source, result.entries).trim().length > 0
-  const valid = sourcePresent && currentMessages.length === 0
   const editableEntries = result.entries.map((entry, index) => ({
     ...entry,
     index,
@@ -233,20 +233,21 @@ export function ReferenceImporter({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4">
+    <div className="flex h-full min-h-0 flex-col">
       <div
         data-slot="reference-toolbar"
-        className="flex h-(--header-height) shrink-0 items-center justify-between gap-2 border-b px-4"
+        className="flex h-(--header-height) shrink-0 items-center justify-end gap-2 border-b px-4"
       >
-        <Badge variant={valid || (!sourcePresent && legacyReferences.length > 0) ? "secondary" : "outline"}>
-          {result.entries.length || legacyReferences.length} 条
-        </Badge>
         <Button type="button" size="sm" onClick={openAdd} disabled={disabled}>
           <PlusIcon />
           添加参考文献
         </Button>
       </div>
 
+      <div
+        data-slot="reference-content"
+        className="flex min-h-0 flex-1 flex-col gap-4 pt-4"
+      >
       {sourcePresent && currentMessages.length > 0 ? (
         <Alert variant="destructive">
           <TriangleAlertIcon />
@@ -285,7 +286,10 @@ export function ReferenceImporter({
       ) : null}
 
       {editableEntries.length > 0 ? (
-        <ScrollArea className="min-h-0 flex-1">
+        <FadingScrollArea
+          wrapperClassName="min-h-0 flex-1"
+          className="h-full min-h-0 flex-1"
+        >
           <Accordion className="px-3">
             {editableEntries.map((reference) => (
               <AccordionItem key={reference.id} value={reference.id}>
@@ -362,9 +366,12 @@ export function ReferenceImporter({
               继续添加
             </Button>
           </div>
-        </ScrollArea>
+        </FadingScrollArea>
       ) : legacyReferences.length > 0 ? (
-        <ScrollArea className="min-h-0 flex-1">
+        <FadingScrollArea
+          wrapperClassName="min-h-0 flex-1"
+          className="h-full min-h-0 flex-1"
+        >
           <div className="divide-y">
             {legacyReferences.map((paragraph, index) => (
               <div className="flex items-start gap-3 p-3" key={`legacy-${index}`}>
@@ -373,7 +380,7 @@ export function ReferenceImporter({
               </div>
             ))}
           </div>
-        </ScrollArea>
+        </FadingScrollArea>
       ) : (
         <div
           data-slot="reference-empty-state"
@@ -394,6 +401,18 @@ export function ReferenceImporter({
           </div>
         </div>
       )}
+      </div>
+
+      <ContentStatistics
+        className="min-h-8 items-center px-3 py-1"
+        summary={`文献 ${result.entries.length || legacyReferences.length} 条`}
+        details={[
+          { label: "文献条目", value: result.entries.length || legacyReferences.length },
+          { label: "BibTeX 条目", value: result.entries.length },
+          { label: "文献类型", value: new Set(result.entries.map((entry) => entry.type)).size },
+          { label: "待处理问题", value: currentMessages.length },
+        ]}
+      />
 
       <Dialog
         open={entryEditor !== null}

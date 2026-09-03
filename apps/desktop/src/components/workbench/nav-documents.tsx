@@ -185,7 +185,9 @@ export function NavDocuments({
                   }
                 >
                   <ChevronRightIcon
-                    className={isExpanded ? "rotate-90 transition-transform" : "transition-transform"}
+                    className={isExpanded
+                      ? "rotate-90 transition-transform duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
+                      : "transition-transform duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"}
                   />
                   <FolderIcon />
                   <span>{group.label}</span>
@@ -202,8 +204,17 @@ export function NavDocuments({
                 >
                   <PlusIcon />
                 </SidebarMenuAction>
-                {isExpanded ? (
-                  <SidebarMenuSub className="mr-0 pr-0">
+                <div
+                  aria-hidden={!isExpanded}
+                  inert={!isExpanded}
+                  className={`grid transition-[grid-template-rows,opacity] duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${
+                    isExpanded
+                      ? "grid-rows-[1fr] opacity-100"
+                      : "grid-rows-[0fr] opacity-0"
+                  }`}
+                >
+                  <div className="min-h-0 overflow-hidden">
+                    <SidebarMenuSub className="mr-0 pr-0">
                     {groupDocuments.length === 0 ? (
                       <SidebarMenuSubItem>
                         <span className="block px-2 py-1 text-xs text-muted-foreground">暂无文档</span>
@@ -265,8 +276,9 @@ export function NavDocuments({
                         </DropdownMenu>
                       </SidebarMenuSubItem>
                     ))}
-                  </SidebarMenuSub>
-                ) : null}
+                    </SidebarMenuSub>
+                  </div>
+                </div>
               </SidebarMenuItem>
             )
           })}
@@ -278,13 +290,24 @@ export function NavDocuments({
               onClick={() => setThesisExpanded((current) => !current)}
             >
               <ChevronRightIcon
-                className={thesisExpanded ? "rotate-90 transition-transform" : "transition-transform"}
+                className={thesisExpanded
+                  ? "rotate-90 transition-transform duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
+                  : "transition-transform duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"}
               />
               <FolderIcon />
               <span>毕业论文</span>
             </SidebarMenuButton>
-            {thesisExpanded ? (
-              <SidebarMenuSub className="mr-0 pr-0">
+            <div
+              aria-hidden={!thesisExpanded}
+              inert={!thesisExpanded}
+              className={`grid transition-[grid-template-rows,opacity] duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${
+                thesisExpanded
+                  ? "grid-rows-[1fr] opacity-100"
+                  : "grid-rows-[0fr] opacity-0"
+              }`}
+            >
+              <div className="min-h-0 overflow-hidden">
+                <SidebarMenuSub className="mr-0 pr-0">
                 {thesisToolOptions.map((tool) => (
                   <SidebarMenuSubItem key={tool.id}>
                     <SidebarMenuSubButton
@@ -298,8 +321,9 @@ export function NavDocuments({
                     </SidebarMenuSubButton>
                   </SidebarMenuSubItem>
                 ))}
-              </SidebarMenuSub>
-            ) : null}
+                </SidebarMenuSub>
+              </div>
+            </div>
           </SidebarMenuItem>
 
         </SidebarMenu>
@@ -317,7 +341,9 @@ export function NavDocuments({
               onClick={() => setTrashExpanded((current) => !current)}
             >
               <ChevronRightIcon
-                className={trashExpanded ? "rotate-90 transition-transform" : "transition-transform"}
+                className={trashExpanded
+                  ? "rotate-90 transition-transform duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
+                  : "transition-transform duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"}
               />
               <Trash2Icon />
               <span>回收站</span>
@@ -325,8 +351,17 @@ export function NavDocuments({
                 <span className="ml-auto text-xs text-muted-foreground">{deletedDocuments.length}</span>
               ) : null}
             </SidebarMenuButton>
-            {trashExpanded ? (
-              <SidebarMenuSub className="mr-0 pr-0">
+            <div
+              aria-hidden={!trashExpanded}
+              inert={!trashExpanded}
+              className={`grid transition-[grid-template-rows,opacity] duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${
+                trashExpanded
+                  ? "grid-rows-[1fr] opacity-100"
+                  : "grid-rows-[0fr] opacity-0"
+              }`}
+            >
+              <div className="min-h-0 overflow-hidden">
+                <SidebarMenuSub className="mr-0 pr-0">
                 {deletedDocuments.length === 0 ? (
                   <SidebarMenuSubItem>
                     <span className="block px-2 py-1 text-xs text-muted-foreground">回收站为空</span>
@@ -373,8 +408,9 @@ export function NavDocuments({
                     </DropdownMenu>
                   </SidebarMenuSubItem>
                 ))}
-              </SidebarMenuSub>
-            ) : null}
+                </SidebarMenuSub>
+              </div>
+            </div>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarGroup>

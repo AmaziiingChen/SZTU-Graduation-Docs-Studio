@@ -2,6 +2,7 @@ import Subscript from "@tiptap/extension-subscript"
 import Superscript from "@tiptap/extension-superscript"
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model"
 import { Plugin } from "@tiptap/pm/state"
+import { Decoration, DecorationSet } from "@tiptap/pm/view"
 import {
   Extension,
   Node,
@@ -45,6 +46,39 @@ const ALLOWED_MARK_NAMES = new Set([
   "subscript",
   "superscript",
 ])
+
+const FormattingMarks = Extension.create({
+  name: "formattingMarks",
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        props: {
+          decorations(state) {
+            const decorations: Decoration[] = []
+            state.doc.descendants((node, position) => {
+              if (node.type.name !== "paragraph") return
+              decorations.push(
+                Decoration.widget(
+                  position + node.nodeSize - 1,
+                  () => {
+                    const marker = document.createElement("span")
+                    marker.className = "formatting-mark"
+                    marker.textContent = "¶"
+                    marker.setAttribute("aria-hidden", "true")
+                    marker.setAttribute("contenteditable", "false")
+                    return marker
+                  },
+                  { side: 1 },
+                ),
+              )
+            })
+            return DecorationSet.create(state.doc, decorations)
+          },
+        },
+      }),
+    ]
+  },
+})
 
 const UNICODE_SCRIPT_CHARACTERS: Readonly<
   Record<string, { text: string; script: "sub" | "super" }>
@@ -917,6 +951,7 @@ export function createRestrictedEditorExtensions(
     ...(listsEnabled ? [createFigureBlock(figureNumbering), FigureReference] : []),
     Subscript,
     Superscript,
+    FormattingMarks,
     createRestrictedDocumentBehavior(mode),
   ]
 }

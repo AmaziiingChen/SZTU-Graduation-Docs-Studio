@@ -92,7 +92,9 @@ describe("DocumentSectionNav status marks", () => {
       screen.getByRole("button", { name: "研究内容已填写" }),
     ).toBeEnabled()
 
-    act(() => vi.advanceTimersByTime(420))
+    act(() => vi.advanceTimersByTime(349))
+    expect(mark).toHaveAttribute("data-animate", "true")
+    act(() => vi.advanceTimersByTime(1))
     expect(mark).toHaveAttribute("data-animate", "false")
   })
 
@@ -136,7 +138,9 @@ describe("DocumentSectionNav status marks", () => {
     expect(errorMark).toHaveClass("text-destructive")
     expect(errorMark).toHaveAttribute("data-animate", "true")
 
-    act(() => vi.advanceTimersByTime(420))
+    act(() => vi.advanceTimersByTime(279))
+    expect(errorMark).toHaveAttribute("data-animate", "true")
+    act(() => vi.advanceTimersByTime(1))
     expect(errorMark).toHaveAttribute("data-animate", "false")
   })
 })

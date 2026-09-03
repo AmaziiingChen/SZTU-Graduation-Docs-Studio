@@ -38,4 +38,13 @@ describe("SaveStatusBadge", () => {
       "正在保存",
     )
   })
+
+  it("keeps the animated status icon within the compact badge", () => {
+    render(<SaveStatusBadge state="saved" />)
+
+    const content = screen
+      .getByLabelText("保存状态：已保存")
+      .querySelector('[data-slot="save-status-content"]')
+    expect(content).toHaveClass("[&>svg]:size-3", "[&>svg]:shrink-0")
+  })
 })

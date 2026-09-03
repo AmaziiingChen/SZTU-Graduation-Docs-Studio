@@ -34,11 +34,43 @@ describe("ReferenceImporter", () => {
       "h-(--header-height)",
       "items-center",
     )
+    expect(container.firstElementChild).not.toHaveClass("gap-4")
+    expect(container.querySelector('[data-slot="reference-content"]')).toHaveClass(
+      "flex-1",
+      "gap-4",
+      "pt-4",
+    )
     expect(container.querySelector('[data-slot="scroll-area"]')).not.toHaveClass(
       "rounded-lg",
       "border",
     )
-    expect(screen.getByText("1 条")).toBeInTheDocument()
+    const viewport = container.querySelector<HTMLElement>(
+      '[data-slot="scroll-area-viewport"]',
+    )
+    expect(viewport).not.toBeNull()
+    Object.defineProperties(viewport!, {
+      clientHeight: { configurable: true, value: 200 },
+      scrollHeight: { configurable: true, value: 400 },
+      scrollTop: { configurable: true, writable: true, value: 0 },
+    })
+    fireEvent.scroll(viewport!)
+    expect(container.querySelector('[data-slot="scroll-bottom-fade"]')).toHaveClass(
+      "opacity-100",
+    )
+
+    viewport!.scrollTop = 200
+    fireEvent.scroll(viewport!)
+    expect(container.querySelector('[data-slot="scroll-bottom-fade"]')).toHaveClass(
+      "opacity-0",
+    )
+    const status = screen.getByRole("status")
+    expect(status).toHaveTextContent("文献 1 条")
+    expect(status.parentElement).toHaveClass(
+      "min-h-8",
+      "items-center",
+      "px-3",
+      "py-1",
+    )
     expect(
       screen.getByText("[1] 张三. 合成论文[J]. 合成期刊, 2026."),
     ).toBeInTheDocument()
@@ -47,6 +79,10 @@ describe("ReferenceImporter", () => {
       screen.queryByRole("button", { name: "批量粘贴 BibTeX" }),
     ).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "高级源码" })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: /查看内容统计/ }))
+    expect(screen.getByText("BibTeX 条目")).toBeInTheDocument()
+    expect(screen.getByText("文献类型")).toBeInTheDocument()
   })
 
   it("keeps the empty reference state borderless", () => {

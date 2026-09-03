@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { StructuredContentEditor } from "@/components/workbench/structured-content-editor"
+import { ContentStatistics } from "@/components/workbench/content-statistics"
 import {
   Tooltip,
   TooltipContent,
@@ -224,6 +225,10 @@ export function OutlineEditor({
     value.findIndex((item) => item.id === selectedId),
   )
   const selectedItem = value[selectedIndex]
+  const fixedItemCount = FIXED_DIRECTORY_PREFIX.length + FIXED_DIRECTORY_SUFFIX.length
+  const maximumUsedLevel = value.length
+    ? Math.max(...value.map((item) => item.level))
+    : 0
 
   const commit = (next: OutlineEditorItem[]) => {
     onChange(numberingStyle ? numberOutlineItems(next, numberingStyle) : next)
@@ -491,14 +496,27 @@ export function OutlineEditor({
           ))}
         </div>
 
-        {error ? <p className="text-xs text-destructive">{error}</p> : null}
-        {validationErrors.length ? (
-          <p className="text-xs text-destructive">{validationErrors[0]}</p>
-        ) : (
-          <p className="text-xs text-muted-foreground">
-            选择目录条目后在上方统一编辑标题；Enter 新建同级目录，Tab 增加缩进，Shift+Tab 减少缩进。
-          </p>
-        )}
+        <div className="flex items-end justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            {error ? <p className="text-xs text-destructive">{error}</p> : null}
+            {validationErrors.length ? (
+              <p className="text-xs text-destructive">{validationErrors[0]}</p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                选择目录条目后在上方统一编辑标题；Enter 新建同级目录，Tab 增加缩进，Shift+Tab 减少缩进。
+              </p>
+            )}
+          </div>
+          <ContentStatistics
+            summary={`目录 ${value.length + fixedItemCount} 项 · ${maximumUsedLevel} 级`}
+            details={[
+              { label: "目录条目", value: value.length + fixedItemCount },
+              { label: "可编辑条目", value: value.length },
+              { label: "固定条目", value: fixedItemCount },
+              { label: "最大层级", value: maximumUsedLevel },
+            ]}
+          />
+        </div>
       </div>
     </TooltipProvider>
   )

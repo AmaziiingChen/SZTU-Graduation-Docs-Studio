@@ -562,6 +562,8 @@ describe("StructuredContentEditor", () => {
           value={["沉浸式正文"]}
           onChange={vi.fn()}
           ariaLabel="沉浸式正文"
+          footerMessage="请填写至少一段内容要求。"
+          footerMessageId="content-error"
           fillHeight
         />
       </div>,
@@ -597,11 +599,25 @@ describe("StructuredContentEditor", () => {
       scrollTop: { configurable: true, writable: true, value: 0 },
     })
     fireEvent.scroll(viewport!)
-    expect(container.querySelector('[data-slot="editor-bottom-fade"]')).toBeInTheDocument()
+    expect(container.querySelector('[data-slot="scroll-bottom-fade"]')).toHaveClass(
+      "opacity-100",
+    )
 
     viewport!.scrollTop = 300
     fireEvent.scroll(viewport!)
-    expect(container.querySelector('[data-slot="editor-bottom-fade"]')).not.toBeInTheDocument()
+    expect(container.querySelector('[data-slot="scroll-bottom-fade"]')).toHaveClass(
+      "opacity-0",
+    )
+
+    const message = screen.getByText("请填写至少一段内容要求。")
+    expect(message).toHaveAttribute("id", "content-error")
+    expect(message.parentElement).toHaveClass(
+      "items-center",
+      "justify-between",
+    )
+    expect(screen.getByRole("status").parentElement?.parentElement).toBe(
+      message.parentElement,
+    )
   })
 
   it("counts visible non-whitespace characters and non-empty paragraphs", () => {
@@ -618,6 +634,28 @@ describe("StructuredContentEditor", () => {
     const status = screen.getByRole("status")
     expect(status).toHaveTextContent("字数 10")
     expect(status).toHaveTextContent("段落 2")
+
+    fireEvent.click(screen.getByRole("button", { name: /查看内容统计/ }))
+    expect(screen.getByText("总字数")).toBeInTheDocument()
+    expect(screen.getByText("中文字符")).toBeInTheDocument()
+    expect(screen.getByText("英文单词")).toBeInTheDocument()
+  })
+
+  it("prioritizes the selected character count in the status summary", async () => {
+    render(
+      <div className="h-96">
+        <StructuredContentEditor
+          value={["选择文字"]}
+          onChange={vi.fn()}
+          selectionSnapshot={{ anchor: 1, head: 3 }}
+          fillHeight
+        />
+      </div>,
+    )
+
+    await waitFor(() =>
+      expect(screen.getByRole("status")).toHaveTextContent("已选 2 字"),
+    )
   })
 
   it("renders only the allowlisted controls and exposes the current structure", () => {
@@ -641,6 +679,7 @@ describe("StructuredContentEditor", () => {
       "无序列表",
       "减少缩进",
       "增加缩进",
+      "显示格式标记",
       "撤销",
       "重做",
     ]) {
@@ -648,6 +687,67 @@ describe("StructuredContentEditor", () => {
     }
     expect(screen.queryByText("正文")).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: /标题|链接|图片|表格/ })).toBeNull()
+  })
+
+  it("toggles editor-only paragraph marks without changing document content", () => {
+    const onChange = vi.fn()
+    const { container } = render(
+      <StructuredContentEditor
+        value={["第一段", "第二段"]}
+        onChange={onChange}
+        ariaLabel="格式标记正文"
+      />,
+    )
+
+    const editor = container.querySelector('[data-formatting-marks]')
+    const toggle = screen.getByRole("button", { name: "显示格式标记" })
+    expect(editor).toHaveAttribute("data-formatting-marks", "false")
+    expect(toggle).toHaveAttribute("aria-pressed", "false")
+
+    fireEvent.click(toggle)
+    expect(editor).toHaveAttribute("data-formatting-marks", "true")
+    expect(toggle).toHaveAttribute("aria-pressed", "true")
+    expect(
+      container.querySelectorAll('.formatting-mark[contenteditable="false"]'),
+    ).toHaveLength(2)
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
+  it("shows a contextual formatting toolbar for a focused text selection", async () => {
+    const onChange = vi.fn()
+    render(
+      <StructuredContentEditor
+        value={["选择文字"]}
+        onChange={onChange}
+        selectionSnapshot={{ anchor: 1, head: 3 }}
+        restoreFocus
+        ariaLabel="浮动工具栏正文"
+      />,
+    )
+
+    const floatingToolbar = await screen.findByRole("toolbar", {
+      name: "选中文字格式工具栏",
+    })
+    expect(floatingToolbar).toBeInTheDocument()
+    expect(floatingToolbar).toHaveAttribute("data-state", "open")
+    expect(floatingToolbar).toHaveClass("selection-toolbar")
+    expect(screen.getByRole("button", { name: "选区粗体" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    )
+
+    const textbox = screen.getByRole("textbox", { name: "浮动工具栏正文" })
+    fireEvent.pointerDown(textbox, { button: 0 })
+    await waitFor(() =>
+      expect(floatingToolbar).toHaveAttribute("data-state", "closing"),
+    )
+    fireEvent.pointerUp(window, { button: 0 })
+    await waitFor(() =>
+      expect(floatingToolbar).toHaveAttribute("data-state", "open"),
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: "选区粗体" }))
+    await waitFor(() => expect(onChange).toHaveBeenCalled())
   })
 
   it("shows inline formatting controls without list or indent controls", () => {

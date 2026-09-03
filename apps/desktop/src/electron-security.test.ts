@@ -138,8 +138,10 @@ describe("Electron security boundary", () => {
     ]).toEqual([40, 40])
   })
 
-  it("disables document-section completion motion when the operating system requests it", () => {
+  it("disables workbench motion when the operating system requests it", () => {
     expect(themeSource).toContain("@media (prefers-reduced-motion: reduce)")
+    expect(themeSource).toContain(".selection-toolbar")
+    expect(themeSource).toContain('[data-slot="save-status-content"]')
     expect(themeSource).toContain('[data-slot="section-completion-mark"]')
     expect(themeSource).toContain("animation: none")
   })
@@ -160,6 +162,7 @@ describe("Electron security boundary", () => {
       "recordDocumentCompletion",
       "getUpdateStatus",
       "revealDownloadedUpdate",
+      "openReleaseHelp",
       "openToolLink",
       "onUpdateStatus",
       "importImageAsset",
@@ -206,6 +209,7 @@ describe("Electron security boundary", () => {
       "sztu:telemetry-complete-document",
       "sztu:update-status",
       "sztu:update-reveal",
+      "sztu:update-open-help",
       "sztu:tool-open",
       "sztu:asset-import-image",
       "sztu:workspace-save-profile-draft",

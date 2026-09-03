@@ -15,7 +15,8 @@ import {
 import type { DocumentSectionState } from "@/components/workbench/document-section-nav"
 import { cn } from "@/lib/utils"
 
-const statusAnimationDuration = 420
+const completeAnimationDuration = 350
+const errorAnimationDuration = 280
 
 function StatusTooltip({
   label,
@@ -87,7 +88,7 @@ export function SectionCompletionMark({
     animationTimerRef.current = window.setTimeout(() => {
       animationTimerRef.current = null
       setAnimatedState(null)
-    }, statusAnimationDuration)
+    }, state === "error" ? errorAnimationDuration : completeAnimationDuration)
   }, [state])
 
   useEffect(

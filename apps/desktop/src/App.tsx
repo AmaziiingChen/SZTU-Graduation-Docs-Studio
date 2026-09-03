@@ -1738,6 +1738,8 @@ function StructuredBodyField({
           ariaLabel={label}
           ariaDescribedBy={describedBy}
           ariaInvalid={Boolean(error)}
+          footerMessage={fillHeight ? error : undefined}
+          footerMessageId={fillHeight && error ? `${id}-error` : undefined}
           placeholder={`输入${label}`}
           mode={mode}
           selectionSnapshot={selectionSnapshot}
@@ -1758,7 +1760,7 @@ function StructuredBodyField({
           </AlertDescription>
         </Alert>
       )}
-      {error ? (
+      {error && (!editorSupported || !fillHeight) ? (
         <p className="text-xs text-destructive" id={`${id}-error`}>
           {error}
         </p>
