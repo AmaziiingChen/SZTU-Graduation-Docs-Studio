@@ -10,6 +10,7 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
+import { writeClipboardText } from "@/lib/desktop-clipboard"
 
 export function LatexSourceCard({
   latex,
@@ -23,7 +24,7 @@ export function LatexSourceCard({
   const copyLatex = async () => {
     if (!latex) return
     try {
-      await navigator.clipboard.writeText(latex)
+      await writeClipboardText(latex)
       toast.success("LaTeX 源码已复制。")
     } catch {
       toast.error("无法访问剪贴板，请手动选择并复制源码。")

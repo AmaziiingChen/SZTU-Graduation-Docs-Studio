@@ -1,3 +1,5 @@
+import { writeClipboardPng } from "@/lib/desktop-clipboard"
+
 export type TablePreviewImageStyle = "three-line" | "grid"
 
 export type TablePreviewImageOptions = {
@@ -164,11 +166,8 @@ export async function renderTablePreviewPng({
 }
 
 export async function copyTablePreviewPng(options: TablePreviewImageOptions): Promise<void> {
-  if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
-    throw new Error("Image clipboard is unavailable")
-  }
   const blob = await renderTablePreviewPng(options)
-  await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })])
+  await writeClipboardPng(blob)
 }
 
 export async function downloadTablePreviewPng(

@@ -6,7 +6,10 @@ import {
   renderTablePreviewPng,
 } from "@/lib/table-preview-image"
 
-afterEach(() => vi.restoreAllMocks())
+afterEach(() => {
+  vi.restoreAllMocks()
+  delete (window as Window & { sztuDesktop?: unknown }).sztuDesktop
+})
 
 function installCanvasMock() {
   const context = {
@@ -58,12 +61,11 @@ describe("table preview PNG", () => {
 
   it("writes the rendered PNG to the system clipboard", async () => {
     installCanvasMock()
-    const write = vi.fn().mockResolvedValue(undefined)
-    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { write } })
-    class ClipboardItemMock {
-      constructor(readonly data: Record<string, Blob>) {}
-    }
-    Object.defineProperty(globalThis, "ClipboardItem", { configurable: true, value: ClipboardItemMock })
+    const writeClipboardPng = vi.fn().mockResolvedValue(null)
+    Object.defineProperty(window, "sztuDesktop", {
+      configurable: true,
+      value: { writeClipboardPng },
+    })
 
     await copyTablePreviewPng({
       rows: [["指标", "数值"], ["准确率", "92.4"]],
@@ -71,9 +73,8 @@ describe("table preview PNG", () => {
       style: "grid",
     })
 
-    expect(write).toHaveBeenCalledOnce()
-    const item = write.mock.calls[0][0][0] as ClipboardItemMock
-    expect(item.data["image/png"]).toBeInstanceOf(Blob)
+    expect(writeClipboardPng).toHaveBeenCalledOnce()
+    expect(writeClipboardPng.mock.calls[0][0]).toMatch(/^data:image\/png;base64,/)
   })
 
   it("downloads the rendered PNG with the requested filename", async () => {
