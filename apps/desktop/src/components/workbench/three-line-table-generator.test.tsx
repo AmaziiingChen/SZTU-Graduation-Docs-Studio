@@ -26,10 +26,10 @@ describe("ThreeLineTableGenerator", () => {
 
     expect(screen.getByRole("table", { name: "三线表预览" })).toBeInTheDocument()
     expect(screen.queryByLabelText("生成的 LaTeX 源码")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "复制源码" })).toBeEnabled()
+    expect(screen.getByRole("button", { name: "下载源码" })).toBeEnabled()
     fireEvent.click(screen.getByRole("button", { name: "查看 LaTeX" }))
     expect(screen.getByLabelText<HTMLInputElement>("生成的 LaTeX 源码").value).toContain("\\toprule")
-    expect(screen.getByRole("button", { name: "复制 LaTeX" })).toBeEnabled()
-    expect(screen.getByRole("button", { name: "下载 .tex" })).toBeEnabled()
   })
 
   it("blocks generation while the header is blank", () => {
@@ -50,8 +50,7 @@ describe("ThreeLineTableGenerator", () => {
     render(<ThreeLineTableGenerator />)
     fillTable()
 
-    fireEvent.click(screen.getByRole("button", { name: "查看 LaTeX" }))
-    fireEvent.click(screen.getByRole("button", { name: "复制 LaTeX" }))
+    fireEvent.click(screen.getByRole("button", { name: "复制源码" }))
     expect(writeText).toHaveBeenCalledWith(expect.stringContaining("\\bottomrule"))
   })
 

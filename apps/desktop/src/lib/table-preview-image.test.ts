@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import { copyTablePreviewPng, renderTablePreviewPng } from "@/lib/table-preview-image"
+import {
+  copyTablePreviewPng,
+  downloadTablePreviewPng,
+  renderTablePreviewPng,
+} from "@/lib/table-preview-image"
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -70,5 +74,24 @@ describe("table preview PNG", () => {
     expect(write).toHaveBeenCalledOnce()
     const item = write.mock.calls[0][0][0] as ClipboardItemMock
     expect(item.data["image/png"]).toBeInstanceOf(Blob)
+  })
+
+  it("downloads the rendered PNG with the requested filename", async () => {
+    installCanvasMock()
+    const createObjectURL = vi.fn(() => "blob:table-preview")
+    const revokeObjectURL = vi.fn()
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: createObjectURL })
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: revokeObjectURL })
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined)
+
+    await downloadTablePreviewPng({
+      rows: [["指标", "数值"], ["准确率", "92.4"]],
+      headerRows: 1,
+      style: "grid",
+    }, "table.png")
+
+    expect(click).toHaveBeenCalledOnce()
+    expect(createObjectURL).toHaveBeenCalledWith(expect.any(Blob))
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:table-preview")
   })
 })

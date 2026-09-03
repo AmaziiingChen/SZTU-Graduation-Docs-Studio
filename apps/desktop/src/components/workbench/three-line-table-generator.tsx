@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { SaveStatusBadge } from "@/components/workbench/save-status-badge"
 import { TablePreviewCard } from "@/components/workbench/table-preview-card"
 import { ToolDraftActions } from "@/components/workbench/tool-draft-actions"
 import { VisualTableEditor } from "@/components/workbench/visual-table-editor"
@@ -61,12 +62,15 @@ export function ThreeLineTableGenerator() {
       <main className="mx-auto grid w-full max-w-6xl gap-6 p-6" aria-labelledby="three-line-table-title">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="space-y-1">
-            <h2 id="three-line-table-title" className="text-xl font-semibold">三线表生成器</h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 id="three-line-table-title" className="text-xl font-semibold">三线表生成器</h2>
+              <SaveStatusBadge state={saveState} />
+            </div>
             <p className="text-sm text-muted-foreground">
               粘贴 Excel、WPS 表格或 CSV 数据，生成可直接放入论文的 booktabs 源码。
             </p>
           </div>
-          <ToolDraftActions saveState={saveState} draftName="三线表" onClear={clearDraft} />
+          <ToolDraftActions saveState={saveState} draftName="三线表" onClear={clearDraft} showSaveStatus={false} />
         </div>
 
         <div className="grid gap-6">
@@ -118,10 +122,10 @@ export function ThreeLineTableGenerator() {
             headerRows={1}
             variant="three-line"
             tableLabel="三线表预览"
-            description="预览使用与源码相同的数据结构，不代表论文最终字号与分页。"
             emptyText="创建表格并填写数据后在这里预览。"
             latex={latex}
             filename="three-line-table.tex"
+            pngFilename="three-line-table.png"
             packages={["booktabs"]}
           />
         </div>

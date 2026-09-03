@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { SaveStatusBadge } from "@/components/workbench/save-status-badge"
 import {
   Select,
   SelectContent,
@@ -125,12 +126,15 @@ export function GeneralTableGenerator() {
       <main className="mx-auto grid w-full max-w-6xl gap-6 p-6" aria-labelledby="general-table-title">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="space-y-1">
-            <h2 id="general-table-title" className="text-xl font-semibold">表格生成器</h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 id="general-table-title" className="text-xl font-semibold">表格生成器</h2>
+              <SaveStatusBadge state={saveState} />
+            </div>
             <p className="text-sm text-muted-foreground">
               生成普通网格表、通栏表或可跨页表格；适合从 Excel、WPS 直接粘贴数据。
             </p>
           </div>
-          <ToolDraftActions saveState={saveState} draftName="表格" onClear={clearDraft} />
+          <ToolDraftActions saveState={saveState} draftName="表格" onClear={clearDraft} showSaveStatus={false} />
         </div>
 
         <div className="grid gap-6">
@@ -241,6 +245,7 @@ export function GeneralTableGenerator() {
             emptyText="创建表格并填写数据后在这里预览。"
             latex={latex}
             filename="table.tex"
+            pngFilename="table.png"
             packages={requiredPackagesForGeneralTable(mode)}
           />
         </div>
