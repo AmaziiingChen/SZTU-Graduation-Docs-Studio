@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest"
 
 import {
   aggregateTelemetry,
+  fetchRecentTelemetryPageFromCli,
   fetchTelemetryRowsFromCli,
   parseRangeDays,
   type RawTelemetryRow,
@@ -137,5 +138,49 @@ describe("telemetry dashboard aggregation", () => {
     ])
     expect(args[args.indexOf("--sql") + 1]).toContain("make_interval(days => 30)")
     expect(args).not.toContain("server-only-test-key")
+  })
+
+  it("paginates recent events with an opaque stable cursor", async () => {
+    const pageRows = Array.from({ length: 21 }, (_, index) => [
+      `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+      rows[0].installation_id,
+      rows[0].session_id,
+      rows[0].event_name,
+      new Date(Date.parse("2026-08-31T03:00:00.000Z") - index * 1000).toISOString(),
+      rows[0].app_version,
+      rows[0].platform,
+      rows[0].arch,
+      rows[0].attributes,
+    ])
+    const execute = vi.fn().mockResolvedValue(JSON.stringify({
+      data: {
+        Columns: [
+          "event_id", "installation_id", "session_id", "event_name", "received_at",
+          "app_version", "platform", "arch", "attributes",
+        ],
+        Rows: pageRows.map((row) => JSON.stringify(row)),
+      },
+    }))
+
+    const first = await fetchRecentTelemetryPageFromCli({
+      envId: "amazingapp-d5giro9ac73398410",
+      rangeDays: 30,
+      execute,
+    })
+
+    expect(first.items).toHaveLength(20)
+    expect(first.nextCursor).toMatch(/^[A-Za-z0-9_-]+$/)
+    expect(JSON.stringify(first)).not.toContain(rows[0].installation_id)
+    const firstSql = execute.mock.calls[0]?.[0][execute.mock.calls[0]?.[0].indexOf("--sql") + 1] as string
+    expect(firstSql).toContain("ORDER BY received_at DESC, event_id DESC LIMIT 21")
+
+    await fetchRecentTelemetryPageFromCli({
+      envId: "amazingapp-d5giro9ac73398410",
+      rangeDays: 30,
+      cursor: first.nextCursor,
+      execute,
+    })
+    const secondArgs = execute.mock.calls[1]?.[0] as string[]
+    expect(secondArgs[secondArgs.indexOf("--sql") + 1]).toContain("(received_at, event_id) <")
   })
 })

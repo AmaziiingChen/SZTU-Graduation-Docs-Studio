@@ -796,6 +796,16 @@ function registerIpc(): void {
     })
   })
 
+  ipcMain.handle("sztu:update-open-help", (event) => {
+    assertTrustedSender(event)
+    return runBridge(async () => {
+      const helpUrl = updateService?.getHelpUrl()
+      if (!helpUrl) throw new IpcValidationError("当前没有可用的使用说明链接。")
+      await shell.openExternal(helpUrl)
+      return null
+    })
+  })
+
   ipcMain.handle("sztu:tool-open", (event, toolId: unknown) => {
     assertTrustedSender(event)
     return runBridge(async () => {

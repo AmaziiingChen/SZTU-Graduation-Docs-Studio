@@ -38,7 +38,7 @@ CloudBase PostgreSQL currently stores the anonymous function rule as an environm
 - `migrations/20260903093000_schedule_diagnostic_retention.sql`: daily PostgreSQL retention job
 - `queries/telemetry-overview.sql`: read-only queries for recent events, daily activity, action outcomes, errors, and version distribution
 
-Update artifacts are not deployed yet. COS must eventually expose only signed manifests and release packages; never use this telemetry credential in a client or storage URL.
+Update artifacts are not deployed yet. Static hosting or COS must expose only signed manifests and release packages; never use this telemetry credential in a client or storage URL. Schema 2.0 also carries signed announcements, help links, minimum-version rules, maintenance, and retirement status. The Ed25519 signing key is generated and retained outside the repository; it is unrelated to paid platform code-signing certificates.
 
 ## Developer dashboard
 

@@ -11,6 +11,7 @@
     "telemetry:build": "pnpm --filter @sztu-docs/telemetry-admin build",
     "telemetry:test": "pnpm --filter @sztu-docs/telemetry-admin test",
     "update:manifest": "node scripts/create_update_manifest.mjs",
+    "update:keygen": "node scripts/generate_update_signing_key.mjs",
     "test:update-tools": "node --test tests/update-manifest-tools.test.mjs",
     "build": "pnpm --filter @sztu-docs/desktop build",
     "lint": "pnpm --filter @sztu-docs/desktop lint",

@@ -2,7 +2,11 @@ import { useCallback, useEffect, useState, type CSSProperties } from "react"
 import {
   ActivityIcon,
   BarChart3Icon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
   DatabaseIcon,
+  FileSearchIcon,
+  PackageCheckIcon,
   RefreshCwIcon,
   ShieldCheckIcon,
   TriangleAlertIcon,
@@ -38,7 +42,6 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from "@/components/ui/select"
 import {
   Sidebar,
@@ -64,15 +67,28 @@ import {
 } from "@/components/ui/table"
 import { SiteHeader } from "@/components/workbench/site-header"
 
+import { DiagnosticsDashboard } from "./diagnostics-dashboard"
+import { ReleaseManagement } from "./release-management"
 import type {
+  DiagnosticDashboardData,
+  DiagnosticDashboardResponse,
   TelemetryDashboardData,
   TelemetryDashboardResponse,
+  TelemetryRecentPage,
+  TelemetryRecentResponse,
 } from "./types"
 
 type DashboardState =
   | { status: "loading" }
   | { status: "ready"; data: TelemetryDashboardData }
   | { status: "error"; message: string }
+
+type DiagnosticState =
+  | { status: "loading" }
+  | { status: "ready"; data: DiagnosticDashboardData }
+  | { status: "error"; message: string }
+
+type AdminView = "telemetry" | "diagnostics" | "release"
 
 const trendConfig = {
   activeInstallations: {
@@ -125,6 +141,123 @@ function EmptyAnalysis({ children }: { children: string }) {
       <AlertTitle>数据量不足</AlertTitle>
       <AlertDescription>{children}</AlertDescription>
     </Alert>
+  )
+}
+
+function RecentEventsTable({ rangeDays, refreshKey }: { rangeDays: 7 | 30 | 90; refreshKey: string }) {
+  const [page, setPage] = useState<TelemetryRecentPage | null>(null)
+  const [cursorHistory, setCursorHistory] = useState<Array<string | null>>([null])
+  const [pageIndex, setPageIndex] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const loadPage = useCallback(async (cursor: string | null) => {
+    setLoading(true)
+    setError(null)
+    try {
+      const parameters = new URLSearchParams({ days: String(rangeDays) })
+      if (cursor) parameters.set("cursor", cursor)
+      const response = await fetch(`/api/telemetry/events?${parameters.toString()}`, {
+        headers: { Accept: "application/json" },
+      })
+      const result = (await response.json()) as TelemetryRecentResponse
+      if (result.status !== "ready") {
+        setError(result.message)
+        return
+      }
+      setPage(result.data)
+    } catch {
+      setError("无法连接本机遥测分析服务。")
+    } finally {
+      setLoading(false)
+    }
+  }, [rangeDays])
+
+  useEffect(() => {
+    setCursorHistory([null])
+    setPageIndex(0)
+    void loadPage(null)
+  }, [loadPage, refreshKey])
+
+  const goBack = () => {
+    if (pageIndex === 0) return
+    const nextIndex = pageIndex - 1
+    setPageIndex(nextIndex)
+    void loadPage(cursorHistory[nextIndex] ?? null)
+  }
+
+  const goForward = () => {
+    if (!page?.nextCursor) return
+    const nextIndex = pageIndex + 1
+    setCursorHistory((current) => [...current.slice(0, nextIndex), page.nextCursor])
+    setPageIndex(nextIndex)
+    void loadPage(page.nextCursor)
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>最近事件</CardTitle>
+        <CardDescription>不显示安装 ID、会话 ID 或任何文档内容</CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-4">
+        {error ? (
+          <Alert variant="destructive">
+            <TriangleAlertIcon />
+            <AlertTitle>最近事件暂不可用</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        ) : (
+          <div className="overflow-hidden rounded-lg border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>接收时间</TableHead>
+                  <TableHead>事件</TableHead>
+                  <TableHead>摘要</TableHead>
+                  <TableHead>版本与平台</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loading && !page ? (
+                  Array.from({ length: 5 }, (_, index) => (
+                    <TableRow key={index}>
+                      <TableCell colSpan={4}><Skeleton className="h-5 w-full" /></TableCell>
+                    </TableRow>
+                  ))
+                ) : page?.items.length ? (
+                  page.items.map((item, index) => (
+                    <TableRow key={`${item.receivedAt}-${item.eventName}-${index}`}>
+                      <TableCell>{formatTimestamp(item.receivedAt)}</TableCell>
+                      <TableCell>{item.eventName}</TableCell>
+                      <TableCell className="max-w-md truncate">{item.summary}</TableCell>
+                      <TableCell>{`${item.appVersion} · ${item.platform}/${item.arch}`}</TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">暂无事件</TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-xs text-muted-foreground">
+            第 {pageIndex + 1} 页 · 每页最多 {page?.pageSize ?? 20} 条
+          </p>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={goBack} disabled={loading || pageIndex === 0}>
+              <ChevronLeftIcon />上一页
+            </Button>
+            <Button variant="outline" size="sm" onClick={goForward} disabled={loading || !page?.nextCursor}>
+              下一页<ChevronRightIcon />
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -306,41 +439,17 @@ function Dashboard({ data }: { data: TelemetryDashboardData }) {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>最近事件</CardTitle>
-          <CardDescription>不显示安装 ID、会话 ID或任何文档内容</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>接收时间</TableHead>
-                <TableHead>事件</TableHead>
-                <TableHead>摘要</TableHead>
-                <TableHead>版本与平台</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.recent.map((item, index) => (
-                <TableRow key={`${item.receivedAt}-${item.eventName}-${index}`}>
-                  <TableCell>{formatTimestamp(item.receivedAt)}</TableCell>
-                  <TableCell>{item.eventName}</TableCell>
-                  <TableCell className="max-w-md truncate">{item.summary}</TableCell>
-                  <TableCell>{`${item.appVersion} · ${item.platform}/${item.arch}`}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      <RecentEventsTable rangeDays={data.rangeDays} refreshKey={data.generatedAt} />
     </div>
   )
 }
 
 export default function App() {
+  const [activeView, setActiveView] = useState<AdminView>("telemetry")
   const [rangeDays, setRangeDays] = useState<7 | 30 | 90>(30)
   const [state, setState] = useState<DashboardState>({ status: "loading" })
+  const [diagnosticRangeDays, setDiagnosticRangeDays] = useState<7 | 30>(30)
+  const [diagnosticState, setDiagnosticState] = useState<DiagnosticState>({ status: "loading" })
 
   const load = useCallback(async () => {
     setState({ status: "loading" })
@@ -359,9 +468,36 @@ export default function App() {
     }
   }, [rangeDays])
 
+  const loadDiagnostics = useCallback(async () => {
+    setDiagnosticState({ status: "loading" })
+    try {
+      const response = await fetch(`/api/diagnostics/overview?days=${diagnosticRangeDays}`, {
+        headers: { Accept: "application/json" },
+      })
+      const result = (await response.json()) as DiagnosticDashboardResponse
+      if (result.status !== "ready") {
+        setDiagnosticState({ status: "error", message: result.message })
+        return
+      }
+      setDiagnosticState({ status: "ready", data: result.data })
+    } catch {
+      setDiagnosticState({ status: "error", message: "无法连接本机诊断报告服务。" })
+    }
+  }, [diagnosticRangeDays])
+
   useEffect(() => {
     void load()
   }, [load])
+
+  useEffect(() => {
+    if (activeView === "diagnostics") void loadDiagnostics()
+  }, [activeView, loadDiagnostics])
+
+  const activeState = activeView === "telemetry"
+    ? state
+    : activeView === "diagnostics"
+      ? diagnosticState
+      : { status: "ready" as const }
 
   return (
     <SidebarProvider
@@ -392,15 +528,33 @@ export default function App() {
             <SidebarGroupContent>
               <SidebarMenu>
                 <SidebarMenuItem>
-                  <SidebarMenuButton isActive tooltip="使用概览">
+                  <SidebarMenuButton
+                    isActive={activeView === "telemetry"}
+                    tooltip="使用概览"
+                    onClick={() => setActiveView("telemetry")}
+                  >
                     <BarChart3Icon />
                     <span>使用概览</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
                 <SidebarMenuItem>
-                  <SidebarMenuButton tooltip="隐私边界">
-                    <ShieldCheckIcon />
-                    <span>匿名聚合数据</span>
+                  <SidebarMenuButton
+                    isActive={activeView === "release"}
+                    tooltip="版本发布"
+                    onClick={() => setActiveView("release")}
+                  >
+                    <PackageCheckIcon />
+                    <span>版本发布</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    isActive={activeView === "diagnostics"}
+                    tooltip="诊断报告"
+                    onClick={() => setActiveView("diagnostics")}
+                  >
+                    <FileSearchIcon />
+                    <span>诊断报告</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               </SidebarMenu>
@@ -410,56 +564,79 @@ export default function App() {
       </Sidebar>
       <SidebarInset>
         <SiteHeader
-          title="使用概览"
+          title={activeView === "telemetry" ? "使用概览" : activeView === "diagnostics" ? "诊断报告" : "版本发布"}
           status={
-            state.status === "ready" ? (
+            activeView === "telemetry" && state.status === "ready" ? (
               <Badge variant="secondary">{state.data.sourceRowCount} 条事件</Badge>
+            ) : activeView === "diagnostics" && diagnosticState.status === "ready" ? (
+              <Badge variant="secondary">{diagnosticState.data.kpis.reports} 份报告</Badge>
             ) : undefined
           }
           actions={
             <>
-              <Select
-                value={String(rangeDays)}
-                onValueChange={(value) => setRangeDays(Number(value) as 7 | 30 | 90)}
-              >
-                <SelectTrigger aria-label="统计时间范围" size="sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent align="end">
-                  <SelectItem value="7">最近 7 天</SelectItem>
-                  <SelectItem value="30">最近 30 天</SelectItem>
-                  <SelectItem value="90">最近 90 天</SelectItem>
-                </SelectContent>
-              </Select>
-              <Button
+              {activeView === "telemetry" ? (
+                <Select
+                  value={String(rangeDays)}
+                  onValueChange={(value) => setRangeDays(Number(value) as 7 | 30 | 90)}
+                >
+                  <SelectTrigger aria-label="统计时间范围" size="sm">
+                    <span>{`最近 ${rangeDays} 天`}</span>
+                  </SelectTrigger>
+                  <SelectContent align="end">
+                    <SelectItem value="7">最近 7 天</SelectItem>
+                    <SelectItem value="30">最近 30 天</SelectItem>
+                    <SelectItem value="90">最近 90 天</SelectItem>
+                  </SelectContent>
+                </Select>
+              ) : activeView === "diagnostics" ? (
+                <Select
+                  value={String(diagnosticRangeDays)}
+                  onValueChange={(value) => setDiagnosticRangeDays(Number(value) as 7 | 30)}
+                >
+                  <SelectTrigger aria-label="诊断报告时间范围" size="sm">
+                    <span>{`最近 ${diagnosticRangeDays} 天`}</span>
+                  </SelectTrigger>
+                  <SelectContent align="end">
+                    <SelectItem value="7">最近 7 天</SelectItem>
+                    <SelectItem value="30">最近 30 天</SelectItem>
+                  </SelectContent>
+                </Select>
+              ) : null}
+              {activeView !== "release" ? <Button
                 variant="outline"
                 size="sm"
-                disabled={state.status === "loading"}
-                onClick={() => void load()}
+                disabled={activeState.status === "loading"}
+                onClick={() => void (activeView === "telemetry" ? load() : loadDiagnostics())}
               >
-                <RefreshCwIcon className={state.status === "loading" ? "animate-spin" : ""} />
+                <RefreshCwIcon className={activeState.status === "loading" ? "animate-spin" : ""} />
                 刷新
-              </Button>
+              </Button> : null}
             </>
           }
         />
         <main className="flex min-h-0 flex-1 overflow-auto">
-          {state.status === "loading" ? (
+          {activeState.status === "loading" ? (
             <div className="grid w-full gap-4 p-4 lg:grid-cols-3 lg:p-6">
               {Array.from({ length: 6 }, (_, index) => (
                 <Skeleton key={index} className="h-28" />
               ))}
             </div>
-          ) : state.status === "error" ? (
+          ) : activeState.status === "error" ? (
             <div className="w-full p-4 lg:p-6">
               <Alert variant="destructive">
                 <TriangleAlertIcon />
-                <AlertTitle>遥测分析暂不可用</AlertTitle>
-                <AlertDescription>{state.message}</AlertDescription>
+                <AlertTitle>{activeView === "telemetry" ? "遥测分析暂不可用" : "诊断报告暂不可用"}</AlertTitle>
+                <AlertDescription>{activeState.message}</AlertDescription>
               </Alert>
             </div>
-          ) : (
+          ) : activeView === "release" ? (
+            <ReleaseManagement />
+          ) : activeView === "diagnostics" && diagnosticState.status === "ready" ? (
+            <DiagnosticsDashboard data={diagnosticState.data} />
+          ) : state.status === "ready" ? (
             <Dashboard data={state.data} />
+          ) : (
+            <Alert><ShieldCheckIcon /><AlertTitle>只读管理后台</AlertTitle></Alert>
           )}
         </main>
       </SidebarInset>

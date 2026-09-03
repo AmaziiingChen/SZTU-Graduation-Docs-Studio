@@ -85,14 +85,34 @@ export type DocumentCompletionResult = {
 export type UpdateStatus =
   | { state: "unconfigured" }
   | { state: "idle" }
-  | { state: "checking" }
-  | { state: "up_to_date"; checkedAt: string }
-  | { state: "downloading"; version: string }
-  | { state: "downloaded"; version: string; downloadedAt: string }
+  | { state: "checking"; control?: ReleaseControl }
+  | { state: "up_to_date"; checkedAt: string; control?: ReleaseControl }
+  | { state: "downloading"; version: string; control?: ReleaseControl }
+  | { state: "downloaded"; version: string; downloadedAt: string; control?: ReleaseControl }
   | {
       state: "error"
       code: "CHECK_FAILED" | "MANIFEST_INVALID" | "DOWNLOAD_FAILED"
+      control?: ReleaseControl
     }
+
+export type ReleaseAnnouncement = {
+  id: string
+  title: string
+  body: string
+  severity: "info" | "important" | "critical"
+  startsAt: string
+  endsAt: string | null
+  dismissible: boolean
+}
+
+export type ReleaseControl = {
+  updatePolicy: "optional" | "recommended" | "required"
+  minimumSupportedVersion: string | null
+  requiresUpgrade: boolean
+  serviceStatus: "normal" | "maintenance" | "retired"
+  helpUrl: string | null
+  announcement: ReleaseAnnouncement | null
+}
 
 export type WorkspaceMode = "persistent" | "temporary"
 export type DocumentType = "proposal" | "task_book" | "midterm"
@@ -457,6 +477,7 @@ export type SztuDesktopApi = {
   ) => Promise<DocumentCompletionResult>
   getUpdateStatus: () => Promise<UpdateStatus>
   revealDownloadedUpdate: () => Promise<null>
+  openReleaseHelp: () => Promise<null>
   openToolLink: (toolId: ToolLinkId) => Promise<null>
   importImageAsset: () => Promise<ImageAssetImportResult | null>
   onUpdateStatus: (callback: (status: UpdateStatus) => void) => () => void

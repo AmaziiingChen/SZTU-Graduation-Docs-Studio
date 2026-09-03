@@ -1,0 +1,15 @@
+{
+  "update_policy": "recommended",
+  "minimum_supported_version": "0.1.0",
+  "service_status": "normal",
+  "help_url": "https://example.com/sztu-docs/guide",
+  "announcement": {
+    "id": "release-020",
+    "title": "新版本说明",
+    "body": "新增功能已经可用，请在方便时更新。",
+    "severity": "info",
+    "starts_at": "2026-09-04T00:00:00.000Z",
+    "ends_at": null,
+    "dismissible": true
+  }
+}

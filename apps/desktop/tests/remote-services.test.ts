@@ -1,5 +1,5 @@
 import { createHash, generateKeyPairSync, sign } from "node:crypto"
-import { mkdtemp, readFile, rm } from "node:fs/promises"
+import { copyFile, mkdtemp, readFile, rm } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 
@@ -182,6 +182,128 @@ describe("signed updates", () => {
     ).toThrow("verification failed")
   })
 
+  it("accepts a signed release policy and exposes only an active announcement", async () => {
+    const { privateKey, publicKey } = generateKeyPairSync("ed25519")
+    const controlledPayload: UpdateManifestPayload = {
+      ...payload,
+      schema_version: "2.0",
+      version: "0.2.0",
+      control: {
+        update_policy: "recommended",
+        minimum_supported_version: "0.1.5",
+        service_status: "normal",
+        help_url: "https://docs.example.test/guide",
+        announcement: {
+          id: "release-020",
+          title: "新版本说明",
+          body: "新增了模板检查能力。",
+          severity: "info",
+          starts_at: "2026-08-01T00:00:00.000Z",
+          ends_at: "2026-10-01T00:00:00.000Z",
+          dismissible: true,
+        },
+      },
+    }
+    const envelope = {
+      payload: controlledPayload,
+      signature: sign(
+        null,
+        Buffer.from(canonicalJson(controlledPayload), "utf8"),
+        privateKey,
+      ).toString("base64"),
+    }
+    expect(
+      parseAndVerifyManifest(
+        envelope,
+        publicKey.export({ type: "spki", format: "pem" }).toString(),
+      ),
+    ).toEqual(controlledPayload)
+
+    const service = new UpdateService({
+      userDataPath: await temporaryDirectory(),
+      currentVersion: "0.2.0",
+      platform: "darwin",
+      arch: "arm64",
+      manifestUrl: "https://downloads.example.test/manifest.json",
+      publicKeyPem: publicKey.export({ type: "spki", format: "pem" }).toString(),
+      fetchImpl: async () => new Response(JSON.stringify(envelope), { status: 200 }),
+      now: () => new Date("2026-09-04T00:00:00.000Z"),
+    })
+    await expect(service.checkNow()).resolves.toMatchObject({
+      state: "up_to_date",
+      control: {
+        updatePolicy: "recommended",
+        minimumSupportedVersion: "0.1.5",
+        requiresUpgrade: false,
+        serviceStatus: "normal",
+        helpUrl: "https://docs.example.test/guide",
+        announcement: { id: "release-020" },
+      },
+    })
+    expect(service.getHelpUrl()).toBe("https://docs.example.test/guide")
+  })
+
+  it("accepts a signed announcement-only manifest without an installer", () => {
+    const { privateKey, publicKey } = generateKeyPairSync("ed25519")
+    const controlledPayload: UpdateManifestPayload = {
+      schema_version: "2.0",
+      channel: "stable",
+      version: "0.1.0",
+      published_at: "2026-09-04T00:00:00.000Z",
+      artifacts: [],
+      control: {
+        update_policy: "optional",
+        minimum_supported_version: null,
+        service_status: "normal",
+        help_url: null,
+        announcement: null,
+      },
+    }
+    const envelope = {
+      payload: controlledPayload,
+      signature: sign(
+        null,
+        Buffer.from(canonicalJson(controlledPayload), "utf8"),
+        privateKey,
+      ).toString("base64"),
+    }
+    expect(
+      parseAndVerifyManifest(
+        envelope,
+        publicKey.export({ type: "spki", format: "pem" }).toString(),
+      ),
+    ).toEqual(controlledPayload)
+  })
+
+  it("rejects unsigned policy fields and unsafe help links", () => {
+    const { privateKey, publicKey } = generateKeyPairSync("ed25519")
+    const invalidPayload = {
+      ...payload,
+      schema_version: "2.0",
+      control: {
+        update_policy: "required",
+        minimum_supported_version: "0.2.0",
+        service_status: "retired",
+        help_url: "http://unsafe.example.test/guide",
+        announcement: null,
+      },
+    }
+    const envelope = {
+      payload: invalidPayload,
+      signature: sign(
+        null,
+        Buffer.from(canonicalJson(invalidPayload), "utf8"),
+        privateKey,
+      ).toString("base64"),
+    }
+    expect(() =>
+      parseAndVerifyManifest(
+        envelope,
+        publicKey.export({ type: "spki", format: "pem" }).toString(),
+      ),
+    ).toThrow("HTTPS")
+  })
+
   it("compares release versions before downloading", () => {
     expect(compareSemver("0.2.0", "0.1.9")).toBeGreaterThan(0)
     expect(compareSemver("0.2.0", "0.2.0")).toBe(0)
@@ -245,6 +367,20 @@ describe("signed updates", () => {
 })
 
 describe("remote service configuration", () => {
+  it("loads the production CloudBase update trust anchor as a packaged resource", async () => {
+    const resourcesPath = await temporaryDirectory()
+    await copyFile(
+      path.resolve(import.meta.dirname, "../../../config/remote-services.production.json"),
+      path.join(resourcesPath, "remote-services.json"),
+    )
+    const config = await loadRemoteServicesConfig({ packaged: true, resourcesPath })
+    expect(config.updateManifestUrl).toBe(
+      "https://amazingapp-d5giro9ac73398410-1412347033.tcloudbaseapp.com/releases/stable/manifest.json",
+    )
+    expect(config.updatePublicKeyPem).toContain("BEGIN PUBLIC KEY")
+    expect(config.updatePublicKeyPem).not.toContain("PRIVATE KEY")
+  })
+
   it("uses the deployed CloudBase telemetry endpoint by default in development", async () => {
     const config = await loadRemoteServicesConfig({
       packaged: false,

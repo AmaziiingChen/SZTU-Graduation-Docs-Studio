@@ -49,6 +49,7 @@ contextBridge.exposeInMainWorld("sztuDesktop", {
     invoke("sztu:telemetry-complete-document", input),
   getUpdateStatus: () => invoke("sztu:update-status"),
   revealDownloadedUpdate: () => invoke("sztu:update-reveal"),
+  openReleaseHelp: () => invoke("sztu:update-open-help"),
   openToolLink: (toolId: unknown) => invoke("sztu:tool-open", toolId),
   importImageAsset: () => invoke("sztu:asset-import-image"),
   onUpdateStatus: (callback: unknown) => {

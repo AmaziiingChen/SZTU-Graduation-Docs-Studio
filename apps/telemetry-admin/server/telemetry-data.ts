@@ -5,6 +5,7 @@ import type {
   TelemetryCountPoint,
   TelemetryDashboardData,
   TelemetryRecentEvent,
+  TelemetryRecentPage,
   TelemetryVersionPoint,
 } from "../src/types.ts"
 
@@ -29,6 +30,8 @@ const ALLOWED_ATTRIBUTE_KEYS = new Set([
 ])
 const RANGE_DAYS = new Set([7, 30, 90])
 const MAX_ROWS = 50_000
+const RECENT_PAGE_SIZE = 20
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 export type RawTelemetryRow = {
   installation_id: string
@@ -42,6 +45,15 @@ export type RawTelemetryRow = {
 }
 
 type CliExecutor = (args: string[]) => Promise<string>
+
+type TelemetryCursor = {
+  receivedAt: string
+  eventId: string
+}
+
+type RawTelemetryPageRow = RawTelemetryRow & {
+  event_id: string
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value)
@@ -152,6 +164,52 @@ function summaryFor(row: RawTelemetryRow): string {
       .join(" · ")
   }
   return row.event_name
+}
+
+function toRecentEvent(row: RawTelemetryRow): TelemetryRecentEvent {
+  return {
+    receivedAt: row.received_at,
+    eventName: row.event_name,
+    appVersion: row.app_version,
+    platform: row.platform,
+    arch: row.arch,
+    summary: summaryFor(row),
+  }
+}
+
+function encodeCursor(cursor: TelemetryCursor): string {
+  return Buffer.from(JSON.stringify(cursor), "utf8").toString("base64url")
+}
+
+function decodeCursor(value: string | null): TelemetryCursor | null {
+  if (!value) return null
+  if (value.length > 256 || !/^[A-Za-z0-9_-]+$/.test(value)) throw new Error("分页游标无效。")
+  let decoded: unknown
+  try {
+    decoded = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as unknown
+  } catch {
+    throw new Error("分页游标无效。")
+  }
+  if (
+    !isRecord(decoded) ||
+    typeof decoded.receivedAt !== "string" ||
+    !Number.isFinite(Date.parse(decoded.receivedAt)) ||
+    typeof decoded.eventId !== "string" ||
+    !UUID_PATTERN.test(decoded.eventId)
+  ) throw new Error("分页游标无效。")
+  return { receivedAt: new Date(decoded.receivedAt).toISOString(), eventId: decoded.eventId }
+}
+
+function buildRecentPage(rows: RawTelemetryPageRow[]): TelemetryRecentPage {
+  const visibleRows = rows.slice(0, RECENT_PAGE_SIZE)
+  const last = visibleRows.at(-1)
+  return {
+    items: visibleRows.map(toRecentEvent),
+    nextCursor: rows.length > RECENT_PAGE_SIZE && last
+      ? encodeCursor({ receivedAt: last.received_at, eventId: last.event_id })
+      : null,
+    pageSize: RECENT_PAGE_SIZE,
+  }
 }
 
 export function aggregateTelemetry(
@@ -267,14 +325,7 @@ export function aggregateTelemetry(
   const recent: TelemetryRecentEvent[] = [...rows]
     .sort((left, right) => Date.parse(right.received_at) - Date.parse(left.received_at))
     .slice(0, 50)
-    .map((row) => ({
-      receivedAt: row.received_at,
-      eventName: row.event_name,
-      appVersion: row.app_version,
-      platform: row.platform,
-      arch: row.arch,
-      summary: summaryFor(row),
-    }))
+    .map(toRecentEvent)
 
   const versions: TelemetryVersionPoint[] = [...versionRows.entries()]
     .map(([key, value]) => ({
@@ -397,6 +448,83 @@ function parseCliRows(payload: unknown): RawTelemetryRow[] {
       return parseRow(record)
     })
     .filter((row): row is RawTelemetryRow => row !== null)
+}
+
+function parseCliPageRows(payload: unknown): RawTelemetryPageRow[] {
+  if (!isRecord(payload) || !isRecord(payload.data)) throw new Error("CloudBase CLI 返回结构无效。")
+  const columns = payload.data.Columns
+  const encodedRows = payload.data.Rows
+  if (!Array.isArray(columns) || !columns.every((column) => typeof column === "string")) {
+    throw new Error("CloudBase CLI 返回列信息无效。")
+  }
+  if (!Array.isArray(encodedRows)) throw new Error("CloudBase CLI 返回行信息无效。")
+
+  return encodedRows.flatMap((encodedRow) => {
+    let values: unknown
+    try {
+      values = typeof encodedRow === "string" ? JSON.parse(encodedRow) as unknown : encodedRow
+    } catch {
+      return []
+    }
+    if (!Array.isArray(values) || values.length !== columns.length) return []
+    const record: Record<string, unknown> = {}
+    columns.forEach((column, index) => { record[column] = values[index] })
+    if (typeof record.attributes === "string") {
+      try { record.attributes = JSON.parse(record.attributes) as unknown } catch { record.attributes = {} }
+    }
+    const row = parseRow(record)
+    if (!row || typeof record.event_id !== "string" || !UUID_PATTERN.test(record.event_id)) return []
+    return [{ ...row, event_id: record.event_id }]
+  })
+}
+
+export async function fetchRecentTelemetryPageFromCli(input: {
+  envId: string
+  rangeDays: 7 | 30 | 90
+  cursor?: string | null
+  execute?: CliExecutor
+}): Promise<TelemetryRecentPage> {
+  if (!/^[-a-z0-9]{6,64}$/i.test(input.envId)) throw new Error("环境 ID 格式无效。")
+  const cursor = decodeCursor(input.cursor ?? null)
+  const cursorFilter = cursor
+    ? ` AND (received_at, event_id) < ('${cursor.receivedAt}'::timestamptz, '${cursor.eventId}'::uuid)`
+    : ""
+  const sql = `SELECT event_id::text AS event_id, installation_id::text AS installation_id, session_id::text AS session_id, event_name, to_char(received_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS received_at, app_version, platform, arch, attributes FROM public.telemetry_events WHERE received_at >= NOW() - make_interval(days => ${input.rangeDays})${cursorFilter} ORDER BY received_at DESC, event_id DESC LIMIT ${RECENT_PAGE_SIZE + 1}`
+  const stdout = await (input.execute ?? executeCloudBaseCli)([
+    "db", "execute", "-e", input.envId, "--sql", sql, "--json",
+  ])
+  const rows = parseCliPageRows(parseCliPayload(stdout))
+  return buildRecentPage(rows)
+}
+
+export function fixtureRecentTelemetryPage(
+  cursorValue: string | null,
+  now = new Date(),
+): TelemetryRecentPage {
+  const cursor = decodeCursor(cursorValue)
+  const rows: RawTelemetryPageRow[] = Array.from({ length: 45 }, (_, index) => {
+    const attributes: Record<string, string | number | boolean> = index % 3 === 0
+      ? { uptime_bucket: "5_to_30m" }
+      : { event_name: "view_opened", view: "proposal" }
+    return {
+      event_id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+      installation_id: "00000000-0000-4000-8000-000000000001",
+      session_id: "00000000-0000-4000-8000-000000000002",
+      event_name: index % 3 === 0 ? "heartbeat" : "usage_event",
+      received_at: new Date(now.getTime() - index * 60_000).toISOString(),
+      app_version: "0.1.0",
+      platform: index % 2 === 0 ? "darwin" : "win32",
+      arch: index % 2 === 0 ? "arm64" : "x64",
+      attributes,
+    }
+  })
+  const filtered = cursor
+    ? rows.filter((row) => (
+        Date.parse(row.received_at) < Date.parse(cursor.receivedAt) ||
+        (row.received_at === cursor.receivedAt && row.event_id < cursor.eventId)
+      ))
+    : rows
+  return buildRecentPage(filtered.slice(0, RECENT_PAGE_SIZE + 1))
 }
 
 export async function fetchTelemetryRowsFromCli(input: {

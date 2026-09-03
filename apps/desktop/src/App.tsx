@@ -3378,6 +3378,10 @@ export default function App() {
   const [dismissedUpdateVersion, setDismissedUpdateVersion] = useState<string | null>(
     null,
   )
+  const [dismissedAnnouncementId, setDismissedAnnouncementId] = useState<string | null>(
+    null,
+  )
+  const [maintenanceDismissed, setMaintenanceDismissed] = useState(false)
   const activeDocumentId = document?.id
   const activeDocumentIdRef = useRef<string | null>(activeDocumentId ?? null)
   useEffect(() => {
@@ -4502,6 +4506,16 @@ export default function App() {
     }
   }
 
+  const openReleaseHelp = async () => {
+    const api = getDesktopApi()
+    if (!api) return
+    try {
+      await api.openReleaseHelp()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "无法打开使用说明。")
+    }
+  }
+
   const workspaceDisabled = workspace.status !== "ready"
   const templateCheck = activeTemplateCheck(environment, activeDocumentType)
   const templateReady = templateCheck?.status === "pass"
@@ -4580,6 +4594,26 @@ export default function App() {
     completeEnvironmentOnboarding()
     setEnvironmentOnboardingCompleted(true)
   }
+
+  const releaseControl = "control" in updateStatus ? updateStatus.control : undefined
+  const releaseHasNewVersion =
+    updateStatus.state === "downloading" || updateStatus.state === "downloaded"
+  const releaseRequiresUpdate = Boolean(
+    releaseControl?.requiresUpgrade ||
+      (releaseControl?.updatePolicy === "required" && releaseHasNewVersion),
+  )
+  const releaseIsRetired = releaseControl?.serviceStatus === "retired"
+  const releaseBlocking = Boolean(
+    releaseIsRetired ||
+      releaseRequiresUpdate ||
+      (releaseControl?.announcement && !releaseControl.announcement.dismissible),
+  )
+  const releaseAnnouncement = releaseControl?.announcement
+  const releaseNoticeOpen = Boolean(
+    !releaseBlocking &&
+      ((releaseControl?.serviceStatus === "maintenance" && !maintenanceDismissed) ||
+        (releaseAnnouncement && releaseAnnouncement.id !== dismissedAnnouncementId)),
+  )
 
   const editor =
     activePane === "profile" ? (
@@ -4993,7 +5027,95 @@ export default function App() {
         onOpenGuide={(toolId) => void openToolLink(toolId)}
       />
       <Dialog
+        open={releaseBlocking}
+        onOpenChange={() => undefined}
+      >
+        <DialogContent showCloseButton={false} className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {releaseIsRetired
+                ? "当前版本已停止服务"
+                : releaseRequiresUpdate
+                  ? "需要更新后继续使用"
+                  : releaseAnnouncement?.title ?? "重要通知"}
+            </DialogTitle>
+            <DialogDescription className="whitespace-pre-wrap">
+              {releaseIsRetired
+                ? "请安装最新版本，或查看使用说明了解后续安排。"
+                : releaseRequiresUpdate
+                  ? updateStatus.state === "downloaded"
+                    ? `版本 ${updateStatus.version} 已下载并完成校验。`
+                    : "正在检查或下载可用的新版本，请稍候。"
+                  : releaseAnnouncement?.body}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => void getDesktopApi()?.quitApp()}>
+              退出应用
+            </Button>
+            {releaseControl?.helpUrl ? (
+              <Button variant="outline" onClick={() => void openReleaseHelp()}>
+                查看说明
+              </Button>
+            ) : null}
+            {updateStatus.state === "downloaded" ? (
+              <Button onClick={() => void revealDownloadedUpdate()}>
+                <FolderOpenIcon />
+                显示更新文件
+              </Button>
+            ) : null}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={releaseNoticeOpen}
+        onOpenChange={(open) => {
+          if (open) return
+          if (releaseControl?.serviceStatus === "maintenance") {
+            setMaintenanceDismissed(true)
+          }
+          if (releaseAnnouncement?.dismissible) {
+            setDismissedAnnouncementId(releaseAnnouncement.id)
+          }
+        }}
+      >
+        <DialogContent showCloseButton={false} className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {releaseControl?.serviceStatus === "maintenance"
+                ? "服务维护通知"
+                : releaseAnnouncement?.title ?? "软件公告"}
+            </DialogTitle>
+            <DialogDescription className="whitespace-pre-wrap">
+              {releaseAnnouncement?.body ??
+                "远程服务正在维护，本地编辑与已有资料仍可继续使用。"}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            {releaseControl?.helpUrl ? (
+              <Button variant="outline" onClick={() => void openReleaseHelp()}>
+                查看说明
+              </Button>
+            ) : null}
+            <Button
+              onClick={() => {
+                if (releaseControl?.serviceStatus === "maintenance") {
+                  setMaintenanceDismissed(true)
+                }
+                if (releaseAnnouncement) {
+                  setDismissedAnnouncementId(releaseAnnouncement.id)
+                }
+              }}
+            >
+              我知道了
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
         open={
+          !releaseBlocking &&
+          !releaseNoticeOpen &&
           updateStatus.state === "downloaded" &&
           dismissedUpdateVersion !== updateStatus.version
         }

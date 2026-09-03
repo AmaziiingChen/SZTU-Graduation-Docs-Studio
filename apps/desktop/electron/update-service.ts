@@ -5,17 +5,38 @@ import path from "node:path"
 export const UPDATE_INTERVAL_MS = 30 * 60 * 1000
 const MAX_MANIFEST_BYTES = 128 * 1024
 const MAX_ARTIFACT_BYTES = 1024 * 1024 * 1024
+const MAX_NOTICE_TITLE_LENGTH = 80
+const MAX_NOTICE_BODY_LENGTH = 1_000
 const SEMVER_PATTERN = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/
 const SHA256_PATTERN = /^[a-f0-9]{64}$/
+
+export type ReleaseAnnouncement = {
+  id: string
+  title: string
+  body: string
+  severity: "info" | "important" | "critical"
+  startsAt: string
+  endsAt: string | null
+  dismissible: boolean
+}
+
+export type ReleaseControl = {
+  updatePolicy: "optional" | "recommended" | "required"
+  minimumSupportedVersion: string | null
+  requiresUpgrade: boolean
+  serviceStatus: "normal" | "maintenance" | "retired"
+  helpUrl: string | null
+  announcement: ReleaseAnnouncement | null
+}
 
 export type UpdateStatus =
   | { state: "unconfigured" }
   | { state: "idle" }
-  | { state: "checking" }
-  | { state: "up_to_date"; checkedAt: string }
-  | { state: "downloading"; version: string }
-  | { state: "downloaded"; version: string; downloadedAt: string }
-  | { state: "error"; code: "CHECK_FAILED" | "MANIFEST_INVALID" | "DOWNLOAD_FAILED" }
+  | { state: "checking"; control?: ReleaseControl }
+  | { state: "up_to_date"; checkedAt: string; control?: ReleaseControl }
+  | { state: "downloading"; version: string; control?: ReleaseControl }
+  | { state: "downloaded"; version: string; downloadedAt: string; control?: ReleaseControl }
+  | { state: "error"; code: "CHECK_FAILED" | "MANIFEST_INVALID" | "DOWNLOAD_FAILED"; control?: ReleaseControl }
 
 type UpdateArtifact = {
   platform: NodeJS.Platform
@@ -26,11 +47,26 @@ type UpdateArtifact = {
 }
 
 export type UpdateManifestPayload = {
-  schema_version: "1.0"
+  schema_version: "1.0" | "2.0"
   channel: "stable"
   version: string
   published_at: string
   artifacts: UpdateArtifact[]
+  control?: {
+    update_policy: "optional" | "recommended" | "required"
+    minimum_supported_version: string | null
+    service_status: "normal" | "maintenance" | "retired"
+    help_url: string | null
+    announcement: {
+      id: string
+      title: string
+      body: string
+      severity: "info" | "important" | "critical"
+      starts_at: string
+      ends_at: string | null
+      dismissible: boolean
+    } | null
+  }
 }
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>
@@ -90,6 +126,97 @@ function validArtifactUrl(value: string): string {
   return parsed.toString()
 }
 
+function validOptionalHttpsUrl(value: unknown): string | null {
+  if (value === null) return null
+  if (typeof value !== "string") throw new Error("Help URL is invalid.")
+  return validArtifactUrl(value)
+}
+
+function parseControl(
+  value: unknown,
+  currentVersion: string,
+  now: Date,
+): ReleaseControl {
+  if (
+    !isObject(value) ||
+    !exactKeys(value, [
+      "update_policy",
+      "minimum_supported_version",
+      "service_status",
+      "help_url",
+      "announcement",
+    ]) ||
+    !["optional", "recommended", "required"].includes(String(value.update_policy)) ||
+    !["normal", "maintenance", "retired"].includes(String(value.service_status)) ||
+    !(
+      value.minimum_supported_version === null ||
+      (typeof value.minimum_supported_version === "string" &&
+        SEMVER_PATTERN.test(value.minimum_supported_version))
+    )
+  ) {
+    throw new Error("Release control is invalid.")
+  }
+  let announcement: ReleaseAnnouncement | null = null
+  if (value.announcement !== null) {
+    const raw = value.announcement
+    if (
+      !isObject(raw) ||
+      !exactKeys(raw, [
+        "id",
+        "title",
+        "body",
+        "severity",
+        "starts_at",
+        "ends_at",
+        "dismissible",
+      ]) ||
+      typeof raw.id !== "string" ||
+      !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/.test(raw.id) ||
+      typeof raw.title !== "string" ||
+      raw.title.trim().length < 1 ||
+      raw.title.length > MAX_NOTICE_TITLE_LENGTH ||
+      typeof raw.body !== "string" ||
+      raw.body.trim().length < 1 ||
+      raw.body.length > MAX_NOTICE_BODY_LENGTH ||
+      !["info", "important", "critical"].includes(String(raw.severity)) ||
+      typeof raw.starts_at !== "string" ||
+      !Number.isFinite(Date.parse(raw.starts_at)) ||
+      !(
+        raw.ends_at === null ||
+        (typeof raw.ends_at === "string" && Number.isFinite(Date.parse(raw.ends_at)))
+      ) ||
+      typeof raw.dismissible !== "boolean"
+    ) {
+      throw new Error("Release announcement is invalid.")
+    }
+    const startsAt = new Date(raw.starts_at)
+    const endsAt = raw.ends_at === null ? null : new Date(raw.ends_at as string)
+    if (endsAt && endsAt <= startsAt) throw new Error("Announcement time range is invalid.")
+    if (startsAt <= now && (!endsAt || now < endsAt)) {
+      announcement = {
+        id: raw.id,
+        title: raw.title.trim(),
+        body: raw.body.trim(),
+        severity: raw.severity as ReleaseAnnouncement["severity"],
+        startsAt: startsAt.toISOString(),
+        endsAt: endsAt?.toISOString() ?? null,
+        dismissible: raw.dismissible,
+      }
+    }
+  }
+  const minimumSupportedVersion = value.minimum_supported_version as string | null
+  return {
+    updatePolicy: value.update_policy as ReleaseControl["updatePolicy"],
+    minimumSupportedVersion,
+    requiresUpgrade:
+      minimumSupportedVersion !== null &&
+      compareSemver(currentVersion, minimumSupportedVersion) < 0,
+    serviceStatus: value.service_status as ReleaseControl["serviceStatus"],
+    helpUrl: validOptionalHttpsUrl(value.help_url),
+    announcement,
+  }
+}
+
 export function parseAndVerifyManifest(
   value: unknown,
   publicKeyPem: string,
@@ -117,23 +244,21 @@ export function parseAndVerifyManifest(
     throw new Error("Manifest signature verification failed.")
   }
   const payload = value.payload
+  if (!isObject(payload)) throw new Error("Manifest payload is invalid.")
+  const schemaVersion = payload.schema_version
+  const expectedKeys = schemaVersion === "2.0"
+    ? ["schema_version", "channel", "version", "published_at", "artifacts", "control"]
+    : ["schema_version", "channel", "version", "published_at", "artifacts"]
   if (
-    !isObject(payload) ||
-    !exactKeys(payload, [
-      "schema_version",
-      "channel",
-      "version",
-      "published_at",
-      "artifacts",
-    ]) ||
-    payload.schema_version !== "1.0" ||
+    !exactKeys(payload, expectedKeys) ||
+    (schemaVersion !== "1.0" && schemaVersion !== "2.0") ||
     payload.channel !== "stable" ||
     typeof payload.version !== "string" ||
     !SEMVER_PATTERN.test(payload.version) ||
     typeof payload.published_at !== "string" ||
     !Number.isFinite(Date.parse(payload.published_at)) ||
     !Array.isArray(payload.artifacts) ||
-    payload.artifacts.length < 1 ||
+    (schemaVersion === "1.0" && payload.artifacts.length < 1) ||
     payload.artifacts.length > 20
   ) {
     throw new Error("Manifest payload is invalid.")
@@ -162,12 +287,18 @@ export function parseAndVerifyManifest(
       size_bytes: raw.size_bytes as number,
     }
   })
+  if (schemaVersion === "2.0") {
+    parseControl(payload.control, "0.0.0", new Date(0))
+  }
   return {
-    schema_version: "1.0",
+    schema_version: schemaVersion,
     channel: "stable",
     version: payload.version,
     published_at: payload.published_at,
     artifacts,
+    ...(schemaVersion === "2.0"
+      ? { control: payload.control as UpdateManifestPayload["control"] }
+      : {}),
   }
 }
 
@@ -178,6 +309,7 @@ export class UpdateService {
   private downloadedPath: string | undefined
   private downloadedVersion: string | undefined
   private downloadedAt: string | undefined
+  private currentControl: ReleaseControl | undefined
   private readonly listeners = new Set<(status: UpdateStatus) => void>()
 
   constructor(
@@ -227,12 +359,19 @@ export class UpdateService {
     return this.status.state === "downloaded" ? this.downloadedPath ?? null : null
   }
 
+  getHelpUrl(): string | null {
+    return this.currentControl?.helpUrl ?? null
+  }
+
   async checkNow(): Promise<UpdateStatus> {
     if (!this.options.manifestUrl || !this.options.publicKeyPem || this.checking) {
       return this.status
     }
     this.checking = true
-    this.setStatus({ state: "checking" })
+    this.setStatus({
+      state: "checking",
+      ...(this.currentControl ? { control: this.currentControl } : {}),
+    })
     try {
       const response = await this.fetchWithTimeout(this.options.manifestUrl, 10_000)
       if (!response.ok) throw new Error("Manifest request failed.")
@@ -247,14 +386,30 @@ export class UpdateService {
           this.options.publicKeyPem,
         )
       } catch {
-        this.setStatus({ state: "error", code: "MANIFEST_INVALID" })
+        this.setStatus({ state: "error", code: "MANIFEST_INVALID", ...(this.currentControl ? { control: this.currentControl } : {}) })
         await this.options.onOutcome?.("failed")
         return this.status
       }
+      let control: ReleaseControl | undefined
+      if (manifest.schema_version === "2.0") {
+        try {
+          control = parseControl(
+            manifest.control,
+            this.options.currentVersion,
+            this.options.now?.() ?? new Date(),
+          )
+        } catch {
+          this.setStatus({ state: "error", code: "MANIFEST_INVALID", ...(this.currentControl ? { control: this.currentControl } : {}) })
+          await this.options.onOutcome?.("failed")
+          return this.status
+        }
+      }
+      this.currentControl = control
       if (compareSemver(manifest.version, this.options.currentVersion) <= 0) {
         this.setStatus({
           state: "up_to_date",
           checkedAt: (this.options.now?.() ?? new Date()).toISOString(),
+          ...(control ? { control } : {}),
         })
         await this.options.onOutcome?.("up_to_date")
         return this.status
@@ -274,15 +429,16 @@ export class UpdateService {
           state: "downloaded",
           version: manifest.version,
           downloadedAt: this.downloadedAt,
+          ...(control ? { control } : {}),
         })
         return this.status
       }
       await this.options.onOutcome?.("available", manifest.version)
-      this.setStatus({ state: "downloading", version: manifest.version })
+      this.setStatus({ state: "downloading", version: manifest.version, ...(control ? { control } : {}) })
       try {
         this.downloadedPath = await this.downloadArtifact(manifest.version, artifact)
       } catch {
-        this.setStatus({ state: "error", code: "DOWNLOAD_FAILED" })
+        this.setStatus({ state: "error", code: "DOWNLOAD_FAILED", ...(this.currentControl ? { control: this.currentControl } : {}) })
         await this.options.onOutcome?.("failed", manifest.version)
         return this.status
       }
@@ -290,6 +446,7 @@ export class UpdateService {
         state: "downloaded",
         version: manifest.version,
         downloadedAt: (this.options.now?.() ?? new Date()).toISOString(),
+        ...(control ? { control } : {}),
       })
       this.downloadedVersion = manifest.version
       this.downloadedAt =
@@ -297,7 +454,7 @@ export class UpdateService {
       await this.options.onOutcome?.("downloaded", manifest.version)
       return this.status
     } catch {
-      this.setStatus({ state: "error", code: "CHECK_FAILED" })
+      this.setStatus({ state: "error", code: "CHECK_FAILED", ...(this.currentControl ? { control: this.currentControl } : {}) })
       await this.options.onOutcome?.("failed")
       return this.status
     } finally {

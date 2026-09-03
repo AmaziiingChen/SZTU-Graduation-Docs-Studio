@@ -59,6 +59,8 @@ SZTU_UPDATE_PUBLIC_KEY_PEM=-----BEGIN PUBLIC KEY-----...-----END PUBLIC KEY-----
 }
 ```
 
+本项目当前生产信任锚保存在 `config/remote-services.production.json`。它只包含公开端点和 Ed25519 公钥，不包含任何凭据；打包流程必须把它复制为安装包资源目录中的 `remote-services.json`。更换签名私钥后，已经安装的旧客户端不会自动信任新公钥，因此私钥轮换必须作为独立的客户端版本迁移处理。
+
 Ed25519 私钥只存在于隔离的发布环境。客户端只固定公钥。清单签名对象是 `payload` 的递归键排序紧凑 JSON；随后用 Base64 编码 64 字节签名。
 
 当前开发构建默认连接上述 CloudBase 遥测端点；`SZTU_TELEMETRY_ENDPOINT` 仍可用于本地回环测试。服务端 API Key 只存在于云函数环境变量中，不进入客户端仓库。
@@ -75,20 +77,54 @@ corepack pnpm telemetry:dev
 
 ## 生成签名更新清单
 
-发布环境准备 Ed25519 私钥和对应公钥后，可以从仓库根目录生成签名清单：
+Ed25519 是免费、自持有的发布签名，不需要购买 Apple Developer 或 Windows
+代码签名证书。它用于证明更新清单、公告和远程策略确实由项目维护者发布；不能替代
+macOS 公证或 Windows Authenticode 的系统安装信任。
+
+第一次发布时，在仓库外的安全目录生成密钥：
+
+```bash
+corepack pnpm update:keygen -- --output-directory /安全位置/sztu-docs-release
+```
+
+私钥只保留在发布电脑的安全目录并另做加密备份。`update-public.pem` 可以写入正式
+安装包的 `remote-services.json`；`update-private.pem` 不得进入仓库、客户端、网页、
+COS 或聊天记录。工具拒绝覆盖已有密钥，避免误操作改变信任根。
+
+准备安装包和 `config/release-control.example.json` 的副本后生成签名清单：
 
 ```bash
 corepack pnpm update:manifest -- \
   --version 0.2.0 \
-  --private-key /secure/release-ed25519-private.pem \
-  --output /secure/release/manifest.json \
-  --artifact darwin-arm64=/secure/release/SZTU-Docs-0.2.0-arm64.dmg=https://downloads.example.com/stable/SZTU-Docs-0.2.0-arm64.dmg
+  --private-key /安全位置/sztu-docs-release/update-private.pem \
+  --control /安全位置/sztu-docs-release/release-control.json \
+  --output /安全位置/sztu-docs-release/manifest.json \
+  --artifact 'darwin|arm64|/安全位置/SZTU-Docs-0.2.0-arm64.dmg|https://下载域名/stable/SZTU-Docs-0.2.0-arm64.dmg' \
+  --artifact 'win32|x64|/安全位置/SZTU-Docs-0.2.0-x64.exe|https://下载域名/stable/SZTU-Docs-0.2.0-x64.exe'
 ```
 
 工具会读取安装包的实际字节数和 SHA-256，按客户端相同的规范化规则签名 `payload`，并以 `0600` 权限写出清单。私钥和产物路径必须位于仓库之外。生成清单不等于完成发布：仍需安装包代码签名、COS 上传、客户端下载与 Word/WPS 回归验收。
+
+如果只发布公告、使用说明或服务状态，可保留 `--control` 并省略全部 `--artifact`；一旦提高版本并要求客户端下载更新，则必须提供对应平台的真实安装包。
+
+### 签名远程策略
+
+清单 2.0 在原更新信息之外支持以下经过签名的字段：
+
+- `update_policy`：`optional`、`recommended` 或 `required`；
+- `minimum_supported_version`：低于该版本时必须更新，或设为 `null`；
+- `service_status`：`normal`、`maintenance` 或 `retired`；
+- `help_url`：动态使用说明入口，只接受 HTTPS，或设为 `null`；
+- `announcement`：带唯一 ID、标题、正文、级别、生效时间、失效时间和能否关闭的纯文本公告。
+
+客户端拒绝未知字段、HTML、Markdown、无效版本、非 HTTPS 链接、错误时间范围和无效
+签名。`maintenance` 会提示维护但保留本地资料访问；`retired`、低于最低版本或不可关闭
+公告会阻止进入工作台。无网络时不会把未验证的远程内容当作指令执行。
+
+旧版 1.0 清单继续兼容，其行为等同于可选更新且没有公告或停用策略。
 
 开发构建可以在未配置远程服务时确认并继续，此时不会产生外部请求。正式构建若缺少遥测接收端、更新清单 URL 或公钥，会停在首次说明页并只允许退出，避免发布出一个名义上强制、实际上没有数据通道或安全更新源的版本。
 
 ## 当前能力边界
 
-应用会在启动时及每 30 分钟轮询版本；签名、平台、架构、大小和 SHA-256 全部通过后才把安装包保存到私有更新目录。当前尚未建立安装包、macOS/Windows 代码签名、自动替换、重启回滚和跨平台验收，因此“下载完成”不能表述为“更新已安装”。
+应用会在启动时及每 30 分钟轮询版本；签名、平台、架构、大小和 SHA-256 全部通过后才把安装包保存到私有更新目录。公告、版本策略和服务状态也必须通过同一个 Ed25519 签名后才会显示或执行。当前尚未建立安装包、macOS/Windows 代码签名、自动替换、重启回滚和跨平台验收，因此“下载完成”不能表述为“更新已安装”。
