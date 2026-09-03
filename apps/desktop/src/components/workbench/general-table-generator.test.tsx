@@ -21,6 +21,7 @@ describe("GeneralTableGenerator", () => {
     createAndFillTable()
 
     expect(screen.getByRole("table", { name: "普通表格预览" })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "查看 LaTeX" }))
     expect(screen.getByLabelText<HTMLInputElement>("生成的 LaTeX 源码").value).toContain("\\hline")
   })
 
@@ -46,6 +47,7 @@ describe("GeneralTableGenerator", () => {
     render(<GeneralTableGenerator />)
     expect(screen.getByRole("combobox", { name: "表格类型" })).toHaveTextContent("跨页表格")
     expect(screen.getByRole<HTMLInputElement>("textbox", { name: "A2" }).value).toBe("样品 A")
+    fireEvent.click(screen.getByRole("button", { name: "查看 LaTeX" }))
     expect(screen.getByLabelText<HTMLInputElement>("生成的 LaTeX 源码").value).toContain("longtable")
   })
 })

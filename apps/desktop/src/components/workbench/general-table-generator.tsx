@@ -16,15 +16,7 @@ import {
   SelectItem,
   SelectTrigger,
 } from "@/components/ui/select"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import { LatexSourceCard } from "@/components/workbench/latex-source-card"
+import { TablePreviewCard } from "@/components/workbench/table-preview-card"
 import { ToolDraftActions } from "@/components/workbench/tool-draft-actions"
 import { VisualTableEditor } from "@/components/workbench/visual-table-editor"
 import {
@@ -141,7 +133,7 @@ export function GeneralTableGenerator() {
           <ToolDraftActions saveState={saveState} draftName="表格" onClear={clearDraft} />
         </div>
 
-        <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.25fr)_minmax(20rem,0.75fr)]">
+        <div className="grid gap-6">
           <Card>
             <CardHeader>
               <CardTitle>表格数据</CardTitle>
@@ -238,62 +230,20 @@ export function GeneralTableGenerator() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>表格预览</CardTitle>
-              <CardDescription>预览反映边框和对齐关系，最终字号由论文模板决定。</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {valid ? (
-                <div className="overflow-x-auto rounded-lg border p-4">
-                  {caption.trim() ? <p className="mb-3 text-center text-sm font-medium">{caption.trim()}</p> : null}
-                  <Table aria-label="普通表格预览" className="border-collapse border">
-                    <TableHeader>
-                      {parsed.rows.slice(0, headerRows).map((row, rowIndex) => (
-                        <TableRow key={rowIndex}>
-                          {row.map((cell, cellIndex) => (
-                            <TableHead
-                              key={cellIndex}
-                              className="border whitespace-normal"
-                              style={{ textAlign: normalizedAlignments[cellIndex] }}
-                            >
-                              {cell}
-                            </TableHead>
-                          ))}
-                        </TableRow>
-                      ))}
-                    </TableHeader>
-                    <TableBody>
-                      {parsed.rows.slice(headerRows).map((row, rowIndex) => (
-                        <TableRow key={rowIndex} className="hover:bg-transparent">
-                          {row.map((cell, cellIndex) => (
-                            <TableCell
-                              key={cellIndex}
-                              className="border whitespace-normal"
-                              style={{ textAlign: normalizedAlignments[cellIndex] }}
-                            >
-                              {cell}
-                            </TableCell>
-                          ))}
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              ) : (
-                <div className="flex min-h-56 items-center justify-center rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-                  粘贴至少两列数据后在这里预览。
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          <TablePreviewCard
+            rows={valid ? parsed.rows : []}
+            caption={caption}
+            headerRows={headerRows}
+            alignments={normalizedAlignments}
+            variant="grid"
+            tableLabel="普通表格预览"
+            description="预览反映边框和对齐关系，最终字号由论文模板决定。"
+            emptyText="创建表格并填写数据后在这里预览。"
+            latex={latex}
+            filename="table.tex"
+            packages={requiredPackagesForGeneralTable(mode)}
+          />
         </div>
-
-        <LatexSourceCard
-          latex={latex}
-          filename="table.tex"
-          packages={requiredPackagesForGeneralTable(mode)}
-        />
       </main>
     </ScrollArea>
   )

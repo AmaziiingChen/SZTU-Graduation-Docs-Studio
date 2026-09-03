@@ -20,11 +20,13 @@ describe("ThreeLineTableGenerator", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "B2" }), { target: { value: "12" } })
   }
 
-  it("previews visually edited spreadsheet data and generates LaTeX", () => {
+  it("previews visually edited spreadsheet data and shows LaTeX in a sheet", () => {
     render(<ThreeLineTableGenerator />)
     fillTable()
 
     expect(screen.getByRole("table", { name: "三线表预览" })).toBeInTheDocument()
+    expect(screen.queryByLabelText("生成的 LaTeX 源码")).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "查看 LaTeX" }))
     expect(screen.getByLabelText<HTMLInputElement>("生成的 LaTeX 源码").value).toContain("\\toprule")
     expect(screen.getByRole("button", { name: "复制 LaTeX" })).toBeEnabled()
     expect(screen.getByRole("button", { name: "下载 .tex" })).toBeEnabled()
@@ -38,7 +40,8 @@ describe("ThreeLineTableGenerator", () => {
 
     expect(screen.getByText("数据暂时无法生成")).toBeInTheDocument()
     expect(screen.getByText("表头中不能有空白单元格。")).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "复制 LaTeX" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "查看 LaTeX" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "复制 PNG" })).toBeDisabled()
   })
 
   it("copies generated source to the clipboard", async () => {
@@ -47,6 +50,7 @@ describe("ThreeLineTableGenerator", () => {
     render(<ThreeLineTableGenerator />)
     fillTable()
 
+    fireEvent.click(screen.getByRole("button", { name: "查看 LaTeX" }))
     fireEvent.click(screen.getByRole("button", { name: "复制 LaTeX" }))
     expect(writeText).toHaveBeenCalledWith(expect.stringContaining("\\bottomrule"))
   })

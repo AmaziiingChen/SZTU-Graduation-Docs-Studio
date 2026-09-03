@@ -10,15 +10,7 @@ import {
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import { LatexSourceCard } from "@/components/workbench/latex-source-card"
+import { TablePreviewCard } from "@/components/workbench/table-preview-card"
 import { ToolDraftActions } from "@/components/workbench/tool-draft-actions"
 import { VisualTableEditor } from "@/components/workbench/visual-table-editor"
 import {
@@ -77,7 +69,7 @@ export function ThreeLineTableGenerator() {
           <ToolDraftActions saveState={saveState} draftName="三线表" onClear={clearDraft} />
         </div>
 
-        <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.25fr)_minmax(20rem,0.75fr)]">
+        <div className="grid gap-6">
           <Card>
             <CardHeader>
               <CardTitle>表格数据</CardTitle>
@@ -120,52 +112,19 @@ export function ThreeLineTableGenerator() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>表格预览</CardTitle>
-              <CardDescription>预览使用与源码相同的数据结构，不代表论文最终字号与分页。</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {valid ? (
-                <div className="rounded-lg border p-4">
-                  {caption.trim() ? <p className="mb-3 text-center text-sm font-medium">{caption.trim()}</p> : null}
-                  <Table aria-label="三线表预览" className="border-y-2">
-                    <TableHeader>
-                      <TableRow className="border-b">
-                        {parsed.rows[0].map((cell, index) => (
-                          <TableHead key={`${cell}-${index}`} className={index === 0 ? "whitespace-normal" : "text-center whitespace-normal"}>
-                            {cell}
-                          </TableHead>
-                        ))}
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {parsed.rows.slice(1).map((row, rowIndex) => (
-                        <TableRow key={rowIndex} className="border-0 hover:bg-transparent">
-                          {row.map((cell, cellIndex) => (
-                            <TableCell key={cellIndex} className={cellIndex === 0 ? "whitespace-normal" : "text-center whitespace-normal"}>
-                              {cell}
-                            </TableCell>
-                          ))}
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              ) : (
-                <div className="flex min-h-56 items-center justify-center rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-                  粘贴至少两列数据后在这里预览。
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          <TablePreviewCard
+            rows={valid ? parsed.rows : []}
+            caption={caption}
+            headerRows={1}
+            variant="three-line"
+            tableLabel="三线表预览"
+            description="预览使用与源码相同的数据结构，不代表论文最终字号与分页。"
+            emptyText="创建表格并填写数据后在这里预览。"
+            latex={latex}
+            filename="three-line-table.tex"
+            packages={["booktabs"]}
+          />
         </div>
-
-        <LatexSourceCard
-          latex={latex}
-          filename="three-line-table.tex"
-          packages={["booktabs"]}
-        />
       </main>
     </ScrollArea>
   )
