@@ -1,0 +1,160 @@
+import { useMemo, useState } from "react"
+import { Table2Icon } from "lucide-react"
+
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Button } from "@/components/ui/button"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import { Textarea } from "@/components/ui/textarea"
+import { LatexSourceCard } from "@/components/workbench/latex-source-card"
+import {
+  generateThreeLineTableLatex,
+  parseTableText,
+} from "@/lib/three-line-table"
+
+const exampleData = "指标\t实验组\t对照组\n准确率（%）\t92.4\t86.1\n耗时（s）\t12.8\t15.3"
+
+export function ThreeLineTableGenerator() {
+  const [caption, setCaption] = useState("")
+  const [label, setLabel] = useState("")
+  const [source, setSource] = useState("")
+  const parsed = useMemo(() => parseTableText(source), [source])
+  const valid = parsed.rows.length > 0 && parsed.errors.length === 0
+  const latex = useMemo(
+    () =>
+      valid
+        ? generateThreeLineTableLatex({ rows: parsed.rows, caption, label })
+        : "",
+    [caption, label, parsed.rows, valid],
+  )
+
+  return (
+    <ScrollArea className="h-full">
+      <main className="mx-auto grid w-full max-w-6xl gap-6 p-6" aria-labelledby="three-line-table-title">
+        <div className="space-y-1">
+          <h2 id="three-line-table-title" className="text-xl font-semibold">三线表生成器</h2>
+          <p className="text-sm text-muted-foreground">
+            粘贴 Excel、WPS 表格或 CSV 数据，生成可直接放入论文的 booktabs 源码。
+          </p>
+        </div>
+
+        <div className="grid items-start gap-6 xl:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>表格数据</CardTitle>
+              <CardDescription>首行作为表头；从电子表格复制时会自动识别列。</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-4">
+              <div className="grid gap-2 sm:grid-cols-2">
+                <label className="grid gap-2 text-sm font-medium">
+                  表题（可选）
+                  <Input
+                    value={caption}
+                    onChange={(event) => setCaption(event.target.value)}
+                    placeholder="例如：不同方法的实验结果"
+                  />
+                </label>
+                <label className="grid gap-2 text-sm font-medium">
+                  引用标签（可选）
+                  <Input
+                    value={label}
+                    onChange={(event) => setLabel(event.target.value)}
+                    placeholder="例如：tab:experiment"
+                  />
+                </label>
+              </div>
+              <label className="grid gap-2 text-sm font-medium">
+                数据
+                <Textarea
+                  value={source}
+                  onChange={(event) => setSource(event.target.value)}
+                  placeholder={exampleData}
+                  className="min-h-56 resize-y font-mono text-xs"
+                  aria-invalid={parsed.errors.length > 0 || undefined}
+                />
+              </label>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button type="button" variant="outline" onClick={() => setSource(exampleData)}>
+                  <Table2Icon />
+                  填入示例
+                </Button>
+                <span className="text-xs text-muted-foreground">支持制表符分隔和带引号的 CSV。</span>
+              </div>
+              {parsed.errors.length > 0 ? (
+                <Alert variant="destructive">
+                  <AlertTitle>数据暂时无法生成</AlertTitle>
+                  <AlertDescription>
+                    <ul className="list-disc space-y-1 pl-4">
+                      {parsed.errors.map((error) => <li key={error}>{error}</li>)}
+                    </ul>
+                  </AlertDescription>
+                </Alert>
+              ) : null}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>表格预览</CardTitle>
+              <CardDescription>预览使用与源码相同的数据结构，不代表论文最终字号与分页。</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {valid ? (
+                <div className="rounded-lg border p-4">
+                  {caption.trim() ? <p className="mb-3 text-center text-sm font-medium">{caption.trim()}</p> : null}
+                  <Table aria-label="三线表预览" className="border-y-2">
+                    <TableHeader>
+                      <TableRow className="border-b">
+                        {parsed.rows[0].map((cell, index) => (
+                          <TableHead key={`${cell}-${index}`} className={index === 0 ? "whitespace-normal" : "text-center whitespace-normal"}>
+                            {cell}
+                          </TableHead>
+                        ))}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {parsed.rows.slice(1).map((row, rowIndex) => (
+                        <TableRow key={rowIndex} className="border-0 hover:bg-transparent">
+                          {row.map((cell, cellIndex) => (
+                            <TableCell key={cellIndex} className={cellIndex === 0 ? "whitespace-normal" : "text-center whitespace-normal"}>
+                              {cell}
+                            </TableCell>
+                          ))}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              ) : (
+                <div className="flex min-h-56 items-center justify-center rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+                  粘贴至少两列数据后在这里预览。
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        <LatexSourceCard
+          latex={latex}
+          filename="three-line-table.tex"
+          packages={["booktabs"]}
+        />
+      </main>
+    </ScrollArea>
+  )
+}

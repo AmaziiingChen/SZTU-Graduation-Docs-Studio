@@ -4,10 +4,13 @@ import {
   FilePlus2Icon,
   FileTextIcon,
   FolderIcon,
+  Grid3X3Icon,
+  ImagesIcon,
   MoreHorizontalIcon,
   PencilIcon,
   PlusIcon,
   RotateCcwIcon,
+  Table2Icon,
   Trash2Icon,
 } from "lucide-react"
 import { toast } from "sonner"
@@ -48,6 +51,7 @@ import {
   SidebarMenuSubItem,
 } from "@/components/ui/sidebar"
 import type { DocumentRecord, DocumentType } from "@/types/desktop-api"
+import { thesisToolOptions, type ThesisToolId } from "@/lib/thesis-tools"
 
 const documentGroups: Array<{
   type: DocumentType
@@ -58,6 +62,12 @@ const documentGroups: Array<{
   { type: "proposal", label: "开题报告", defaultTitle: "未命名开题报告" },
   { type: "midterm", label: "中期检查", defaultTitle: "未命名中期检查表" },
 ]
+
+function ThesisToolIcon({ toolId }: { toolId: ThesisToolId }) {
+  if (toolId === "general_table") return <Grid3X3Icon />
+  if (toolId === "multi_figure") return <ImagesIcon />
+  return <Table2Icon />
+}
 
 export type CreateDocumentRequest = {
   type: DocumentType
@@ -74,11 +84,14 @@ export function NavDocuments({
   profileActive,
   toolsActive,
   inspectionActive,
+  thesisToolsActive,
+  activeThesisTool,
   activeDocumentId,
   documents,
   deletedDocuments,
   disabled,
   onSelectDocument,
+  onSelectThesisTool,
   onCreateDocument,
   onRenameDocument,
   onDeleteDocument,
@@ -88,11 +101,14 @@ export function NavDocuments({
   profileActive: boolean
   toolsActive: boolean
   inspectionActive: boolean
+  thesisToolsActive: boolean
+  activeThesisTool: ThesisToolId
   activeDocumentId: string | null
   documents: DocumentRecord[]
   deletedDocuments: DocumentRecord[]
   disabled: boolean
   onSelectDocument: (documentId: string) => Promise<void>
+  onSelectThesisTool: (toolId: ThesisToolId) => void
   onCreateDocument: (request: CreateDocumentRequest) => Promise<void>
   onRenameDocument: (documentId: string, title: string) => Promise<void>
   onDeleteDocument: (documentId: string) => Promise<void>
@@ -105,7 +121,7 @@ export function NavDocuments({
     task_book: activeType === "task_book",
     midterm: activeType === "midterm",
   })
-  const [thesisExpanded, setThesisExpanded] = useState(false)
+  const [thesisExpanded, setThesisExpanded] = useState(thesisToolsActive)
   const [trashExpanded, setTrashExpanded] = useState(false)
   const [createType, setCreateType] = useState<DocumentType | null>(null)
   const [createTitle, setCreateTitle] = useState("")
@@ -202,6 +218,7 @@ export function NavDocuments({
                             !profileActive &&
                             !toolsActive &&
                             !inspectionActive &&
+                            !thesisToolsActive &&
                             item.id === activeDocumentId
                           }
                           onClick={() => void onSelectDocument(item.id)}
@@ -268,14 +285,19 @@ export function NavDocuments({
             </SidebarMenuButton>
             {thesisExpanded ? (
               <SidebarMenuSub className="mr-0 pr-0">
-                <SidebarMenuSubItem>
-                  <span
-                    aria-label="毕业论文暂无文档"
-                    className="block px-2 py-1 text-xs text-muted-foreground"
-                  >
-                    暂无文档
-                  </span>
-                </SidebarMenuSubItem>
+                {thesisToolOptions.map((tool) => (
+                  <SidebarMenuSubItem key={tool.id}>
+                    <SidebarMenuSubButton
+                      render={<button type="button" />}
+                      className="w-full justify-start text-left"
+                      isActive={thesisToolsActive && activeThesisTool === tool.id}
+                      onClick={() => onSelectThesisTool(tool.id)}
+                    >
+                      <ThesisToolIcon toolId={tool.id} />
+                      <span>{tool.navigationLabel}</span>
+                    </SidebarMenuSubButton>
+                  </SidebarMenuSubItem>
+                ))}
               </SidebarMenuSub>
             ) : null}
           </SidebarMenuItem>

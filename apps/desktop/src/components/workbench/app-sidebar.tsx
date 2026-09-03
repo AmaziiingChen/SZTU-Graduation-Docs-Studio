@@ -31,6 +31,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import type { DocumentRecord } from "@/types/desktop-api"
+import type { ThesisToolId } from "@/lib/thesis-tools"
 
 export function AppSidebar({
   profileActive,
@@ -38,6 +39,8 @@ export function AppSidebar({
   appearanceActive,
   inspectionActive,
   generatedDocumentCount,
+  thesisToolsActive,
+  activeThesisTool,
   activeDocumentId,
   documents,
   deletedDocuments,
@@ -46,6 +49,7 @@ export function AppSidebar({
   onSelectAppearance,
   onSelectInspection,
   onSelectDocument,
+  onSelectThesisTool,
   onCreateDocument,
   onRenameDocument,
   onDeleteDocument,
@@ -60,6 +64,8 @@ export function AppSidebar({
   appearanceActive: boolean
   inspectionActive: boolean
   generatedDocumentCount: number | null
+  thesisToolsActive: boolean
+  activeThesisTool: ThesisToolId
   activeDocumentId: string | null
   documents: DocumentRecord[]
   deletedDocuments: DocumentRecord[]
@@ -68,6 +74,7 @@ export function AppSidebar({
   onSelectAppearance: () => void
   onSelectInspection: () => void
   onSelectDocument: (documentId: string) => Promise<void>
+  onSelectThesisTool: (toolId: ThesisToolId) => void
   onCreateDocument: (request: CreateDocumentRequest) => Promise<void>
   onRenameDocument: (documentId: string, title: string) => Promise<void>
   onDeleteDocument: (documentId: string) => Promise<void>
@@ -118,6 +125,8 @@ export function AppSidebar({
           profileActive={profileActive}
           toolsActive={toolsActive}
           inspectionActive={inspectionActive}
+          thesisToolsActive={thesisToolsActive}
+          activeThesisTool={activeThesisTool}
           activeDocumentId={activeDocumentId}
           documents={documents}
           deletedDocuments={deletedDocuments}
@@ -125,6 +134,7 @@ export function AppSidebar({
           onSelectDocument={(documentId) =>
             finishAsyncNavigation(() => onSelectDocument(documentId))
           }
+          onSelectThesisTool={(toolId) => finishNavigation(() => onSelectThesisTool(toolId))}
           onCreateDocument={onCreateDocument}
           onRenameDocument={onRenameDocument}
           onDeleteDocument={onDeleteDocument}

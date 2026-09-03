@@ -30,6 +30,18 @@ const referenceImporterPath = path.join(
   "workbench",
   "reference-importer.tsx",
 )
+const threeLineTableGeneratorPath = path.join(
+  rendererRoot,
+  "components",
+  "workbench",
+  "three-line-table-generator.tsx",
+)
+const latexSourceCardPath = path.join(
+  rendererRoot,
+  "components",
+  "workbench",
+  "latex-source-card.tsx",
+)
 
 const requiredFontStack =
   "--font-sans: 'Geist Variable', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans SC', system-ui, sans-serif;"
@@ -185,7 +197,11 @@ for (const filePath of await collectFiles(rendererRoot)) {
   }
 
   for (const match of source.matchAll(monoFontPattern)) {
-    if (filePath !== referenceImporterPath) {
+    if (
+      filePath !== referenceImporterPath &&
+      filePath !== threeLineTableGeneratorPath &&
+      filePath !== latexSourceCardPath
+    ) {
       report(
         issues,
         filePath,

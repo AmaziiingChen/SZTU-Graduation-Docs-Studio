@@ -843,7 +843,7 @@ describe("M3 workbench persistence", () => {
     expect(thesisFolder).toHaveAttribute("aria-expanded", "false")
     fireEvent.click(thesisFolder)
     expect(thesisFolder).toHaveAttribute("aria-expanded", "true")
-    expect(screen.getByLabelText("毕业论文暂无文档")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "三线表生成器" })).toBeInTheDocument()
     const header = container.querySelector("header")
     expect(header).not.toBeNull()
     expect(within(header!).getByRole("button", { name: "检查内容" })).toBeInTheDocument()
@@ -919,6 +919,32 @@ describe("M3 workbench persistence", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "打开 Xmind" }))
     await waitFor(() => expect(api.openToolLink).toHaveBeenCalledWith("xmind"))
+  })
+
+  it("opens all three generators in the thesis workbench structure", async () => {
+    installApi(mockApi())
+    renderApp()
+
+    const thesisFolder = await screen.findByRole("button", { name: "毕业论文" })
+    fireEvent.click(thesisFolder)
+    fireEvent.click(screen.getByRole("button", { name: "三线表生成器" }))
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "毕业论文工具箱" }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole("heading", { level: 2, name: "三线表生成器" })).toBeInTheDocument()
+    expect(screen.getByRole("navigation", { name: "当前文档板块" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "三线表" })).toHaveAttribute("aria-current", "page")
+    expect(screen.queryByLabelText("保存状态：已保存")).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "检查内容" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "预览&导出" })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "表格生成器" }))
+    expect(screen.getByRole("heading", { level: 2, name: "表格生成器" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "表格" })).toHaveAttribute("aria-current", "page")
+
+    fireEvent.click(screen.getAllByRole("button", { name: "多图排版" })[0])
+    expect(screen.getByRole("heading", { level: 2, name: "多图排版" })).toBeInTheDocument()
   })
 
   it("shows the local maintainer contact without a feedback backend", async () => {
