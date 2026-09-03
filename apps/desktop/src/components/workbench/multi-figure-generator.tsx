@@ -23,7 +23,6 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from "@/components/ui/select"
 import { LatexSourceCard } from "@/components/workbench/latex-source-card"
 import { generateMultiFigureLatex, validateFigureFilenames } from "@/lib/multi-figure"
@@ -138,7 +137,7 @@ export function MultiFigureGenerator() {
                 <label className="grid gap-2 text-sm font-medium">
                   每行图片数
                   <Select value={String(columns)} onValueChange={(value) => setColumns(Number(value))}>
-                    <SelectTrigger aria-label="每行图片数"><SelectValue /></SelectTrigger>
+                    <SelectTrigger aria-label="每行图片数"><span>{columns} 张</span></SelectTrigger>
                     <SelectContent>
                       {[1, 2, 3, 4].map((count) => (
                         <SelectItem key={count} value={String(count)}>{count} 张</SelectItem>

@@ -288,7 +288,7 @@ export function NavDocuments({
                 {thesisToolOptions.map((tool) => (
                   <SidebarMenuSubItem key={tool.id}>
                     <SidebarMenuSubButton
-                      render={<button type="button" disabled={disabled} />}
+                      render={<button type="button" />}
                       className="w-full justify-start text-left"
                       isActive={thesisToolsActive && activeThesisTool === tool.id}
                       onClick={() => onSelectThesisTool(tool.id)}

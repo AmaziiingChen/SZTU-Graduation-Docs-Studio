@@ -17,7 +17,6 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from "@/components/ui/select"
 import {
   Table,
@@ -43,6 +42,12 @@ const alignmentLabels: Record<TableColumnAlignment, string> = {
   left: "左对齐",
   center: "居中",
   right: "右对齐",
+}
+
+const modeLabels: Record<GeneralTableMode, string> = {
+  natural: "普通表格",
+  page_width: "通栏等宽表格",
+  long_table: "跨页表格",
 }
 
 export function GeneralTableGenerator() {
@@ -113,7 +118,7 @@ export function GeneralTableGenerator() {
                 <label className="grid gap-2 text-sm font-medium">
                   表格类型
                   <Select value={mode} onValueChange={(value) => setMode(value as GeneralTableMode)}>
-                    <SelectTrigger aria-label="表格类型"><SelectValue /></SelectTrigger>
+                    <SelectTrigger aria-label="表格类型"><span>{modeLabels[mode]}</span></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="natural">普通表格</SelectItem>
                       <SelectItem value="page_width">通栏等宽表格</SelectItem>
@@ -124,7 +129,9 @@ export function GeneralTableGenerator() {
                 <label className="grid gap-2 text-sm font-medium">
                   表头行数
                   <Select value={String(headerRows)} onValueChange={(value) => setHeaderRows(Number(value))}>
-                    <SelectTrigger aria-label="表头行数"><SelectValue /></SelectTrigger>
+                    <SelectTrigger aria-label="表头行数">
+                      <span>{headerRows === 0 ? "无表头" : `${headerRows} 行`}</span>
+                    </SelectTrigger>
                     <SelectContent>
                       {[0, 1, 2, 3].map((count) => (
                         <SelectItem key={count} value={String(count)}>{count === 0 ? "无表头" : `${count} 行`}</SelectItem>
@@ -165,7 +172,7 @@ export function GeneralTableGenerator() {
                           })}
                         >
                           <SelectTrigger aria-label={`${heading || `第 ${index + 1} 列`}对齐方式`} className="w-28">
-                            <SelectValue />
+                            <span>{alignmentLabels[normalizedAlignments[index]]}</span>
                           </SelectTrigger>
                           <SelectContent>
                             {(Object.keys(alignmentLabels) as TableColumnAlignment[]).map((item) => (

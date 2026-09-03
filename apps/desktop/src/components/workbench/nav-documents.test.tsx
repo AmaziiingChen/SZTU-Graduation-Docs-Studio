@@ -35,9 +35,11 @@ function documentRecord(
 function renderNavigation({
   documents = [documentRecord("proposal-a", "开题报告第一版")],
   deletedDocuments = [],
+  disabled = false,
 }: {
   documents?: DocumentRecord[]
   deletedDocuments?: DocumentRecord[]
+  disabled?: boolean
 } = {}) {
   const callbacks = {
     onSelectDocument: vi.fn().mockResolvedValue(undefined),
@@ -62,7 +64,7 @@ function renderNavigation({
               activeDocumentId={documents[0]?.id ?? null}
               documents={documents}
               deletedDocuments={deletedDocuments}
-              disabled={false}
+              disabled={disabled}
               {...callbacks}
             />
           </SidebarContent>
@@ -115,6 +117,18 @@ describe("NavDocuments file tree", () => {
     fireEvent.click(screen.getByRole("button", { name: "多图排版" }))
     expect(callbacks.onSelectThesisTool).toHaveBeenCalledWith("multi_figure")
     expect(callbacks.onCreateDocument).not.toHaveBeenCalled()
+  })
+
+  it("keeps standalone thesis tools available while document storage is unavailable", () => {
+    const callbacks = renderNavigation({ disabled: true })
+
+    fireEvent.click(screen.getByRole("button", { name: "毕业论文" }))
+    const tool = screen.getByRole("button", { name: "三线表生成器" })
+    expect(tool).not.toBeDisabled()
+    expect(screen.getByRole("button", { name: "开题报告第一版" })).toBeDisabled()
+
+    fireEvent.click(tool)
+    expect(callbacks.onSelectThesisTool).toHaveBeenCalledWith("three_line_table")
   })
 
   it("creates an independent file from blank or existing content", async () => {
