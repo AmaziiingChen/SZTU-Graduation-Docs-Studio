@@ -1,4 +1,5 @@
-import { ExternalLinkIcon } from "lucide-react"
+import { useState } from "react"
+import { LoaderCircleIcon } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -14,14 +15,27 @@ import {
   TOOL_DIRECTORY,
   type ToolLinkId,
 } from "@/data/tool-directory"
+import { cn } from "@/lib/utils"
 
 export function ToolDirectory({
   onOpenTool,
   disabled = false,
 }: {
-  onOpenTool: (toolId: ToolLinkId) => void
+  onOpenTool: (toolId: ToolLinkId) => void | Promise<void>
   disabled?: boolean
 }) {
+  const [openingToolId, setOpeningToolId] = useState<ToolLinkId | null>(null)
+
+  const openTool = async (toolId: ToolLinkId) => {
+    if (disabled || openingToolId !== null) return
+    setOpeningToolId(toolId)
+    try {
+      await onOpenTool(toolId)
+    } finally {
+      setOpeningToolId(null)
+    }
+  }
+
   return (
     <ScrollArea className="h-full">
       <main className="mx-auto flex w-full max-w-6xl flex-col gap-5 px-6 py-5 lg:px-8">
@@ -40,44 +54,83 @@ export function ToolDirectory({
                 <Badge variant="secondary">{items.length}</Badge>
               </div>
               <div className="grid grid-cols-1 gap-3 @3xl/main:grid-cols-2 @6xl/main:grid-cols-3">
-                {items.map((item) => (
-                  <Card key={item.id} size="sm">
-                    <CardHeader className="grid-cols-[auto_1fr_auto] items-center gap-x-3">
-                      <div className="flex size-10 items-center justify-center overflow-hidden rounded-lg bg-muted p-1.5">
-                        <img
-                          src={item.icon}
-                          alt=""
-                          className="size-full object-contain"
-                          loading="lazy"
-                        />
-                      </div>
-                      <div className="min-w-0 space-y-1">
-                        <div className="flex min-w-0 items-center gap-2">
-                          <CardTitle className="truncate">{item.name}</CardTitle>
-                          <Badge variant="outline" className="shrink-0 font-normal">
-                            {item.kind}
-                          </Badge>
+                {items.map((item) => {
+                  const isOpening = openingToolId === item.id
+                  return (
+                    <Card
+                      key={item.id}
+                      size="sm"
+                    >
+                      <CardHeader className="grid-cols-[auto_1fr_auto] items-center gap-x-3">
+                        <div className="flex size-10 items-center justify-center overflow-hidden rounded-lg bg-muted p-1.5">
+                          <img
+                            src={item.icon}
+                            alt=""
+                            className="size-full object-contain"
+                            loading="lazy"
+                          />
                         </div>
-                        <CardDescription className="line-clamp-2 leading-5">
-                          {item.description}
-                        </CardDescription>
-                      </div>
-                      <div className="self-center">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label={`打开 ${item.name}`}
-                          title={`打开 ${item.name}`}
-                          disabled={disabled}
-                          onClick={() => onOpenTool(item.id)}
-                        >
-                          <ExternalLinkIcon />
-                        </Button>
-                      </div>
-                    </CardHeader>
-                  </Card>
-                ))}
+                        <div className="min-w-0 space-y-1">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <CardTitle className="truncate">{item.name}</CardTitle>
+                            <Badge variant="outline" className="shrink-0 font-normal">
+                              {item.kind}
+                            </Badge>
+                          </div>
+                          <CardDescription className="line-clamp-2 leading-5">
+                            {item.description}
+                          </CardDescription>
+                        </div>
+                        <div className="self-center">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label={isOpening ? `正在打开 ${item.name}` : `打开 ${item.name}`}
+                            title={isOpening ? `正在打开 ${item.name}` : `打开 ${item.name}`}
+                            disabled={disabled || openingToolId !== null}
+                            className="group/tool-open"
+                            onClick={() => void openTool(item.id)}
+                          >
+                            <span
+                              data-slot="tool-open-icon"
+                              data-state={isOpening ? "opening" : "idle"}
+                              className="inline-grid size-4 place-items-center"
+                            >
+                              <svg
+                                aria-hidden="true"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                className={cn(
+                                  "col-start-1 row-start-1 size-4 transition-[opacity,filter] duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
+                                  isOpening
+                                    ? "opacity-0 blur-[2px]"
+                                    : "opacity-100",
+                                )}
+                              >
+                                <path d="M15 3h6v6" data-slot="tool-open-arrow" />
+                                <path d="m10 14 11-11" data-slot="tool-open-arrow" />
+                                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                              </svg>
+                              <LoaderCircleIcon
+                                className={cn(
+                                  "col-start-1 row-start-1 transition-[transform,opacity,filter] duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
+                                  isOpening
+                                    ? "animate-spin scale-100 opacity-100 blur-none motion-reduce:animate-none"
+                                    : "scale-75 opacity-0 blur-[2px]",
+                                )}
+                              />
+                            </span>
+                          </Button>
+                        </div>
+                      </CardHeader>
+                    </Card>
+                  )
+                })}
               </div>
             </section>
           )

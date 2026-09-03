@@ -597,13 +597,13 @@ function openComboboxSuggestions(input: HTMLElement) {
 }
 
 async function openOperationsPanel() {
-  if (!screen.queryByRole("button", { name: "检查与导出" })) {
+  if (!screen.queryByRole("button", { name: "导出记录" })) {
     fireEvent.click(
       await screen.findByRole("button", { name: "Toggle Sidebar" }),
     )
   }
   fireEvent.click(
-    await screen.findByRole("button", { name: "检查与导出" }),
+    await screen.findByRole("button", { name: "导出记录" }),
   )
 }
 
@@ -899,16 +899,21 @@ describe("M3 workbench persistence", () => {
     installApi(api)
     renderApp()
 
-    fireEvent.click(await screen.findByRole("button", { name: "工具箱" }))
+    for (const label of ["效率工具", "主题外观", "联系作者", "导出记录"]) {
+      expect(await screen.findByRole("button", { name: label })).toHaveClass("pl-8")
+    }
+    fireEvent.click(await screen.findByRole("button", { name: "效率工具" }))
 
     expect(
-      await screen.findByRole("heading", { level: 1, name: "工具箱" }),
+      await screen.findByRole("heading", { level: 1, name: "效率工具" }),
     ).toBeInTheDocument()
     expect(
-      screen.queryByRole("heading", { level: 2, name: "工具箱" }),
+      screen.queryByRole("heading", { level: 2, name: "效率工具" }),
     ).not.toBeInTheDocument()
     expect(screen.getByText(/集中打开毕业论文写作常用的网站/)).toBeInTheDocument()
-    expect(screen.getByRole("heading", { name: "效率工具" })).toBeInTheDocument()
+    expect(
+      screen.getByRole("heading", { level: 3, name: "效率工具" }),
+    ).toBeInTheDocument()
     expect(screen.getByRole("heading", { name: "浏览器扩展" })).toBeInTheDocument()
     expect(screen.getByRole("heading", { name: "文献管理" })).toBeInTheDocument()
     expect(screen.getByRole("heading", { name: "AI 工具" })).toBeInTheDocument()
@@ -950,15 +955,21 @@ describe("M3 workbench persistence", () => {
   it("shows the local maintainer contact without a feedback backend", async () => {
     renderApp()
 
-    fireEvent.click(await screen.findByRole("button", { name: "联系维护者" }))
+    fireEvent.click(await screen.findByRole("button", { name: "联系作者" }))
 
-    const dialog = await screen.findByRole("dialog", { name: "联系维护者" })
+    const dialog = await screen.findByRole("dialog", { name: "联系作者" })
     expect(
-      within(dialog).getByRole("img", { name: "维护者微信二维码" }),
+      within(dialog).getByRole("img", { name: "作者微信二维码" }),
     ).toHaveAttribute("src", expect.stringContaining("maintainer-wechat-qr"))
-    expect(
-      within(dialog).getByText(/添加时请备注年级、学院、专业和姓名/),
-    ).toBeInTheDocument()
+    const latexSentence = within(dialog).getByLabelText(
+      "欢迎交流 LaTeX 排版经验和提交问题反馈！",
+    )
+    expect(latexSentence.querySelector('[data-slot="latex-wordmark"]')).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    )
+    expect(within(dialog).getByText("添加时请备注年级、学院、专业和姓名～")).toBeInTheDocument()
+    expect(within(dialog).queryByText(/软件不会自动上传文档或问题内容/)).toBeNull()
     expect(within(dialog).queryByRole("button", { name: /复制 QQ/ })).toBeNull()
   })
 
@@ -1234,7 +1245,7 @@ describe("M3 workbench persistence", () => {
     await openOperationsPanel()
 
     expect(
-      screen.getByRole("heading", { level: 1, name: "检查与导出" }),
+      screen.getByRole("heading", { level: 1, name: "导出记录" }),
     ).toBeInTheDocument()
     expect(screen.getByText("当前状态")).toBeInTheDocument()
     expect(screen.queryByText("文档质量")).not.toBeInTheDocument()
@@ -1461,7 +1472,7 @@ describe("M3 workbench persistence", () => {
     expect(exportButton).toBeDisabled()
     expect(exportButton).toHaveAttribute(
       "title",
-      "请先在左侧“检查与导出”中关联可用的本地模板工程",
+      "请先在左侧“导出记录”中关联可用的本地模板工程",
     )
     expect(api.generatePreview).not.toHaveBeenCalled()
   })

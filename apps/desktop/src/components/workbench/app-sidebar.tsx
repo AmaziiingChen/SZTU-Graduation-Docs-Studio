@@ -147,43 +147,47 @@ export function AppSidebar({
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
-              tooltip="工具箱"
+              tooltip="效率工具"
               isActive={toolsActive}
               disabled={disabled}
+              className="pl-8"
               onClick={() => finishNavigation(onSelectTools)}
             >
               <LibraryBigIcon />
-              <span>工具箱</span>
+              <span>效率工具</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
-              tooltip="外观"
+              tooltip="主题外观"
               isActive={appearanceActive}
+              className="pl-8"
               onClick={() => finishNavigation(onSelectAppearance)}
             >
               <PaletteIcon />
-              <span>外观</span>
+              <span>主题外观</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
-              tooltip="联系维护者"
+              tooltip="联系作者"
+              className="pl-8"
               onClick={() => setContactOpen(true)}
             >
               <MessageCircleIcon />
-              <span>联系维护者</span>
+              <span>联系作者</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
-              tooltip="检查与导出"
+              tooltip="导出记录"
               isActive={inspectionActive}
               disabled={inspectionDisabled}
+              className="pl-8"
               onClick={() => finishNavigation(onSelectInspection)}
             >
               <ClipboardCheckIcon />
-              <span>检查与导出</span>
+              <span>导出记录</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -200,20 +204,36 @@ export function AppSidebar({
       <Dialog open={contactOpen} onOpenChange={setContactOpen}>
         <DialogContent className="sm:max-w-xs">
           <DialogHeader>
-            <DialogTitle>联系维护者</DialogTitle>
+            <DialogTitle>联系作者</DialogTitle>
           </DialogHeader>
           <div className="flex flex-col items-center gap-3">
             <img
               src={maintainerWechatQr}
-              alt="维护者微信二维码"
+              alt="作者微信二维码"
               className="w-full max-w-56 rounded-lg border"
               draggable={false}
             />
-            <p className="text-center text-xs text-muted-foreground">
-              添加时请备注年级、学院、专业和姓名。
-              <br />
-              软件不会自动上传文档或问题内容。
-            </p>
+            <div className="space-y-1.5 text-center text-xs text-muted-foreground">
+              <p
+                aria-label="欢迎交流 LaTeX 排版经验和提交问题反馈！"
+                className="flex items-baseline justify-center gap-1"
+              >
+                <span>欢迎交流</span>
+                <span
+                  data-slot="latex-wordmark"
+                  aria-hidden="true"
+                  className="inline-flex items-baseline font-serif text-base leading-none font-medium tracking-tight text-foreground"
+                >
+                  L
+                  <span className="-mx-0.5 -translate-y-0.5 text-[0.625rem]">A</span>
+                  T
+                  <span className="-mx-0.5 translate-y-0.5 text-xs">E</span>
+                  X
+                </span>
+                <span>排版经验和提交问题反馈！</span>
+              </p>
+              <p>添加时请备注年级、学院、专业和姓名～</p>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

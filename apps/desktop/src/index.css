@@ -297,6 +297,17 @@
   animation: save-status-swap-in 150ms ease-in-out both;
 }
 
+/* The external-link frame stays fixed. Only the two arrow paths move so the
+   affordance points outward without shifting the button or its visual bounds. */
+[data-slot="tool-open-arrow"] {
+  transition: transform 250ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.group\/tool-open:hover [data-slot="tool-open-arrow"],
+.group\/tool-open:focus-visible [data-slot="tool-open-arrow"] {
+  transform: translate(1.5px, -1.5px);
+}
+
 /* Functional completion feedback for the document-section navigation.
    The corresponding semantic color and reduced-motion rule are documented in
    docs/FRONTEND_DESIGN_SYSTEM.md. */
@@ -367,12 +378,18 @@
 
   .selection-toolbar,
   [data-slot="save-status-content"],
+  [data-slot="tool-open-arrow"],
   [data-slot="section-completion-mark"][data-animate="true"]
     .section-completion-circle,
   [data-slot="section-completion-mark"][data-animate="true"]
     .section-completion-check,
   [data-slot="section-error-mark"][data-animate="true"] {
     animation: none;
+  }
+
+  [data-slot="tool-open-arrow"] {
+    transform: none !important;
+    transition: none !important;
   }
 
   .selection-toolbar[data-state="closing"] {

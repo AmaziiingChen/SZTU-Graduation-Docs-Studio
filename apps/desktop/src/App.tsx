@@ -4557,7 +4557,7 @@ export default function App() {
   const exportDisabledReason = !environmentReady
     ? environmentFailure?.message ?? "请先修复本机文档环境"
     : !templateReady
-      ? "请先在左侧“检查与导出”中关联可用的本地模板工程"
+      ? "请先在左侧“导出记录”中关联可用的本地模板工程"
       : !previewReady
         ? "请先生成当前内容的排版预览"
         : draftExportReady
@@ -4692,7 +4692,7 @@ export default function App() {
       previewState={previewState}
       blockedMessage={
         environment.status === "error"
-          ? "本地文档引擎未连接，请在“检查与导出”中查看环境问题。"
+          ? "本地文档引擎未连接，请在“导出记录”中查看环境问题。"
           : environmentFailure
             ? environmentFailure.message
           : environment.status === "ready" && !templateReady
@@ -4710,7 +4710,7 @@ export default function App() {
     activePane === "inspection" ? (
       inspectionPanel
     ) : activePane === "tools" ? (
-      <ToolDirectory onOpenTool={(toolId) => void openToolLink(toolId)} />
+      <ToolDirectory onOpenTool={openToolLink} />
     ) : activePane === "appearance" ? (
       <AppearanceSettings />
     ) : activePane === "thesis_tools" ? (
@@ -4772,11 +4772,11 @@ export default function App() {
             activePane === "profile"
               ? "学生档案"
               : activePane === "tools"
-                ? "工具箱"
+                ? "效率工具"
               : activePane === "appearance"
-                ? "外观"
+                ? "主题外观"
               : activePane === "inspection"
-                ? "检查与导出"
+                ? "导出记录"
               : activePane === "thesis_tools"
                 ? "毕业论文工具箱"
                 : activeDocumentType === "task_book"
