@@ -4,7 +4,6 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
@@ -141,7 +140,6 @@ export function GeneralTableGenerator() {
           <Card>
             <CardHeader>
               <CardTitle>表格数据</CardTitle>
-              <CardDescription>首行默认作为表头，也可以调整表头行数。</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4">
               <div className="grid gap-2 sm:grid-cols-2">
@@ -202,7 +200,10 @@ export function GeneralTableGenerator() {
                         <Select
                           value={normalizedAlignments[index]}
                           onValueChange={(value) => setDraft((current) => {
-                            const next = [...current.alignments]
+                            const next = Array.from(
+                              { length: columnCount },
+                              (_, columnIndex) => current.alignments[columnIndex] ?? (columnIndex === 0 ? "left" : "center"),
+                            )
                             next[index] = value as TableColumnAlignment
                             return { ...current, alignments: next }
                           })}
@@ -241,7 +242,6 @@ export function GeneralTableGenerator() {
             alignments={normalizedAlignments}
             variant="grid"
             tableLabel="普通表格预览"
-            description="预览反映边框和对齐关系，最终字号由论文模板决定。"
             emptyText="创建表格并填写数据后在这里预览。"
             latex={latex}
             filename="table.tex"

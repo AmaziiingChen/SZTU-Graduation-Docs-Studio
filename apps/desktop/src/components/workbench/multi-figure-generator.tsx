@@ -1,32 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import {
-  ArrowDownIcon,
-  ArrowUpIcon,
-  ImagesIcon,
-  Trash2Icon,
-} from "lucide-react"
+import { ArrowDownIcon, ArrowUpIcon, CopyIcon, DownloadIcon, ImagesIcon, InfoIcon, Trash2Icon } from "lucide-react"
 import { toast } from "sonner"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { LatexSourceSheet } from "@/components/workbench/latex-source-sheet"
 import { SaveStatusBadge } from "@/components/workbench/save-status-badge"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-} from "@/components/ui/select"
-import { LatexSourceCard } from "@/components/workbench/latex-source-card"
 import { ToolDraftActions } from "@/components/workbench/tool-draft-actions"
+import { writeClipboardText } from "@/lib/desktop-clipboard"
 import { generateMultiFigureLatex, validateFigureFilenames } from "@/lib/multi-figure"
 import {
   clearMultiFigureSessionImages,
@@ -35,6 +21,7 @@ import {
   type SessionFigureItem,
 } from "@/lib/multi-figure-session"
 import { useLocalDraft } from "@/lib/use-local-draft"
+import { cn } from "@/lib/utils"
 
 type MultiFigureDraft = {
   columns: number
@@ -96,7 +83,10 @@ export function MultiFigureGenerator() {
   })
   const { columns, caption, label, pathPrefix } = draft
   const [images, setImages] = useState<SessionFigureItem[]>(getMultiFigureSessionImages)
+  const [selectedImageId, setSelectedImageId] = useState<string | null>(() => getMultiFigureSessionImages()[0]?.id ?? null)
   const objectUrls = useRef(new Set(images.map((item) => item.previewUrl)))
+  const selectedImage = images.find((item) => item.id === selectedImageId) ?? images[0] ?? null
+  const selectedIndex = selectedImage ? images.findIndex((item) => item.id === selectedImage.id) : -1
   const filenameErrors = useMemo(
     () => validateFigureFilenames(images.map((item) => ({ filename: item.file.name }))),
     [images],
@@ -132,22 +122,27 @@ export function MultiFigureGenerator() {
       return { id: `figure-${imageSequence}`, file, previewUrl, caption: restoredCaption }
     })
     applyImages([...images, ...additions])
+    if (additions[0]) setSelectedImageId(additions[0].id)
     if (accepted.length > room) toast.error("一次排版最多支持 12 张图片。")
   }
 
   const removeImage = (id: string) => {
-    const target = images.find((item) => item.id === id)
+    const index = images.findIndex((item) => item.id === id)
+    const target = images[index]
     if (target) {
       URL.revokeObjectURL(target.previewUrl)
       objectUrls.current.delete(target.previewUrl)
     }
-    applyImages(images.filter((item) => item.id !== id))
+    const next = images.filter((item) => item.id !== id)
+    applyImages(next)
+    if (selectedImageId === id) setSelectedImageId(next[Math.min(index, next.length - 1)]?.id ?? null)
   }
 
   const clearAll = () => {
     clearMultiFigureSessionImages().forEach((item) => URL.revokeObjectURL(item.previewUrl))
     objectUrls.current.clear()
     setImages([])
+    setSelectedImageId(null)
     clearDraft()
   }
 
@@ -163,169 +158,149 @@ export function MultiFigureGenerator() {
       : "",
     [caption, columns, filenameErrors.length, images, label, pathPrefix],
   )
+  const packages = images.length > 1 ? ["graphicx", "subcaption"] : ["graphicx"]
+
+  const copyLatex = async () => {
+    if (!latex) return
+    try {
+      await writeClipboardText(latex)
+      toast.success("LaTeX 源码已复制。")
+    } catch {
+      toast.error("源码复制失败，请在“查看 LaTeX”中手动复制。")
+    }
+  }
+
+  const downloadLatex = () => {
+    if (!latex) return
+    const url = URL.createObjectURL(new Blob([latex], { type: "text/plain;charset=utf-8" }))
+    const anchor = document.createElement("a")
+    anchor.href = url
+    anchor.download = "multi-figure.tex"
+    anchor.click()
+    URL.revokeObjectURL(url)
+  }
 
   return (
     <ScrollArea className="h-full">
       <main className="mx-auto grid w-full max-w-6xl gap-6 p-6" aria-labelledby="multi-figure-title">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="space-y-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 id="multi-figure-title" className="text-xl font-semibold">多图排版</h2>
-              <SaveStatusBadge state={saveState} />
-            </div>
-            <p className="text-sm text-muted-foreground">
-              选择本机图片、调整顺序和列数，生成 figure 与 subfigure 源码。
-            </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 id="multi-figure-title" className="text-xl font-semibold">多图排版</h2>
+            <SaveStatusBadge state={saveState} />
           </div>
           <ToolDraftActions saveState={saveState} draftName="多图排版" onClear={clearAll} showSaveStatus={false} />
         </div>
 
-        <div className="grid items-start gap-6 xl:grid-cols-[minmax(20rem,0.85fr)_minmax(28rem,1.15fr)]">
+        <div className="grid gap-6">
           <Card>
             <CardHeader>
-              <CardTitle>图片与布局</CardTitle>
-              <CardDescription>图片只用于本机预览，不会上传或保存到工作台。</CardDescription>
+              <div className="flex items-center gap-2">
+                <CardTitle>图片与布局</CardTitle>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger render={<Button type="button" variant="ghost" size="icon-sm" aria-label="图片使用说明" />}>
+                      <InfoIcon />
+                    </TooltipTrigger>
+                    <TooltipContent>图片只用于本机预览，不会上传；一次最多选择 12 张。</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
             </CardHeader>
-            <CardContent className="grid gap-4">
-              <Input
-                type="file"
-                accept="image/*"
-                multiple
-                aria-label="选择图片"
-                onChange={(event) => {
-                  addImages(event.target.files)
-                  event.target.value = ""
-                }}
-              />
+            <CardContent className="grid gap-5">
+              <Input type="file" accept="image/*" multiple aria-label="选择图片" onChange={(event) => {
+                addImages(event.target.files)
+                event.target.value = ""
+              }} />
               {images.length === 0 && draft.images.length > 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  已恢复上次的布局和 {draft.images.length} 张图片信息；重新选择原图片后可继续预览。
-                </p>
+                <Alert>
+                  <AlertTitle>重新选择图片以恢复预览</AlertTitle>
+                  <AlertDescription>上次的布局和 {draft.images.length} 张图片标题已保留。</AlertDescription>
+                </Alert>
               ) : null}
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <label className="grid gap-2 text-sm font-medium">
                   每行图片数
                   <Select value={String(columns)} onValueChange={(value) => setDraft((current) => ({ ...current, columns: Number(value) }))}>
                     <SelectTrigger aria-label="每行图片数"><span>{columns} 张</span></SelectTrigger>
-                    <SelectContent>
-                      {[1, 2, 3, 4].map((count) => (
-                        <SelectItem key={count} value={String(count)}>{count} 张</SelectItem>
-                      ))}
-                    </SelectContent>
+                    <SelectContent>{[1, 2, 3, 4].map((count) => <SelectItem key={count} value={String(count)}>{count} 张</SelectItem>)}</SelectContent>
                   </Select>
                 </label>
                 <label className="grid gap-2 text-sm font-medium">
                   图片目录
-                  <Input
-                    value={pathPrefix}
-                    onChange={(event) => setDraft((current) => ({ ...current, pathPrefix: event.target.value }))}
-                    placeholder="figures"
-                  />
+                  <Input value={pathPrefix} onChange={(event) => setDraft((current) => ({ ...current, pathPrefix: event.target.value }))} placeholder="figures" />
+                </label>
+                <label className="grid gap-2 text-sm font-medium">
+                  整组图题（可选）
+                  <Input value={caption} onChange={(event) => setDraft((current) => ({ ...current, caption: event.target.value }))} />
+                </label>
+                <label className="grid gap-2 text-sm font-medium">
+                  引用标签（可选）
+                  <Input value={label} onChange={(event) => setDraft((current) => ({ ...current, label: event.target.value }))} placeholder="fig:experiment" />
                 </label>
               </div>
-              <label className="grid gap-2 text-sm font-medium">
-                整组图题（可选）
-                <Input value={caption} onChange={(event) => setDraft((current) => ({ ...current, caption: event.target.value }))} />
-              </label>
-              <label className="grid gap-2 text-sm font-medium">
-                引用标签（可选）
-                <Input
-                  value={label}
-                  onChange={(event) => setDraft((current) => ({ ...current, label: event.target.value }))}
-                  placeholder="例如：fig:experiment"
-                />
-              </label>
 
               {images.length > 0 ? (
-                <div className="grid gap-2" aria-label="图片顺序">
-                  {images.map((item, index) => (
-                    <div key={item.id} className="grid grid-cols-[3rem_minmax(0,1fr)_auto] items-center gap-3 rounded-lg border p-2">
-                      <img
-                        src={item.previewUrl}
-                        alt=""
-                        aria-hidden="true"
-                        className="size-12 rounded-md border object-cover"
-                      />
-                      <div className="min-w-0 space-y-2">
-                        <p className="truncate text-xs text-muted-foreground" title={item.file.name}>{item.file.name}</p>
-                        <Input
-                          value={item.caption}
-                          aria-label={`图片 ${index + 1} 子标题`}
-                          placeholder="子标题（可选）"
-                          onChange={(event) => applyImages(images.map((image) =>
-                            image.id === item.id ? { ...image, caption: event.target.value } : image,
-                          ))}
-                        />
+                <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
+                  <div className="grid gap-2" aria-label="图片顺序">
+                    {images.map((item, index) => (
+                      <div key={item.id} className={cn(
+                        "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-lg border p-2",
+                        selectedImage?.id === item.id && "border-foreground",
+                      )}>
+                        <button type="button" className="grid min-w-0 grid-cols-[3rem_minmax(0,1fr)] items-center gap-3 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={`选择图片 ${index + 1} 进行编辑`} aria-pressed={selectedImage?.id === item.id} onClick={() => setSelectedImageId(item.id)}>
+                          <img src={item.previewUrl} alt="" aria-hidden="true" className="size-12 rounded-md border object-cover" />
+                          <span className="min-w-0">
+                            <span className="block text-sm font-medium">图片 {index + 1}</span>
+                            <span className="block truncate text-xs text-muted-foreground" title={item.file.name}>{item.file.name}</span>
+                          </span>
+                        </button>
+                        <div className="flex items-center gap-1">
+                          <Button type="button" variant="ghost" size="icon-sm" aria-label={`上移图片 ${index + 1}`} disabled={index === 0} onClick={() => applyImages(moveItem(images, index, index - 1))}><ArrowUpIcon /></Button>
+                          <Button type="button" variant="ghost" size="icon-sm" aria-label={`下移图片 ${index + 1}`} disabled={index === images.length - 1} onClick={() => applyImages(moveItem(images, index, index + 1))}><ArrowDownIcon /></Button>
+                          <Button type="button" variant="ghost" size="icon-sm" aria-label={`删除图片 ${index + 1}`} onClick={() => removeImage(item.id)}><Trash2Icon /></Button>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-1">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label={`上移图片 ${index + 1}`}
-                          disabled={index === 0}
-                          onClick={() => applyImages(moveItem(images, index, index - 1))}
-                        >
-                          <ArrowUpIcon />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label={`下移图片 ${index + 1}`}
-                          disabled={index === images.length - 1}
-                          onClick={() => applyImages(moveItem(images, index, index + 1))}
-                        >
-                          <ArrowDownIcon />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label={`删除图片 ${index + 1}`}
-                          onClick={() => removeImage(item.id)}
-                        >
-                          <Trash2Icon />
-                        </Button>
-                      </div>
+                    ))}
+                  </div>
+                  {selectedImage ? (
+                    <div className="grid content-start gap-3 rounded-lg border p-4">
+                      <img src={selectedImage.previewUrl} alt={`当前编辑图片 ${selectedIndex + 1}`} className="aspect-4/3 w-full rounded-md border object-contain" />
+                      <label className="grid gap-2 text-sm font-medium">
+                        图片 {selectedIndex + 1} 子标题（可选）
+                        <Input value={selectedImage.caption} aria-label={`图片 ${selectedIndex + 1} 子标题`} onChange={(event) => applyImages(images.map((image) => image.id === selectedImage.id ? { ...image, caption: event.target.value } : image))} />
+                      </label>
                     </div>
-                  ))}
+                  ) : null}
                 </div>
               ) : null}
               {filenameErrors.length > 0 ? (
                 <Alert variant="destructive">
                   <AlertTitle>图片暂时无法生成源码</AlertTitle>
-                  <AlertDescription>
-                    <ul className="list-disc space-y-1 pl-4">
-                      {filenameErrors.map((error) => <li key={error}>{error}</li>)}
-                    </ul>
-                  </AlertDescription>
+                  <AlertDescription><ul className="list-disc space-y-1 pl-4">{filenameErrors.map((error) => <li key={error}>{error}</li>)}</ul></AlertDescription>
                 </Alert>
               ) : null}
             </CardContent>
           </Card>
 
           <Card>
-            <CardHeader>
+            <CardHeader className="gap-4 sm:flex-row sm:items-start sm:justify-between">
               <CardTitle>排版预览</CardTitle>
-              <CardDescription>预览展示图片比例和分组关系，论文模板负责最终页宽与题注字号。</CardDescription>
+              <div className="flex shrink-0 flex-wrap gap-2">
+                <LatexSourceSheet latex={latex} packages={packages} />
+                <Button type="button" size="sm" variant="outline" disabled={!latex} onClick={() => void copyLatex()}><CopyIcon />复制源码</Button>
+                <Button type="button" size="sm" disabled={!latex} onClick={downloadLatex}><DownloadIcon />下载源码</Button>
+              </div>
             </CardHeader>
             <CardContent>
               {images.length > 0 ? (
-                <figure className="rounded-lg border p-4">
+                <figure className="rounded-lg border bg-background p-6">
                   <div className={`grid items-start gap-4 ${previewGridClasses[columns]}`}>
                     {images.map((item, index) => (
                       <div key={item.id} className="grid gap-2 text-center">
-                        <div className="flex aspect-4/3 items-center justify-center overflow-hidden rounded-md border bg-muted/30">
-                          <img
-                            src={item.previewUrl}
-                            alt={`图片 ${index + 1} 预览`}
-                            className="max-h-full max-w-full object-contain"
-                          />
+                        <div className="flex aspect-4/3 items-center justify-center overflow-hidden rounded-md border">
+                          <img src={item.previewUrl} alt={`图片 ${index + 1} 预览`} className="max-h-full max-w-full object-contain" />
                         </div>
-                        {images.length > 1 && item.caption.trim() ? (
-                          <p className="text-xs">（{String.fromCharCode(97 + index)}）{item.caption.trim()}</p>
-                        ) : null}
+                        {images.length > 1 && item.caption.trim() ? <p className="text-xs">（{String.fromCharCode(97 + index)}）{item.caption.trim()}</p> : null}
                       </div>
                     ))}
                   </div>
@@ -340,12 +315,6 @@ export function MultiFigureGenerator() {
             </CardContent>
           </Card>
         </div>
-
-        <LatexSourceCard
-          latex={latex}
-          filename="multi-figure.tex"
-          packages={images.length > 1 ? ["graphicx", "subcaption"] : ["graphicx"]}
-        />
       </main>
     </ScrollArea>
   )

@@ -18,14 +18,21 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { LatexSourceSheet } from "@/components/workbench/latex-source-sheet"
-import { cn } from "@/lib/utils"
+import { writeClipboardText } from "@/lib/desktop-clipboard"
 import {
   copyTablePreviewPng,
   downloadTablePreviewPng,
   type TablePreviewImageStyle,
 } from "@/lib/table-preview-image"
+import { cn } from "@/lib/utils"
 
 type TableAlignment = "left" | "center" | "right"
+
+const alignmentClasses: Record<TableAlignment, string> = {
+  left: "text-left",
+  center: "text-center",
+  right: "text-right",
+}
 
 export function TablePreviewCard({
   rows,
@@ -78,7 +85,7 @@ export function TablePreviewCard({
   const copyLatex = async () => {
     if (!latex) return
     try {
-      await navigator.clipboard.writeText(latex)
+      await writeClipboardText(latex)
       toast.success("LaTeX 源码已复制。")
     } catch {
       toast.error("无法访问剪贴板，请在“查看 LaTeX”中手动复制。")
@@ -140,8 +147,11 @@ export function TablePreviewCard({
                       {row.map((cell, cellIndex) => (
                         <TableHead
                           key={cellIndex}
-                          className={cn("whitespace-normal", variant === "grid" && "border")}
-                          style={{ textAlign: alignments[cellIndex] ?? (cellIndex === 0 ? "left" : "center") }}
+                          className={cn(
+                            "whitespace-normal",
+                            variant === "grid" && "border",
+                            alignmentClasses[alignments[cellIndex] ?? (cellIndex === 0 ? "left" : "center")],
+                          )}
                         >
                           {cell}
                         </TableHead>
@@ -156,8 +166,11 @@ export function TablePreviewCard({
                     {row.map((cell, cellIndex) => (
                       <TableCell
                         key={cellIndex}
-                        className={cn("whitespace-normal", variant === "grid" && "border")}
-                        style={{ textAlign: alignments[cellIndex] ?? (cellIndex === 0 ? "left" : "center") }}
+                        className={cn(
+                          "whitespace-normal",
+                          variant === "grid" && "border",
+                          alignmentClasses[alignments[cellIndex] ?? (cellIndex === 0 ? "left" : "center")],
+                        )}
                       >
                         {cell}
                       </TableCell>

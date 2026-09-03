@@ -4,7 +4,6 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
@@ -77,7 +76,6 @@ export function ThreeLineTableGenerator() {
           <Card>
             <CardHeader>
               <CardTitle>表格数据</CardTitle>
-              <CardDescription>首行作为表头；从电子表格复制时会自动识别列。</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4">
               <div className="grid gap-2 sm:grid-cols-2">

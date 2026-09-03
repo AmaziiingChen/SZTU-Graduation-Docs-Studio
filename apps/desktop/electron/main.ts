@@ -5,6 +5,8 @@ import path from "node:path"
 import {
   app,
   BrowserWindow,
+  clipboard,
+  ClipboardItem,
   dialog,
   ipcMain,
   Menu,
@@ -103,6 +105,7 @@ const MAX_JSON_COLLECTION_SIZE = 10_000
 const SHA256_PATTERN = /^[a-f0-9]{64}$/
 const MANAGED_IMAGE_NAME_PATTERN = /^([a-f0-9]{64})\.(png|jpe?g)$/
 const MAX_IMAGE_ASSET_BYTES = 20 * 1024 * 1024
+const MAX_CLIPBOARD_TEXT_LENGTH = 2_000_000
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -176,6 +179,22 @@ function detectImageMime(bytes: Buffer): "image/png" | "image/jpeg" | null {
     return "image/jpeg"
   }
   return null
+}
+
+function decodeClipboardPng(value: unknown): Buffer {
+  const prefix = "data:image/png;base64,"
+  if (typeof value !== "string" || !value.startsWith(prefix)) {
+    throw new IpcValidationError("剪贴板图片必须是 PNG 数据。")
+  }
+  const encoded = value.slice(prefix.length)
+  if (!encoded || encoded.length > MAX_IMAGE_ASSET_BYTES * 2 || !/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)) {
+    throw new IpcValidationError("剪贴板 PNG 数据无效或过大。")
+  }
+  const bytes = Buffer.from(encoded, "base64")
+  if (bytes.length > MAX_IMAGE_ASSET_BYTES || detectImageMime(bytes) !== "image/png") {
+    throw new IpcValidationError("剪贴板图片必须是真实且小于 20 MiB 的 PNG。")
+  }
+  return bytes
 }
 
 async function registerAssetProtocol(): Promise<void> {
@@ -816,6 +835,28 @@ function registerIpc(): void {
         throw new IpcValidationError("未识别的外部指引链接。")
       }
       await shell.openExternal(TOOL_LINKS[toolId as ToolLinkId])
+      return null
+    })
+  })
+
+  ipcMain.handle("sztu:clipboard-write-text", (event, text: unknown) => {
+    assertTrustedSender(event)
+    return runBridge(async () => {
+      if (typeof text !== "string" || text.length > MAX_CLIPBOARD_TEXT_LENGTH) {
+        throw new IpcValidationError("剪贴板文本无效或过长。")
+      }
+      await clipboard.writeText(text)
+      return null
+    })
+  })
+
+  ipcMain.handle("sztu:clipboard-write-png", (event, dataUrl: unknown) => {
+    assertTrustedSender(event)
+    return runBridge(async () => {
+      const bytes = decodeClipboardPng(dataUrl)
+      await clipboard.write([new ClipboardItem({
+        "image/png": new Blob([Uint8Array.from(bytes)], { type: "image/png" }),
+      })])
       return null
     })
   })

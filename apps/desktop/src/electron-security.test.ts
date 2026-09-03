@@ -164,6 +164,8 @@ describe("Electron security boundary", () => {
       "revealDownloadedUpdate",
       "openReleaseHelp",
       "openToolLink",
+      "writeClipboardText",
+      "writeClipboardPng",
       "onUpdateStatus",
       "importImageAsset",
       "openWorkspace",
@@ -211,6 +213,8 @@ describe("Electron security boundary", () => {
       "sztu:update-reveal",
       "sztu:update-open-help",
       "sztu:tool-open",
+      "sztu:clipboard-write-text",
+      "sztu:clipboard-write-png",
       "sztu:asset-import-image",
       "sztu:workspace-save-profile-draft",
       "sztu:workspace-save-profile",
@@ -254,6 +258,16 @@ describe("Electron security boundary", () => {
     expect(mainSource).toContain("Object.prototype.hasOwnProperty.call(TOOL_LINKS, toolId)")
     expect(mainSource).toContain("await shell.openExternal(TOOL_LINKS[toolId as ToolLinkId])")
     expect(mainSource).not.toContain("shell.openExternal(toolId)")
+  })
+
+  it("writes only validated text and PNG data through the native clipboard", () => {
+    expect(preloadSource).toContain('writeClipboardText: (text: unknown) => invoke("sztu:clipboard-write-text", text)')
+    expect(preloadSource).toContain('writeClipboardPng: (dataUrl: unknown) => invoke("sztu:clipboard-write-png", dataUrl)')
+    expect(mainSource).toContain('const prefix = "data:image/png;base64,"')
+    expect(mainSource).toContain('detectImageMime(bytes) !== "image/png"')
+    expect(mainSource).toContain("await clipboard.writeText(text)")
+    expect(mainSource).toContain("await clipboard.write([new ClipboardItem({")
+    expect(mainSource).toContain('"image/png": new Blob([Uint8Array.from(bytes)]')
   })
 
   it("allows the shared advisor title and graduation cohort through profile IPC validation", () => {

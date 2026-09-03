@@ -34,6 +34,24 @@ describe("GeneralTableGenerator", () => {
     expect(screen.getByRole("option", { name: "跨页表格" })).toBeInTheDocument()
   })
 
+  it("applies and persists each column alignment in preview and source", () => {
+    const first = render(<GeneralTableGenerator />)
+    createAndFillTable()
+    fireEvent.click(screen.getByRole("combobox", { name: "结果对齐方式" }))
+    const rightOption = screen.getByRole("option", { name: "右对齐" })
+    fireEvent.pointerDown(rightOption)
+    fireEvent.click(rightOption)
+
+    expect(screen.getByRole("columnheader", { name: "结果" })).toHaveClass("text-right")
+    fireEvent.click(screen.getByRole("button", { name: "查看 LaTeX" }))
+    expect(screen.getByLabelText<HTMLInputElement>("生成的 LaTeX 源码").value).toContain("{|l|r|}")
+    first.unmount()
+
+    render(<GeneralTableGenerator />)
+    expect(screen.getByRole("combobox", { name: "结果对齐方式" })).toHaveTextContent("右对齐")
+    expect(screen.getByRole("columnheader", { name: "结果" })).toHaveClass("text-right")
+  })
+
   it("restores table settings and content after leaving the tool", () => {
     const first = render(<GeneralTableGenerator />)
     createAndFillTable()
