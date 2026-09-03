@@ -118,6 +118,26 @@ type ToolbarState = {
   empty: boolean
   figures: Array<{ id: string; label: string; caption: string }>
   selectedFigure: FigureFormValue | null
+  characterCount: number
+  paragraphCount: number
+}
+
+function documentStatistics(editor: Editor) {
+  const text = editor.state.doc.textBetween(
+    0,
+    editor.state.doc.content.size,
+    " ",
+  )
+  let paragraphCount = 0
+  editor.state.doc.descendants((node) => {
+    if (node.type.name === "paragraph" && node.textContent.trim()) {
+      paragraphCount += 1
+    }
+  })
+  return {
+    characterCount: Array.from(text.replace(/\s/gu, "")).length,
+    paragraphCount,
+  }
 }
 
 export type FigureChapterOption = { value: number; label: string }
@@ -162,6 +182,7 @@ function selectToolbarState(
   editor: Editor,
   documentFigureCatalog?: StructuredFigureCatalogItem[],
 ): ToolbarState {
+  const statistics = documentStatistics(editor)
   const listDepth = listDepthAtSelection(editor)
   const inList = listDepth > 0
   const figures: ToolbarState["figures"] = []
@@ -205,6 +226,7 @@ function selectToolbarState(
           sourceCitationKey: String(selectedAttrs.sourceCitationKey ?? ""),
         }
       : null,
+    ...statistics,
   }
 }
 
@@ -901,19 +923,29 @@ export function StructuredContentEditor({
         </div>
 
         {fillHeight ? (
-          <ScrollArea className="min-h-0 flex-1">
-            <div className="relative min-h-full">
-              {toolbarState.empty ? (
-                <span
-                  aria-hidden="true"
-                  className="pointer-events-none absolute top-3 left-3 text-sm text-muted-foreground"
-                >
-                  {placeholder}
-                </span>
-              ) : null}
-              <EditorContent className="min-h-full" editor={editor} />
+          <>
+            <ScrollArea className="min-h-0 flex-1">
+              <div className="relative min-h-full">
+                {toolbarState.empty ? (
+                  <span
+                    aria-hidden="true"
+                    className="pointer-events-none absolute top-3 left-3 text-sm text-muted-foreground"
+                  >
+                    {placeholder}
+                  </span>
+                ) : null}
+                <EditorContent className="min-h-full" editor={editor} />
+              </div>
+            </ScrollArea>
+            <div
+              role="status"
+              aria-live="polite"
+              className="flex shrink-0 justify-end gap-3 border-t px-3 py-1.5 text-xs tabular-nums text-muted-foreground"
+            >
+              <span>字数 {toolbarState.characterCount}</span>
+              <span>段落 {toolbarState.paragraphCount}</span>
             </div>
-          </ScrollArea>
+          </>
         ) : (
           <div className="relative">
             {toolbarState.empty ? (

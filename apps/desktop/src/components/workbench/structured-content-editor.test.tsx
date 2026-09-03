@@ -583,6 +583,24 @@ describe("StructuredContentEditor", () => {
       "min-h-0",
       "flex-1",
     )
+    expect(screen.getByRole("status")).toHaveTextContent("字数 5")
+    expect(screen.getByRole("status")).toHaveTextContent("段落 1")
+  })
+
+  it("counts visible non-whitespace characters and non-empty paragraphs", () => {
+    render(
+      <div className="h-96">
+        <StructuredContentEditor
+          value={["第一段 有空格", "第二段。"]}
+          onChange={vi.fn()}
+          fillHeight
+        />
+      </div>,
+    )
+
+    const status = screen.getByRole("status")
+    expect(status).toHaveTextContent("字数 10")
+    expect(status).toHaveTextContent("段落 2")
   })
 
   it("renders only the allowlisted controls and exposes the current structure", () => {
