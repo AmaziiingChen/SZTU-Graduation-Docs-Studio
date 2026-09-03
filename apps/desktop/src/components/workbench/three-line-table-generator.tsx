@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useMemo } from "react"
 import { Table2Icon } from "lucide-react"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -22,17 +22,32 @@ import {
 } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
 import { LatexSourceCard } from "@/components/workbench/latex-source-card"
+import { ToolDraftActions } from "@/components/workbench/tool-draft-actions"
 import {
   generateThreeLineTableLatex,
   parseTableText,
 } from "@/lib/three-line-table"
+import { useLocalDraft } from "@/lib/use-local-draft"
 
 const exampleData = "指标\t实验组\t对照组\n准确率（%）\t92.4\t86.1\n耗时（s）\t12.8\t15.3"
+const storageKey = "sztu-docs.thesis-tools.three-line-table.v1"
+const initialDraft = { caption: "", label: "", source: "" }
+
+function isThreeLineTableDraft(value: unknown): value is typeof initialDraft {
+  if (!value || typeof value !== "object") return false
+  const draft = value as Record<string, unknown>
+  return typeof draft.caption === "string" &&
+    typeof draft.label === "string" &&
+    typeof draft.source === "string"
+}
 
 export function ThreeLineTableGenerator() {
-  const [caption, setCaption] = useState("")
-  const [label, setLabel] = useState("")
-  const [source, setSource] = useState("")
+  const { value: draft, setValue: setDraft, saveState, clearDraft } = useLocalDraft({
+    storageKey,
+    initialValue: initialDraft,
+    isValid: isThreeLineTableDraft,
+  })
+  const { caption, label, source } = draft
   const parsed = useMemo(() => parseTableText(source), [source])
   const valid = parsed.rows.length > 0 && parsed.errors.length === 0
   const latex = useMemo(
@@ -46,11 +61,14 @@ export function ThreeLineTableGenerator() {
   return (
     <ScrollArea className="h-full">
       <main className="mx-auto grid w-full max-w-6xl gap-6 p-6" aria-labelledby="three-line-table-title">
-        <div className="space-y-1">
-          <h2 id="three-line-table-title" className="text-xl font-semibold">三线表生成器</h2>
-          <p className="text-sm text-muted-foreground">
-            粘贴 Excel、WPS 表格或 CSV 数据，生成可直接放入论文的 booktabs 源码。
-          </p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="space-y-1">
+            <h2 id="three-line-table-title" className="text-xl font-semibold">三线表生成器</h2>
+            <p className="text-sm text-muted-foreground">
+              粘贴 Excel、WPS 表格或 CSV 数据，生成可直接放入论文的 booktabs 源码。
+            </p>
+          </div>
+          <ToolDraftActions saveState={saveState} draftName="三线表" onClear={clearDraft} />
         </div>
 
         <div className="grid items-start gap-6 xl:grid-cols-2">
@@ -65,7 +83,7 @@ export function ThreeLineTableGenerator() {
                   表题（可选）
                   <Input
                     value={caption}
-                    onChange={(event) => setCaption(event.target.value)}
+                    onChange={(event) => setDraft((current) => ({ ...current, caption: event.target.value }))}
                     placeholder="例如：不同方法的实验结果"
                   />
                 </label>
@@ -73,7 +91,7 @@ export function ThreeLineTableGenerator() {
                   引用标签（可选）
                   <Input
                     value={label}
-                    onChange={(event) => setLabel(event.target.value)}
+                    onChange={(event) => setDraft((current) => ({ ...current, label: event.target.value }))}
                     placeholder="例如：tab:experiment"
                   />
                 </label>
@@ -82,14 +100,14 @@ export function ThreeLineTableGenerator() {
                 数据
                 <Textarea
                   value={source}
-                  onChange={(event) => setSource(event.target.value)}
+                  onChange={(event) => setDraft((current) => ({ ...current, source: event.target.value }))}
                   placeholder={exampleData}
                   className="min-h-56 resize-y font-mono text-xs"
                   aria-invalid={parsed.errors.length > 0 || undefined}
                 />
               </label>
               <div className="flex flex-wrap items-center gap-2">
-                <Button type="button" variant="outline" onClick={() => setSource(exampleData)}>
+                <Button type="button" variant="outline" onClick={() => setDraft((current) => ({ ...current, source: exampleData }))}>
                   <Table2Icon />
                   填入示例
                 </Button>
