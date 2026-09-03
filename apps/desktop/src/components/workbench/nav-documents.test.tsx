@@ -41,6 +41,7 @@ function renderNavigation({
 } = {}) {
   const callbacks = {
     onSelectDocument: vi.fn().mockResolvedValue(undefined),
+    onSelectThesisTool: vi.fn(),
     onCreateDocument: vi.fn().mockResolvedValue(undefined),
     onRenameDocument: vi.fn().mockResolvedValue(undefined),
     onDeleteDocument: vi.fn().mockResolvedValue(undefined),
@@ -56,6 +57,8 @@ function renderNavigation({
               profileActive={false}
               toolsActive={false}
               inspectionActive={false}
+              thesisToolsActive={false}
+              activeThesisTool="three_line_table"
               activeDocumentId={documents[0]?.id ?? null}
               documents={documents}
               deletedDocuments={deletedDocuments}
@@ -95,7 +98,7 @@ describe("NavDocuments file tree", () => {
     expect(action).toHaveClass("right-1")
   })
 
-  it("expands the thesis folder without exposing a creation action", () => {
+  it("opens each thesis tool without exposing a thesis creation action", () => {
     const callbacks = renderNavigation()
     const thesisFolder = screen.getByRole("button", { name: "毕业论文" })
 
@@ -105,7 +108,12 @@ describe("NavDocuments file tree", () => {
     ).not.toBeInTheDocument()
     fireEvent.click(thesisFolder)
     expect(thesisFolder).toHaveAttribute("aria-expanded", "true")
-    expect(screen.getByLabelText("毕业论文暂无文档")).toHaveTextContent("暂无文档")
+    fireEvent.click(screen.getByRole("button", { name: "三线表生成器" }))
+    expect(callbacks.onSelectThesisTool).toHaveBeenCalledWith("three_line_table")
+    fireEvent.click(screen.getByRole("button", { name: "表格生成器" }))
+    expect(callbacks.onSelectThesisTool).toHaveBeenCalledWith("general_table")
+    fireEvent.click(screen.getByRole("button", { name: "多图排版" }))
+    expect(callbacks.onSelectThesisTool).toHaveBeenCalledWith("multi_figure")
     expect(callbacks.onCreateDocument).not.toHaveBeenCalled()
   })
 

@@ -66,6 +66,7 @@ import {
 import { TaskScheduleEditor } from "@/components/workbench/task-schedule-editor"
 import { SiteHeader } from "@/components/workbench/site-header"
 import { ToolDirectory } from "@/components/workbench/tool-directory"
+import { ThesisToolsWorkbench } from "@/components/workbench/thesis-tools-workbench"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
@@ -162,6 +163,10 @@ import {
   markdownToParagraphs,
 } from "@/lib/markdown"
 import { paragraphInputText } from "@/lib/paragraph"
+import {
+  thesisToolOptions,
+  type ThesisToolId,
+} from "@/lib/thesis-tools"
 import {
   isParagraphInput,
   isStructuredBodyValue,
@@ -300,7 +305,7 @@ type WorkspaceLoadState =
   | { status: "ready" }
   | { status: "error"; message: string }
 
-type ActivePane = "profile" | "document" | "inspection" | "tools" | "appearance"
+type ActivePane = "profile" | "document" | "inspection" | "tools" | "appearance" | "thesis_tools"
 
 type DocumentViewState = {
   scrollTop: number
@@ -3340,6 +3345,7 @@ export default function App() {
     defaultDocumentSections,
   )
   const [activePane, setActivePane] = useState<ActivePane>("document")
+  const [activeThesisTool, setActiveThesisTool] = useState<ThesisToolId>("three_line_table")
   const [profile, setProfile] = useState<StudentProfile | null>(null)
   const [document, setDocument] = useState<DocumentRecord | null>(null)
   const [documents, setDocuments] = useState<DocumentRecord[]>([])
@@ -4627,6 +4633,16 @@ export default function App() {
     />
   )
 
+  const thesisSectionNavigation = (
+    <DocumentSectionNav
+      sections={thesisToolOptions satisfies DocumentSectionOption[]}
+      activeSection={activeThesisTool}
+      animationContextKey="thesis-tools"
+      showCompletion={false}
+      onSectionChange={(toolId) => setActiveThesisTool(toolId as ThesisToolId)}
+    />
+  )
+
   const previewPanel = (
     <PaginatedPreviewPanel
       activePane={activePane}
@@ -4655,6 +4671,8 @@ export default function App() {
       <ToolDirectory onOpenTool={(toolId) => void openToolLink(toolId)} />
     ) : activePane === "appearance" ? (
       <AppearanceSettings />
+    ) : activePane === "thesis_tools" ? (
+      <ThesisToolsWorkbench activeTool={activeThesisTool} />
     ) : (
       editor
     )
@@ -4675,6 +4693,8 @@ export default function App() {
         toolsActive={activePane === "tools"}
         appearanceActive={activePane === "appearance"}
         inspectionActive={activePane === "inspection"}
+        thesisToolsActive={activePane === "thesis_tools"}
+        activeThesisTool={activeThesisTool}
         activeDocumentId={activePane === "document" ? activeDocumentId ?? null : null}
         documents={documents}
         deletedDocuments={deletedDocuments}
@@ -4683,6 +4703,10 @@ export default function App() {
         onSelectAppearance={() => setActivePane("appearance")}
         onSelectInspection={() => setActivePane("inspection")}
         onSelectDocument={selectDocumentFile}
+        onSelectThesisTool={(toolId) => {
+          setActiveThesisTool(toolId)
+          setActivePane("thesis_tools")
+        }}
         onCreateDocument={createDocumentFile}
         onRenameDocument={(documentId, title) =>
           runDocumentMutation((api) => api.renameDocument({ documentId, title }))
@@ -4710,6 +4734,8 @@ export default function App() {
                 ? "外观"
               : activePane === "inspection"
                 ? "检查与导出"
+              : activePane === "thesis_tools"
+                ? "毕业论文工具箱"
                 : activeDocumentType === "task_book"
                   ? isMobile
                     ? `${graduationCohort}任务书`
@@ -4723,7 +4749,9 @@ export default function App() {
                       : `${graduationCohort}开题报告工作台`
           }
           status={
-            activePane === "tools" || activePane === "appearance"
+            activePane === "tools" ||
+            activePane === "appearance" ||
+            activePane === "thesis_tools"
               ? undefined
               : <SaveStatusBadge state={saveState} />
           }
@@ -4781,7 +4809,7 @@ export default function App() {
               <div className="min-h-0 flex-1">{mainPanel}</div>
             ) : (
               <div className="flex min-h-0 flex-1">
-                {sectionNavigation}
+                {activePane === "thesis_tools" ? thesisSectionNavigation : sectionNavigation}
                 <div className="min-w-0 flex-1">{mainPanel}</div>
               </div>
             )}

@@ -15,6 +15,7 @@ type DocumentSectionNavProps = {
   sections: DocumentSectionOption[]
   activeSection: string
   animationContextKey: string
+  showCompletion?: boolean
   onSectionChange: (sectionId: string) => void
 }
 
@@ -22,6 +23,7 @@ export function DocumentSectionNav({
   sections,
   activeSection,
   animationContextKey,
+  showCompletion = true,
   onSectionChange,
 }: DocumentSectionNavProps) {
   return (
@@ -50,10 +52,12 @@ export function DocumentSectionNav({
                 onClick={() => onSectionChange(section.id)}
               >
                 <span className="min-w-0 flex-1">{section.label}</span>
-                <SectionCompletionMark
-                  key={`${animationContextKey}:${section.id}`}
-                  state={state}
-                />
+                {showCompletion ? (
+                  <SectionCompletionMark
+                    key={`${animationContextKey}:${section.id}`}
+                    state={state}
+                  />
+                ) : null}
               </Button>
             )
           })}
