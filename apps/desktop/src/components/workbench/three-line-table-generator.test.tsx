@@ -7,12 +7,22 @@ beforeEach(() => window.localStorage.clear())
 afterEach(cleanup)
 
 describe("ThreeLineTableGenerator", () => {
-  it("previews pasted spreadsheet data and generates LaTeX", () => {
-    render(<ThreeLineTableGenerator />)
+  function createTable() {
+    fireEvent.click(screen.getByRole("button", { name: "新建表格" }))
+    fireEvent.click(screen.getByRole("button", { name: "创建 2 行 2 列表格" }))
+  }
 
-    fireEvent.change(screen.getByLabelText("数据"), {
-      target: { value: "名称\t数值\n样品 A\t12" },
-    })
+  function fillTable() {
+    createTable()
+    fireEvent.change(screen.getByRole("textbox", { name: "A1" }), { target: { value: "名称" } })
+    fireEvent.change(screen.getByRole("textbox", { name: "B1" }), { target: { value: "数值" } })
+    fireEvent.change(screen.getByRole("textbox", { name: "A2" }), { target: { value: "样品 A" } })
+    fireEvent.change(screen.getByRole("textbox", { name: "B2" }), { target: { value: "12" } })
+  }
+
+  it("previews visually edited spreadsheet data and generates LaTeX", () => {
+    render(<ThreeLineTableGenerator />)
+    fillTable()
 
     expect(screen.getByRole("table", { name: "三线表预览" })).toBeInTheDocument()
     expect(screen.getByLabelText<HTMLInputElement>("生成的 LaTeX 源码").value).toContain("\\toprule")
@@ -20,14 +30,14 @@ describe("ThreeLineTableGenerator", () => {
     expect(screen.getByRole("button", { name: "下载 .tex" })).toBeEnabled()
   })
 
-  it("blocks generation when row widths do not match", () => {
+  it("blocks generation while the header is blank", () => {
     render(<ThreeLineTableGenerator />)
-    fireEvent.change(screen.getByLabelText("数据"), {
-      target: { value: "名称\t数值\n样品 A" },
-    })
+    createTable()
+    fireEvent.change(screen.getByRole("textbox", { name: "A2" }), { target: { value: "样品 A" } })
+    fireEvent.change(screen.getByRole("textbox", { name: "B2" }), { target: { value: "12" } })
 
     expect(screen.getByText("数据暂时无法生成")).toBeInTheDocument()
-    expect(screen.getByText("第 2 行有 1 列，应为 2 列。")).toBeInTheDocument()
+    expect(screen.getByText("表头中不能有空白单元格。")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "复制 LaTeX" })).toBeDisabled()
   })
 
@@ -35,9 +45,7 @@ describe("ThreeLineTableGenerator", () => {
     const writeText = vi.fn().mockResolvedValue(undefined)
     Object.assign(navigator, { clipboard: { writeText } })
     render(<ThreeLineTableGenerator />)
-    fireEvent.change(screen.getByLabelText("数据"), {
-      target: { value: "名称\t数值\n样品 A\t12" },
-    })
+    fillTable()
 
     fireEvent.click(screen.getByRole("button", { name: "复制 LaTeX" }))
     expect(writeText).toHaveBeenCalledWith(expect.stringContaining("\\bottomrule"))
@@ -48,14 +56,12 @@ describe("ThreeLineTableGenerator", () => {
     fireEvent.change(screen.getByLabelText("表题（可选）"), {
       target: { value: "恢复测试" },
     })
-    fireEvent.change(screen.getByLabelText("数据"), {
-      target: { value: "名称\t数值\n样品 A\t12" },
-    })
+    fillTable()
     first.unmount()
 
     render(<ThreeLineTableGenerator />)
     expect(screen.getByLabelText<HTMLInputElement>("表题（可选）").value).toBe("恢复测试")
-    expect(screen.getByLabelText<HTMLTextAreaElement>("数据").value).toContain("样品 A")
+    expect(screen.getByRole<HTMLInputElement>("textbox", { name: "A2" }).value).toBe("样品 A")
     expect(screen.getByRole("table", { name: "三线表预览" })).toBeInTheDocument()
   })
 
@@ -63,9 +69,7 @@ describe("ThreeLineTableGenerator", () => {
     vi.useFakeTimers()
     try {
       render(<ThreeLineTableGenerator />)
-      fireEvent.change(screen.getByLabelText("数据"), {
-        target: { value: "名称\t数值\n样品 A\t12" },
-      })
+      fillTable()
       expect(screen.getByLabelText("保存状态：未保存")).toBeInTheDocument()
 
       act(() => vi.advanceTimersByTime(300))

@@ -1,8 +1,6 @@
 import { useMemo } from "react"
-import { Table2Icon } from "lucide-react"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Button } from "@/components/ui/button"
 import {
   Card,
   CardContent,
@@ -20,9 +18,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Textarea } from "@/components/ui/textarea"
 import { LatexSourceCard } from "@/components/workbench/latex-source-card"
 import { ToolDraftActions } from "@/components/workbench/tool-draft-actions"
+import { VisualTableEditor } from "@/components/workbench/visual-table-editor"
 import {
   generateThreeLineTableLatex,
   parseTableText,
@@ -31,14 +29,22 @@ import { useLocalDraft } from "@/lib/use-local-draft"
 
 const exampleData = "指标\t实验组\t对照组\n准确率（%）\t92.4\t86.1\n耗时（s）\t12.8\t15.3"
 const storageKey = "sztu-docs.thesis-tools.three-line-table.v1"
-const initialDraft = { caption: "", label: "", source: "" }
+const initialDraft: {
+  caption: string
+  label: string
+  source: string
+  rowCount?: number
+  columnCount?: number
+} = { caption: "", label: "", source: "" }
 
 function isThreeLineTableDraft(value: unknown): value is typeof initialDraft {
   if (!value || typeof value !== "object") return false
   const draft = value as Record<string, unknown>
   return typeof draft.caption === "string" &&
     typeof draft.label === "string" &&
-    typeof draft.source === "string"
+    typeof draft.source === "string" &&
+    (draft.rowCount === undefined || typeof draft.rowCount === "number") &&
+    (draft.columnCount === undefined || typeof draft.columnCount === "number")
 }
 
 export function ThreeLineTableGenerator() {
@@ -47,7 +53,7 @@ export function ThreeLineTableGenerator() {
     initialValue: initialDraft,
     isValid: isThreeLineTableDraft,
   })
-  const { caption, label, source } = draft
+  const { caption, label, source, rowCount, columnCount } = draft
   const parsed = useMemo(() => parseTableText(source), [source])
   const valid = parsed.rows.length > 0 && parsed.errors.length === 0
   const latex = useMemo(
@@ -71,7 +77,7 @@ export function ThreeLineTableGenerator() {
           <ToolDraftActions saveState={saveState} draftName="三线表" onClear={clearDraft} />
         </div>
 
-        <div className="grid items-start gap-6 xl:grid-cols-2">
+        <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.25fr)_minmax(20rem,0.75fr)]">
           <Card>
             <CardHeader>
               <CardTitle>表格数据</CardTitle>
@@ -96,23 +102,11 @@ export function ThreeLineTableGenerator() {
                   />
                 </label>
               </div>
-              <label className="grid gap-2 text-sm font-medium">
-                数据
-                <Textarea
-                  value={source}
-                  onChange={(event) => setDraft((current) => ({ ...current, source: event.target.value }))}
-                  placeholder={exampleData}
-                  className="min-h-56 resize-y font-mono text-xs"
-                  aria-invalid={parsed.errors.length > 0 || undefined}
-                />
-              </label>
-              <div className="flex flex-wrap items-center gap-2">
-                <Button type="button" variant="outline" onClick={() => setDraft((current) => ({ ...current, source: exampleData }))}>
-                  <Table2Icon />
-                  填入示例
-                </Button>
-                <span className="text-xs text-muted-foreground">支持制表符分隔和带引号的 CSV。</span>
-              </div>
+              <VisualTableEditor
+                value={{ source, rowCount, columnCount }}
+                exampleData={exampleData}
+                onChange={(next) => setDraft((current) => ({ ...current, ...next }))}
+              />
               {parsed.errors.length > 0 ? (
                 <Alert variant="destructive">
                   <AlertTitle>数据暂时无法生成</AlertTitle>

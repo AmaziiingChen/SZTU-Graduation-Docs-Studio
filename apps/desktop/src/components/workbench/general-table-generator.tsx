@@ -1,8 +1,6 @@
 import { useMemo } from "react"
-import { Grid3X3Icon } from "lucide-react"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Button } from "@/components/ui/button"
 import {
   Card,
   CardContent,
@@ -26,9 +24,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Textarea } from "@/components/ui/textarea"
 import { LatexSourceCard } from "@/components/workbench/latex-source-card"
 import { ToolDraftActions } from "@/components/workbench/tool-draft-actions"
+import { VisualTableEditor } from "@/components/workbench/visual-table-editor"
 import {
   generateGeneralTableLatex,
   requiredPackagesForGeneralTable,
@@ -59,6 +57,8 @@ type GeneralTableDraft = {
   headerRows: number
   mode: GeneralTableMode
   alignments: TableColumnAlignment[]
+  rowCount?: number
+  columnCount?: number
 }
 
 const storageKey = "sztu-docs.thesis-tools.general-table.v1"
@@ -81,7 +81,9 @@ function isGeneralTableDraft(value: unknown): value is GeneralTableDraft {
     Number.isInteger(draft.headerRows) &&
     ["natural", "page_width", "long_table"].includes(String(draft.mode)) &&
     Array.isArray(draft.alignments) &&
-    draft.alignments.every((item) => ["left", "center", "right"].includes(String(item)))
+    draft.alignments.every((item) => ["left", "center", "right"].includes(String(item))) &&
+    (draft.rowCount === undefined || typeof draft.rowCount === "number") &&
+    (draft.columnCount === undefined || typeof draft.columnCount === "number")
 }
 
 export function GeneralTableGenerator() {
@@ -90,7 +92,16 @@ export function GeneralTableGenerator() {
     initialValue: initialDraft,
     isValid: isGeneralTableDraft,
   })
-  const { caption, label, source, headerRows, mode, alignments } = draft
+  const {
+    caption,
+    label,
+    source,
+    headerRows,
+    mode,
+    alignments,
+    rowCount,
+    columnCount: draftColumnCount,
+  } = draft
   const parsed = useMemo(() => parseTableText(source), [source])
   const columnCount = parsed.rows[0]?.length ?? 0
   const valid = parsed.rows.length > 0 && parsed.errors.length === 0
@@ -130,7 +141,7 @@ export function GeneralTableGenerator() {
           <ToolDraftActions saveState={saveState} draftName="表格" onClear={clearDraft} />
         </div>
 
-        <div className="grid items-start gap-6 xl:grid-cols-2">
+        <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.25fr)_minmax(20rem,0.75fr)]">
           <Card>
             <CardHeader>
               <CardTitle>表格数据</CardTitle>
@@ -177,20 +188,12 @@ export function GeneralTableGenerator() {
                   </Select>
                 </label>
               </div>
-              <label className="grid gap-2 text-sm font-medium">
-                数据
-                <Textarea
-                  value={source}
-                  onChange={(event) => setDraft((current) => ({ ...current, source: event.target.value }))}
-                  placeholder={exampleData}
-                  className="min-h-56 resize-y"
-                  aria-invalid={parsed.errors.length > 0 || undefined}
-                />
-              </label>
-              <Button type="button" variant="outline" className="w-fit" onClick={() => setDraft((current) => ({ ...current, source: exampleData }))}>
-                <Grid3X3Icon />
-                填入示例
-              </Button>
+              <VisualTableEditor
+                value={{ source, rowCount, columnCount: draftColumnCount }}
+                exampleData={exampleData}
+                headerRows={headerRows}
+                onChange={(next) => setDraft((current) => ({ ...current, ...next }))}
+              />
               {valid ? (
                 <fieldset className="grid gap-2">
                   <legend className="text-sm font-medium">各列对齐</legend>
