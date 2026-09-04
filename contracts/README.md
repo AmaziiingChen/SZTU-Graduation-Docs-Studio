@@ -25,7 +25,7 @@ Draft 2020-12，并以稳定 `$id` 作为跨语言标识。
 | `template-install-operation.schema.json` | `$defs.params/result` | 离线模板包安装 |
 | `qa-record-operation.schema.json` | `$defs.params/result` | Word/WPS 目标编辑器 QA 记录 |
 | `telemetry-batch.schema.json` | `schema_version=1.0` | 不含文档内容的匿名运行事件批次 |
-| `update-manifest.schema.json` | `schema_version=1.0` | Ed25519 签名的桌面更新清单 |
+| `update-manifest.schema.json` | `schema_version=1.0 / 2.0` | Ed25519 签名的桌面更新与发布控制清单 |
 
 具体升级规则见 [`COMPATIBILITY.md`](COMPATIBILITY.md)。每个文件的稳定 `$id` 可直接从
 Schema 根对象读取。
@@ -34,6 +34,11 @@ Schema 根对象读取。
 命名的 `$defs` fragment，不提供允许调用者任选方法名或任意 params 的通用命令入口。
 Python 静态类型镜像位于 `python_contract_types.py`；它不能替代运行时 Schema、路径和哈希
 验证。
+
+`update-manifest` 保留原有 `1.0` 安装包更新合同：清单必须至少声明一个安装包，且不能
+携带发布控制字段。`2.0` 必须携带严格的 `control` 对象，并允许 `artifacts` 为空，以便
+只发布公告、使用说明、维护状态或最低版本策略。清单、载荷、安装包、发布控制和公告对象
+均拒绝未声明字段；签名覆盖完整 `payload`。
 
 ## 草稿与导出边界
 

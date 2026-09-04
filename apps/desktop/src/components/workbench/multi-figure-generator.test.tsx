@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { MultiFigureGenerator } from "@/components/workbench/multi-figure-generator"
@@ -19,6 +19,25 @@ describe("MultiFigureGenerator", () => {
     })
   })
 
+  it("starts with the layout card and keeps guidance and draft actions in its header", async () => {
+    render(<MultiFigureGenerator />)
+
+    const main = screen.getByRole("main", { name: "多图排版" })
+    expect(
+      within(main).queryByRole("heading", { name: "多图排版" }),
+    ).not.toBeInTheDocument()
+    expect(screen.queryByText(/图片只用于本机预览/)).not.toBeInTheDocument()
+    const clearDraft = within(main).getByRole("button", { name: "清空草稿" })
+    const cardHeader = clearDraft.closest('[data-slot="card-header"]')
+    expect(cardHeader).not.toBeNull()
+    expect(clearDraft.closest('[data-slot="card-action"]')).not.toBeNull()
+    const guidance = within(cardHeader as HTMLElement).getByRole("button", {
+      name: "图片使用说明",
+    })
+    fireEvent.focus(guidance)
+    expect(await screen.findByText(/一次最多选择 12 张/)).toBeInTheDocument()
+  })
+
   it("previews selected images and generates subfigure source", () => {
     render(<MultiFigureGenerator />)
     const files = [
@@ -30,8 +49,25 @@ describe("MultiFigureGenerator", () => {
 
     expect(screen.getByRole("img", { name: "图片 1 预览" })).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "查看 LaTeX" }))
-    expect(screen.getByLabelText<HTMLInputElement>("生成的 LaTeX 源码").value).toContain("\\begin{subfigure}")
+    const source = screen.getByLabelText<HTMLInputElement>("生成的 LaTeX 源码")
+    expect(source.value).toContain("\\begin{subfigure}")
+    expect(source.parentElement).toHaveClass("pb-4")
     expect(screen.getByText(/\\usepackage\{subcaption\}/)).toBeInTheDocument()
+  })
+
+  it("uses the selected files' object URLs in the visible layout preview", () => {
+    render(<MultiFigureGenerator />)
+    const file = new File(["image"], "preview.png", { type: "image/png" })
+
+    fireEvent.change(screen.getByLabelText("选择图片"), {
+      target: { files: [file] },
+    })
+
+    expect(URL.createObjectURL).toHaveBeenCalledWith(file)
+    expect(screen.getByRole("img", { name: "图片 1 预览" })).toHaveAttribute(
+      "src",
+      "blob:preview.png",
+    )
   })
 
   it("supports changing image order", () => {
@@ -41,6 +77,16 @@ describe("MultiFigureGenerator", () => {
       new File(["b"], "b.png", { type: "image/png" }),
     ]
     fireEvent.change(screen.getByLabelText("选择图片"), { target: { files } })
+
+    expect(
+      screen.getByRole("button", { name: "拖动图片 1 调整顺序" }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole("button", { name: "拖动图片 2 调整顺序" }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "上移图片 1" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "下移图片 2" })).toBeDisabled()
+
     fireEvent.click(screen.getByRole("button", { name: "下移图片 1" }))
 
     fireEvent.click(screen.getByRole("button", { name: "查看 LaTeX" }))

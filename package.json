@@ -1,7 +1,7 @@
 {
   "name": "sztu-graduation-docs-studio",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.2",
   "packageManager": "pnpm@11.19.0",
   "scripts": {
     "setup:backend": "python scripts/setup_backend_runtime.py",
@@ -16,7 +16,8 @@
     "build": "pnpm --filter @sztu-docs/desktop build",
     "build:sidecar:mac": ".venv/bin/python scripts/build_backend_sidecar.py",
     "build:icon:mac": "node scripts/generate_macos_icon.mjs",
-    "package:mac": "pnpm setup:backend && .venv/bin/python -m pip install --disable-pip-version-check -r scripts/requirements-packaging.txt && pnpm verify && pnpm build:sidecar:mac && pnpm build:icon:mac && pnpm --filter @sztu-docs/desktop package:mac",
+    "build:templates:mac": ".venv/bin/python scripts/stage_macos_template_engines.py",
+    "package:mac": "pnpm setup:backend && .venv/bin/python -m pip install --disable-pip-version-check -r scripts/requirements-packaging.txt && pnpm verify && pnpm build:sidecar:mac && pnpm build:templates:mac && pnpm build:icon:mac && pnpm --filter @sztu-docs/desktop package:mac",
     "lint": "pnpm --filter @sztu-docs/desktop lint",
     "test": "pnpm --filter @sztu-docs/desktop test",
     "test:backend": "pnpm setup:backend && python scripts/run_backend_tests.py",

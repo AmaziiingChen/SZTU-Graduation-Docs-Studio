@@ -91,6 +91,79 @@ class ContractTests(unittest.TestCase):
                 self.assertNotIn(content["$id"], schema_ids)
                 schema_ids.add(content["$id"])
 
+    def test_update_manifest_contract_matches_both_runtime_versions(self) -> None:
+        schema = load_json(CONTRACTS / "update-manifest.schema.json")
+        self.assertFalse(schema["additionalProperties"])
+        self.assertEqual(set(schema["required"]), {"payload", "signature"})
+        self.assertEqual(
+            schema["properties"]["payload"]["oneOf"],
+            [
+                {"$ref": "#/$defs/payloadV1"},
+                {"$ref": "#/$defs/payloadV2"},
+            ],
+        )
+
+        definitions = schema["$defs"]
+        payload_v1 = definitions["payloadV1"]
+        payload_v2 = definitions["payloadV2"]
+        common_fields = {
+            "schema_version",
+            "channel",
+            "version",
+            "published_at",
+            "artifacts",
+        }
+        for payload, fields in (
+            (payload_v1, common_fields),
+            (payload_v2, common_fields | {"control"}),
+        ):
+            self.assertFalse(payload["additionalProperties"])
+            self.assertEqual(set(payload["required"]), fields)
+            self.assertEqual(set(payload["properties"]), fields)
+
+        self.assertEqual(payload_v1["properties"]["schema_version"], {"const": "1.0"})
+        self.assertEqual(payload_v2["properties"]["schema_version"], {"const": "2.0"})
+        self.assertEqual(
+            payload_v1["properties"]["artifacts"],
+            {
+                "allOf": [
+                    {"$ref": "#/$defs/artifacts"},
+                    {"minItems": 1},
+                ]
+            },
+        )
+        self.assertEqual(
+            payload_v2["properties"]["artifacts"],
+            {"$ref": "#/$defs/artifacts"},
+        )
+
+        artifact_fields = {"platform", "arch", "url", "sha256", "size_bytes"}
+        control_fields = {
+            "update_policy",
+            "minimum_supported_version",
+            "service_status",
+            "help_url",
+            "announcement",
+        }
+        announcement_fields = {
+            "id",
+            "title",
+            "body",
+            "severity",
+            "starts_at",
+            "ends_at",
+            "dismissible",
+        }
+        for definition_name, fields in (
+            ("artifact", artifact_fields),
+            ("control", control_fields),
+            ("announcement", announcement_fields),
+        ):
+            definition = definitions[definition_name]
+            self.assertFalse(definition["additionalProperties"])
+            self.assertEqual(set(definition["required"]), fields)
+            self.assertEqual(set(definition["properties"]), fields)
+
     def test_proposal_schema_matches_recorded_source(self) -> None:
         imported = CONTRACTS / "proposal.schema.json"
         self.assertEqual(

@@ -99,6 +99,25 @@ export function resolveSidecarPython(
   return fileExists(virtualenvPython) ? virtualenvPython : "python3"
 }
 
+export function resolveSidecarPath(
+  configured = process.env.PATH,
+  platform = process.platform,
+): string {
+  const separator = platform === "win32" ? ";" : ":"
+  const candidates = configured?.split(separator).filter(Boolean) ?? []
+  if (platform === "darwin") {
+    candidates.push(
+      "/Library/TeX/texbin",
+      "/opt/homebrew/bin",
+      "/opt/homebrew/sbin",
+      "/usr/local/bin",
+      "/usr/local/sbin",
+      "/opt/local/bin",
+    )
+  }
+  return [...new Set(candidates)].join(separator)
+}
+
 type SuccessEnvelope<T> = {
   protocol: "1.0"
   id: RequestId
@@ -295,6 +314,10 @@ export class SidecarClient {
     }
 
     const sourceRoot = path.join(this.backendRoot, "src")
+    const bundledEnginesRoot = path.resolve(
+      this.backendRoot,
+      "../bundled-template-engines",
+    )
     this.buffer = ""
     const generation = ++this.generation
     const packagedSidecar = path.basename(this.pythonExecutable).startsWith("sztu-docs-backend")
@@ -302,7 +325,7 @@ export class SidecarClient {
     const child = spawn(this.pythonExecutable, sidecarArguments, {
       cwd: this.backendRoot,
       env: {
-        PATH: process.env.PATH,
+        PATH: resolveSidecarPath(),
         LANG: process.env.LANG,
         LC_ALL: process.env.LC_ALL,
         HOME: process.env.HOME,
@@ -316,6 +339,9 @@ export class SidecarClient {
         PYTHONPATH: sourceRoot,
         SZTU_DOCS_DATA_DIR: this.dataRoot,
         SZTU_DOCS_TEMPLATE_PACKS_DIR: path.resolve(this.backendRoot, "../template-packs"),
+        SZTU_DOCS_BUNDLED_ENGINES_DIR: existsSync(bundledEnginesRoot)
+          ? bundledEnginesRoot
+          : undefined,
         SZTU_DOCS_PROPOSAL_ENGINE_DIR: process.env.SZTU_DOCS_PROPOSAL_ENGINE_DIR,
         SZTU_DOCS_TASK_BOOK_ENGINE_DIR: process.env.SZTU_DOCS_TASK_BOOK_ENGINE_DIR,
         SZTU_DOCS_MIDTERM_ENGINE_DIR: process.env.SZTU_DOCS_MIDTERM_ENGINE_DIR,

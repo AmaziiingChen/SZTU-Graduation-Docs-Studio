@@ -24,6 +24,10 @@ extraResources:
     filter:
       - sztu-docs-backend
       - build-manifest.json
+  - from: ../../build/bundled-template-engines
+    to: bundled-template-engines
+    filter:
+      - "**/*"
   - from: ../../config/remote-services.production.json
     to: remote-services.json
 
@@ -32,6 +36,9 @@ mac:
   icon: build/icon.icns
   identity: null
   hardenedRuntime: false
+  electronLanguages:
+    - en
+    - zh_CN
   target:
     - target: dmg
       arch:

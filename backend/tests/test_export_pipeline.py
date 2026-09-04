@@ -836,6 +836,101 @@ class TemplateEngineInstallationTests(unittest.TestCase):
         self.assertEqual(verified.source, "committed")
         self.assertEqual(caught.exception.code, "TEMPLATE_ENGINE_HASH_MISMATCH")
 
+    def test_packaged_engine_is_verified_and_resolved_without_a_development_checkout(self) -> None:
+        bundled_root = self.root / "bundled-engines"
+        bundled = bundled_root / "proposal"
+        renderer = bundled / "word" / "render.py"
+        renderer.parent.mkdir(parents=True)
+        renderer.write_bytes(b"bundled proposal renderer")
+        validator = bundled / "scripts" / "validate_cjk_render.py"
+        validator.parent.mkdir(parents=True)
+        validator.write_bytes(b"bundled validator")
+        hashes = {
+            "word/render.py": hashlib.sha256(renderer.read_bytes()).hexdigest()
+        }
+        with patch.object(template_engine, "ENGINE_FILE_HASHES", hashes):
+            source = template_engine._workspace_source(bundled, "proposal")
+            pack_sha256 = template_engine._workspace_pack_sha256(source)
+            template_id, version = template_engine._workspace_identity(
+                "proposal", pack_sha256
+            )
+            (bundled_root / "bundle-manifest.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "redistribution": "local-preview-only",
+                        "engines": {
+                            "proposal": {
+                                "template_id": template_id,
+                                "version": version,
+                                "pack_sha256": pack_sha256,
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with patch.dict(
+                os.environ,
+                {
+                    "SZTU_DOCS_DATA_DIR": str(self.data_dir),
+                    "SZTU_DOCS_BUNDLED_ENGINES_DIR": str(bundled_root),
+                },
+                clear=False,
+            ):
+                resolved = template_engine.resolve_engine("proposal")
+
+        self.assertEqual(resolved.source, "bundled")
+        self.assertEqual(resolved.pack_sha256, pack_sha256)
+        self.assertEqual(resolved.root, bundled.resolve())
+
+    def test_packaged_engine_rejects_content_drift(self) -> None:
+        bundled_root = self.root / "bundled-engines"
+        bundled = bundled_root / "proposal"
+        renderer = bundled / "word" / "render.py"
+        renderer.parent.mkdir(parents=True)
+        renderer.write_bytes(b"bundled proposal renderer")
+        validator = bundled / "scripts" / "validate_cjk_render.py"
+        validator.parent.mkdir(parents=True)
+        validator.write_bytes(b"bundled validator")
+        hashes = {
+            "word/render.py": hashlib.sha256(renderer.read_bytes()).hexdigest()
+        }
+        with patch.object(template_engine, "ENGINE_FILE_HASHES", hashes):
+            source = template_engine._workspace_source(bundled, "proposal")
+            pack_sha256 = template_engine._workspace_pack_sha256(source)
+            template_id, version = template_engine._workspace_identity(
+                "proposal", pack_sha256
+            )
+            (bundled_root / "bundle-manifest.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "redistribution": "local-preview-only",
+                        "engines": {
+                            "proposal": {
+                                "template_id": template_id,
+                                "version": version,
+                                "pack_sha256": pack_sha256,
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            renderer.write_bytes(b"tampered renderer")
+            with patch.dict(
+                os.environ,
+                {
+                    "SZTU_DOCS_DATA_DIR": str(self.data_dir),
+                    "SZTU_DOCS_BUNDLED_ENGINES_DIR": str(bundled_root),
+                },
+                clear=False,
+            ), self.assertRaises(TemplateEngineError) as caught:
+                template_engine.resolve_engine("proposal")
+
+        self.assertEqual(caught.exception.code, "TEMPLATE_BUNDLE_HASH_MISMATCH")
+
     def test_immutable_submitted_task_book_engine_rejects_hash_drift(self) -> None:
         relative_name = "templates/task-book/word/render.py"
         payload = b"submitted task-book renderer"

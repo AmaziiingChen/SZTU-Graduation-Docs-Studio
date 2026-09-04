@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { ThreeLineTableGenerator } from "@/components/workbench/three-line-table-generator"
@@ -19,6 +19,25 @@ describe("ThreeLineTableGenerator", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "A2" }), { target: { value: "样品 A" } })
     fireEvent.change(screen.getByRole("textbox", { name: "B2" }), { target: { value: "12" } })
   }
+
+  it("starts with the data card and keeps guidance and draft actions in its header", async () => {
+    render(<ThreeLineTableGenerator />)
+
+    const main = screen.getByRole("main", { name: "三线表生成器" })
+    expect(
+      within(main).queryByRole("heading", { name: "三线表生成器" }),
+    ).not.toBeInTheDocument()
+    expect(screen.queryByText(/粘贴 Excel、WPS 表格或 CSV 数据/)).not.toBeInTheDocument()
+    const clearDraft = within(main).getByRole("button", { name: "清空草稿" })
+    const cardHeader = clearDraft.closest('[data-slot="card-header"]')
+    expect(cardHeader).not.toBeNull()
+    expect(clearDraft.closest('[data-slot="card-action"]')).not.toBeNull()
+    const guidance = within(cardHeader as HTMLElement).getByRole("button", {
+      name: "三线表使用说明",
+    })
+    fireEvent.focus(guidance)
+    expect(await screen.findByText(/生成可直接放入论文的 booktabs 源码/)).toBeInTheDocument()
+  })
 
   it("previews visually edited spreadsheet data and shows LaTeX in a sheet", () => {
     render(<ThreeLineTableGenerator />)
@@ -71,13 +90,15 @@ describe("ThreeLineTableGenerator", () => {
   it("automatically saves after input settles", () => {
     vi.useFakeTimers()
     try {
-      render(<ThreeLineTableGenerator />)
+      const onSaveStateChange = vi.fn()
+      render(<ThreeLineTableGenerator onSaveStateChange={onSaveStateChange} />)
       fillTable()
-      expect(screen.getByLabelText("保存状态：未保存")).toBeInTheDocument()
+      expect(onSaveStateChange).toHaveBeenLastCalledWith("dirty")
+      expect(screen.queryByLabelText("保存状态：未保存")).not.toBeInTheDocument()
 
       act(() => vi.advanceTimersByTime(300))
 
-      expect(screen.getByLabelText("保存状态：已保存")).toBeInTheDocument()
+      expect(onSaveStateChange).toHaveBeenLastCalledWith("saved")
       expect(
         window.localStorage.getItem("sztu-docs.thesis-tools.three-line-table.v1"),
       ).toContain("样品 A")

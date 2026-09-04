@@ -1,4 +1,4 @@
-"""Install and resolve exact local-only process-document rendering engines."""
+"""Install and resolve exact process-document rendering engines."""
 
 from __future__ import annotations
 
@@ -12,6 +12,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .docx_privacy import (
+    DocxPrivacyError,
+    LEGACY_LOCAL_PREVIEW_REDISTRIBUTION,
+    PUBLIC_RELEASE_REDISTRIBUTION,
+    RELEASE_DOCX_METADATA_POLICY,
+    inspect_release_docx_metadata,
+)
 from .storage.database import utc_now
 from .storage.paths import prepare_private_directory, protect_private_file
 from .template_catalog import template_pack_root
@@ -29,6 +36,8 @@ SUPPORTED_ENGINE_DOCUMENT_TYPES = frozenset({"proposal", "midterm", "task_book"}
 INSTALL_MANIFEST_NAME = "install-manifest.json"
 WORKSPACE_LINKS_NAME = "workspace-links.json"
 WORKSPACE_SNAPSHOTS_DIRECTORY = "workspace-snapshots"
+BUNDLED_ENGINES_ENVIRONMENT = "SZTU_DOCS_BUNDLED_ENGINES_DIR"
+BUNDLED_ENGINES_MANIFEST_NAME = "bundle-manifest.json"
 ENGINE_FILE_HASHES = {
     "word/render.py": "19bb3a35251dbf67978e1bebcf8cf447a0392280a87b223050bd90184301d1d2",
     "word/official-template.docx": "85b9ccc9d92e923fda81501a9f5abfd237fbc1c5021bafe449e51f044bfa5806",
@@ -451,6 +460,10 @@ def resolve_engine(document_type: str = "proposal") -> EngineDescriptor:
                 source_label="linked-workspace",
             )[0]
 
+        bundled_root = os.environ.get(BUNDLED_ENGINES_ENVIRONMENT)
+        if bundled_root:
+            return _resolve_bundled_engine(Path(bundled_root), document_type)
+
         try:
             workbench_root = template_pack_root().expanduser().resolve().parent
             development = workbench_root.parent / "Thesis"
@@ -684,6 +697,107 @@ def _workspace_identity(document_type: str, pack_sha256: str) -> tuple[str, str]
         template_id = TASK_BOOK_ENGINE_TEMPLATE_ID
         base_version = TASK_BOOK_ENGINE_VERSION.split("+", 1)[0]
     return template_id, f"{base_version}+workspace.{pack_sha256[:12]}"
+
+
+def _resolve_bundled_engine(
+    bundled_root: Path, document_type: str
+) -> EngineDescriptor:
+    """Verify and use one immutable engine staged inside a desktop bundle."""
+
+    if (
+        not bundled_root.is_absolute()
+        or bundled_root.is_symlink()
+        or not bundled_root.is_dir()
+    ):
+        raise TemplateEngineError(
+            "TEMPLATE_BUNDLE_INVALID", "安装包内的模板引擎目录无效。"
+        )
+    bundled_root = bundled_root.resolve()
+    engine_bundle = _require_plain_descendant(
+        bundled_root, bundled_root / document_type
+    )
+    manifest_path = _require_plain_descendant(
+        bundled_root, bundled_root / BUNDLED_ENGINES_MANIFEST_NAME
+    )
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        entry = manifest["engines"][document_type]
+        redistribution = manifest.get("redistribution")
+        if (
+            manifest.get("schema_version") != "1.0"
+            or redistribution
+            not in {
+                LEGACY_LOCAL_PREVIEW_REDISTRIBUTION,
+                PUBLIC_RELEASE_REDISTRIBUTION,
+            }
+            or not isinstance(entry, dict)
+        ):
+            raise ValueError
+    except (
+        OSError,
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+        KeyError,
+        TypeError,
+        ValueError,
+    ) as exc:
+        raise TemplateEngineError(
+            "TEMPLATE_BUNDLE_INVALID", "安装包内的模板引擎清单无效。"
+        ) from exc
+
+    source = _workspace_source(engine_bundle, document_type)
+    if redistribution == PUBLIC_RELEASE_REDISTRIBUTION:
+        scrubbed_templates = sorted(
+            relative_name
+            for relative_name, _candidate in source.files
+            if relative_name.endswith("/word/official-template.docx")
+            or relative_name == "word/official-template.docx"
+        )
+        if (
+            manifest.get("docx_metadata_policy") != RELEASE_DOCX_METADATA_POLICY
+            or entry.get("metadata_scrubbed_files") != scrubbed_templates
+            or len(scrubbed_templates) != 1
+        ):
+            raise TemplateEngineError(
+                "TEMPLATE_BUNDLE_METADATA_INVALID",
+                "安装包内的模板隐私清单无效，已停止执行。",
+            )
+        try:
+            findings = inspect_release_docx_metadata(
+                engine_bundle / scrubbed_templates[0]
+            )
+        except DocxPrivacyError as exc:
+            raise TemplateEngineError(
+                "TEMPLATE_BUNDLE_METADATA_INVALID",
+                "安装包内的模板元数据无法验证，已停止执行。",
+            ) from exc
+        if findings:
+            raise TemplateEngineError(
+                "TEMPLATE_BUNDLE_METADATA_INVALID",
+                "安装包内的模板仍含发布前必须清理的元数据，已停止执行。",
+                {"findings": list(findings)},
+            )
+    pack_sha256 = _workspace_pack_sha256(source)
+    template_id, version = _workspace_identity(document_type, pack_sha256)
+    if (
+        entry.get("template_id") != template_id
+        or entry.get("version") != version
+        or entry.get("pack_sha256") != pack_sha256
+    ):
+        raise TemplateEngineError(
+            "TEMPLATE_BUNDLE_HASH_MISMATCH",
+            "安装包内的模板引擎校验失败，已停止执行。",
+        )
+    return EngineDescriptor(
+        root=source.engine_root,
+        validator=source.validator,
+        pack_sha256=pack_sha256,
+        source="bundled",
+        document_type=document_type,
+        template_id=template_id,
+        version=version,
+        font_directories=(),
+    )
 
 
 def _workspace_snapshot_directory_name(

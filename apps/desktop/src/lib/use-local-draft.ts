@@ -47,11 +47,13 @@ export function useLocalDraft<T>({
   initialValue,
   isValid,
   delay = 300,
+  onSaveStateChange,
 }: {
   storageKey: string
   initialValue: T
   isValid: (value: unknown) => value is T
   delay?: number
+  onSaveStateChange?: (state: SaveState) => void
 }) {
   const initialValueRef = useRef(initialValue)
   const [value, setValueState] = useState<T>(() =>
@@ -87,6 +89,10 @@ export function useLocalDraft<T>({
   useEffect(() => () => {
     if (dirtyRef.current) writeDraft(storageKey, latestValueRef.current)
   }, [storageKey])
+
+  useEffect(() => {
+    onSaveStateChange?.(saveState)
+  }, [onSaveStateChange, saveState])
 
   const clearDraft = useCallback(() => {
     try {

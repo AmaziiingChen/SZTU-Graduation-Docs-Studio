@@ -1,15 +1,24 @@
 import { useMemo } from "react"
+import { InfoIcon } from "lucide-react"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Button } from "@/components/ui/button"
 import {
   Card,
+  CardAction,
   CardContent,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { SaveStatusBadge } from "@/components/workbench/save-status-badge"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import type { SaveState } from "@/components/workbench/save-status-badge"
 import {
   Select,
   SelectContent,
@@ -78,11 +87,16 @@ function isGeneralTableDraft(value: unknown): value is GeneralTableDraft {
     (draft.columnCount === undefined || typeof draft.columnCount === "number")
 }
 
-export function GeneralTableGenerator() {
-  const { value: draft, setValue: setDraft, saveState, clearDraft } = useLocalDraft({
+export function GeneralTableGenerator({
+  onSaveStateChange,
+}: {
+  onSaveStateChange?: (state: SaveState) => void
+} = {}) {
+  const { value: draft, setValue: setDraft, clearDraft } = useLocalDraft({
     storageKey,
     initialValue: initialDraft,
     isValid: isGeneralTableDraft,
+    onSaveStateChange,
   })
   const {
     caption,
@@ -122,24 +136,28 @@ export function GeneralTableGenerator() {
 
   return (
     <ScrollArea className="h-full">
-      <main className="mx-auto grid w-full max-w-6xl gap-6 p-6" aria-labelledby="general-table-title">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="space-y-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 id="general-table-title" className="text-xl font-semibold">表格生成器</h2>
-              <SaveStatusBadge state={saveState} />
-            </div>
-            <p className="text-sm text-muted-foreground">
-              生成普通网格表、通栏表或可跨页表格；适合从 Excel、WPS 直接粘贴数据。
-            </p>
-          </div>
-          <ToolDraftActions saveState={saveState} draftName="表格" onClear={clearDraft} showSaveStatus={false} />
-        </div>
-
+      <main className="mx-auto grid w-full max-w-6xl gap-6 p-6" aria-label="表格生成器">
         <div className="grid gap-6">
           <Card>
             <CardHeader>
-              <CardTitle>表格数据</CardTitle>
+              <div className="flex items-center gap-2">
+                <CardTitle>表格数据</CardTitle>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={<Button type="button" variant="ghost" size="icon-sm" aria-label="表格使用说明" />}
+                    >
+                      <InfoIcon />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      生成普通网格表、通栏表或可跨页表格；适合从 Excel、WPS 直接粘贴数据。
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+              <CardAction>
+                <ToolDraftActions draftName="表格" onClear={clearDraft} />
+              </CardAction>
             </CardHeader>
             <CardContent className="grid gap-4">
               <div className="grid gap-2 sm:grid-cols-2">
@@ -156,11 +174,12 @@ export function GeneralTableGenerator() {
                   />
                 </label>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="grid gap-2 text-sm font-medium">
+              <fieldset className="flex flex-wrap items-end gap-4">
+                <legend className="sr-only">表格设置</legend>
+                <label className="grid w-full gap-2 text-sm font-medium sm:w-48">
                   表格类型
                   <Select value={mode} onValueChange={(value) => setDraft((current) => ({ ...current, mode: value as GeneralTableMode }))}>
-                    <SelectTrigger aria-label="表格类型"><span>{modeLabels[mode]}</span></SelectTrigger>
+                    <SelectTrigger aria-label="表格类型" className="w-full"><span>{modeLabels[mode]}</span></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="natural">普通表格</SelectItem>
                       <SelectItem value="page_width">通栏等宽表格</SelectItem>
@@ -168,10 +187,10 @@ export function GeneralTableGenerator() {
                     </SelectContent>
                   </Select>
                 </label>
-                <label className="grid gap-2 text-sm font-medium">
+                <label className="grid w-full gap-2 text-sm font-medium sm:w-32">
                   表头行数
                   <Select value={String(headerRows)} onValueChange={(value) => setDraft((current) => ({ ...current, headerRows: Number(value) }))}>
-                    <SelectTrigger aria-label="表头行数">
+                    <SelectTrigger aria-label="表头行数" className="w-full">
                       <span>{headerRows === 0 ? "无表头" : `${headerRows} 行`}</span>
                     </SelectTrigger>
                     <SelectContent>
@@ -181,7 +200,7 @@ export function GeneralTableGenerator() {
                     </SelectContent>
                   </Select>
                 </label>
-              </div>
+              </fieldset>
               <VisualTableEditor
                 value={{ source, rowCount, columnCount: draftColumnCount }}
                 exampleData={exampleData}

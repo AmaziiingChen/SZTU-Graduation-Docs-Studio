@@ -492,7 +492,7 @@ function configureSession(): void {
       responseHeaders: {
         ...details.responseHeaders,
         "Content-Security-Policy": [
-          `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: sztu-asset:; connect-src ${connectSources}`,
+          `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob: sztu-asset:; connect-src ${connectSources}`,
         ],
       },
     })

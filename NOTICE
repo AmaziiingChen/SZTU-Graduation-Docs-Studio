@@ -35,6 +35,19 @@ rights are confirmed and documented:
 - real student data, signatures, supervisor comments, or private samples;
 - credentials, signing certificates, notarization materials, and tokens.
 
+For release packaging only, the project maintainer confirmed redistribution
+authorization on 2026-09-04 for these three process-document template copies:
+
+- templates/proposal/word/official-template.docx;
+- templates/task-book/word/official-template.docx;
+- templates/midterm/word/official-template.docx.
+
+They are copied from the trusted adjacent template checkout into a temporary
+build staging directory. The staging step removes personal core, extended, and
+custom document properties before calculating release hashes and template
+identity. This exception does not authorize redistribution of any other school
+document, seal, commercial font, student material, or private reference.
+
 Third-party dependencies and bundled assets must retain their own notices and
 licenses. A generated third-party license inventory will be required before a
 release is described as publishable.

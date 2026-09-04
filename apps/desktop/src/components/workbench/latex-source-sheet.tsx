@@ -33,7 +33,7 @@ export function LatexSourceSheet({
               : "可直接复制到论文正文。"}
           </SheetDescription>
         </SheetHeader>
-        <div className="min-h-0 flex-1 px-4">
+        <div className="min-h-0 flex-1 px-4 pb-4">
           <Textarea
             aria-label="生成的 LaTeX 源码"
             readOnly

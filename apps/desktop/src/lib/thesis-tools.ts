@@ -10,13 +10,13 @@ export const thesisToolOptions: Array<{
 }> = [
   {
     id: "three_line_table",
-    label: "三线表",
+    label: "三线表生成器",
     navigationLabel: "三线表生成器",
     description: "粘贴表格数据并生成 LaTeX",
   },
   {
     id: "general_table",
-    label: "表格",
+    label: "表格生成器",
     navigationLabel: "表格生成器",
     description: "生成普通、通栏或跨页表格",
   },

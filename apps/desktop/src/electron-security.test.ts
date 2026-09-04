@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest"
 const applicationRoot = process.cwd()
 const rendererRoot = join(applicationRoot, "src")
 const themeSource = readFileSync(join(rendererRoot, "index.css"), "utf8")
+const indexSource = readFileSync(join(applicationRoot, "index.html"), "utf8")
 const mainSource = readFileSync(join(applicationRoot, "electron/main.ts"), "utf8")
 const iconGeneratorSource = readFileSync(
   join(applicationRoot, "scripts/generate-icons.cjs"),
@@ -39,6 +40,13 @@ const remoteConfigSource = readFileSync(
   join(applicationRoot, "electron/remote-services-config.ts"),
   "utf8",
 )
+const packagingSource = readFileSync(
+  join(applicationRoot, "electron-builder.yml"),
+  "utf8",
+)
+const packageManifest = JSON.parse(
+  readFileSync(join(applicationRoot, "package.json"), "utf8"),
+) as { dependencies?: Record<string, string>; scripts?: Record<string, string> }
 
 function rendererSources(directory: string): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
@@ -92,6 +100,14 @@ describe("Electron security boundary", () => {
     expect(mainSource).toContain("setWindowOpenHandler")
     expect(mainSource).toContain('on("will-navigate"')
     expect(mainSource).toContain("setPermissionRequestHandler")
+  })
+
+  it("allows renderer-created image previews without widening executable sources", () => {
+    for (const source of [indexSource, mainSource]) {
+      expect(source).toContain("img-src 'self' data: blob: sztu-asset:")
+      expect(source).toContain("script-src 'self'")
+      expect(source).not.toContain("script-src 'self' blob:")
+    }
   })
 
   it("uses the approved application artwork for the window, dock, and system tray", () => {
@@ -300,12 +316,22 @@ describe("Electron security boundary", () => {
     )
   })
 
+  it("packages only compiled renderer assets and keeps Chinese and English locales", () => {
+    expect(packageManifest.dependencies ?? {}).toEqual({})
+    expect(packagingSource).toMatch(/electronLanguages:\s*\n\s*- en\s*\n\s*- zh_CN/)
+    expect(packageManifest.scripts?.["package:mac"]).toContain(
+      "verify_macos_app_bundle.mjs",
+    )
+  })
+
   it("pins the sidecar template root and explicitly allowlists its inherited environment", () => {
     expect(sidecarSource).toContain("SZTU_DOCS_TEMPLATE_PACKS_DIR")
+    expect(sidecarSource).toContain("SZTU_DOCS_BUNDLED_ENGINES_DIR")
     expect(sidecarSource).toContain("SZTU_DOCS_TASK_BOOK_ENGINE_DIR")
     expect(sidecarSource).toContain("SZTU_DOCS_MIDTERM_ENGINE_DIR")
     expect(sidecarSource).toContain("SZTU_STXINGKAI_FONT")
     expect(sidecarSource).toContain('path.resolve(this.backendRoot, "../template-packs")')
+    expect(sidecarSource).toContain('PATH: resolveSidecarPath()')
     expect(sidecarSource).toContain('path.join(repositoryRoot, ".venv", "bin", "python")')
     expect(sidecarSource).toContain('path.join(repositoryRoot, ".venv", "Scripts", "python.exe")')
     const spawnEnvironment = sidecarSource.match(
@@ -322,7 +348,6 @@ describe("Electron security boundary", () => {
         "HOME",
         "LANG",
         "LC_ALL",
-        "PATH",
         "PATHEXT",
         "SYSTEMROOT",
         "SZTU_DOCS_CJK_VALIDATOR",

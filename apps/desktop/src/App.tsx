@@ -3324,6 +3324,19 @@ export default function App() {
   )
   const [activePane, setActivePane] = useState<ActivePane>("document")
   const [activeThesisTool, setActiveThesisTool] = useState<ThesisToolId>("three_line_table")
+  const [thesisToolSaveStates, setThesisToolSaveStates] = useState<Record<ThesisToolId, SaveState>>({
+    three_line_table: "saved",
+    general_table: "saved",
+    multi_figure: "saved",
+  })
+  const handleThesisToolSaveStateChange = useCallback(
+    (toolId: ThesisToolId, nextState: SaveState) => {
+      setThesisToolSaveStates((current) => current[toolId] === nextState
+        ? current
+        : { ...current, [toolId]: nextState })
+    },
+    [],
+  )
   const [profile, setProfile] = useState<StudentProfile | null>(null)
   const [document, setDocument] = useState<DocumentRecord | null>(null)
   const [documents, setDocuments] = useState<DocumentRecord[]>([])
@@ -4714,7 +4727,10 @@ export default function App() {
     ) : activePane === "appearance" ? (
       <AppearanceSettings />
     ) : activePane === "thesis_tools" ? (
-      <ThesisToolsWorkbench activeTool={activeThesisTool} />
+      <ThesisToolsWorkbench
+        activeTool={activeThesisTool}
+        onSaveStateChange={handleThesisToolSaveStateChange}
+      />
     ) : (
       editor
     )
@@ -4793,10 +4809,13 @@ export default function App() {
           }
           status={
             activePane === "tools" ||
-            activePane === "appearance" ||
-            activePane === "thesis_tools"
+            activePane === "appearance"
               ? undefined
-              : <SaveStatusBadge state={saveState} />
+              : <SaveStatusBadge
+                  state={activePane === "thesis_tools"
+                    ? thesisToolSaveStates[activeThesisTool]
+                    : saveState}
+                />
           }
           actions={
             activePane === "document" ? (

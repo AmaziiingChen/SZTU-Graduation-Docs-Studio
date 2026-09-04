@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
 import { GeneralTableGenerator } from "@/components/workbench/general-table-generator"
@@ -16,6 +16,25 @@ describe("GeneralTableGenerator", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "B2" }), { target: { value: "12" } })
   }
 
+  it("starts with the data card and keeps guidance and draft actions in its header", async () => {
+    render(<GeneralTableGenerator />)
+
+    const main = screen.getByRole("main", { name: "表格生成器" })
+    expect(
+      within(main).queryByRole("heading", { name: "表格生成器" }),
+    ).not.toBeInTheDocument()
+    expect(screen.queryByText(/生成普通网格表、通栏表或可跨页表格/)).not.toBeInTheDocument()
+    const clearDraft = within(main).getByRole("button", { name: "清空草稿" })
+    const cardHeader = clearDraft.closest('[data-slot="card-header"]')
+    expect(cardHeader).not.toBeNull()
+    expect(clearDraft.closest('[data-slot="card-action"]')).not.toBeNull()
+    const guidance = within(cardHeader as HTMLElement).getByRole("button", {
+      name: "表格使用说明",
+    })
+    fireEvent.focus(guidance)
+    expect(await screen.findByText(/适合从 Excel、WPS 直接粘贴数据/)).toBeInTheDocument()
+  })
+
   it("previews spreadsheet data and generates a bordered table", () => {
     render(<GeneralTableGenerator />)
     createAndFillTable()
@@ -32,6 +51,23 @@ describe("GeneralTableGenerator", () => {
     expect(screen.getByRole("option", { name: "普通表格" })).toBeInTheDocument()
     expect(screen.getByRole("option", { name: "通栏等宽表格" })).toBeInTheDocument()
     expect(screen.getByRole("option", { name: "跨页表格" })).toBeInTheDocument()
+  })
+
+  it("groups table structure settings before the table editor", () => {
+    render(<GeneralTableGenerator />)
+
+    const settings = screen.getByRole("group", { name: "表格设置" })
+    expect(
+      within(settings).getByRole("combobox", { name: "表格类型" }),
+    ).toBeInTheDocument()
+    expect(
+      within(settings).getByRole("combobox", { name: "表头行数" }),
+    ).toBeInTheDocument()
+    expect(
+      settings.compareDocumentPosition(
+        screen.getByRole("button", { name: "新建表格" }),
+      ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0)
   })
 
   it("applies and persists each column alignment in preview and source", () => {

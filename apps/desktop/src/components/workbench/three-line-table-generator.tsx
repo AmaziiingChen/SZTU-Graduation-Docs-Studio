@@ -1,15 +1,24 @@
 import { useMemo } from "react"
+import { InfoIcon } from "lucide-react"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Button } from "@/components/ui/button"
 import {
   Card,
+  CardAction,
   CardContent,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { SaveStatusBadge } from "@/components/workbench/save-status-badge"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import type { SaveState } from "@/components/workbench/save-status-badge"
 import { TablePreviewCard } from "@/components/workbench/table-preview-card"
 import { ToolDraftActions } from "@/components/workbench/tool-draft-actions"
 import { VisualTableEditor } from "@/components/workbench/visual-table-editor"
@@ -39,11 +48,16 @@ function isThreeLineTableDraft(value: unknown): value is typeof initialDraft {
     (draft.columnCount === undefined || typeof draft.columnCount === "number")
 }
 
-export function ThreeLineTableGenerator() {
-  const { value: draft, setValue: setDraft, saveState, clearDraft } = useLocalDraft({
+export function ThreeLineTableGenerator({
+  onSaveStateChange,
+}: {
+  onSaveStateChange?: (state: SaveState) => void
+} = {}) {
+  const { value: draft, setValue: setDraft, clearDraft } = useLocalDraft({
     storageKey,
     initialValue: initialDraft,
     isValid: isThreeLineTableDraft,
+    onSaveStateChange,
   })
   const { caption, label, source, rowCount, columnCount } = draft
   const parsed = useMemo(() => parseTableText(source), [source])
@@ -58,24 +72,28 @@ export function ThreeLineTableGenerator() {
 
   return (
     <ScrollArea className="h-full">
-      <main className="mx-auto grid w-full max-w-6xl gap-6 p-6" aria-labelledby="three-line-table-title">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="space-y-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 id="three-line-table-title" className="text-xl font-semibold">三线表生成器</h2>
-              <SaveStatusBadge state={saveState} />
-            </div>
-            <p className="text-sm text-muted-foreground">
-              粘贴 Excel、WPS 表格或 CSV 数据，生成可直接放入论文的 booktabs 源码。
-            </p>
-          </div>
-          <ToolDraftActions saveState={saveState} draftName="三线表" onClear={clearDraft} showSaveStatus={false} />
-        </div>
-
+      <main className="mx-auto grid w-full max-w-6xl gap-6 p-6" aria-label="三线表生成器">
         <div className="grid gap-6">
           <Card>
             <CardHeader>
-              <CardTitle>表格数据</CardTitle>
+              <div className="flex items-center gap-2">
+                <CardTitle>表格数据</CardTitle>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={<Button type="button" variant="ghost" size="icon-sm" aria-label="三线表使用说明" />}
+                    >
+                      <InfoIcon />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      粘贴 Excel、WPS 表格或 CSV 数据，生成可直接放入论文的 booktabs 源码。
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+              <CardAction>
+                <ToolDraftActions draftName="三线表" onClear={clearDraft} />
+              </CardAction>
             </CardHeader>
             <CardContent className="grid gap-4">
               <div className="grid gap-2 sm:grid-cols-2">

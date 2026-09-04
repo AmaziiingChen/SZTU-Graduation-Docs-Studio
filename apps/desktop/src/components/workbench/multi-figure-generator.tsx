@@ -1,16 +1,27 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { ArrowDownIcon, ArrowUpIcon, CopyIcon, DownloadIcon, ImagesIcon, InfoIcon, Trash2Icon } from "lucide-react"
+import { DragDropProvider } from "@dnd-kit/react"
+import { isSortable, useSortable } from "@dnd-kit/react/sortable"
+import {
+  ArrowDownIcon,
+  ArrowUpIcon,
+  CopyIcon,
+  DownloadIcon,
+  GripVerticalIcon,
+  ImagesIcon,
+  InfoIcon,
+  Trash2Icon,
+} from "lucide-react"
 import { toast } from "sonner"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { LatexSourceSheet } from "@/components/workbench/latex-source-sheet"
-import { SaveStatusBadge } from "@/components/workbench/save-status-badge"
+import type { SaveState } from "@/components/workbench/save-status-badge"
 import { ToolDraftActions } from "@/components/workbench/tool-draft-actions"
 import { writeClipboardText } from "@/lib/desktop-clipboard"
 import { generateMultiFigureLatex, validateFigureFilenames } from "@/lib/multi-figure"
@@ -75,11 +86,81 @@ function moveItem(items: SessionFigureItem[], from: number, to: number): Session
   return next
 }
 
-export function MultiFigureGenerator() {
-  const { value: draft, setValue: setDraft, saveState, clearDraft } = useLocalDraft({
+type SortableFigureRowProps = {
+  item: SessionFigureItem
+  index: number
+  selected: boolean
+  last: boolean
+  onSelect: () => void
+  onMove: (direction: -1 | 1) => void
+  onRemove: () => void
+}
+
+function SortableFigureRow({
+  item,
+  index,
+  selected,
+  last,
+  onSelect,
+  onMove,
+  onRemove,
+}: SortableFigureRowProps) {
+  const { ref, handleRef, isDragging } = useSortable({
+    id: item.id,
+    index,
+  })
+
+  return (
+    <div
+      ref={ref}
+      className={cn(
+        "grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-1 rounded-lg border p-1",
+        selected && "border-foreground",
+        isDragging && "opacity-50",
+      )}
+    >
+      <Button
+        ref={handleRef}
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        className="cursor-grab touch-none active:cursor-grabbing"
+        aria-label={`拖动图片 ${index + 1} 调整顺序`}
+      >
+        <GripVerticalIcon />
+      </Button>
+      <button
+        type="button"
+        className="grid min-w-0 grid-cols-[3rem_minmax(0,1fr)] items-center gap-3 rounded-md px-1 py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        aria-label={`选择图片 ${index + 1} 进行编辑`}
+        aria-pressed={selected}
+        onClick={onSelect}
+      >
+        <img src={item.previewUrl} alt="" aria-hidden="true" className="size-12 rounded-md border object-cover" />
+        <span className="min-w-0">
+          <span className="block text-sm font-medium">图片 {index + 1}</span>
+          <span className="block truncate text-xs text-muted-foreground" title={item.file.name}>{item.file.name}</span>
+        </span>
+      </button>
+      <div className="flex items-center gap-1">
+        <Button type="button" variant="ghost" size="icon-sm" aria-label={`上移图片 ${index + 1}`} disabled={index === 0} onClick={() => onMove(-1)}><ArrowUpIcon /></Button>
+        <Button type="button" variant="ghost" size="icon-sm" aria-label={`下移图片 ${index + 1}`} disabled={last} onClick={() => onMove(1)}><ArrowDownIcon /></Button>
+        <Button type="button" variant="ghost" size="icon-sm" aria-label={`删除图片 ${index + 1}`} onClick={onRemove}><Trash2Icon /></Button>
+      </div>
+    </div>
+  )
+}
+
+export function MultiFigureGenerator({
+  onSaveStateChange,
+}: {
+  onSaveStateChange?: (state: SaveState) => void
+} = {}) {
+  const { value: draft, setValue: setDraft, clearDraft } = useLocalDraft({
     storageKey,
     initialValue: initialDraft,
     isValid: isMultiFigureDraft,
+    onSaveStateChange,
   })
   const { columns, caption, label, pathPrefix } = draft
   const [images, setImages] = useState<SessionFigureItem[]>(getMultiFigureSessionImages)
@@ -182,15 +263,7 @@ export function MultiFigureGenerator() {
 
   return (
     <ScrollArea className="h-full">
-      <main className="mx-auto grid w-full max-w-6xl gap-6 p-6" aria-labelledby="multi-figure-title">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 id="multi-figure-title" className="text-xl font-semibold">多图排版</h2>
-            <SaveStatusBadge state={saveState} />
-          </div>
-          <ToolDraftActions saveState={saveState} draftName="多图排版" onClear={clearAll} showSaveStatus={false} />
-        </div>
-
+      <main className="mx-auto grid w-full max-w-6xl gap-6 p-6" aria-label="多图排版">
         <div className="grid gap-6">
           <Card>
             <CardHeader>
@@ -205,6 +278,9 @@ export function MultiFigureGenerator() {
                   </Tooltip>
                 </TooltipProvider>
               </div>
+              <CardAction>
+                <ToolDraftActions draftName="多图排版" onClear={clearAll} />
+              </CardAction>
             </CardHeader>
             <CardContent className="grid gap-5">
               <Input type="file" accept="image/*" multiple aria-label="选择图片" onChange={(event) => {
@@ -241,27 +317,31 @@ export function MultiFigureGenerator() {
 
               {images.length > 0 ? (
                 <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
-                  <div className="grid gap-2" aria-label="图片顺序">
-                    {images.map((item, index) => (
-                      <div key={item.id} className={cn(
-                        "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-lg border p-2",
-                        selectedImage?.id === item.id && "border-foreground",
-                      )}>
-                        <button type="button" className="grid min-w-0 grid-cols-[3rem_minmax(0,1fr)] items-center gap-3 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={`选择图片 ${index + 1} 进行编辑`} aria-pressed={selectedImage?.id === item.id} onClick={() => setSelectedImageId(item.id)}>
-                          <img src={item.previewUrl} alt="" aria-hidden="true" className="size-12 rounded-md border object-cover" />
-                          <span className="min-w-0">
-                            <span className="block text-sm font-medium">图片 {index + 1}</span>
-                            <span className="block truncate text-xs text-muted-foreground" title={item.file.name}>{item.file.name}</span>
-                          </span>
-                        </button>
-                        <div className="flex items-center gap-1">
-                          <Button type="button" variant="ghost" size="icon-sm" aria-label={`上移图片 ${index + 1}`} disabled={index === 0} onClick={() => applyImages(moveItem(images, index, index - 1))}><ArrowUpIcon /></Button>
-                          <Button type="button" variant="ghost" size="icon-sm" aria-label={`下移图片 ${index + 1}`} disabled={index === images.length - 1} onClick={() => applyImages(moveItem(images, index, index + 1))}><ArrowDownIcon /></Button>
-                          <Button type="button" variant="ghost" size="icon-sm" aria-label={`删除图片 ${index + 1}`} onClick={() => removeImage(item.id)}><Trash2Icon /></Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                  <DragDropProvider
+                    onDragEnd={(event) => {
+                      if (event.canceled) return
+                      const { source } = event.operation
+                      if (!isSortable(source)) return
+                      const { initialIndex, index } = source
+                      if (initialIndex === index) return
+                      applyImages(moveItem(images, initialIndex, index))
+                    }}
+                  >
+                    <div className="grid gap-2" aria-label="图片顺序">
+                      {images.map((item, index) => (
+                        <SortableFigureRow
+                          key={item.id}
+                          item={item}
+                          index={index}
+                          selected={selectedImage?.id === item.id}
+                          last={index === images.length - 1}
+                          onSelect={() => setSelectedImageId(item.id)}
+                          onMove={(direction) => applyImages(moveItem(images, index, index + direction))}
+                          onRemove={() => removeImage(item.id)}
+                        />
+                      ))}
+                    </div>
+                  </DragDropProvider>
                   {selectedImage ? (
                     <div className="grid content-start gap-3 rounded-lg border p-4">
                       <img src={selectedImage.previewUrl} alt={`当前编辑图片 ${selectedIndex + 1}`} className="aspect-4/3 w-full rounded-md border object-contain" />

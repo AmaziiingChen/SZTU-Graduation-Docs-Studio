@@ -6,6 +6,7 @@ import {
   isSidecarProgressEnvelope,
   isSidecarResponseEnvelope,
   resolveSidecarPython,
+  resolveSidecarPath,
   shouldRetrySidecarRequest,
 } from "../electron/sidecar-client"
 
@@ -23,6 +24,22 @@ describe("SidecarClient protocol boundary", () => {
         (candidate) => candidate === packagedSidecar,
       ),
     ).toBe(packagedSidecar)
+  })
+
+  it("adds standard macOS TeX and package-manager paths for Finder launches", () => {
+    expect(resolveSidecarPath("/usr/bin:/bin:/usr/sbin:/sbin", "darwin").split(":"))
+      .toEqual(expect.arrayContaining([
+        "/usr/bin",
+        "/Library/TeX/texbin",
+        "/opt/homebrew/bin",
+        "/usr/local/bin",
+      ]))
+  })
+
+  it("does not rewrite Windows path semantics", () => {
+    expect(resolveSidecarPath("C:\\Windows;C:\\Tools", "win32")).toBe(
+      "C:\\Windows;C:\\Tools",
+    )
   })
 
   it("accepts exact success and error envelopes with UUID ids", () => {

@@ -937,19 +937,49 @@ describe("M3 workbench persistence", () => {
     expect(
       await screen.findByRole("heading", { level: 1, name: "毕业论文工具箱" }),
     ).toBeInTheDocument()
-    expect(screen.getByRole("heading", { level: 2, name: "三线表生成器" })).toBeInTheDocument()
-    expect(screen.getByRole("navigation", { name: "当前文档板块" })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "三线表" })).toHaveAttribute("aria-current", "page")
-    expect(screen.getByLabelText("保存状态：已保存")).toBeInTheDocument()
+    expect(screen.getByRole("main", { name: "三线表生成器" })).toBeInTheDocument()
+    const thesisSectionNavigation = screen.getByRole("navigation", {
+      name: "当前文档板块",
+    })
+    expect(
+      within(thesisSectionNavigation).getByRole("button", { name: "三线表生成器" }),
+    ).toHaveAttribute("aria-current", "page")
+    const expectSaveStatusInHeader = (toolTitle: string, stateLabel = "已保存") => {
+      const workbenchHeader = screen
+        .getByRole("heading", { level: 1, name: "毕业论文工具箱" })
+        .closest("header")
+      const toolMain = screen.getByRole("main", { name: toolTitle })
+
+      expect(workbenchHeader).not.toBeNull()
+      expect(
+        within(workbenchHeader as HTMLElement).getByLabelText(`保存状态：${stateLabel}`),
+      ).toBeInTheDocument()
+      expect(within(toolMain).queryByLabelText(/^保存状态：/)).not.toBeInTheDocument()
+      expect(screen.getAllByLabelText(/^保存状态：/)).toHaveLength(1)
+    }
+    expectSaveStatusInHeader("三线表生成器")
+    fireEvent.change(screen.getByLabelText("表题（可选）"), {
+      target: { value: "保存状态位置测试" },
+    })
+    await waitFor(() => expectSaveStatusInHeader("三线表生成器", "未保存"))
+    await waitFor(() => expectSaveStatusInHeader("三线表生成器"))
     expect(screen.queryByRole("button", { name: "检查内容" })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "预览&导出" })).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole("button", { name: "表格生成器" }))
-    expect(screen.getByRole("heading", { level: 2, name: "表格生成器" })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "表格" })).toHaveAttribute("aria-current", "page")
+    fireEvent.click(
+      within(thesisSectionNavigation).getByRole("button", { name: "表格生成器" }),
+    )
+    expect(screen.getByRole("main", { name: "表格生成器" })).toBeInTheDocument()
+    expect(
+      within(thesisSectionNavigation).getByRole("button", { name: "表格生成器" }),
+    ).toHaveAttribute("aria-current", "page")
+    expectSaveStatusInHeader("表格生成器")
 
-    fireEvent.click(screen.getAllByRole("button", { name: "多图排版" })[0])
-    expect(screen.getByRole("heading", { level: 2, name: "多图排版" })).toBeInTheDocument()
+    fireEvent.click(
+      within(thesisSectionNavigation).getByRole("button", { name: "多图排版" }),
+    )
+    expect(screen.getByRole("main", { name: "多图排版" })).toBeInTheDocument()
+    expectSaveStatusInHeader("多图排版")
   })
 
   it("shows the local maintainer contact without a feedback backend", async () => {
