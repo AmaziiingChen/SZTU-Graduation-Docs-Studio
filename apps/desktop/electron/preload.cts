@@ -53,6 +53,7 @@ contextBridge.exposeInMainWorld("sztuDesktop", {
   openToolLink: (toolId: unknown) => invoke("sztu:tool-open", toolId),
   writeClipboardText: (text: unknown) => invoke("sztu:clipboard-write-text", text),
   writeClipboardPng: (dataUrl: unknown) => invoke("sztu:clipboard-write-png", dataUrl),
+  importImageAssets: () => invoke("sztu:asset-import-images"),
   importImageAsset: () => invoke("sztu:asset-import-image"),
   onUpdateStatus: (callback: unknown) => {
     if (typeof callback !== "function") {

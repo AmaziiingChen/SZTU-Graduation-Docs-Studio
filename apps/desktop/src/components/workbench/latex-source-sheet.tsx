@@ -1,4 +1,6 @@
-import { CodeXmlIcon } from "lucide-react"
+import { AnimatedActionIcon } from "@/components/workbench/animated-action-icon"
+import { FileTextIcon } from "@/components/ui/file-text"
+
 
 import { Button } from "@/components/ui/button"
 import {
@@ -21,7 +23,7 @@ export function LatexSourceSheet({
   return (
     <Sheet>
       <SheetTrigger render={<Button type="button" size="sm" variant="outline" disabled={!latex} />}>
-        <CodeXmlIcon />
+        <AnimatedActionIcon icon={FileTextIcon} />
         查看 LaTeX
       </SheetTrigger>
       <SheetContent className="w-full sm:max-w-2xl">

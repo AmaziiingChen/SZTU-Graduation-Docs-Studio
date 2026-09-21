@@ -24,6 +24,19 @@ class ResizeObserverStub {
 
 globalThis.ResizeObserver = ResizeObserverStub
 
+// jsdom has no viewport observer; Animate UI registers one even when
+// animateOnView is off. Tests exercise explicit hover/focus triggers instead.
+class IntersectionObserverStub implements IntersectionObserver {
+  readonly root = null
+  readonly rootMargin = "0px"
+  readonly thresholds = [0]
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+  takeRecords(): IntersectionObserverEntry[] { return [] }
+}
+globalThis.IntersectionObserver = IntersectionObserverStub
+
 Object.defineProperty(Element.prototype, "getAnimations", {
   configurable: true,
   value: () => [],
@@ -54,3 +67,7 @@ Object.defineProperty(Range.prototype, "getClientRects", {
     [Symbol.iterator]: function* () {},
   }),
 })
+
+// jsdom does not run CSS transitions. Use Base UI's supported test switch
+// so popup completion and focus restoration do not wait for browser animations.
+Object.assign(globalThis, { BASE_UI_ANIMATIONS_DISABLED: true })

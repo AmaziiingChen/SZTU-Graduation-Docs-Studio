@@ -1,13 +1,13 @@
+import { PlusIcon } from "@/components/ui/plus"
+import { GripVerticalIcon as GripVerticalIconAnimated } from "@/components/ui/grip-vertical"
+import { ArrowUpIcon } from "@/components/ui/arrow-up"
+import { ArrowDownIcon } from "@/components/ui/arrow-down"
+import { DeleteIcon } from "@/components/ui/delete"
+import { AnimatedActionIcon } from "@/components/workbench/animated-action-icon"
 import { useState } from "react"
 import { DragDropProvider } from "@dnd-kit/react"
 import { isSortable, useSortable } from "@dnd-kit/react/sortable"
-import {
-  ArrowDownIcon,
-  ArrowUpIcon,
-  GripVerticalIcon,
-  ListPlusIcon,
-  Trash2Icon,
-} from "lucide-react"
+
 
 import { Button } from "@/components/ui/button"
 import {
@@ -92,7 +92,7 @@ function SortableScheduleRow({
         aria-label={`拖动第 ${index + 1} 项进度调整顺序`}
         disabled={disabled}
       >
-        <GripVerticalIcon />
+        <AnimatedActionIcon icon={GripVerticalIconAnimated} />
       </Button>
       <Button
         type="button"
@@ -120,7 +120,7 @@ function SortableScheduleRow({
         disabled={disabled || index === 0}
         onClick={() => onMove(-1)}
       >
-        <ArrowUpIcon />
+        <AnimatedActionIcon icon={ArrowUpIcon} />
       </Button>
       <Button
         type="button"
@@ -130,7 +130,7 @@ function SortableScheduleRow({
         disabled={disabled || last}
         onClick={() => onMove(1)}
       >
-        <ArrowDownIcon />
+        <AnimatedActionIcon icon={ArrowDownIcon} />
       </Button>
       <Button
         type="button"
@@ -140,7 +140,7 @@ function SortableScheduleRow({
         disabled={disabled}
         onClick={onRemove}
       >
-        <Trash2Icon />
+        <AnimatedActionIcon icon={DeleteIcon} />
       </Button>
     </div>
   )
@@ -231,7 +231,7 @@ export function TaskScheduleEditor({
                   onChange([...value, item])
                 }}
               >
-                <ListPlusIcon data-icon="inline-start" />
+                <span data-icon="inline-start"><AnimatedActionIcon icon={PlusIcon} /></span>
                 新增进度
               </Button>
             </div>

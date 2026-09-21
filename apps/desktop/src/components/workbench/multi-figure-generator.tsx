@@ -1,16 +1,17 @@
+import { InfoIcon as InfoIconAnimated } from "@/components/ui/animateicons/info"
+import { DownloadIcon as DownloadIconAnimated } from "@/components/ui/download"
+import { GripVerticalIcon as GripVerticalIconAnimated } from "@/components/ui/grip-vertical"
+import { CopyIcon as CopyIconAnimated } from "@/components/ui/copy"
+import { useActionFeedback } from "@/hooks/use-action-feedback"
+import { ActionFeedbackIcon } from "@/components/workbench/action-feedback-icon"
+import { ArrowUpIcon } from "@/components/ui/arrow-up"
+import { ArrowDownIcon } from "@/components/ui/arrow-down"
+import { DeleteIcon } from "@/components/ui/delete"
+import { AnimatedActionIcon } from "@/components/workbench/animated-action-icon"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { DragDropProvider } from "@dnd-kit/react"
 import { isSortable, useSortable } from "@dnd-kit/react/sortable"
-import {
-  ArrowDownIcon,
-  ArrowUpIcon,
-  CopyIcon,
-  DownloadIcon,
-  GripVerticalIcon,
-  ImagesIcon,
-  InfoIcon,
-  Trash2Icon,
-} from "lucide-react"
+import { ImagesIcon } from "lucide-react"
 import { toast } from "sonner"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -127,7 +128,7 @@ function SortableFigureRow({
         className="cursor-grab touch-none active:cursor-grabbing"
         aria-label={`拖动图片 ${index + 1} 调整顺序`}
       >
-        <GripVerticalIcon />
+        <AnimatedActionIcon icon={GripVerticalIconAnimated} />
       </Button>
       <button
         type="button"
@@ -143,9 +144,9 @@ function SortableFigureRow({
         </span>
       </button>
       <div className="flex items-center gap-1">
-        <Button type="button" variant="ghost" size="icon-sm" aria-label={`上移图片 ${index + 1}`} disabled={index === 0} onClick={() => onMove(-1)}><ArrowUpIcon /></Button>
-        <Button type="button" variant="ghost" size="icon-sm" aria-label={`下移图片 ${index + 1}`} disabled={last} onClick={() => onMove(1)}><ArrowDownIcon /></Button>
-        <Button type="button" variant="ghost" size="icon-sm" aria-label={`删除图片 ${index + 1}`} onClick={onRemove}><Trash2Icon /></Button>
+        <Button type="button" variant="ghost" size="icon-sm" aria-label={`上移图片 ${index + 1}`} disabled={index === 0} onClick={() => onMove(-1)}><AnimatedActionIcon icon={ArrowUpIcon} /></Button>
+        <Button type="button" variant="ghost" size="icon-sm" aria-label={`下移图片 ${index + 1}`} disabled={last} onClick={() => onMove(1)}><AnimatedActionIcon icon={ArrowDownIcon} /></Button>
+        <Button type="button" variant="ghost" size="icon-sm" aria-label={`删除图片 ${index + 1}`} onClick={onRemove}><AnimatedActionIcon icon={DeleteIcon} /></Button>
       </div>
     </div>
   )
@@ -241,10 +242,14 @@ export function MultiFigureGenerator({
   )
   const packages = images.length > 1 ? ["graphicx", "subcaption"] : ["graphicx"]
 
+  const { completed, complete, reset } = useActionFeedback()
+
   const copyLatex = async () => {
+    reset("copyLatex")
     if (!latex) return
     try {
       await writeClipboardText(latex)
+      complete("copyLatex")
       toast.success("LaTeX 源码已复制。")
     } catch {
       toast.error("源码复制失败，请在“查看 LaTeX”中手动复制。")
@@ -252,12 +257,15 @@ export function MultiFigureGenerator({
   }
 
   const downloadLatex = () => {
+    reset("downloadLatex")
     if (!latex) return
     const url = URL.createObjectURL(new Blob([latex], { type: "text/plain;charset=utf-8" }))
     const anchor = document.createElement("a")
     anchor.href = url
     anchor.download = "multi-figure.tex"
     anchor.click()
+    complete("downloadLatex")
+    toast.success("文件已准备好，已请求下载。")
     URL.revokeObjectURL(url)
   }
 
@@ -272,7 +280,7 @@ export function MultiFigureGenerator({
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger render={<Button type="button" variant="ghost" size="icon-sm" aria-label="图片使用说明" />}>
-                      <InfoIcon />
+                      <AnimatedActionIcon icon={InfoIconAnimated} />
                     </TooltipTrigger>
                     <TooltipContent>图片只用于本机预览，不会上传；一次最多选择 12 张。</TooltipContent>
                   </Tooltip>
@@ -367,8 +375,8 @@ export function MultiFigureGenerator({
               <CardTitle>排版预览</CardTitle>
               <div className="flex shrink-0 flex-wrap gap-2">
                 <LatexSourceSheet latex={latex} packages={packages} />
-                <Button type="button" size="sm" variant="outline" disabled={!latex} onClick={() => void copyLatex()}><CopyIcon />复制源码</Button>
-                <Button type="button" size="sm" disabled={!latex} onClick={downloadLatex}><DownloadIcon />下载源码</Button>
+                <Button type="button" size="sm" variant="outline" disabled={!latex} onClick={() => void copyLatex()}><ActionFeedbackIcon token={completed.copyLatex}><AnimatedActionIcon icon={CopyIconAnimated} /></ActionFeedbackIcon>复制源码</Button>
+                <Button type="button" size="sm" disabled={!latex} onClick={downloadLatex}><ActionFeedbackIcon token={completed.downloadLatex}><AnimatedActionIcon icon={DownloadIconAnimated} /></ActionFeedbackIcon>下载源码</Button>
               </div>
             </CardHeader>
             <CardContent>

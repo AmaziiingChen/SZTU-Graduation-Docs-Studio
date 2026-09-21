@@ -1,11 +1,8 @@
+import { PlusIcon } from "@/components/ui/plus"
+import { DeleteIcon } from "@/components/ui/delete"
+import { AnimatedActionIcon } from "@/components/workbench/animated-action-icon"
 import { useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react"
-import {
-  Columns3Icon,
-  Grid3X3Icon,
-  Rows3Icon,
-  SheetIcon,
-  Trash2Icon,
-} from "lucide-react"
+import { Grid3X3Icon, SheetIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -266,19 +263,19 @@ export function VisualTableEditor({
         {rows.length > 0 ? (
           <>
             <Button type="button" variant="outline" size="sm" onClick={insertRow} disabled={rows.length >= MAX_ROWS}>
-              <Rows3Icon />
+              <AnimatedActionIcon icon={PlusIcon} />
               插入行
             </Button>
             <Button type="button" variant="outline" size="sm" onClick={insertColumn} disabled={rows[0].length >= MAX_COLUMNS}>
-              <Columns3Icon />
+              <AnimatedActionIcon icon={PlusIcon} />
               插入列
             </Button>
             <Button type="button" variant="ghost" size="sm" onClick={deleteRow} disabled={!selectedCell || rows.length <= 2}>
-              <Trash2Icon />
+              <AnimatedActionIcon icon={DeleteIcon} />
               删除行
             </Button>
             <Button type="button" variant="ghost" size="sm" onClick={deleteColumn} disabled={!selectedCell || rows[0].length <= 2}>
-              <Trash2Icon />
+              <AnimatedActionIcon icon={DeleteIcon} />
               删除列
             </Button>
             <span className="ml-auto text-xs text-muted-foreground">{selectedPosition}</span>

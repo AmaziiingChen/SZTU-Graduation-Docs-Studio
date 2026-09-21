@@ -1,10 +1,7 @@
-import {
-  CircleAlertIcon,
-  ExternalLinkIcon,
-  LoaderCircleIcon,
-  RefreshCwIcon,
-  TriangleAlertIcon,
-} from "lucide-react"
+import { ExternalLinkIcon as ExternalLinkIconAnimated } from "@/components/ui/external-link"
+import { RefreshCWIcon as RefreshCwIconAnimated } from "@/components/ui/refresh-cw"
+import { AnimatedActionIcon } from "@/components/workbench/animated-action-icon"
+import { CircleAlertIcon, LoaderCircleIcon, TriangleAlertIcon } from "lucide-react"
 
 import {
   Alert,
@@ -275,7 +272,7 @@ export function EnvironmentOnboardingDialog({
                                   className="w-fit"
                                   onClick={() => onOpenGuide(guideLinkId)}
                                 >
-                                  <ExternalLinkIcon />
+                                  <AnimatedActionIcon icon={ExternalLinkIconAnimated} />
                                   {guide.linkLabel}
                                 </Button>
                               ) : null}
@@ -298,14 +295,14 @@ export function EnvironmentOnboardingDialog({
                 退出应用
               </Button>
               <Button onClick={onRefresh}>
-                <RefreshCwIcon />
+                <AnimatedActionIcon icon={RefreshCwIconAnimated} />
                 重新检查
               </Button>
             </>
           ) : environment.status === "ready" ? (
             <>
               <Button variant="outline" onClick={onRefresh}>
-                <RefreshCwIcon />
+                <AnimatedActionIcon icon={RefreshCwIconAnimated} />
                 重新检查
               </Button>
               <Button onClick={onComplete}>

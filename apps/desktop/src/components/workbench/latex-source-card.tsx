@@ -1,4 +1,9 @@
-import { CopyIcon, DownloadIcon } from "lucide-react"
+import { DownloadIcon as DownloadIconAnimated } from "@/components/ui/download"
+import { CopyIcon as CopyIconAnimated } from "@/components/ui/copy"
+import { AnimatedActionIcon } from "@/components/workbench/animated-action-icon"
+import { useActionFeedback } from "@/hooks/use-action-feedback"
+import { ActionFeedbackIcon } from "@/components/workbench/action-feedback-icon"
+
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -21,10 +26,14 @@ export function LatexSourceCard({
   filename: string
   packages?: string[]
 }) {
+  const { completed, complete, reset } = useActionFeedback()
+
   const copyLatex = async () => {
+    reset("copyLatex")
     if (!latex) return
     try {
       await writeClipboardText(latex)
+      complete("copyLatex")
       toast.success("LaTeX 源码已复制。")
     } catch {
       toast.error("无法访问剪贴板，请手动选择并复制源码。")
@@ -32,6 +41,7 @@ export function LatexSourceCard({
   }
 
   const downloadLatex = () => {
+    reset("downloadLatex")
     if (!latex) return
     const blob = new Blob([latex], { type: "text/plain;charset=utf-8" })
     const url = URL.createObjectURL(blob)
@@ -39,6 +49,8 @@ export function LatexSourceCard({
     anchor.href = url
     anchor.download = filename
     anchor.click()
+    complete("downloadLatex")
+    toast.success("文件已准备好，已请求下载。")
     URL.revokeObjectURL(url)
   }
 
@@ -55,11 +67,11 @@ export function LatexSourceCard({
         </div>
         <div className="flex gap-2">
           <Button type="button" variant="outline" disabled={!latex} onClick={() => void copyLatex()}>
-            <CopyIcon />
+            <ActionFeedbackIcon token={completed.copyLatex}><AnimatedActionIcon icon={CopyIconAnimated} /></ActionFeedbackIcon>
             复制 LaTeX
           </Button>
           <Button type="button" disabled={!latex} onClick={downloadLatex}>
-            <DownloadIcon />
+            <ActionFeedbackIcon token={completed.downloadLatex}><AnimatedActionIcon icon={DownloadIconAnimated} /></ActionFeedbackIcon>
             下载 .tex
           </Button>
         </div>

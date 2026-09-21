@@ -1,7 +1,10 @@
 "use client"
 
+import { ChevronDownIcon as ChevronDownIconAnimated } from "@/components/ui/chevron-down"
+import { AnimatedActionIcon } from "@/components/workbench/animated-action-icon"
+
 import { Accordion as AccordionPrimitive } from "@base-ui/react/accordion"
-import { ChevronDownIcon } from "lucide-react"
+
 
 import { cn } from "@/lib/utils"
 
@@ -47,7 +50,7 @@ function AccordionTrigger({
         {...props}
       >
         {children}
-        <ChevronDownIcon className="size-4 shrink-0 text-muted-foreground transition-transform duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)] group-data-panel-open:rotate-180 motion-reduce:transition-none" />
+        <AnimatedActionIcon icon={ChevronDownIconAnimated} className="size-4 shrink-0 text-muted-foreground transition-transform duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)] group-data-panel-open:rotate-180 motion-reduce:transition-none" />
       </AccordionPrimitive.Trigger>
     </AccordionPrimitive.Header>
   )

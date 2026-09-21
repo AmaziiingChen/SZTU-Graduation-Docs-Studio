@@ -605,6 +605,57 @@ def _validate_midterm_paragraph(value: Any, path: str, maximum: int) -> None:
     _validate_paragraph(paragraph, path, maximum)
 
 
+def _validate_midterm_tool(block: dict, path: str) -> None:
+    def invalid(field: str, message: str) -> None:
+        raise ExportError("DOCUMENT_NOT_READY", message, {"field": field, "reason": "invalid_block"})
+
+    if block["type"] == "figure_group":
+        if set(block) - {"type", "id", "chapter", "columns", "items", "caption", "source_citation_key"}:
+            invalid(path, "组合图包含不支持的字段。")
+        proxy = {key: value for key, value in block.items() if key in {"id", "chapter", "caption", "source_citation_key"}}
+        _validate_image_block({**proxy, "type": "image", "path": "group", "alt": "group"}, path, 5000, _validate_midterm_paragraph, document_name="中期检查")
+        _validate_midterm_paragraph(block.get("caption"), f"{path}.caption", 5000)
+        columns = block.get("columns", 2)
+        if isinstance(columns, bool) or not isinstance(columns, int) or not 1 <= columns <= 4:
+            invalid(f"{path}.columns", "组合图每行需要 1–4 张图片。")
+        items = block.get("items")
+        if not isinstance(items, list) or not 2 <= len(items) <= 4:
+            invalid(f"{path}.items", "组合图需要 2–4 张图片。")
+        for index, item in enumerate(items):
+            item_path = f"{path}.items[{index}]"
+            if not isinstance(item, dict) or set(item) - {"path", "alt", "caption"}:
+                invalid(item_path, "子图格式无效。")
+            _validate_image_block({**item, "type": "image"}, item_path, 5000, _validate_midterm_paragraph, document_name="中期检查")
+            for caption_path, caption in _iter_figure_reference_texts(item.get("caption"), f"{item_path}.caption"):
+                if "{{fig:" in caption:
+                    invalid(caption_path, "子图说明不能包含图片引用。")
+        return
+    if set(block) - {"type", "style", "columns", "rows", "caption"} or block.get("style", "grid") not in {"grid", "three_line"}:
+        invalid(path, "表格格式或样式无效。")
+    columns = block.get("columns")
+    if not isinstance(columns, list) or not 2 <= len(columns) <= 8:
+        invalid(f"{path}.columns", "表格需要 2–8 列。")
+    for index, column in enumerate(columns):
+        column_path = f"{path}.columns[{index}]"
+        if not isinstance(column, dict) or set(column) - {"header", "width_weight", "alignment"}:
+            invalid(column_path, "表格列格式无效。")
+        weight = column.get("width_weight", 1)
+        if isinstance(weight, bool) or not isinstance(weight, (int, float)) or not 0.25 <= weight <= 10 or column.get("alignment", "left") not in {"left", "center", "right"}:
+            invalid(column_path, "表格列宽或对齐方式无效。")
+        _validate_midterm_paragraph(column.get("header"), f"{column_path}.header", 5000)
+    rows = block.get("rows")
+    if not isinstance(rows, list) or not 1 <= len(rows) <= 40:
+        invalid(f"{path}.rows", "表格需要 1–40 行数据。")
+    for index, row in enumerate(rows):
+        row_path = f"{path}.rows[{index}]"
+        if not isinstance(row, dict) or set(row) != {"cells"} or not isinstance(row["cells"], list) or len(row["cells"]) != len(columns):
+            invalid(row_path, "表格每行单元格数量必须与列数相同。")
+        for cell_index, cell in enumerate(row["cells"]):
+            _validate_midterm_paragraph(cell, f"{row_path}.cells[{cell_index}]", 5000)
+    if block.get("caption") is not None:
+        _validate_midterm_paragraph(block["caption"], f"{path}.caption", 5000)
+
+
 def _validate_midterm_blocks(value: Any, path: str) -> None:
     if not isinstance(value, list) or not 1 <= len(value) <= 80:
         raise ExportError(
@@ -626,6 +677,9 @@ def _validate_midterm_blocks(value: Any, path: str) -> None:
                 document_name="中期检查",
             )
             continue
+        if block.get("type") in {"figure_group", "data_table"}:
+            _validate_midterm_tool(block, block_path)
+            continue
         if block.get("type") == "image":
             _validate_image_block(
                 block,
@@ -637,7 +691,7 @@ def _validate_midterm_blocks(value: Any, path: str) -> None:
             continue
         raise ExportError(
             "DOCUMENT_NOT_READY",
-            "中期检查正文只支持段落、有序列表、无序列表和本地图片。",
+            "中期检查正文只支持段落、列表、图片、组合图和表格。",
             {"field": block_path, "reason": "unsupported_block"},
         )
 
@@ -652,6 +706,14 @@ def _iter_figure_reference_texts(value: Any, path: str):
         for index, run in enumerate(value.get("runs", [])):
             if isinstance(run, dict) and isinstance(run.get("text"), str):
                 yield f"{path}.runs[{index}].text", run["text"]
+        return
+    if value.get("type") == "data_table":
+        for index, column in enumerate(value.get("columns", [])):
+            yield from _iter_figure_reference_texts(column.get("header"), f"{path}.columns[{index}].header")
+        for row_index, row in enumerate(value.get("rows", [])):
+            for cell_index, cell in enumerate(row.get("cells", [])):
+                yield from _iter_figure_reference_texts(cell, f"{path}.rows[{row_index}].cells[{cell_index}]")
+        yield from _iter_figure_reference_texts(value.get("caption"), f"{path}.caption")
         return
     if value.get("type") in {"ordered_list", "unordered_list"}:
         for index, item in enumerate(value.get("items", [])):
@@ -673,7 +735,7 @@ def _validate_midterm_figure_graph(sections: dict[str, Any]) -> None:
     for section_name in ("main_research_content", "progress"):
         for index, block in enumerate(sections[section_name]):
             block_path = f"sections.{section_name}[{index}]"
-            if isinstance(block, dict) and block.get("type") == "image":
+            if isinstance(block, dict) and block.get("type") in {"image", "figure_group"}:
                 figure_id = block.get("id")
                 if figure_id is not None:
                     if figure_id in figures:
@@ -2969,7 +3031,7 @@ def run_export(
                     environment=_engine_renderer_environment(descriptor),
                 )
                 try:
-                    from .docx_inspector import inspect_docx
+                    from .docx_inspector import DocxInspectionError, inspect_docx
 
                     checks.append(
                         inspect_docx(
@@ -2978,6 +3040,8 @@ def run_export(
                             document_type=record["document_type"],
                         )
                     )
+                except DocxInspectionError as exc:
+                    raise ExportError(exc.code, exc.message, exc.details) from exc
                 except ExportError:
                     raise
                 except Exception as exc:

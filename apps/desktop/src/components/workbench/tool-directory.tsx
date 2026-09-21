@@ -1,3 +1,5 @@
+import { ExternalLinkIcon } from "@/components/ui/external-link"
+import { AnimatedActionIcon } from "@/components/workbench/animated-action-icon"
 import { useState } from "react"
 import { LoaderCircleIcon } from "lucide-react"
 
@@ -97,25 +99,13 @@ export function ToolDirectory({
                               data-state={isOpening ? "opening" : "idle"}
                               className="inline-grid size-4 place-items-center"
                             >
-                              <svg
-                                aria-hidden="true"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
+                              <AnimatedActionIcon
+                                icon={ExternalLinkIcon}
                                 className={cn(
-                                  "col-start-1 row-start-1 size-4 transition-[opacity,filter] duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
-                                  isOpening
-                                    ? "opacity-0 blur-[2px]"
-                                    : "opacity-100",
+                                  "col-start-1 row-start-1",
+                                  isOpening ? "invisible" : "visible",
                                 )}
-                              >
-                                <path d="M15 3h6v6" data-slot="tool-open-arrow" />
-                                <path d="m10 14 11-11" data-slot="tool-open-arrow" />
-                                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                              </svg>
+                              />
                               <LoaderCircleIcon
                                 className={cn(
                                   "col-start-1 row-start-1 transition-[transform,opacity,filter] duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",

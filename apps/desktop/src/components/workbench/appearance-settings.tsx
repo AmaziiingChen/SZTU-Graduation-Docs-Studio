@@ -1,6 +1,11 @@
 import { useState } from "react"
 import { useTheme } from "next-themes"
-import { CheckIcon, MonitorIcon, MoonIcon, SunIcon } from "lucide-react"
+import { CheckIcon } from "lucide-react"
+import { AirplayIcon } from "@/components/ui/airplay"
+import { MoonIcon } from "@/components/ui/moon"
+import { SunIcon } from "@/components/ui/sun"
+import { AnimatedActionIcon } from "@/components/workbench/animated-action-icon"
+
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -15,7 +20,7 @@ import {
 import { cn } from "@/lib/utils"
 
 const baseThemes = [
-  { value: "system", label: "跟随系统", icon: MonitorIcon },
+  { value: "system", label: "跟随系统", icon: AirplayIcon },
   { value: "light", label: "浅色", icon: SunIcon },
   { value: "dark", label: "深色", icon: MoonIcon },
 ] as const
@@ -104,7 +109,7 @@ export function AppearanceSettings() {
                   onClick={() => setTheme(option.value)}
                   className={cn("justify-start", selected && "border-ring ring-3 ring-ring/20")}
                 >
-                  <Icon className="size-4 text-muted-foreground" />
+                  <AnimatedActionIcon icon={Icon} className="text-muted-foreground" />
                   {option.label}
                   {selected ? <CheckIcon className="ml-auto size-4" aria-hidden="true" /> : null}
                 </Button>

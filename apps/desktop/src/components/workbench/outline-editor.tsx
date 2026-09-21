@@ -1,12 +1,13 @@
+import { OutlineImportDialog } from "./outline-import-dialog"
+import { PlusIcon } from "@/components/ui/plus"
+import { ArrowLeftIcon } from "@/components/ui/arrow-left"
+import { ArrowRightIcon } from "@/components/ui/arrow-right"
+import { ArrowUpIcon } from "@/components/ui/arrow-up"
+import { ArrowDownIcon } from "@/components/ui/arrow-down"
+import { DeleteIcon } from "@/components/ui/delete"
+import { AnimatedActionIcon } from "@/components/workbench/animated-action-icon"
 import { useMemo, useState } from "react"
-import {
-  ArrowDownIcon,
-  ArrowLeftIcon,
-  ArrowRightIcon,
-  ArrowUpIcon,
-  ListPlusIcon,
-  Trash2Icon,
-} from "lucide-react"
+
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -325,6 +326,14 @@ export function OutlineEditor({
             </div>
           ) : null}
           <div className="flex flex-wrap items-center gap-2">
+            <OutlineImportDialog disabled={disabled} onImport={(imported, replace) => {
+              const added = imported.map(item => ({ ...createOutlineEditorItem(item.level), title: item.title }))
+              const existing = value.length === 1 && !paragraphInputText(value[0].title).trim() ? [] : value
+              const next = replace ? added : [...existing, ...added]
+              onNumberingStyleChange("decimal_hierarchy")
+              onChange(numberOutlineItems(next, "decimal_hierarchy"))
+              setSelectedId(added[0]?.id ?? "")
+            }} />
             <Select
               value={numberingStyle}
               onValueChange={(nextStyle) => {
@@ -367,7 +376,7 @@ export function OutlineEditor({
                 commit([...value, item])
               }}
             >
-              <ListPlusIcon data-icon="inline-start" />
+              <span data-icon="inline-start"><AnimatedActionIcon icon={PlusIcon} /></span>
               新增目录
             </Button>
           </div>
@@ -456,35 +465,35 @@ export function OutlineEditor({
                       disabled={disabled || !canOutdent}
                       onClick={() => changeLevel(index, -1)}
                     >
-                      <ArrowLeftIcon />
+                      <AnimatedActionIcon icon={ArrowLeftIcon} />
                     </IconAction>
                     <IconAction
                       label={`第 ${index + 1} 条目录：增加缩进`}
                       disabled={disabled || !canIndent}
                       onClick={() => changeLevel(index, 1)}
                     >
-                      <ArrowRightIcon />
+                      <AnimatedActionIcon icon={ArrowRightIcon} />
                     </IconAction>
                     <IconAction
                       label={`第 ${index + 1} 条目录：上移目录及其子目录`}
                       disabled={disabled || !canMoveUp}
                       onClick={() => moveSubtree(index, -1)}
                     >
-                      <ArrowUpIcon />
+                      <AnimatedActionIcon icon={ArrowUpIcon} />
                     </IconAction>
                     <IconAction
                       label={`第 ${index + 1} 条目录：下移目录及其子目录`}
                       disabled={disabled || !canMoveDown}
                       onClick={() => moveSubtree(index, 1)}
                     >
-                      <ArrowDownIcon />
+                      <AnimatedActionIcon icon={ArrowDownIcon} />
                     </IconAction>
                     <IconAction
                       label={`第 ${index + 1} 条目录：${hasChildren ? "请先处理子目录" : "删除目录"}`}
                       disabled={disabled || hasChildren}
                       onClick={() => removeItem(index)}
                     >
-                      <Trash2Icon />
+                      <AnimatedActionIcon icon={DeleteIcon} />
                     </IconAction>
                   </div>
                 </div>

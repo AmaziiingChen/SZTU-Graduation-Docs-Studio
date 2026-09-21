@@ -1,13 +1,11 @@
+import { FeatherIcon } from "@/components/ui/feather"
+import { ArrowUpIcon } from "@/components/ui/arrow-up"
+import { ArrowDownIcon } from "@/components/ui/arrow-down"
+import { PlusIcon } from "@/components/ui/plus"
+import { DeleteIcon } from "@/components/ui/delete"
+import { AnimatedActionIcon } from "@/components/workbench/animated-action-icon"
 import { useMemo, useState } from "react"
-import {
-  ArrowDownIcon,
-  ArrowUpIcon,
-  BookOpenCheckIcon,
-  PencilIcon,
-  PlusIcon,
-  Trash2Icon,
-  TriangleAlertIcon,
-} from "lucide-react"
+import { BookOpenCheckIcon, TriangleAlertIcon } from "lucide-react"
 
 import {
   Accordion,
@@ -239,7 +237,7 @@ export function ReferenceImporter({
         className="flex h-(--header-height) shrink-0 items-center justify-end gap-2 border-b px-4"
       >
         <Button type="button" size="sm" onClick={openAdd} disabled={disabled}>
-          <PlusIcon />
+          <AnimatedActionIcon icon={PlusIcon} />
           添加参考文献
         </Button>
       </div>
@@ -315,7 +313,7 @@ export function ReferenceImporter({
                         disabled={disabled || sourceIsAdvanced || reference.index === 0}
                         onClick={() => moveEntry(reference.index, -1)}
                       >
-                        <ArrowUpIcon />
+                        <AnimatedActionIcon icon={ArrowUpIcon} />
                       </Button>
                       <Button
                         type="button"
@@ -329,7 +327,7 @@ export function ReferenceImporter({
                         }
                         onClick={() => moveEntry(reference.index, 1)}
                       >
-                        <ArrowDownIcon />
+                        <AnimatedActionIcon icon={ArrowDownIcon} />
                       </Button>
                       <Button
                         type="button"
@@ -339,7 +337,7 @@ export function ReferenceImporter({
                         disabled={disabled || sourceIsAdvanced}
                         onClick={() => openEdit(reference.index)}
                       >
-                        <PencilIcon />
+                        <AnimatedActionIcon icon={FeatherIcon} />
                       </Button>
                       <Button
                         type="button"
@@ -349,7 +347,7 @@ export function ReferenceImporter({
                         disabled={disabled || sourceIsAdvanced}
                         onClick={() => setDeleteIndex(reference.index)}
                       >
-                        <Trash2Icon />
+                        <AnimatedActionIcon icon={DeleteIcon} />
                       </Button>
                     </div>
                   </div>
@@ -362,7 +360,7 @@ export function ReferenceImporter({
           </Accordion>
           <div className="flex justify-center border-t p-3">
             <Button type="button" variant="outline" size="sm" onClick={openAdd} disabled={disabled}>
-              <PlusIcon />
+              <AnimatedActionIcon icon={PlusIcon} />
               继续添加
             </Button>
           </div>
@@ -386,8 +384,8 @@ export function ReferenceImporter({
           data-slot="reference-empty-state"
           className="grid min-h-64 flex-1 place-items-center p-6 text-center"
         >
-          <div className="grid max-w-sm justify-items-center gap-3">
-            <BookOpenCheckIcon className="size-8 text-muted-foreground" />
+          <div className="empty-reference-action grid max-w-sm justify-items-center gap-3">
+            <BookOpenCheckIcon aria-hidden="true" className="empty-reference-icon size-8 text-muted-foreground" />
             <div className="grid gap-1">
               <p className="text-sm font-medium">还没有参考文献</p>
               <p className="text-sm text-muted-foreground">
@@ -395,7 +393,7 @@ export function ReferenceImporter({
               </p>
             </div>
             <Button type="button" onClick={openAdd} disabled={disabled}>
-              <PlusIcon />
+              <AnimatedActionIcon icon={PlusIcon} />
               添加第一条参考文献
             </Button>
           </div>

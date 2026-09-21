@@ -861,6 +861,35 @@ function registerIpc(): void {
     })
   })
 
+  const importManagedImage = async (sourcePath: string) => {
+    const fileStat = await lstat(sourcePath)
+    if (!fileStat.isFile() || fileStat.isSymbolicLink() || fileStat.size > MAX_IMAGE_ASSET_BYTES) {
+      throw new IpcValidationError("图片必须是小于 20 MiB 的普通文件。")
+    }
+    const bytes = await readFile(sourcePath)
+    const mimeType = detectImageMime(bytes)
+    if (!mimeType) throw new IpcValidationError("仅支持真实的 PNG 或 JPEG 图片。")
+    const sha256 = createHash("sha256").update(bytes).digest("hex")
+    const suffix = mimeType === "image/png" ? "png" : "jpg"
+    const fileName = `${sha256}.${suffix}`
+    const directory = imageAssetDirectory()
+    const target = path.resolve(directory, fileName)
+    await mkdir(directory, { recursive: true, mode: 0o700 })
+    try {
+      await writeFile(target, bytes, { flag: "wx", mode: 0o600 })
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error
+    }
+    return {
+      path: target,
+      previewUrl: `sztu-asset://asset/${fileName}`,
+      originalName: path.basename(sourcePath),
+      mimeType,
+      sizeBytes: bytes.length,
+      sha256,
+    }
+  }
+
   ipcMain.handle("sztu:asset-import-image", async (event) => {
     assertTrustedSender(event)
     return runBridge(async () => {
@@ -874,32 +903,21 @@ function registerIpc(): void {
         : await dialog.showOpenDialog(options)
       const sourcePath = result.filePaths[0]
       if (result.canceled || !sourcePath) return null
-      const fileStat = await lstat(sourcePath)
-      if (!fileStat.isFile() || fileStat.isSymbolicLink() || fileStat.size > MAX_IMAGE_ASSET_BYTES) {
-        throw new IpcValidationError("图片必须是小于 20 MiB 的普通文件。")
+      return importManagedImage(sourcePath)
+    })
+  })
+
+  ipcMain.handle("sztu:asset-import-images", async (event) => {
+    assertTrustedSender(event)
+    return runBridge(async () => {
+      const options: OpenDialogOptions = {
+        title: "选择组合图图片（最多 4 张）", filters: [{ name: "图片", extensions: ["png", "jpg", "jpeg"] }],
+        properties: ["openFile", "multiSelections", "dontAddToRecent"],
       }
-      const bytes = await readFile(sourcePath)
-      const mimeType = detectImageMime(bytes)
-      if (!mimeType) throw new IpcValidationError("仅支持真实的 PNG 或 JPEG 图片。")
-      const sha256 = createHash("sha256").update(bytes).digest("hex")
-      const suffix = mimeType === "image/png" ? "png" : "jpg"
-      const fileName = `${sha256}.${suffix}`
-      const directory = imageAssetDirectory()
-      const target = path.resolve(directory, fileName)
-      await mkdir(directory, { recursive: true, mode: 0o700 })
-      try {
-        await writeFile(target, bytes, { flag: "wx", mode: 0o600 })
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error
-      }
-      return {
-        path: target,
-        previewUrl: `sztu-asset://asset/${fileName}`,
-        originalName: path.basename(sourcePath),
-        mimeType,
-        sizeBytes: bytes.length,
-        sha256,
-      }
+      const result = mainWindow ? await dialog.showOpenDialog(mainWindow, options) : await dialog.showOpenDialog(options)
+      if (result.canceled) return []
+      if (result.filePaths.length > 4) throw new IpcValidationError("一次最多选择 4 张图片。")
+      return Promise.all(result.filePaths.map(importManagedImage))
     })
   })
 

@@ -42,7 +42,8 @@ These rules apply to every frontend prototype, screenshot, and production page i
 1. Use the default `shadcn/ui` design system and its generated theme tokens.
    - Keep the installer-selected default color system, typography, radii, spacing, focus treatment, and light/dark behavior.
    - Do not introduce a custom brand palette, custom font family, gradients, decorative backgrounds, glass effects, bespoke shadows, or ornamental motion.
-   - The only approved semantic color exception is the saved-state badge: use the restrained Tailwind `emerald` scale for its background, border, icon, and text in light and dark modes, and do not reuse it as a brand accent or general decoration.
+   - User-approved exception: one brief `canvas-confetti` celebration after an actual successful file export, with reduced-motion support and no input interception. Application chrome is not text-selectable; editing surfaces retain selection and Select All.
+   - The only approved semantic color exception is the saved-state badge: match the document-section completion mark with Tailwind `bg-emerald-500` and white icon/text in light and dark modes, and do not reuse it as a brand accent or general decoration.
    - Keep one global UI font stack: Geist first, then explicit system CJK fallbacks for PingFang SC, Microsoft YaHei, and Noto Sans CJK/SC. Do not bundle a Chinese UI font or override font families inside business components.
    - Keep the typography roles narrow: `text-base font-medium` for the workbench title, `text-sm font-medium` for section titles and labels, `text-sm leading-6` for body/editing content, `text-xs text-muted-foreground` for supporting copy, and `font-mono text-xs` only for BibTeX source editing. Do not add a Typography primitive.
    - Start page-level work from an official shadcn Block. The workbench baseline is the official `dashboard-01` composition, not a hand-designed shell.

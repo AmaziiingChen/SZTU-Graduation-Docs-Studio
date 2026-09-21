@@ -1,3 +1,26 @@
+import { AlignJustifyIcon } from "@/components/ui/align-justify-icon"
+import { LayoutGridIcon } from "@/components/ui/layout-grid-icon"
+import { TableGridIcon } from "@/components/workbench/table-grid-icon"
+import { ImageIcon } from "@/components/ui/image-icon"
+import { DeleteIcon } from "@/components/ui/delete"
+import { BodyToolDialog } from "@/components/workbench/body-tool-dialog"
+import type { StructuredToolBlock } from "@/types/structured-content"
+import { AnimatedListIcon } from "@/components/workbench/animated-list-icon"
+import { PilcrowIcon as PilcrowIconAnimated } from "@/components/ui/animateicons/pilcrow"
+import { ListOrderedIcon as ListOrderedIconAnimated } from "@/components/ui/animateicons/list-ordered"
+import { IndentIncreaseIcon as IndentIncreaseIconAnimated } from "@/components/ui/animateicons/indent-increase"
+import { IndentDecreaseIcon as IndentDecreaseIconAnimated } from "@/components/ui/animateicons/indent-decrease"
+import { FeatherIcon } from "@/components/ui/feather"
+import { PlusIcon } from "@/components/ui/plus"
+import { UndoIcon } from "@/components/ui/undo"
+import { RedoIcon } from "@/components/ui/redo"
+import { LinkIcon as LinkIconAnimated } from "@/components/ui/link"
+import { ItalicIcon as ItalicIconAnimated } from "@/components/ui/italic"
+import { BoldIcon as BoldIconAnimated } from "@/components/ui/bold"
+import { AnimatedActionIcon } from "@/components/workbench/animated-action-icon"
+import { useActionFeedback } from "@/hooks/use-action-feedback"
+import { FileTextIcon } from "lucide-react"
+import { useReducedMotion } from "motion/react"
 import {
   useEffect,
   useRef,
@@ -14,21 +37,7 @@ import {
   type JSONContent,
 } from "@tiptap/react"
 import { EditorState, TextSelection } from "@tiptap/pm/state"
-import {
-  BoldIcon,
-  ImagePlusIcon,
-  IndentDecreaseIcon,
-  IndentIncreaseIcon,
-  ItalicIcon,
-  LinkIcon,
-  ListIcon,
-  ListOrderedIcon,
-  PilcrowIcon,
-  Redo2Icon,
-  SubscriptIcon,
-  SuperscriptIcon,
-  Undo2Icon,
-} from "lucide-react"
+import { SubscriptIcon, SuperscriptIcon } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -118,6 +127,7 @@ function replaceExternalContent(editor: Editor, document: JSONContent) {
 }
 
 type ToolbarState = {
+  selectedTool: string | null
   bold: boolean
   italic: boolean
   subscript: boolean
@@ -206,6 +216,7 @@ export type StructuredContentEditorProps = {
   restoreFocus?: boolean
   onSelectionChange?: (selection: EditorSelectionSnapshot) => void
   fillHeight?: boolean
+  enableDocumentTools?: boolean
   enableFigures?: boolean
   figureChapters?: FigureChapterOption[]
   figureCatalog?: StructuredFigureCatalogItem[]
@@ -237,6 +248,7 @@ function selectToolbarState(
     ? editor.getAttributes("figureBlock")
     : null
   return {
+    selectedTool: editor.isActive("dataTableBlock") ? JSON.stringify(editor.getAttributes("dataTableBlock")) : selectedAttrs?.groupItems ? JSON.stringify(selectedAttrs) : null,
     bold: editor.isActive("bold"),
     italic: editor.isActive("italic"),
     subscript: editor.isActive("subscript"),
@@ -253,7 +265,7 @@ function selectToolbarState(
     canRedo: editor.can().redo(),
     empty: editor.isEmpty,
     figures: documentFigureCatalog ?? figures,
-    selectedFigure: selectedAttrs
+    selectedFigure: selectedAttrs && !selectedAttrs.groupItems
       ? {
           figureId: String(selectedAttrs.figureId),
           path: String(selectedAttrs.path),
@@ -474,10 +486,13 @@ export function StructuredContentEditor({
   onSelectionChange,
   fillHeight = false,
   enableFigures = false,
+  enableDocumentTools = false,
   figureChapters = [{ value: 1, label: "第 1 章" }],
   figureCatalog,
   figureNumbering = {},
 }: StructuredContentEditorProps) {
+  const historyFeedback = useActionFeedback()
+  const reducedMotion = useReducedMotion()
   const onChangeRef = useRef(onChange)
   const onSelectionChangeRef = useRef(onSelectionChange)
   const restoredSelectionRef = useRef("")
@@ -496,6 +511,7 @@ export function StructuredContentEditor({
     : [{ value: 1, label: "第 1 章" }]
   const [initialFigureNumbering] = useState(() => figureNumbering)
   const [initialContent] = useState(() => structuredBodyToTiptap(value, initialFigureNumbering))
+  const [toolDraft, setToolDraft] = useState<{ block: StructuredToolBlock; from: number; to: number; editing: boolean; document: string } | null>(null)
   const [figureDraft, setFigureDraft] = useState<FigureFormValue | null>(null)
   const [extensions] = useState(() => createRestrictedEditorExtensions(mode, initialFigureNumbering))
   const editorClass =
@@ -503,9 +519,9 @@ export function StructuredContentEditor({
       ? "min-h-12 whitespace-pre-wrap break-words px-3 py-3 text-sm leading-6 outline-none [&_p]:min-h-6"
       : cn(
           fillHeight
-            ? "min-h-full focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-ring/50"
+            ? "flex-1 cursor-text focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-ring/50"
             : "min-h-96",
-          "whitespace-pre-wrap break-words px-3 py-3 text-sm leading-6 outline-none [&>p+p]:mt-2 [&_figure]:my-4 [&_figure]:rounded-lg [&_figure]:border [&_figure]:bg-muted/20 [&_figure]:p-3 [&_figure]:text-center [&_figure_img]:mx-auto [&_figure_img]:max-h-96 [&_figure_img]:max-w-full [&_figcaption]:mt-2 [&_figcaption]:text-muted-foreground [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:min-h-6 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-6 [&_[data-figure-reference]]:rounded [&_[data-figure-reference]]:bg-muted [&_[data-figure-reference]]:px-1",
+          "[&_.ProseMirror-selectednode]:ring-2 [&_.ProseMirror-selectednode]:ring-ring whitespace-pre-wrap break-words px-3 py-3 text-sm leading-6 outline-none [&>p+p]:mt-2 [&_figure]:my-4 [&_figure]:rounded-lg [&_figure]:border [&_figure]:bg-muted/20 [&_figure]:p-3 [&_figure]:text-center [&_figure_img]:mx-auto [&_figure_img]:max-h-96 [&_figure_img]:max-w-full [&_figcaption]:mt-2 [&_figcaption]:text-muted-foreground [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:min-h-6 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-6 [&_[data-figure-reference]]:rounded [&_[data-figure-reference]]:bg-muted [&_[data-figure-reference]]:px-1",
         )
 
   const editor = useEditor(
@@ -789,6 +805,28 @@ export function StructuredContentEditor({
     if (toolbarState.bulletList) editor.chain().focus().toggleBulletList().run()
   }
 
+  const openTool = (kind?: "grid" | "three_line" | "figure_group") => {
+    const { from, to } = editor.state.selection
+    const selectedNode = editor.state.doc.nodeAt(from)
+    const selected = !kind && selectedNode ? tiptapToStructuredBody({ type: "doc", content: [selectedNode.toJSON()] })[0] : null
+    const block: StructuredToolBlock = selected && typeof selected !== "string" && (selected.type === "data_table" || selected.type === "figure_group") ? selected : kind === "figure_group"
+      ? { type: "figure_group", id: `fig-${crypto.randomUUID()}`, chapter: effectiveFigureChapters[0].value, columns: 2, items: [], caption: "" }
+      : { type: "data_table", style: kind === "three_line" ? "three_line" : "grid", columns: [{ header: "项目" }, { header: "结果" }], rows: [{ cells: ["", ""] }] }
+    setToolDraft({ block, from, to, editing: !kind, document: JSON.stringify(editor.getJSON()) })
+  }
+
+  const saveTool = (block: StructuredToolBlock) => {
+    if (!toolDraft || disabled) return
+    if (JSON.stringify(editor.getJSON()) !== toolDraft.document) {
+      toast.error("正文已发生变化，请关闭弹窗后重新选择插入位置。")
+      return
+    }
+    const node = structuredBodyToTiptap([block]).content![0]
+    const success = editor.chain().focus().insertContentAt({ from: toolDraft.from, to: toolDraft.to }, toolDraft.editing ? node : [node, { type: "paragraph" }]).run()
+    if (!success) { toast.error("此处无法插入图表，请将光标移到正文段落。") ; return }
+    setToolDraft(null)
+  }
+
   const importFigure = async () => {
     if (toolbarState.selectedFigure) {
       setFigureDraft(toolbarState.selectedFigure)
@@ -829,10 +867,19 @@ export function StructuredContentEditor({
     if (toolbarState.selectedFigure) {
       editor.chain().focus().updateAttributes("figureBlock", attrs).run()
     } else {
-      editor.chain().focus().insertContent([
+      const inserted = editor.chain().focus().insertContent([
         { type: "figureBlock", attrs },
         { type: "paragraph" },
       ]).run()
+      if (inserted) {
+        const figure = Array.from(editor.view.dom.querySelectorAll<HTMLElement>("figure[data-figure-id]"))
+          .find((element) => element.dataset.figureId === next.figureId)
+        // View-only feedback: no animation attributes enter the saved document.
+        figure?.animate?.([
+          { opacity: reducedMotion ? 1 : 0.65, outline: "2px solid var(--ring)", outlineOffset: "2px" },
+          { opacity: 1, outline: "2px solid transparent", outlineOffset: "2px" },
+        ], { duration: reducedMotion ? 0 : 1100, easing: "ease-out" })
+      }
     }
     setFigureDraft(null)
   }
@@ -902,7 +949,7 @@ export function StructuredContentEditor({
               shortcut={shortcuts.bold}
               disabled={disabled}
             >
-              <BoldIcon />
+              <AnimatedActionIcon icon={BoldIconAnimated} />
             </ToolbarToggle>
             <ToolbarToggle
               value="italic"
@@ -910,7 +957,7 @@ export function StructuredContentEditor({
               shortcut={shortcuts.italic}
               disabled={disabled}
             >
-              <ItalicIcon />
+              <AnimatedActionIcon icon={ItalicIconAnimated} />
             </ToolbarToggle>
             <ToolbarToggle
               value="subscript"
@@ -944,10 +991,10 @@ export function StructuredContentEditor({
                 onValueChange={changeList}
               >
                 <ToolbarToggle value="orderedList" label="有序列表" disabled={disabled}>
-                  <ListOrderedIcon />
+                  <AnimatedActionIcon icon={ListOrderedIconAnimated} />
                 </ToolbarToggle>
                 <ToolbarToggle value="bulletList" label="无序列表" disabled={disabled}>
-                  <ListIcon />
+                  <AnimatedActionIcon icon={AnimatedListIcon} />
                 </ToolbarToggle>
               </ToggleGroup>
 
@@ -967,7 +1014,7 @@ export function StructuredContentEditor({
                 disabled={disabled || !toolbarState.canOutdent}
                 onClick={() => editor.chain().focus().liftListItem("listItem").run()}
               >
-                <IndentDecreaseIcon />
+                <AnimatedActionIcon icon={IndentDecreaseIconAnimated} />
               </ToolbarButton>
               <ToolbarButton
                 label="增加缩进"
@@ -987,22 +1034,38 @@ export function StructuredContentEditor({
                 disabled={disabled || !toolbarState.canIndent}
                 onClick={() => editor.chain().focus().sinkListItem("listItem").run()}
               >
-                <IndentIncreaseIcon />
+                <AnimatedActionIcon icon={IndentIncreaseIconAnimated} />
               </ToolbarButton>
             </>
           ) : null}
 
+          {mode === "body" && enableDocumentTools ? <>
+            <DropdownMenu>
+              <DropdownMenuTrigger render={<Button type="button" size="sm" variant="ghost" disabled={disabled || toolbarState.listDepth > 0} />}><AnimatedActionIcon icon={PlusIcon} />插入图表</DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                <DropdownMenuItem onClick={() => void importFigure()}><AnimatedActionIcon icon={ImageIcon} />单张图片</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => openTool("three_line")}><AnimatedActionIcon icon={AlignJustifyIcon} />三线表</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => openTool("grid")}><AnimatedActionIcon icon={TableGridIcon} />表格</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => openTool("figure_group")}><AnimatedActionIcon icon={LayoutGridIcon} />多图排版</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            {toolbarState.selectedTool ? <>
+              <Button type="button" size="sm" variant="ghost" disabled={disabled} onClick={() => openTool()}><AnimatedActionIcon icon={FeatherIcon} />编辑图表</Button>
+              <Button type="button" size="sm" variant="ghost" disabled={disabled} onClick={() => editor.chain().focus().deleteSelection().run()}><AnimatedActionIcon icon={DeleteIcon} />删除图表</Button>
+            </> : null}
+          </> : null}
+
           {mode === "body" && enableFigures ? (
             <>
               <Separator orientation="vertical" className="mx-1 h-5 data-vertical:self-center" />
-              <ToolbarButton
+              {!enableDocumentTools || toolbarState.selectedFigure ? <ToolbarButton
                 label={toolbarState.selectedFigure ? "编辑图片" : "插入图片"}
                 variant="ghost"
                 disabled={disabled}
                 onClick={() => void importFigure()}
               >
-                <ImagePlusIcon />
-              </ToolbarButton>
+                <AnimatedActionIcon icon={toolbarState.selectedFigure ? FeatherIcon : PlusIcon} />
+              </ToolbarButton> : null}
               <DropdownMenu>
                 <DropdownMenuTrigger
                   render={
@@ -1015,7 +1078,7 @@ export function StructuredContentEditor({
                     />
                   }
                 >
-                  <LinkIcon />
+                  <AnimatedActionIcon icon={LinkIconAnimated} />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start">
                   {toolbarState.figures.map((figure) => (
@@ -1050,7 +1113,7 @@ export function StructuredContentEditor({
                 disabled={disabled}
                 onClick={() => setFormattingMarksVisible((visible) => !visible)}
               >
-                <PilcrowIcon />
+                <AnimatedActionIcon icon={PilcrowIconAnimated} />
               </ToolbarButton>
             </>
           ) : null}
@@ -1072,9 +1135,11 @@ export function StructuredContentEditor({
             }
             variant="ghost"
             disabled={disabled || !toolbarState.canUndo}
-            onClick={() => editor.chain().focus().undo().run()}
+            onClick={() => {
+              if (editor.chain().focus().undo().run()) historyFeedback.complete("undo")
+            }}
           >
-            <Undo2Icon />
+            <AnimatedActionIcon key={historyFeedback.completed.undo || 0} icon={UndoIcon} playOnMount={Boolean(historyFeedback.completed.undo)} />
           </ToolbarButton>
           <ToolbarButton
             label="重做"
@@ -1088,9 +1153,11 @@ export function StructuredContentEditor({
             }
             variant="ghost"
             disabled={disabled || !toolbarState.canRedo}
-            onClick={() => editor.chain().focus().redo().run()}
+            onClick={() => {
+              if (editor.chain().focus().redo().run()) historyFeedback.complete("redo")
+            }}
           >
-            <Redo2Icon />
+            <AnimatedActionIcon key={historyFeedback.completed.redo || 0} icon={RedoIcon} playOnMount={Boolean(historyFeedback.completed.redo)} />
           </ToolbarButton>
 
         </div>
@@ -1110,8 +1177,8 @@ export function StructuredContentEditor({
                 onMouseDown={(event) => event.preventDefault()}
               >
                 {[
-                  { format: "bold", label: "选区粗体", active: toolbarState.bold, icon: <BoldIcon /> },
-                  { format: "italic", label: "选区斜体", active: toolbarState.italic, icon: <ItalicIcon /> },
+                  { format: "bold", label: "选区粗体", active: toolbarState.bold, icon: <AnimatedActionIcon icon={BoldIconAnimated} /> },
+                  { format: "italic", label: "选区斜体", active: toolbarState.italic, icon: <AnimatedActionIcon icon={ItalicIconAnimated} /> },
                   { format: "subscript", label: "选区下标", active: toolbarState.subscript, icon: <SubscriptIcon /> },
                   { format: "superscript", label: "选区上标", active: toolbarState.superscript, icon: <SuperscriptIcon /> },
                 ].map((item) => (
@@ -1140,18 +1207,21 @@ export function StructuredContentEditor({
           <>
             <FadingScrollArea
               wrapperClassName="min-h-0 flex-1"
-              className="h-full min-h-0 flex-1"
+              // Flex sizing makes the actual contenteditable fill the viewport,
+              // so blank-space clicks and the cursor stay native to the editor.
+              className="h-full min-h-0 flex-1 [&_[data-slot=scroll-area-viewport]]:flex [&_[data-slot=scroll-area-viewport]]:flex-col"
             >
-              <div className="relative min-h-full">
+              <div className="empty-writing-area relative flex flex-1 flex-col">
                 {toolbarState.empty ? (
                   <span
                     aria-hidden="true"
-                    className="pointer-events-none absolute top-3 left-3 text-sm text-muted-foreground"
+                    className="pointer-events-none absolute top-3 left-3 inline-flex items-center gap-2 text-sm text-muted-foreground"
                   >
+                    <FileTextIcon className="empty-writing-icon size-4" />
                     {placeholder}
                   </span>
                 ) : null}
-                <EditorContent className="min-h-full" editor={editor} />
+                <EditorContent className="flex flex-1 flex-col" editor={editor} />
               </div>
             </FadingScrollArea>
             <div className="flex min-h-8 shrink-0 items-center justify-between gap-3 px-3 py-1">
@@ -1184,19 +1254,21 @@ export function StructuredContentEditor({
             </div>
           </>
         ) : (
-          <div className="relative">
+          <div className="empty-writing-area relative">
             {toolbarState.empty ? (
               <span
                 aria-hidden="true"
-                className="pointer-events-none absolute top-3 left-3 text-sm text-muted-foreground"
+                className="pointer-events-none absolute top-3 left-3 inline-flex items-center gap-2 text-sm text-muted-foreground"
               >
-                {placeholder}
+                <FileTextIcon className="empty-writing-icon size-4" />
+                    {placeholder}
               </span>
             ) : null}
             <EditorContent editor={editor} />
           </div>
         )}
       </div>
+      {toolDraft ? <BodyToolDialog value={toolDraft.block} chapters={effectiveFigureChapters} onCancel={() => { setToolDraft(null); editor.commands.focus() }} onSave={saveTool} /> : null}
       {figureDraft ? (
         <FigureDialog
           key={`${figureDraft.figureId}-${figureDraft.path}`}

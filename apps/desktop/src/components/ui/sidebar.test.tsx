@@ -43,8 +43,14 @@ describe("SidebarProvider", () => {
   it("still toggles the sidebar from its visible button", () => {
     render(<SidebarHarness />)
 
-    fireEvent.click(screen.getByRole("button", { name: "折叠侧边栏" }))
-
+    const trigger = screen.getByRole("button", { name: "折叠侧边栏" })
+    expect(trigger).toHaveAttribute("title", "收起侧边栏")
+    expect(trigger).toHaveAttribute("aria-expanded", "true")
+    fireEvent.click(trigger)
     expect(screen.getByLabelText("侧边栏状态")).toHaveTextContent("collapsed")
+    expect(trigger).toHaveAttribute("title", "展开侧边栏")
+    expect(trigger).toHaveAttribute("aria-expanded", "false")
+    fireEvent.click(trigger)
+    expect(trigger).toHaveAttribute("title", "收起侧边栏")
   })
 })

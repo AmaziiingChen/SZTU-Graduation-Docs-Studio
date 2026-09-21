@@ -1,18 +1,17 @@
+import { EllipsisIcon } from "@/components/ui/animateicons/ellipsis"
+import { FeatherIcon } from "@/components/ui/feather"
+import { RotateCCWIcon as RotateCcwIconAnimated } from "@/components/ui/rotate-ccw"
+import { PlusIcon } from "@/components/ui/plus"
+import { DeleteIcon } from "@/components/ui/delete"
+import { AnimatedActionIcon } from "@/components/workbench/animated-action-icon"
+import { FileTextIcon } from "@/components/ui/file-text"
+import { FolderOpenIcon } from "@/components/ui/folder-open"
+import { useSidebarIconAnimation } from "@/hooks/use-sidebar-icon-animation"
 import { useMemo, useState } from "react"
-import {
-  ChevronRightIcon,
-  FilePlus2Icon,
-  FileTextIcon,
-  FolderIcon,
-  Grid3X3Icon,
-  ImagesIcon,
-  MoreHorizontalIcon,
-  PencilIcon,
-  PlusIcon,
-  RotateCcwIcon,
-  Table2Icon,
-  Trash2Icon,
-} from "lucide-react"
+import { ChevronRightIcon } from "lucide-react"
+import { AlignJustifyIcon } from "@/components/ui/align-justify-icon"
+import { LayoutGridIcon } from "@/components/ui/layout-grid-icon"
+import { TableGridIcon } from "@/components/workbench/table-grid-icon"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -64,9 +63,9 @@ const documentGroups: Array<{
 ]
 
 function ThesisToolIcon({ toolId }: { toolId: ThesisToolId }) {
-  if (toolId === "general_table") return <Grid3X3Icon />
-  if (toolId === "multi_figure") return <ImagesIcon />
-  return <Table2Icon />
+  const icon = toolId === "general_table" ? TableGridIcon
+    : toolId === "multi_figure" ? LayoutGridIcon : AlignJustifyIcon
+  return <AnimatedActionIcon icon={icon} />
 }
 
 export type CreateDocumentRequest = {
@@ -116,6 +115,7 @@ export function NavDocuments({
   onPurgeDocument: (documentId: string) => Promise<void>
 }) {
   const activeType = documents.find((item) => item.id === activeDocumentId)?.document_type
+  const animation = useSidebarIconAnimation()
   const [expanded, setExpanded] = useState<Record<DocumentType, boolean>>({
     proposal: activeType === "proposal" || activeType === undefined,
     task_book: activeType === "task_book",
@@ -175,6 +175,7 @@ export function NavDocuments({
             return (
               <SidebarMenuItem key={group.type}>
                 <SidebarMenuButton
+                  {...animation.row(`group:${group.type}`)}
                   tooltip={group.label}
                   aria-expanded={isExpanded}
                   onClick={() =>
@@ -189,7 +190,7 @@ export function NavDocuments({
                       ? "rotate-90 transition-transform duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
                       : "transition-transform duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"}
                   />
-                  <FolderIcon />
+                  <FolderOpenIcon {...animation.icon(`group:${group.type}`)} />
                   <span>{group.label}</span>
                 </SidebarMenuButton>
                 <SidebarMenuAction
@@ -202,7 +203,7 @@ export function NavDocuments({
                     openCreate(group.type, group.defaultTitle)
                   }}
                 >
-                  <PlusIcon />
+                  <AnimatedActionIcon icon={PlusIcon} />
                 </SidebarMenuAction>
                 <div
                   aria-hidden={!isExpanded}
@@ -232,9 +233,10 @@ export function NavDocuments({
                             !thesisToolsActive &&
                             item.id === activeDocumentId
                           }
+                          {...animation.row(`document:${item.id}`, disabled)}
                           onClick={() => void onSelectDocument(item.id)}
                         >
-                          <FileTextIcon />
+                          <FileTextIcon {...animation.icon(`document:${item.id}`)} />
                           <span className="min-w-0 flex-1 truncate text-left">{item.title}</span>
                         </SidebarMenuSubButton>
                         <DropdownMenu>
@@ -248,7 +250,7 @@ export function NavDocuments({
                               />
                             }
                           >
-                            <MoreHorizontalIcon className="size-4" />
+                            <AnimatedActionIcon icon={EllipsisIcon} />
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="w-36">
                             <DropdownMenuItem
@@ -258,7 +260,7 @@ export function NavDocuments({
                                 setError(null)
                               }}
                             >
-                              <PencilIcon />
+                              <AnimatedActionIcon icon={FeatherIcon} />
                               重命名
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
@@ -269,7 +271,7 @@ export function NavDocuments({
                                 setError(null)
                               }}
                             >
-                              <Trash2Icon />
+                              <AnimatedActionIcon icon={DeleteIcon} />
                               移到回收站
                             </DropdownMenuItem>
                           </DropdownMenuContent>
@@ -285,6 +287,7 @@ export function NavDocuments({
 
           <SidebarMenuItem>
             <SidebarMenuButton
+              {...animation.row("thesis")}
               tooltip="毕业论文"
               aria-expanded={thesisExpanded}
               onClick={() => setThesisExpanded((current) => !current)}
@@ -294,7 +297,7 @@ export function NavDocuments({
                   ? "rotate-90 transition-transform duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
                   : "transition-transform duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"}
               />
-              <FolderIcon />
+              <FolderOpenIcon {...animation.icon("thesis")} />
               <span>毕业论文</span>
             </SidebarMenuButton>
             <div
@@ -345,7 +348,7 @@ export function NavDocuments({
                   ? "rotate-90 transition-transform duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
                   : "transition-transform duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"}
               />
-              <Trash2Icon />
+              <AnimatedActionIcon icon={DeleteIcon} />
               <span>回收站</span>
               {deletedDocuments.length > 0 ? (
                 <span className="ml-auto text-xs text-muted-foreground">{deletedDocuments.length}</span>
@@ -386,11 +389,11 @@ export function NavDocuments({
                           />
                         }
                       >
-                        <MoreHorizontalIcon className="size-4" />
+                        <AnimatedActionIcon icon={EllipsisIcon} />
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-36">
                         <DropdownMenuItem onClick={() => void run(() => onRestoreDocument(item.id), () => undefined)}>
-                          <RotateCcwIcon />
+                          <AnimatedActionIcon icon={RotateCcwIconAnimated} />
                           恢复
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
@@ -401,7 +404,7 @@ export function NavDocuments({
                             setError(null)
                           }}
                         >
-                          <Trash2Icon />
+                          <AnimatedActionIcon icon={DeleteIcon} />
                           永久删除
                         </DropdownMenuItem>
                       </DropdownMenuContent>
@@ -434,7 +437,7 @@ export function NavDocuments({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="blank">
-                    <FilePlus2Icon />
+                    <AnimatedActionIcon icon={PlusIcon} />
                     空白文档
                   </SelectItem>
                   {(createType ? groupedDocuments[createType] : []).map((item) => (

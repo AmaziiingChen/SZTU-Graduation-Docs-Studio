@@ -102,6 +102,45 @@ def _write_task_book_sources(directory: Path) -> Path:
 
 
 class LatexBundleTests(unittest.TestCase):
+    def test_current_template_dependencies_are_bundled_for_all_types(self):
+        for kind, writer in (("proposal", _write_sources), ("midterm", _write_midterm_sources), ("task_book", _write_task_book_sources)):
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                source = root / "latex"
+                data = writer(source)
+                main = source / "main.tex"
+                main.write_text(main.read_text() + "\\input{sztu-process-form}\n")
+                (source / "sztu-process-form.tex").write_text("% shared form\n")
+                if kind == "proposal":
+                    main.write_text(main.read_text() + "\\input{proposal-typography.tex}\n")
+                    (source / "proposal-typography.tex").write_text("% sizes\n")
+                output = root / "source.zip"
+                build_latex_bundle(source, data, output, document_type=kind)
+                with zipfile.ZipFile(output) as archive:
+                    self.assertIn("sztu-process-form.tex", archive.namelist())
+                    if kind == "proposal":
+                        self.assertIn("proposal-typography.tex", archive.namelist())
+
+    def test_nested_missing_dependency_fails_before_delivery(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "latex"
+            data = _write_sources(source)
+            (source / "proposal-data.tex").write_text("\\input{missing-support}\n")
+            with self.assertRaises(LatexBundleError) as error:
+                build_latex_bundle(source, data, root / "source.zip")
+            self.assertEqual(error.exception.code, "LATEX_BUNDLE_INCOMPLETE")
+            self.assertFalse((root / "source.zip").exists())
+
+    def test_optional_dependency_symlink_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "latex"
+            data = _write_sources(source)
+            (source / "sztu-process-form.tex").symlink_to(source / "proposal-data.tex")
+            with self.assertRaises(LatexBundleError):
+                build_latex_bundle(source, data, root / "source.zip")
+
     def test_task_book_bundle_is_portable_and_keeps_hashed_local_assets(self) -> None:
         with tempfile.TemporaryDirectory(prefix="latex-bundle-test-") as root:
             root_path = Path(root)

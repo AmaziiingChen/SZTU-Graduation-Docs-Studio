@@ -585,6 +585,25 @@ class ExportPipelineTests(unittest.TestCase):
         self.assertEqual(caught.exception.code, "TEMPLATE_ENGINE_INCOMPLETE")
         self.assertIn("模板快照", caught.exception.message)
 
+    def test_docx_inspection_preserves_specific_failure(self) -> None:
+        from sztu_docs_backend.docx_inspector import DocxInspectionError
+        failure = DocxInspectionError(
+            "DOCX_STRUCTURE_MISMATCH", "任务书选题性质标签结构不完整。", {"field": "nature"}
+        )
+        with patch("sztu_docs_backend.exporter._run", side_effect=self.fake_render), patch(
+            "sztu_docs_backend.docx_inspector.inspect_docx", side_effect=failure
+        ):
+            with self.assertRaises(ExportError) as caught:
+                run_export(
+                    self.workspace, document_id=self.document_id,
+                    output_directory=str(self.output), formats=["docx"],
+                    engine=self.engine, request_id=str(uuid.uuid4()),
+                )
+        self.assertEqual(caught.exception.code, failure.code)
+        self.assertEqual(caught.exception.message, failure.message)
+        self.assertEqual(caught.exception.details, failure.details)
+        self.assertEqual(list(self.output.glob("*.docx")), [])
+
     def test_existing_target_allocates_next_version_without_overwriting(self) -> None:
         stem = f"{self.proposal['metadata']['title']}-开题报告"
         original_target = self.output / f"{stem}.docx"

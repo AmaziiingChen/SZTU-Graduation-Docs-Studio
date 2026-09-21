@@ -20,9 +20,7 @@ describe("ToolDirectory", () => {
       "group-hover/tool-open:translate-x-0.5",
       "group-hover/tool-open:-translate-y-0.5",
     )
-    expect(
-      externalIcon?.querySelectorAll('[data-slot="tool-open-arrow"]'),
-    ).toHaveLength(2)
+    expect(externalIcon).toBeInTheDocument()
   })
 
   it("shows an opening state until the external action completes", async () => {

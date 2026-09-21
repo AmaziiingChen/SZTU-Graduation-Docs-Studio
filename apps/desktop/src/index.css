@@ -209,7 +209,20 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
+    /* Desktop chrome is not a document. Editable surfaces opt back in below. */
+    -webkit-user-select: none;
+    user-select: none;
     }
+  input, textarea, [contenteditable="true"], [contenteditable=""],
+  [contenteditable="plaintext-only"], [contenteditable="true"] *,
+  [contenteditable=""] *, [contenteditable="plaintext-only"] * {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+  [contenteditable="false"], [contenteditable="false"] * {
+    -webkit-user-select: none;
+    user-select: none;
+  }
   body {
     @apply bg-background text-foreground;
     }
@@ -394,5 +407,19 @@
 
   .selection-toolbar[data-state="closing"] {
     opacity: 0;
+  }
+}
+
+/* Requested action feedback stays on icons, leaving text, caret and scroll geometry stable. */
+@keyframes writing-welcome {
+  0%, 100% { transform: rotate(0); }
+  45% { transform: rotate(-8deg); }
+  75% { transform: rotate(4deg); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .empty-writing-area:is(:hover, :focus-within) .empty-writing-icon,
+  .empty-reference-action:has(button:not(:disabled):is(:hover, :focus-visible)) .empty-reference-icon {
+    animation: writing-welcome 450ms ease-out;
   }
 }

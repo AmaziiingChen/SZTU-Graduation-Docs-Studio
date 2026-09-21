@@ -23,7 +23,9 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
-import { PanelLeftIcon } from "lucide-react"
+import { AnimatedPanelLeftCloseIcon as PanelLeftCloseIcon, AnimatedPanelLeftOpenIcon as PanelLeftOpenIcon } from "@/components/workbench/animated-panel-icons"
+import { AnimatedActionIcon } from "@/components/workbench/animated-action-icon"
+
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
@@ -239,10 +241,13 @@ function SidebarTrigger({
   onClick,
   ...props
 }: React.ComponentProps<typeof Button>) {
-  const { toggleSidebar } = useSidebar()
+  const { toggleSidebar, state, isMobile, openMobile } = useSidebar()
+  const expanded = isMobile ? openMobile : state === "expanded"
 
   return (
     <Button
+      title={expanded ? "收起侧边栏" : "展开侧边栏"}
+      aria-expanded={expanded}
       data-sidebar="trigger"
       data-slot="sidebar-trigger"
       variant="ghost"
@@ -254,7 +259,7 @@ function SidebarTrigger({
       }}
       {...props}
     >
-      <PanelLeftIcon />
+      <AnimatedActionIcon icon={expanded ? PanelLeftCloseIcon : PanelLeftOpenIcon} />
       <span className="sr-only">Toggle Sidebar</span>
     </Button>
   )

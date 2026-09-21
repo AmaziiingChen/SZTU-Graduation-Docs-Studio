@@ -1,5 +1,10 @@
 "use client"
 
+import { ChevronDownIcon as ChevronDownIconAnimated } from "@/components/ui/chevron-down"
+import { ChevronRightIcon as ChevronRightIconAnimated } from "@/components/ui/chevron-right"
+import { ChevronLeftIcon as ChevronLeftIconAnimated } from "@/components/ui/chevron-left"
+import { AnimatedActionIcon } from "@/components/workbench/animated-action-icon"
+
 import * as React from "react"
 import {
   DayPicker,
@@ -10,7 +15,7 @@ import {
 
 import { cn } from "@/lib/utils"
 import { Button, buttonVariants } from "@/components/ui/button"
-import { ChevronLeftIcon, ChevronRightIcon, ChevronDownIcon } from "lucide-react"
+
 
 function Calendar({
   className,
@@ -147,18 +152,18 @@ function Calendar({
         Chevron: ({ className, orientation, ...props }) => {
           if (orientation === "left") {
             return (
-              <ChevronLeftIcon className={cn("size-4", className)} {...props} />
+              <span className={cn("inline-flex size-4", className)} {...props}><AnimatedActionIcon icon={ChevronLeftIconAnimated} /></span>
             )
           }
 
           if (orientation === "right") {
             return (
-              <ChevronRightIcon className={cn("size-4", className)} {...props} />
+              <span className={cn("inline-flex size-4", className)} {...props}><AnimatedActionIcon icon={ChevronRightIconAnimated} /></span>
             )
           }
 
           return (
-            <ChevronDownIcon className={cn("size-4", className)} {...props} />
+            <span className={cn("inline-flex size-4", className)} {...props}><AnimatedActionIcon icon={ChevronDownIconAnimated} /></span>
           )
         },
         DayButton: ({ ...props }) => (

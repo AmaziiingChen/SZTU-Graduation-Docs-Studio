@@ -1,12 +1,10 @@
+import { DownloadIcon } from "@/components/ui/download"
+import { CircleCheckIcon } from "@/components/ui/circle-check"
+import { SendIcon } from "@/components/ui/send"
+import { FolderCodeIcon } from "@/components/ui/folder-code"
+import { AnimatedActionIcon } from "@/components/workbench/animated-action-icon"
 import { useState } from "react"
-import {
-  CheckCircle2Icon,
-  FileJsonIcon,
-  LoaderCircleIcon,
-  SendIcon,
-  ShieldCheckIcon,
-  TriangleAlertIcon,
-} from "lucide-react"
+import { LoaderCircleIcon, ShieldCheckIcon, TriangleAlertIcon } from "lucide-react"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -128,7 +126,7 @@ export function DiagnosticSupport() {
           {state.status === "preparing" ? (
             <LoaderCircleIcon className="animate-spin" />
           ) : (
-            <FileJsonIcon />
+            <AnimatedActionIcon icon={FolderCodeIcon} />
           )}
           {state.status === "preparing" ? "正在检查隐私" : "创建诊断包"}
         </Button>
@@ -137,13 +135,13 @@ export function DiagnosticSupport() {
           onClick={() => void send()}
           disabled={state.status === "preparing" || sending}
         >
-          {sending ? <LoaderCircleIcon className="animate-spin" /> : <SendIcon />}
+          {sending ? <LoaderCircleIcon className="animate-spin" /> : <AnimatedActionIcon icon={SendIcon} />}
           {sending ? "正在发送" : "发送诊断包"}
         </Button>
       </div>
       {state.status === "ready" && state.sent ? (
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <CheckCircle2Icon className="size-4" />
+          <AnimatedActionIcon icon={CircleCheckIcon} playOnMount />
           诊断包已发送，将在 30 天后自动删除。
         </div>
       ) : null}
@@ -183,7 +181,7 @@ export function DiagnosticSupport() {
               </div>
               {state.saved ? (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <CheckCircle2Icon className="size-4" />
+                  <AnimatedActionIcon icon={CircleCheckIcon} playOnMount />
                   已保存到你选择的位置。
                 </div>
               ) : null}
@@ -194,14 +192,14 @@ export function DiagnosticSupport() {
               关闭
             </Button>
             <Button onClick={() => void save()} disabled={saving || state.status !== "ready"}>
-              {saving ? <LoaderCircleIcon className="animate-spin" /> : <FileJsonIcon />}
+              {saving ? <LoaderCircleIcon className="animate-spin" /> : <AnimatedActionIcon icon={DownloadIcon} />}
               {saving ? "正在保存" : "保存到本机"}
             </Button>
             <Button
               onClick={() => void send()}
               disabled={sending || state.status !== "ready"}
             >
-              {sending ? <LoaderCircleIcon className="animate-spin" /> : <SendIcon />}
+              {sending ? <LoaderCircleIcon className="animate-spin" /> : <AnimatedActionIcon icon={SendIcon} />}
               {sending ? "正在发送" : "发送诊断包"}
             </Button>
           </DialogFooter>

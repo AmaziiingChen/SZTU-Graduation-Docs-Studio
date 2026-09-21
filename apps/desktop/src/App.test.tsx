@@ -1,3 +1,5 @@
+import { celebrateExportSuccess } from "@/lib/export-celebration"
+vi.mock("@/lib/export-celebration", () => ({ celebrateExportSuccess: vi.fn() }))
 import {
   act,
   cleanup,
@@ -568,6 +570,7 @@ function renderApp() {
 }
 
 beforeEach(() => {
+  vi.mocked(celebrateExportSuccess).mockClear()
   window.localStorage.clear()
   completeEnvironmentOnboarding()
 })
@@ -791,9 +794,9 @@ describe("M3 workbench persistence", () => {
 
     const savedStatus = await screen.findByLabelText("保存状态：已保存")
     expect(savedStatus).toHaveClass(
-      "border-emerald-200",
-      "bg-emerald-50",
-      "text-emerald-700",
+      "border-transparent",
+      "bg-emerald-500",
+      "text-white",
     )
     expect(
       screen.queryByRole("dialog", { name: "预览&导出" }),
@@ -808,7 +811,7 @@ describe("M3 workbench persistence", () => {
   it("uses the official dashboard shell composition", async () => {
     const { container } = renderApp()
 
-    await screen.findByRole("button", { name: "检查内容" })
+    await screen.findByRole("button", { name: "预览&导出" })
     expect(container.querySelector('[data-slot="sidebar"]')).toHaveAttribute(
       "data-variant",
       "inset",
@@ -846,7 +849,7 @@ describe("M3 workbench persistence", () => {
     expect(screen.getByRole("button", { name: "三线表生成器" })).toBeInTheDocument()
     const header = container.querySelector("header")
     expect(header).not.toBeNull()
-    expect(within(header!).getByRole("button", { name: "检查内容" })).toBeInTheDocument()
+    expect(within(header!).queryByRole("button", { name: "检查内容" })).not.toBeInTheDocument()
     expect(within(header!).getByRole("button", { name: "预览&导出" })).toHaveClass(
       "bg-primary",
       "text-primary-foreground",
@@ -1287,7 +1290,9 @@ describe("M3 workbench persistence", () => {
     expect(screen.queryByText("尚未生成预览")).not.toBeInTheDocument()
     expect(screen.queryByText("预览与检查")).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole("button", { name: "合成开题报告" }))
+    // Narrow screens close the navigation sheet after choosing an item.
+    fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }))
+    fireEvent.click(await screen.findByRole("button", { name: "合成开题报告" }))
     expect(
       (await screen.findAllByRole("heading", {
         level: 1,
@@ -1913,7 +1918,7 @@ describe("M3 workbench persistence", () => {
     installApi(api)
     renderApp()
 
-    fireEvent.click(await screen.findByRole("button", { name: "检查内容" }))
+    fireEvent.click(await screen.findByRole("button", { name: "预览&导出" }))
 
     expect(api.checkDocument).not.toHaveBeenCalled()
     expect(
@@ -1941,7 +1946,6 @@ describe("M3 workbench persistence", () => {
     expect(screen.getAllByText("修订冲突")).not.toHaveLength(0)
     expect(screen.queryByLabelText("保存状态：已保存")).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "重新载入" })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "检查内容" })).toBeDisabled()
     expect(screen.getByRole("button", { name: "预览&导出" })).toBeDisabled()
     expect(api.saveProfileDraft).not.toHaveBeenCalled()
     expect(api.saveProfile).not.toHaveBeenCalled()
@@ -1989,6 +1993,7 @@ describe("M3 workbench persistence", () => {
         documentType: "proposal",
       }),
     )
+    expect(celebrateExportSuccess).toHaveBeenCalledTimes(1)
     closePreviewDrawer()
     await openOperationsPanel()
     expect(screen.queryByText("/tmp/sztu-export-test/proposal.pdf")).not.toBeInTheDocument()
@@ -2124,6 +2129,7 @@ describe("M3 workbench persistence", () => {
     await waitFor(() => expect(api.cancelExport).toHaveBeenCalledTimes(1))
     expect(api.cancelExport).toHaveBeenCalledWith(expect.any(String))
     expect(cancelButton).toBeDisabled()
+    expect(celebrateExportSuccess).not.toHaveBeenCalled()
 
     await act(async () => {
       rejectExport(Object.assign(new Error("cancelled"), { code: "EXPORT_CANCELLED" }))
@@ -2132,6 +2138,7 @@ describe("M3 workbench persistence", () => {
       (await screen.findAllByText("导出已取消，未完成的临时产物已清理。"))
         .length,
     ).toBeGreaterThan(0)
+    expect(celebrateExportSuccess).not.toHaveBeenCalled()
   })
 
   it("renders compact history actions and reveals artifacts without manual QA controls", async () => {
@@ -2225,7 +2232,7 @@ describe("M3 workbench persistence", () => {
     installApi(api)
     renderApp()
 
-    fireEvent.click(await screen.findByRole("button", { name: "检查内容" }))
+    fireEvent.click(await screen.findByRole("button", { name: "预览&导出" }))
     await waitFor(() => expect(api.checkDocument).toHaveBeenCalledTimes(1))
 
     await waitFor(() =>
@@ -2233,6 +2240,11 @@ describe("M3 workbench persistence", () => {
         screen.getByRole("textbox", { name: "研究方法与手段" }),
       ).toHaveFocus(),
     )
+    expect(screen.queryByRole("dialog", { name: "预览&导出" })).not.toBeInTheDocument()
+    // Repeat from the same section: pane/section changes alone cannot drive focus.
+    fireEvent.click(screen.getByRole("button", { name: "预览&导出" }))
+    await waitFor(() => expect(api.checkDocument).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "研究方法与手段" })).toHaveFocus())
   })
 
   it("links a local template workspace and refreshes environment checks", async () => {
@@ -2646,15 +2658,12 @@ describe("M3 workbench persistence", () => {
     renderApp()
 
     expect(await screen.findByText("毕业届别缺少年份")).toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: "检查内容" }))
+    fireEvent.click(screen.getByRole("button", { name: "预览&导出" }))
     expect(
       await screen.findByText(/任务书必须从学生档案的毕业届别提取四位年份/),
     ).toBeInTheDocument()
-    expect(screen.getByRole("combobox", { name: "毕业届别" })).toHaveFocus()
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "毕业届别" })).toHaveFocus())
     expect(api.checkDocument).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByRole("button", { name: "任务书" }))
-    fireEvent.click(screen.getByRole("button", { name: "合成任务书" }))
-    fireEvent.click(screen.getByRole("button", { name: "预览&导出" }))
     expect(api.generatePreview).not.toHaveBeenCalled()
   })
 
@@ -2814,6 +2823,63 @@ describe("M3 workbench persistence", () => {
     fireEvent.click(screen.getByRole("button", { name: /研究内容/ }))
 
     expect(await screen.findByText("图片：合成示意图")).toBeInTheDocument()
+    expect(screen.getByRole("textbox", { name: "研究内容" })).toBeInTheDocument()
+    expect(
+      screen.queryByText("本栏包含暂不支持编辑的内容块"),
+    ).not.toBeInTheDocument()
+  })
+
+  it("opens persisted tables and figure groups in the structured midterm editor", async () => {
+    const api = mockApi()
+    const midterm = documentFixture({
+      id: "midterm-with-image",
+      document_type: "midterm",
+      template_version: "0.1+local.20260830",
+      schema_version: "0.1",
+      title: "含图片的中期检查表",
+      content: {
+        metadata: {
+          title: "含图片的合成课题",
+          student_name: profile.full_name,
+          college: profile.college,
+          major: profile.major,
+          class_name: profile.class_name,
+          advisor: profile.advisor_name,
+          check_date: "2026-03-26",
+        },
+        sections: {
+          directory: [{ level: 1, number: "1", title: "绪论" }],
+          main_research_content: [
+            {
+              type: "data_table", style: "three_line", columns: [{ header: "项目" }, { header: "结果" }], rows: [{ cells: ["样本", "10"] }], caption: "测试表",
+            },
+            {
+              type: "figure_group", id: "fig-midterm_0001", chapter: 1, columns: 2,
+              caption: "测试组合图", items: [{ path: "image/a.png", alt: "子图 A" }, { path: "image/b.png", alt: "子图 B" }],
+            },
+          ],
+          progress: [
+            { type: "paragraph", runs: [{ text: "已完成合成验证。" }] },
+          ],
+        },
+      },
+    })
+    vi.mocked(api.openWorkspace).mockResolvedValue({
+      mode: "persistent",
+      profile,
+      profile_draft: null,
+      document: midterm,
+      documents: [midterm],
+    })
+    installApi(api)
+    renderApp()
+
+    await screen.findByRole("heading", { name: "2026届中期检查工作台" })
+    fireEvent.click(screen.getByRole("button", { name: /研究内容/ }))
+
+    expect(await screen.findByText("测试表")).toBeInTheDocument()
+    expect(screen.getByText("图 1-1 测试组合图")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "插入图表" })).toBeEnabled()
     expect(screen.getByRole("textbox", { name: "研究内容" })).toBeInTheDocument()
     expect(
       screen.queryByText("本栏包含暂不支持编辑的内容块"),

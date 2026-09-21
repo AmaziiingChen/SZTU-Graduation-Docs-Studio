@@ -15,6 +15,8 @@ import type {
   ParagraphInput,
   StructuredBodyValue,
   StructuredImageBlock,
+  StructuredFigureGroupBlock,
+  StructuredDataTableBlock,
   StructuredListBlock,
   StructuredRun,
 } from "@/types/structured-content"
@@ -220,6 +222,25 @@ function isStructuredImageBlock(value: unknown): value is StructuredImageBlock {
   )
 }
 
+export function isStructuredFigureGroupBlock(value: unknown): value is StructuredFigureGroupBlock {
+  if (!value || typeof value !== "object") return false
+  const block = value as StructuredFigureGroupBlock
+  return block.type === "figure_group" && Array.isArray(block.items) && block.items.length >= 2 && block.items.length <= 4 &&
+    block.items.every(item => isStructuredImageBlock({ ...item, type: "image" })) &&
+    isStructuredImageBlock({ type: "image", path: "group", alt: "group", id: block.id, chapter: block.chapter, caption: block.caption, source_citation_key: block.source_citation_key }) &&
+    isParagraphInput(block.caption) && (block.columns === undefined || (Number.isInteger(block.columns) && block.columns >= 1 && block.columns <= 4))
+}
+
+export function isStructuredDataTableBlock(value: unknown): value is StructuredDataTableBlock {
+  if (!value || typeof value !== "object") return false
+  const block = value as StructuredDataTableBlock
+  return block.type === "data_table" && (block.style === undefined || block.style === "grid" || block.style === "three_line") &&
+    Array.isArray(block.columns) && block.columns.length >= 2 && block.columns.length <= 8 &&
+    block.columns.every(col => col && isParagraphInput(col.header) && (col.alignment === undefined || ["left", "center", "right"].includes(col.alignment)) && (col.width_weight === undefined || (Number.isFinite(col.width_weight) && col.width_weight >= 0.25 && col.width_weight <= 10))) &&
+    Array.isArray(block.rows) && block.rows.length >= 1 && block.rows.length <= 40 && block.rows.every(row => row && Array.isArray(row.cells) && row.cells.length === block.columns.length && row.cells.every(isParagraphInput)) &&
+    (block.caption === undefined || isParagraphInput(block.caption))
+}
+
 /** Runtime guard for the text-only subset exposed by the workbench editor. */
 export function isStructuredBodyValue(value: unknown): value is StructuredBodyValue {
   return (
@@ -228,7 +249,7 @@ export function isStructuredBodyValue(value: unknown): value is StructuredBodyVa
       (block) =>
         isParagraphInput(block) ||
         isStructuredListBlock(block, 1) ||
-        isStructuredImageBlock(block),
+        isStructuredImageBlock(block) || isStructuredFigureGroupBlock(block) || isStructuredDataTableBlock(block),
     )
   )
 }
@@ -321,7 +342,7 @@ export function structuredFigureCatalog(
   const catalog: StructuredFigureCatalogItem[] = []
   for (const body of bodyGroups) {
     for (const block of body) {
-      if (!isStructuredImageBlock(block)) continue
+      if (!isStructuredImageBlock(block) && !isStructuredFigureGroupBlock(block)) continue
       const chapter = block.chapter ?? 1
       const sequence = (counters.get(chapter) ?? 0) + 1
       counters.set(chapter, sequence)
@@ -343,7 +364,7 @@ export function structuredFigureChapterCounts(
   const counts: Record<number, number> = {}
   for (const body of bodyGroups) {
     for (const block of body) {
-      if (!isStructuredImageBlock(block)) continue
+      if (!isStructuredImageBlock(block) && !isStructuredFigureGroupBlock(block)) continue
       const chapter = block.chapter ?? 1
       counts[chapter] = (counts[chapter] ?? 0) + 1
     }
@@ -351,7 +372,7 @@ export function structuredFigureChapterCounts(
   return counts
 }
 
-function managedFigurePreviewUrl(imagePath: string): string {
+export function managedFigurePreviewUrl(imagePath: string): string {
   const fileName = imagePath.split(/[\\/]/).at(-1) ?? ""
   return /^([a-f0-9]{64})\.(png|jpe?g)$/i.test(fileName)
     ? `sztu-asset://asset/${encodeURIComponent(fileName)}`
@@ -449,6 +470,11 @@ export function structuredBodyToTiptap(
             typeof block !== "string" &&
             (block.type === "ordered_list" || block.type === "unordered_list")
           if (isList) return listToTiptap(block, 1)
+          if (isStructuredDataTableBlock(block)) return { type: "dataTableBlock", attrs: { block } }
+          if (isStructuredFigureGroupBlock(block)) return { type: "figureBlock", attrs: {
+            figureId: block.id ?? "", chapter: block.chapter ?? 1, groupItems: block.items, groupColumns: block.columns ?? block.items.length,
+            caption: block.caption, captionText: paragraphPlainText(block.caption), sourceCitationKey: block.source_citation_key ?? "",
+          } }
           if (isStructuredImageBlock(block)) return imageToTiptap(block)
           if (isParagraphInput(block)) {
             return paragraphToTiptap(block as ParagraphInput)
@@ -568,8 +594,13 @@ function paragraphFromTiptap(node: JSONContent): ParagraphInput {
   }
 }
 
-function imageFromTiptap(node: JSONContent): StructuredImageBlock {
+function imageFromTiptap(node: JSONContent): StructuredImageBlock | StructuredFigureGroupBlock {
   const attrs = node.attrs ?? {}
+  if (Array.isArray(attrs.groupItems)) return {
+    type: "figure_group", items: attrs.groupItems, columns: Number(attrs.groupColumns),
+    ...(attrs.figureId ? { id: String(attrs.figureId) } : {}), chapter: Number(attrs.chapter ?? 1), caption: attrs.caption,
+    ...(attrs.sourceCitationKey ? { source_citation_key: String(attrs.sourceCitationKey) } : {}),
+  }
   const image: StructuredImageBlock = {
     type: "image",
     path: String(attrs.path ?? ""),
@@ -650,6 +681,11 @@ export function tiptapToStructuredBody(document: JSONContent): StructuredBodyVal
       if (paragraphHasText(paragraph)) blocks.push(paragraph)
       continue
     }
+    if (node.type === "dataTableBlock") {
+      if (!isStructuredDataTableBlock(node.attrs?.block)) throw new TypeError("表格数据无效。")
+      blocks.push(node.attrs.block)
+      continue
+    }
     if (node.type === "figureBlock") {
       blocks.push(imageFromTiptap(node))
       continue
@@ -709,7 +745,7 @@ function isRestrictedDocument(
       }
     }
 
-    if (node.type.name === "figureBlock") {
+    if (node.type.name === "figureBlock" || node.type.name === "dataTableBlock") {
       if (mode !== "body") valid = false
       return
     }
@@ -803,6 +839,8 @@ function createFigureBlock(numbering: FigureNumberingContext) {
     draggable: true,
     addAttributes() {
       return {
+        groupItems: { default: null },
+        groupColumns: { default: 2 },
         figureId: { default: "" },
         path: { default: "" },
         previewUrl: { default: "" },
@@ -816,16 +854,26 @@ function createFigureBlock(numbering: FigureNumberingContext) {
       }
     },
     parseHTML() {
-      return [{ tag: "figure[data-figure-id]" }]
+      return [{ tag: "figure[data-figure-id]", getAttrs: element => {
+        try {
+          const block = JSON.parse(element.getAttribute("data-figure-block") ?? "null")
+          if (!isStructuredImageBlock(block) && !isStructuredFigureGroupBlock(block)) return false
+          return structuredBodyToTiptap([block]).content![0].attrs ?? false
+        } catch { return false }
+      } }]
     },
     renderHTML({ node }) {
       const caption = `${node.attrs.label}${node.attrs.captionText ? ` ${node.attrs.captionText}` : ""}`
       const source = node.attrs.sourceCitationKey ? ` [${node.attrs.sourceCitationKey}]` : ""
       const children: unknown[] = [
         "figure",
-        { "data-figure-id": node.attrs.figureId, "data-chapter": node.attrs.chapter },
+        { "data-figure-id": node.attrs.figureId, "data-chapter": node.attrs.chapter, "data-figure-block": JSON.stringify(imageFromTiptap(node.toJSON())) },
       ]
-      if (node.attrs.previewUrl) {
+      if (Array.isArray(node.attrs.groupItems)) {
+        const classes = ["", "grid-cols-1", "grid-cols-2", "grid-cols-3", "grid-cols-4"]
+        children.push(["div", { class: `grid gap-3 ${classes[node.attrs.groupColumns] ?? "grid-cols-2"}` }, ...node.attrs.groupItems.map((item: StructuredFigureGroupBlock["items"][number], index: number) =>
+          ["div", {}, ["img", { src: managedFigurePreviewUrl(item.path), alt: item.alt, class: "max-h-64 w-full object-contain" }], ["p", { class: "text-center text-sm" }, `(${String.fromCharCode(97 + index)}) ${paragraphPlainText(item.caption)}`]])])
+      } else if (node.attrs.previewUrl) {
         children.push(["img", { src: node.attrs.previewUrl, alt: node.attrs.alt }])
       } else {
         children.push(["div", { "data-figure-placeholder": "" }, `图片：${node.attrs.alt}`])
@@ -838,6 +886,26 @@ function createFigureBlock(numbering: FigureNumberingContext) {
     },
   })
 }
+
+const DataTableBlock = Node.create({
+  name: "dataTableBlock", group: "block", atom: true, selectable: true, draggable: true,
+  addAttributes() { return { block: { default: null } } },
+  parseHTML() { return [{ tag: "figure[data-table-block]", getAttrs: element => {
+    try {
+      const block = JSON.parse(element.getAttribute("data-table-block") ?? "null")
+      return isStructuredDataTableBlock(block) ? { block } : false
+    } catch { return false }
+  } }] },
+  renderHTML({ node }) {
+    const block = node.attrs.block as StructuredDataTableBlock
+    const threeLine = block.style === "three_line"
+    return ["figure", { "data-table-block": JSON.stringify(block), class: "overflow-x-auto" },
+      ["table", { class: "w-full border-collapse text-sm" },
+        ["thead", {}, ["tr", {}, ...block.columns.map(col => ["th", { class: threeLine ? "border-y p-2" : "border p-2" }, paragraphPlainText(col.header)])]],
+        ["tbody", {}, ...block.rows.map((row, i) => ["tr", {}, ...row.cells.map((cell, j) => ["td", { class: threeLine ? `p-2 ${i === block.rows.length - 1 ? "border-b" : ""}` : "border p-2", style: `text-align:${block.columns[j].alignment ?? "left"}` }, paragraphPlainText(cell)])])]],
+      ["figcaption", {}, paragraphPlainText(block.caption)]] as never
+  },
+})
 
 const FigureReference = Node.create({
   name: "figureReference",
@@ -948,7 +1016,7 @@ export function createRestrictedEditorExtensions(
       underline: false,
     }),
     ...(listsEnabled ? [ContractListMarker] : []),
-    ...(listsEnabled ? [createFigureBlock(figureNumbering), FigureReference] : []),
+    ...(listsEnabled ? [createFigureBlock(figureNumbering), DataTableBlock, FigureReference] : []),
     Subscript,
     Superscript,
     FormattingMarks,

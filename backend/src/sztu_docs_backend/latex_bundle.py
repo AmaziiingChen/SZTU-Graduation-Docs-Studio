@@ -49,6 +49,22 @@ ABSOLUTE_PATH_PATTERNS = (
     re.compile(rb"\\\\[^\s\\]+\\[^\s]+"),
 )
 FIXED_ZIP_TIME = (1980, 1, 1, 0, 0, 0)
+OPTIONAL_SOURCE_FILES = ("proposal-typography.tex", "sztu-process-form.tex")
+
+
+def _check_tex_dependencies(files: dict[str, bytes]) -> None:
+    """Check literal input/include dependencies in the generated source contract."""
+    for name, payload in files.items():
+        if not name.endswith(".tex"):
+            continue
+        source = re.sub(r"(?<!\\)%[^\n]*", "", payload.decode("utf-8"))
+        for dependency in re.findall(r"\\(?:input|include)\s*\{([^{}]+)\}", source):
+            target = dependency.strip()
+            if not target.endswith(".tex"):
+                target += ".tex"
+            if target not in files:
+                _raise("LATEX_BUNDLE_INCOMPLETE", "LaTeX 源码包缺少引用的依赖文件。", file=name, dependency=target)
+
 PORTABLE_FONTS_TEX = """% Generated portable configuration; font binaries are not bundled.
 % You may place legally obtained simsun.ttf and SimHei.ttf in ./fonts/.
 \\IfFileExists{fonts/simsun.ttf}{
@@ -328,6 +344,10 @@ def build_latex_bundle(
             "midterm": MIDTERM_SAFE_SOURCE_FILES,
             "task_book": TASK_BOOK_SAFE_SOURCE_FILES,
         }[document_type]
+        source_files += tuple(
+            name for name in OPTIONAL_SOURCE_FILES
+            if (generated / name).exists() or (generated / name).is_symlink()
+        )
         font_config_name = {
             "proposal": "proposal-fonts.tex",
             "midterm": "midterm-fonts.tex",
@@ -363,6 +383,7 @@ def build_latex_bundle(
                 payload = source.read_bytes()
             _check_content(name, payload)
             files[name] = payload
+        _check_tex_dependencies(files)
         if document_type == "task_book":
             assets_dir = generated / "assets"
             if assets_dir.exists():

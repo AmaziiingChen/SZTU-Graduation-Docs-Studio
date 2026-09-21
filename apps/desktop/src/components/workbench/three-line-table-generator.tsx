@@ -1,5 +1,7 @@
+import { AnimatedActionIcon } from "@/components/workbench/animated-action-icon"
+import { InfoIcon as InfoIconAnimated } from "@/components/ui/animateicons/info"
 import { useMemo } from "react"
-import { InfoIcon } from "lucide-react"
+
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -83,7 +85,7 @@ export function ThreeLineTableGenerator({
                     <TooltipTrigger
                       render={<Button type="button" variant="ghost" size="icon-sm" aria-label="三线表使用说明" />}
                     >
-                      <InfoIcon />
+                      <AnimatedActionIcon icon={InfoIconAnimated} />
                     </TooltipTrigger>
                     <TooltipContent>
                       粘贴 Excel、WPS 表格或 CSV 数据，生成可直接放入论文的 booktabs 源码。

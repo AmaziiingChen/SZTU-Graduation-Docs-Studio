@@ -579,7 +579,8 @@ describe("StructuredContentEditor", () => {
       "focus-within:ring-3",
     )
     expect(screen.getByRole("textbox", { name: "沉浸式正文" })).toHaveClass(
-      "min-h-full",
+      "flex-1",
+      "cursor-text",
     )
     expect(container.querySelector('[data-slot="scroll-area"]')).toHaveClass(
       "min-h-0",

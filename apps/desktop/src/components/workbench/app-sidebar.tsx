@@ -1,10 +1,9 @@
+import { RocketIcon } from "@/components/ui/rocket"
+import { QrCodeIcon } from "@/components/ui/qr-code-icon"
+import { DownloadIcon } from "@/components/ui/download"
+import { PaletteIcon } from "@/components/ui/palette"
+import { useSidebarIconAnimation } from "@/hooks/use-sidebar-icon-animation"
 import * as React from "react"
-import {
-  ClipboardCheckIcon,
-  LibraryBigIcon,
-  MessageCircleIcon,
-  PaletteIcon,
-} from "lucide-react"
 
 import maintainerWechatQr from "@/assets/maintainer-wechat-qr.jpg"
 import sztuLogo from "@/assets/sztu-logo.svg"
@@ -83,6 +82,7 @@ export function AppSidebar({
   disabled: boolean
   inspectionDisabled: boolean
 }) {
+  const animation = useSidebarIconAnimation()
   const { isMobile, setOpenMobile } = useSidebar()
   const [contactOpen, setContactOpen] = React.useState(false)
   const finishNavigation = (navigate: () => void) => {
@@ -147,46 +147,50 @@ export function AppSidebar({
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
+              {...animation.row("tools", disabled)}
               tooltip="效率工具"
               isActive={toolsActive}
               disabled={disabled}
               className="pl-8"
               onClick={() => finishNavigation(onSelectTools)}
             >
-              <LibraryBigIcon />
+              <RocketIcon {...animation.icon("tools")} />
               <span>效率工具</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
+              {...animation.row("appearance")}
               tooltip="主题外观"
               isActive={appearanceActive}
               className="pl-8"
               onClick={() => finishNavigation(onSelectAppearance)}
             >
-              <PaletteIcon />
+              <PaletteIcon {...animation.icon("appearance")} />
               <span>主题外观</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
+              {...animation.row("contact", false)}
               tooltip="联系作者"
               className="pl-8"
               onClick={() => setContactOpen(true)}
             >
-              <MessageCircleIcon />
+              <QrCodeIcon {...animation.icon("contact")} />
               <span>联系作者</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
+              {...animation.row("history", inspectionDisabled)}
               tooltip="导出记录"
               isActive={inspectionActive}
               disabled={inspectionDisabled}
               className="pl-8"
               onClick={() => finishNavigation(onSelectInspection)}
             >
-              <ClipboardCheckIcon />
+              <DownloadIcon {...animation.icon("history")} />
               <span>导出记录</span>
             </SidebarMenuButton>
           </SidebarMenuItem>

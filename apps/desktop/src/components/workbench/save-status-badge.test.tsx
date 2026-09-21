@@ -10,12 +10,9 @@ describe("SaveStatusBadge", () => {
     render(<SaveStatusBadge state="saved" />)
 
     expect(screen.getByLabelText("保存状态：已保存")).toHaveClass(
-      "border-emerald-200",
-      "bg-emerald-50",
-      "text-emerald-700",
-      "dark:border-emerald-800/60",
-      "dark:bg-emerald-950/40",
-      "dark:text-emerald-300",
+      "border-transparent",
+      "bg-emerald-500",
+      "text-white",
     )
   })
 
@@ -27,7 +24,7 @@ describe("SaveStatusBadge", () => {
       "text-destructive",
     )
     expect(screen.getByLabelText("保存状态：保存失败")).not.toHaveClass(
-      "bg-emerald-50",
+      "bg-emerald-500",
     )
   })
 

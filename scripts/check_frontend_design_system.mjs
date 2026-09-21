@@ -45,14 +45,7 @@ const latexSourceCardPath = path.join(
 
 const requiredFontStack =
   "--font-sans: 'Geist Variable', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans SC', system-ui, sans-serif;"
-const approvedSavedStateClasses = new Set([
-  "border-emerald-200",
-  "bg-emerald-50",
-  "text-emerald-700",
-  "dark:border-emerald-800/60",
-  "dark:bg-emerald-950/40",
-  "dark:text-emerald-300",
-])
+const approvedSavedStateClasses = new Set(["bg-emerald-500"])
 const approvedExportHistoryStateClasses = new Set([
   "border-emerald-200",
   "bg-emerald-50",

@@ -1,4 +1,9 @@
-import { CopyIcon, DownloadIcon, ImageDownIcon, ImageIcon } from "lucide-react"
+import { DownloadIcon as DownloadIconAnimated } from "@/components/ui/download"
+import { CopyIcon as CopyIconAnimated } from "@/components/ui/copy"
+import { AnimatedActionIcon } from "@/components/workbench/animated-action-icon"
+import { useActionFeedback } from "@/hooks/use-action-feedback"
+import { ActionFeedbackIcon } from "@/components/workbench/action-feedback-icon"
+import { ImageIcon } from "@/components/ui/image-icon"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -65,8 +70,10 @@ export function TablePreviewCard({
   const imageOptions = { rows, caption, headerRows, alignments, style: variant } as const
 
   const copyPng = async () => {
+    reset("copyPng")
     try {
       await copyTablePreviewPng(imageOptions)
+      complete("copyPng")
       toast.success("表格 PNG 已复制，可直接粘贴到其他应用。")
     } catch {
       toast.error("当前系统无法直接复制图片，请使用“下载 PNG”。")
@@ -74,18 +81,24 @@ export function TablePreviewCard({
   }
 
   const downloadPng = async () => {
+    reset("downloadPng")
     try {
       await downloadTablePreviewPng(imageOptions, pngFilename)
-      toast.success("表格 PNG 已下载。")
+      complete("downloadPng")
+      toast.success("文件已准备好，已请求下载 PNG。")
     } catch {
       toast.error("PNG 生成失败，请检查表格内容后重试。")
     }
   }
 
+  const { completed, complete, reset } = useActionFeedback()
+
   const copyLatex = async () => {
+    reset("copyLatex")
     if (!latex) return
     try {
       await writeClipboardText(latex)
+      complete("copyLatex")
       toast.success("LaTeX 源码已复制。")
     } catch {
       toast.error("无法访问剪贴板，请在“查看 LaTeX”中手动复制。")
@@ -93,6 +106,7 @@ export function TablePreviewCard({
   }
 
   const downloadLatex = () => {
+    reset("downloadLatex")
     if (!latex) return
     const blob = new Blob([latex], { type: "text/plain;charset=utf-8" })
     const url = URL.createObjectURL(blob)
@@ -100,6 +114,8 @@ export function TablePreviewCard({
     anchor.href = url
     anchor.download = filename
     anchor.click()
+    complete("downloadLatex")
+    toast.success("文件已准备好，已请求下载。")
     URL.revokeObjectURL(url)
   }
 
@@ -112,20 +128,20 @@ export function TablePreviewCard({
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
           <Button type="button" size="sm" variant="outline" disabled={!valid} onClick={() => void copyPng()}>
-            <ImageIcon />
+            <ActionFeedbackIcon token={completed.copyPng}><AnimatedActionIcon icon={ImageIcon} /></ActionFeedbackIcon>
             复制 PNG
           </Button>
           <Button type="button" size="sm" variant="outline" disabled={!valid} onClick={() => void downloadPng()}>
-            <ImageDownIcon />
+            <ActionFeedbackIcon token={completed.downloadPng}><AnimatedActionIcon icon={DownloadIconAnimated} /></ActionFeedbackIcon>
             下载 PNG
           </Button>
           <LatexSourceSheet latex={latex} packages={packages} />
           <Button type="button" size="sm" variant="outline" disabled={!latex} onClick={() => void copyLatex()}>
-            <CopyIcon />
+            <ActionFeedbackIcon token={completed.copyLatex}><AnimatedActionIcon icon={CopyIconAnimated} /></ActionFeedbackIcon>
             复制源码
           </Button>
           <Button type="button" size="sm" disabled={!latex} onClick={downloadLatex}>
-            <DownloadIcon />
+            <ActionFeedbackIcon token={completed.downloadLatex}><AnimatedActionIcon icon={DownloadIconAnimated} /></ActionFeedbackIcon>
             下载源码
           </Button>
         </div>

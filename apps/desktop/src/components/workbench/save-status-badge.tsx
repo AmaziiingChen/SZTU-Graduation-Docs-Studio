@@ -1,3 +1,5 @@
+import { FileCheckIcon } from "@/components/ui/file-check-icon"
+import { AnimatedActionIcon } from "@/components/workbench/animated-action-icon"
 import {
   LoaderCircleIcon,
   SaveIcon,
@@ -23,10 +25,9 @@ const saveStateLabels: Record<SaveState, string> = {
   conflict: "修订冲突",
 }
 
-// The saved state is the only approved non-shadcn palette exception in the workbench.
-// Keep the complete light/dark treatment here so other business views do not fork it.
+// User-approved: match the section completion mark in both themes.
 const savedStateClassName =
-  "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800/60 dark:bg-emerald-950/40 dark:text-emerald-300"
+  "border-transparent bg-emerald-500 text-white"
 
 function SaveStatusBadge({ state }: { state: SaveState }) {
   const label = saveStateLabels[state]
@@ -54,6 +55,8 @@ function SaveStatusBadge({ state }: { state: SaveState }) {
           <LoaderCircleIcon className="animate-spin motion-reduce:animate-none" />
         ) : isError ? (
           <TriangleAlertIcon />
+        ) : state === "saved" ? (
+          <AnimatedActionIcon icon={FileCheckIcon} size={12} playOnMount />
         ) : (
           <SaveIcon />
         )}

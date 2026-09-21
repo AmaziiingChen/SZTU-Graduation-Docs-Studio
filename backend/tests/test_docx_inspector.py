@@ -277,6 +277,32 @@ def _document_xml(proposal: dict) -> bytes:
     return ElementTree.tostring(document, encoding="utf-8", xml_declaration=True)
 
 
+def _split_task_book_labels(xml: bytes) -> bytes:
+    """Current template: nature/source labels each have a separate cell."""
+    document = ElementTree.fromstring(xml)
+    main = document.find(f"{W}body").findall(f"{W}tbl")[-1]
+    topic = main.findall(f"{W}tr")[4].find(f"{W}tc")
+    nature = next(p for p in topic.findall(f"{W}p") if "选题性质：" in "".join(p.itertext()))
+    nature_table = _nested_table(topic, ["选题性质：", ""])
+    for text in nature.iter(f"{W}t"):
+        text.text = (text.text or "").replace("选题性质：", "")
+    target = nature_table.findall(f"{W}tr/{W}tc")[1]
+    target.remove(target.find(f"{W}p"))
+    target.append(nature)
+    topic.remove(nature)
+    topic.remove(nature_table)
+    topic.insert(0, nature_table)
+    research = topic.findall(f"{W}tbl")[1]
+    row = research.find(f"{W}tr")
+    for text in row[0].iter(f"{W}t"):
+        text.text = (text.text or "").replace("选题来源：", "")
+    label = ElementTree.Element(f"{W}tc")
+    _append_paragraph(label, "选题来源：")
+    row.insert(0, label)
+    _tag(research.find(f"{W}tblGrid"), "gridCol", w="1000")
+    return ElementTree.tostring(document, encoding="utf-8")
+
+
 def task_book_fixture() -> dict:
     return {
         "schema_version": "0.1",
@@ -687,7 +713,7 @@ class DocxInspectorTests(unittest.TestCase):
                         "source": source,
                     }
                     path = Path(root) / f"{name}.docx"
-                    _write_docx(path, _task_book_document_xml(task_book))
+                    _write_docx(path, _split_task_book_labels(_task_book_document_xml(task_book)))
                     result = inspect_docx(
                         path,
                         task_book,
@@ -698,6 +724,21 @@ class DocxInspectorTests(unittest.TestCase):
                         result["details"]["task_book_checkbox_symbols"],
                         8,
                     )
+
+    def test_split_label_task_book_rejects_missing_nature_cell(self) -> None:
+        task_book = task_book_fixture()
+        xml = _split_task_book_labels(_task_book_document_xml(task_book))
+        document = ElementTree.fromstring(xml)
+        main = document.find(f"{W}body").findall(f"{W}tbl")[-1]
+        topic = main.findall(f"{W}tr")[4].find(f"{W}tc")
+        row = topic.find(f"{W}tbl/{W}tr")
+        row.remove(row[-1])
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / "invalid.docx"
+            _write_docx(path, ElementTree.tostring(document))
+            with self.assertRaises(DocxInspectionError) as caught:
+                inspect_docx(path, task_book, document_type="task_book")
+        self.assertEqual(caught.exception.code, "DOCX_STRUCTURE_MISMATCH")
 
     def test_synthetic_task_book_rejects_mutated_cover_year(self) -> None:
         task_book = task_book_fixture()

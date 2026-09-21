@@ -1,4 +1,5 @@
-import { UserRoundIcon } from "lucide-react"
+import { IdCardIcon } from "@/components/ui/id-card"
+import { useSidebarIconAnimation } from "@/hooks/use-sidebar-icon-animation"
 
 import {
   SidebarGroup,
@@ -17,18 +18,21 @@ export function NavMain({
   disabled: boolean
   onSelectProfile: () => void
 }) {
+  const animation = useSidebarIconAnimation()
   return (
     <SidebarGroup>
       <SidebarGroupContent className="flex flex-col gap-2">
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
+              {...animation.row("profile", disabled)}
               tooltip="学生档案"
+              className="pl-8"
               isActive={profileActive}
               disabled={disabled}
               onClick={onSelectProfile}
             >
-              <UserRoundIcon />
+              <IdCardIcon {...animation.icon("profile")} />
               <span>学生档案</span>
             </SidebarMenuButton>
           </SidebarMenuItem>

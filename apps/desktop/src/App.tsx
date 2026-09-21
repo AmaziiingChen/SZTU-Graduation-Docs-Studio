@@ -1,3 +1,19 @@
+import { celebrateExportSuccess } from "@/lib/export-celebration"
+import { useEditableSelection } from "@/hooks/use-editable-selection"
+import { SaveIcon as SaveIconAnimated } from "@/components/ui/animateicons/save"
+import { EllipsisIcon } from "@/components/ui/animateicons/ellipsis"
+import { DownloadIcon } from "@/components/ui/download"
+import { FolderOpenIcon as FolderOpenIconAnimated } from "@/components/ui/folder-open"
+import { FileTextIcon as FileTextIconAnimated } from "@/components/ui/file-text"
+import { RefreshCWIcon as RefreshCwIconAnimated } from "@/components/ui/refresh-cw"
+import { useActionFeedback } from "@/hooks/use-action-feedback"
+import { ActionFeedbackIcon } from "@/components/workbench/action-feedback-icon"
+import { ArrowUpIcon } from "@/components/ui/arrow-up"
+import { ArrowDownIcon } from "@/components/ui/arrow-down"
+import { CalendarDaysIcon } from "@/components/ui/calendar-days"
+import { PlusIcon } from "@/components/ui/plus"
+import { DeleteIcon } from "@/components/ui/delete"
+import { AnimatedActionIcon } from "@/components/workbench/animated-action-icon"
 import {
   useCallback,
   useEffect,
@@ -7,25 +23,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react"
-import {
-  ArrowDownIcon,
-  ArrowUpIcon,
-  CalendarIcon,
-  ChevronDownIcon,
-  FileCheck2Icon,
-  FileClockIcon,
-  FileTextIcon,
-  FolderOpenIcon,
-  LoaderCircleIcon,
-  MoreHorizontalIcon,
-  PackageCheckIcon,
-  PlusIcon,
-  RefreshCwIcon,
-  SaveIcon,
-  Trash2Icon,
-  TriangleAlertIcon,
-  UserRoundIcon,
-} from "lucide-react"
+import { ChevronDownIcon, LoaderCircleIcon, PackageCheckIcon, TriangleAlertIcon, UserRoundIcon } from "lucide-react"
 import { format, isValid, parseISO } from "date-fns"
 import { zhCN } from "date-fns/locale"
 import { ThinkingOrb } from "thinking-orbs"
@@ -584,6 +582,7 @@ function structuredBodyHasText(value: StructuredBodyValue): boolean {
     if (paragraphHasText(block)) return true
     const record = recordValue(block)
     if (record.type === "image") return textValue(record.path).trim().length > 0
+    if (record.type === "data_table" || record.type === "figure_group") return isStructuredBodyValue([block])
     return (
       (record.type === "ordered_list" || record.type === "unordered_list") &&
       Array.isArray(record.items) &&
@@ -1653,7 +1652,7 @@ function DateField({
             />
           }
         >
-          <CalendarIcon />
+          <AnimatedActionIcon icon={CalendarDaysIcon} />
           {selectedDate ? (
             format(selectedDate, "yyyy年M月d日", { locale: zhCN })
           ) : (
@@ -1696,6 +1695,7 @@ function StructuredBodyField({
   onSelectionChange,
   fillHeight = false,
   enableFigures = false,
+  enableDocumentTools = false,
   figureChapters,
   figureCatalog,
   figureNumbering,
@@ -1712,6 +1712,7 @@ function StructuredBodyField({
   onSelectionChange?: (selection: EditorSelectionSnapshot) => void
   fillHeight?: boolean
   enableFigures?: boolean
+  enableDocumentTools?: boolean
   figureChapters?: FigureChapterOption[]
   figureCatalog?: StructuredFigureCatalogItem[]
   figureNumbering?: FigureNumberingContext
@@ -1746,6 +1747,7 @@ function StructuredBodyField({
           onSelectionChange={onSelectionChange}
           fillHeight={fillHeight}
           enableFigures={enableFigures}
+          enableDocumentTools={enableDocumentTools}
           figureChapters={figureChapters}
           figureCatalog={figureCatalog}
           figureNumbering={figureNumbering}
@@ -2213,7 +2215,7 @@ function StudentProfileEditor({
                         disabled={disabled || index === 0}
                         onClick={() => moveAdvisorEntry(index, -1)}
                       >
-                        <ArrowUpIcon />
+                        <AnimatedActionIcon icon={ArrowUpIcon} />
                       </Button>
                       <Button
                         type="button"
@@ -2223,7 +2225,7 @@ function StudentProfileEditor({
                         disabled={disabled || index === advisorEntries.length - 1}
                         onClick={() => moveAdvisorEntry(index, 1)}
                       >
-                        <ArrowDownIcon />
+                        <AnimatedActionIcon icon={ArrowDownIcon} />
                       </Button>
                       <Button
                         type="button"
@@ -2233,7 +2235,7 @@ function StudentProfileEditor({
                         disabled={disabled || advisorEntries.length === 1}
                         onClick={() => removeAdvisorEntry(index)}
                       >
-                        <Trash2Icon />
+                        <AnimatedActionIcon icon={DeleteIcon} />
                       </Button>
                     </div>
                   </div>
@@ -2246,7 +2248,7 @@ function StudentProfileEditor({
                 disabled={disabled}
                 onClick={addAdvisorEntry}
               >
-                <PlusIcon />
+                <AnimatedActionIcon icon={PlusIcon} />
                 添加指导教师
               </Button>
             </div>
@@ -2430,7 +2432,7 @@ function DocumentEditor({
             <AlertDescription className="grid gap-3">
               <span>{workspace.message}</span>
               <Button variant="outline" size="sm" onClick={onRetryLoad}>
-                <RefreshCwIcon />
+                <AnimatedActionIcon icon={RefreshCwIconAnimated} />
                 重新载入
               </Button>
             </AlertDescription>
@@ -2444,7 +2446,7 @@ function DocumentEditor({
             <AlertDescription className="grid gap-3">
               <span>内容仍保留在当前窗口中，请检查文档引擎后重试。</span>
               <Button variant="outline" size="sm" onClick={onRetrySave}>
-                <SaveIcon />
+                <AnimatedActionIcon icon={SaveIconAnimated} />
                 重试保存
               </Button>
             </AlertDescription>
@@ -2458,7 +2460,7 @@ function DocumentEditor({
             <AlertDescription className="grid gap-3">
               <span>另一份更新已先保存。请重新载入工作区，再决定如何处理当前内容。</span>
               <Button variant="outline" size="sm" onClick={onRetryLoad}>
-                <RefreshCwIcon />
+                <AnimatedActionIcon icon={RefreshCwIconAnimated} />
                 重新载入
               </Button>
             </AlertDescription>
@@ -2709,6 +2711,7 @@ function DocumentEditor({
                   onChange={onStructuredBodyChange}
                   disabled={disabled}
                   fillHeight
+                  enableDocumentTools
                   enableFigures
                   figureChapters={figureChapters}
                   figureCatalog={figureCatalog}
@@ -2725,6 +2728,7 @@ function DocumentEditor({
                   onChange={onStructuredBodyChange}
                   disabled={disabled}
                   fillHeight
+                  enableDocumentTools
                   enableFigures
                   figureChapters={figureChapters}
                   figureCatalog={figureCatalog}
@@ -2881,7 +2885,7 @@ function PaginatedPreviewPanel({
         !blockedMessage &&
         activePane !== "profile" ? (
           <Alert>
-            <FileTextIcon />
+            <AnimatedActionIcon icon={FileTextIconAnimated} />
             <AlertTitle>正在准备预览</AlertTitle>
             <AlertDescription>
               工作台将自动保存并检查当前内容，然后生成正式分页预览。
@@ -2941,7 +2945,7 @@ function PaginatedPreviewPanel({
               onClick={onGenerate}
               disabled={disabled}
             >
-              <RefreshCwIcon />
+              <AnimatedActionIcon icon={RefreshCwIconAnimated} />
               重新生成预览
             </Button>
           </>
@@ -2963,7 +2967,7 @@ function PaginatedPreviewPanel({
                   onClick={onGenerate}
                   disabled={disabled}
                 >
-                  <RefreshCwIcon />
+                  <AnimatedActionIcon icon={RefreshCwIconAnimated} />
                   重新生成预览
                 </Button>
               </>
@@ -3060,7 +3064,7 @@ function InspectionPanel({
                 {environment.status === "loading" ? (
                   <LoaderCircleIcon className="animate-spin" />
                 ) : (
-                  <RefreshCwIcon />
+                  <AnimatedActionIcon icon={RefreshCwIconAnimated} />
                 )}
               </Button>
             </div>
@@ -3162,7 +3166,7 @@ function InspectionPanel({
                 {history.status === "loading" ? (
                   <LoaderCircleIcon className="animate-spin" />
                 ) : (
-                  <RefreshCwIcon />
+                  <AnimatedActionIcon icon={RefreshCwIconAnimated} />
                 )}
               </Button>
             </div>
@@ -3233,7 +3237,7 @@ function InspectionPanel({
                                   />
                                 }
                               >
-                                <MoreHorizontalIcon />
+                                <AnimatedActionIcon icon={EllipsisIcon} />
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end" className="w-44">
                                 <DropdownMenuItem
@@ -3243,7 +3247,7 @@ function InspectionPanel({
                                     onRevealArtifact(availableArtifact.artifact_id)
                                   }
                                 >
-                                  <FolderOpenIcon />
+                                  <AnimatedActionIcon icon={FolderOpenIconAnimated} />
                                   打开本地位置
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
@@ -3256,7 +3260,7 @@ function InspectionPanel({
                                   }
                                   onClick={() => setDeleteTarget(job)}
                                 >
-                                  <Trash2Icon />
+                                  <AnimatedActionIcon icon={DeleteIcon} />
                                   删除记录
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
@@ -3317,6 +3321,8 @@ function InspectionPanel({
 }
 
 export default function App() {
+  useEditableSelection()
+  const exportFeedback = useActionFeedback()
   const isMobile = useIsMobile()
   const [draft, setDraft] = useState(emptyDraft)
   const [activeSections, setActiveSections] = useState<Record<DocumentType, string>>(
@@ -3477,6 +3483,7 @@ export default function App() {
   const saving = useRef(false)
   const documentViewStates = useMemo(() => new DocumentViewStateStore(), [])
   const pendingCheckTarget = useRef<CheckNavigationTarget | null>(null)
+  const previewCheckTarget = useRef<CheckNavigationTarget | null>(null)
   const activeViewStateKey = activeDocumentId
     ? `${activeDocumentId}:${activeSection}`
     : ""
@@ -3496,6 +3503,8 @@ export default function App() {
   const navigateToCheck = useCallback(
     (target: CheckNavigationTarget) => {
       pendingCheckTarget.current = target
+      previewCheckTarget.current = target
+      setPreviewOpen(false)
       if (target.sectionId) {
         setActiveSections((current) => ({
           ...current,
@@ -3511,12 +3520,15 @@ export default function App() {
     const target = pendingCheckTarget.current
     if (
       !target ||
+      previewOpen ||
       activePane !== target.pane ||
       (target.sectionId !== undefined && activeSection !== target.sectionId)
     ) {
       return
     }
-    const frame = window.requestAnimationFrame(() => {
+    // Effects run after the destination field is committed. Do not depend on an
+    // animation frame: validation navigation must also work in hidden windows.
+    {
       const root = window.document.querySelector<HTMLElement>(target.selector)
       if (!root) return
       const focusable = root.matches(
@@ -3529,9 +3541,8 @@ export default function App() {
       focusable?.focus()
       root.scrollIntoView?.({ block: "center" })
       pendingCheckTarget.current = null
-    })
-    return () => window.cancelAnimationFrame(frame)
-  }, [activePane, activeSection])
+    }
+  }, [activePane, activeSection, previewOpen])
 
   const recordTelemetry = useCallback((input: TelemetryUsageEvent) => {
     const api = getDesktopApi()
@@ -4303,6 +4314,7 @@ export default function App() {
       cancelRequested: false,
     })
     try {
+      exportFeedback.reset("export")
       const receipt = await api.exportDocument({
         requestId: pending.requestId,
         documentId: pending.documentId,
@@ -4313,6 +4325,7 @@ export default function App() {
         preflightToken: pending.preflightToken,
       })
       setExportState({ status: "succeeded", receipt })
+      exportFeedback.complete("export")
       recordTelemetry({
         name: "document_action",
         action: "export",
@@ -4336,10 +4349,11 @@ export default function App() {
         })
         .catch(() => undefined)
       toast.success(
-        `已导出 ${receipt.artifacts
+        `文件已准备好，已导出 ${receipt.artifacts
           .map((artifact) => artifact.format.toUpperCase())
           .join("、")}。`,
       )
+      celebrateExportSuccess()
       await refreshHistory()
     } catch (error) {
       const cancelled = errorHasCode(error, "EXPORT_CANCELLED")
@@ -4582,6 +4596,7 @@ export default function App() {
               : "请先填写全部必填字段，并确保选题意义至少有两个段落"
 
   const openPreviewAndExport = () => {
+    previewCheckTarget.current = null
     setPreviewOpen(true)
     if (previewReady) {
       showPreviewAcceptanceBoundary()
@@ -4821,24 +4836,6 @@ export default function App() {
             activePane === "document" ? (
               <>
                 <Button
-                  variant="outline"
-                  size={isMobile ? "icon-sm" : "sm"}
-                  aria-label="检查内容"
-                  title="检查内容"
-                  onClick={() => void checkContent()}
-                  disabled={
-                    workspaceDisabled ||
-                    !document ||
-                    saveState === "loading" ||
-                    saveState === "saving" ||
-                    saveState === "conflict" ||
-                    exportState.status === "exporting"
-                  }
-                >
-                  <FileCheck2Icon />
-                  {isMobile ? null : <span>检查内容</span>}
-                </Button>
-                <Button
                   size={isMobile ? "icon-sm" : "sm"}
                   aria-label="预览&导出"
                   title="预览&导出"
@@ -4852,7 +4849,7 @@ export default function App() {
                       aria-label="正在生成预览"
                     />
                   ) : (
-                    <FileTextIcon />
+                    <AnimatedActionIcon icon={FileTextIconAnimated} />
                   )}
                   {isMobile ? null : <span>预览&导出</span>}
                 </Button>
@@ -4885,6 +4882,14 @@ export default function App() {
         <SheetContent
           side="right"
           showCloseButton={false}
+          finalFocus={() => {
+            const target = previewCheckTarget.current
+            if (!target) return true
+            const root = window.document.querySelector<HTMLElement>(target.selector)
+            return root?.matches('button, input, textarea, select, [contenteditable="true"], [tabindex]')
+              ? root
+              : root?.querySelector<HTMLElement>('button, input, textarea, select, [contenteditable="true"], [tabindex]') ?? false
+          }}
           className="gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-none"
           style={
             isMobile
@@ -4930,7 +4935,7 @@ export default function App() {
                 {exportState.status === "exporting" ? (
                   <LoaderCircleIcon className="animate-spin" />
                 ) : (
-                  <FileClockIcon />
+                  <ActionFeedbackIcon token={exportFeedback.completed.export}><AnimatedActionIcon icon={DownloadIcon} /></ActionFeedbackIcon>
                 )}
                 <span>
                   {exportState.status === "exporting"
@@ -5079,7 +5084,7 @@ export default function App() {
             ) : null}
             {updateStatus.state === "downloaded" ? (
               <Button onClick={() => void revealDownloadedUpdate()}>
-                <FolderOpenIcon />
+                <AnimatedActionIcon icon={FolderOpenIconAnimated} />
                 显示更新文件
               </Button>
             ) : null}
@@ -5165,7 +5170,7 @@ export default function App() {
               稍后处理
             </Button>
             <Button onClick={() => void revealDownloadedUpdate()}>
-              <FolderOpenIcon />
+              <AnimatedActionIcon icon={FolderOpenIconAnimated} />
               显示更新文件
             </Button>
           </DialogFooter>

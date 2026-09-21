@@ -309,6 +309,21 @@ def _append_expected_blocks(
         if block.get("type") in {"ordered_list", "unordered_list"}:
             _append_expected_list(result, block, block_path)
             continue
+        if allow_image and block.get("type") == "data_table":
+            for index, column in enumerate(block["columns"]):
+                result.append((f"{block_path}.columns[{index}].header", [{**run, "bold": True} for run in _paragraph_runs(column["header"])]))
+            for row_index, row in enumerate(block["rows"]):
+                for cell_index, cell in enumerate(row["cells"]):
+                    result.append((f"{block_path}.rows[{row_index}].cells[{cell_index}]", _paragraph_runs(cell)))
+            if block.get("caption") is not None:
+                result.append((f"{block_path}.caption", _paragraph_runs(block["caption"])))
+            continue
+        if allow_image and block.get("type") == "figure_group":
+            for index, item in enumerate(block["items"]):
+                if item.get("caption") is not None:
+                    result.append((f"{block_path}.items[{index}].caption", _paragraph_runs(item["caption"])))
+            result.append((f"{block_path}.caption", _paragraph_runs(block["caption"])))
+            continue
         if allow_image and block.get("type") == "image":
             if block.get("caption") is not None:
                 result.append(
@@ -748,18 +763,30 @@ def _check_task_book_topic(
     task_book: dict[str, Any],
 ) -> int:
     expected = _task_book_topic_expectation(task_book)
-    research_cells = topic_tables[0].findall(f"{W}tr/{W}tc")
-    project_cells = topic_tables[1].findall(f"{W}tr/{W}tc")
-    final_cells = topic_tables[2].findall(f"{W}tr/{W}tc")
-    if len(research_cells) != 3 or len(project_cells) != 4 or len(final_cells) != 4:
+    # Frozen older templates use three inline tables; the current template
+    # separates the nature/source labels into their own cells.
+    split_labels = len(topic_tables) == 4
+    offset = 1 if split_labels else 0
+    research_cells = topic_tables[offset].findall(f"{W}tr/{W}tc")
+    project_cells = topic_tables[offset + 1].findall(f"{W}tr/{W}tc")
+    final_cells = topic_tables[offset + 2].findall(f"{W}tr/{W}tc")
+    if len(research_cells) != (4 if split_labels else 3) or len(project_cells) != 4 or len(final_cells) != 4:
         _raise("DOCX_STRUCTURE_MISMATCH", "任务书选题信息行内表格结构不完整。")
-
+    if split_labels:
+        nature_cells = topic_tables[0].findall(f"{W}tr/{W}tc")
+        if len(nature_cells) != 2 or _compact(_text(nature_cells[0])) != "选题性质：":
+            _raise("DOCX_STRUCTURE_MISMATCH", "任务书选题性质标签结构不完整。")
+        if _compact(_text(research_cells[0])) != "选题来源：":
+            _raise("DOCX_STRUCTURE_MISMATCH", "任务书选题来源标签结构不完整。")
+        nature_container = nature_cells[1]
+    else:
+        nature_container = _task_book_direct_paragraph(
+            topic_cell, "选题性质：", field="sections.topic_information.nature"
+        )
+    research_options = research_cells[1 if split_labels else 0]
+    other_level_cell = research_cells[2 if split_labels else 1]
     paragraphs = {
-        "nature": _task_book_direct_paragraph(
-            topic_cell,
-            "选题性质：",
-            field="sections.topic_information.nature",
-        ),
+        "nature": nature_container,
         "practice": _task_book_direct_paragraph(
             topic_cell,
             "2.实践项目",
@@ -786,7 +813,7 @@ def _check_task_book_topic(
             paragraphs["nature"], field="sections.topic_information.nature"
         ),
         "research": _task_book_symbol_codes(
-            research_cells[0],
+            research_options,
             field="sections.topic_information.source.research_project.level",
         ),
         "practice": _task_book_symbol_codes(
@@ -821,15 +848,15 @@ def _check_task_book_topic(
                 field=f"sections.topic_information.{field}",
             )
 
-    research_text = _compact(_text(research_cells[0]))
+    research_text = _compact(_text(research_options))
     if not (
-        research_text.startswith("选题来源：1.科研项目")
+        research_text.startswith("1.科研项目" if split_labels else "选题来源：1.科研项目")
         and "国家级" in research_text
         and "省部级" in research_text
         and research_text.endswith("其他：")
     ):
         _raise("DOCX_STRUCTURE_MISMATCH", "任务书科研项目选项结构不完整。")
-    if _compact(_text(research_cells[1])) != _compact(expected["other_level"]):
+    if _compact(_text(other_level_cell)) != _compact(expected["other_level"]):
         _raise(
             "DOCX_CONTENT_MISMATCH",
             "任务书科研项目级别说明与结构化输入不一致。",
@@ -886,6 +913,17 @@ def _check_expected_content(
         "midterm": _expected_midterm_paragraphs,
         "task_book": _expected_task_book_paragraphs,
     }[document_type](proposal)
+    if document_type == "midterm":
+        labels: dict[str, str] = {}
+        counts: dict[int, int] = {}
+        for section in ("main_research_content", "progress"):
+            for block in proposal["sections"][section]:
+                if isinstance(block, dict) and block.get("type") in {"image", "figure_group"}:
+                    chapter = block.get("chapter", 1)
+                    counts[chapter] = counts.get(chapter, 0) + 1
+                    if block.get("id"):
+                        labels[block["id"]] = f"图 {chapter}-{counts[chapter]}"
+        expected = [(field, [{**run, "text": re.sub(r"\{\{fig:(fig-[A-Za-z0-9_-]{8,96})\}\}", lambda match: labels.get(match.group(1), match.group(0)), run["text"])} for run in runs]) for field, runs in expected]
     for field, expected_runs in expected:
         expected_text = "".join(
             character
@@ -1027,7 +1065,14 @@ def inspect_docx(
         table = tables[-1]
     else:
         task_book_graduation_year = None
-        tables = list(document.iter(f"{W}tbl"))
+        if document_type == "midterm":
+            body = document.find(f"{W}body")
+            tables = [] if body is None else body.findall(f"{W}tbl")
+            expected_nested = sum(1 for name in ("main_research_content", "progress") for block in proposal["sections"][name] if isinstance(block, dict) and block.get("type") in {"data_table", "figure_group"})
+            if len(list(document.iter(f"{W}tbl"))) != 1 + expected_nested:
+                _raise("DOCX_STRUCTURE_MISMATCH", "中期检查正文图表数量与输入不一致。")
+        else:
+            tables = list(document.iter(f"{W}tbl"))
         if len(tables) != 1:
             _raise("DOCX_STRUCTURE_MISMATCH", "Word 过程文档必须包含一个主表格。", tables=len(tables))
         table = tables[0]
@@ -1083,14 +1128,14 @@ def inspect_docx(
         college_cell = rows[5].find(f"{W}tc")
         topic_tables = [] if topic_cell is None else topic_cell.findall(f"{W}tbl")
         college_tables = [] if college_cell is None else college_cell.findall(f"{W}tbl")
-        if len(topic_tables) != 3 or len(college_tables) != 2:
+        if len(topic_tables) not in (3, 4) or len(college_tables) != 2:
             _raise("DOCX_STRUCTURE_MISMATCH", "任务书签署区表格结构不完整。")
         task_book_checkbox_symbols = _check_task_book_topic(
             topic_cell,
             topic_tables,
             proposal,
         )
-        advisor_cells = topic_tables[2].findall(f"{W}tr/{W}tc")
+        advisor_cells = topic_tables[-1].findall(f"{W}tr/{W}tc")
         leader_cells = college_tables[0].findall(f"{W}tr/{W}tc")
         date_cells = college_tables[1].findall(f"{W}tr/{W}tc")
         if (

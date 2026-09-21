@@ -62,6 +62,7 @@ export function SectionCompletionMark({
   className?: string
   animateOnMount?: boolean
 }) {
+  const hasCompletedRef = useRef(state === "complete" && !animateOnMount)
   const previousStateRef = useRef<DocumentSectionState>(
     animateOnMount && state === "complete" ? "incomplete" : state,
   )
@@ -79,6 +80,13 @@ export function SectionCompletionMark({
     ) {
       return
     }
+
+    if (state === "complete" && hasCompletedRef.current) {
+      // oxlint-disable-next-line react/set-state-in-effect -- a fast re-completion must not inherit the first completion animation.
+      setAnimatedState(null)
+      return
+    }
+    if (state === "complete") hasCompletedRef.current = true
 
     // oxlint-disable-next-line react/set-state-in-effect -- a layout effect starts the status animation before the newly changed mark is painted.
     setAnimatedState(state)

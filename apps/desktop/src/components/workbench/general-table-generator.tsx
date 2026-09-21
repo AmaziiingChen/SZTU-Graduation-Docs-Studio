@@ -1,5 +1,7 @@
+import { AnimatedActionIcon } from "@/components/workbench/animated-action-icon"
+import { InfoIcon as InfoIconAnimated } from "@/components/ui/animateicons/info"
 import { useMemo } from "react"
-import { InfoIcon } from "lucide-react"
+
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -147,7 +149,7 @@ export function GeneralTableGenerator({
                     <TooltipTrigger
                       render={<Button type="button" variant="ghost" size="icon-sm" aria-label="表格使用说明" />}
                     >
-                      <InfoIcon />
+                      <AnimatedActionIcon icon={InfoIconAnimated} />
                     </TooltipTrigger>
                     <TooltipContent>
                       生成普通网格表、通栏表或可跨页表格；适合从 Excel、WPS 直接粘贴数据。

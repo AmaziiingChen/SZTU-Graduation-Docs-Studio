@@ -481,6 +481,7 @@ export type SztuDesktopApi = {
   openToolLink: (toolId: ToolLinkId) => Promise<null>
   writeClipboardText: (text: string) => Promise<null>
   writeClipboardPng: (dataUrl: string) => Promise<null>
+  importImageAssets?: () => Promise<ImageAssetImportResult[]>
   importImageAsset: () => Promise<ImageAssetImportResult | null>
   onUpdateStatus: (callback: (status: UpdateStatus) => void) => () => void
   openWorkspace: (mode: WorkspaceMode) => Promise<WorkspaceState>

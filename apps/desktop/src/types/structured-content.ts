@@ -49,6 +49,25 @@ export type StructuredImageBlock = {
   source_citation_key?: string
 }
 
+export type StructuredFigureGroupBlock = {
+  type: "figure_group"
+  id?: string
+  chapter?: number
+  columns?: number
+  items: { path: string; alt: string; caption?: ParagraphInput }[]
+  caption: ParagraphInput
+  source_citation_key?: string
+}
+
+export type StructuredDataTableBlock = {
+  type: "data_table"
+  style?: "grid" | "three_line"
+  columns: { header: ParagraphInput; width_weight?: number; alignment?: "left" | "center" | "right" }[]
+  rows: { cells: ParagraphInput[] }[]
+  caption?: ParagraphInput
+}
+export type StructuredToolBlock = StructuredFigureGroupBlock | StructuredDataTableBlock
+
 /**
  * Contract blocks supported by the restricted body editor.
  */
@@ -56,5 +75,6 @@ export type StructuredTextBlock =
   | ParagraphInput
   | StructuredListBlock
   | StructuredImageBlock
+  | StructuredToolBlock
 
 export type StructuredBodyValue = StructuredTextBlock[]
