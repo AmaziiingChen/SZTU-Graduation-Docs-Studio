@@ -60,6 +60,7 @@ const documentGroups: Array<{
   { type: "task_book", label: "任务书", defaultTitle: "未命名任务书" },
   { type: "proposal", label: "开题报告", defaultTitle: "未命名开题报告" },
   { type: "midterm", label: "中期检查", defaultTitle: "未命名中期检查表" },
+  { type: "thesis", label: "毕业论文", defaultTitle: "未命名毕业论文" },
 ]
 
 function ThesisToolIcon({ toolId }: { toolId: ThesisToolId }) {
@@ -120,8 +121,9 @@ export function NavDocuments({
     proposal: activeType === "proposal" || activeType === undefined,
     task_book: activeType === "task_book",
     midterm: activeType === "midterm",
+    thesis: activeType === "thesis",
   })
-  const [thesisExpanded, setThesisExpanded] = useState(thesisToolsActive)
+  const [layoutToolsExpanded, setLayoutToolsExpanded] = useState(thesisToolsActive)
   const [trashExpanded, setTrashExpanded] = useState(false)
   const [createType, setCreateType] = useState<DocumentType | null>(null)
   const [createTitle, setCreateTitle] = useState("")
@@ -285,26 +287,34 @@ export function NavDocuments({
             )
           })}
 
+
+
+        </SidebarMenu>
+      </SidebarGroup>
+
+      <SidebarSeparator className="mx-4 mt-auto w-auto opacity-60" />
+      <SidebarGroup>
+        <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
-              {...animation.row("thesis")}
-              tooltip="毕业论文"
-              aria-expanded={thesisExpanded}
-              onClick={() => setThesisExpanded((current) => !current)}
+              {...animation.row("layout-tools")}
+              tooltip="排版工具"
+              aria-expanded={layoutToolsExpanded}
+              onClick={() => setLayoutToolsExpanded((current) => !current)}
             >
               <ChevronRightIcon
-                className={thesisExpanded
+                className={layoutToolsExpanded
                   ? "rotate-90 transition-transform duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
                   : "transition-transform duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"}
               />
-              <FolderOpenIcon {...animation.icon("thesis")} />
-              <span>毕业论文</span>
+              <FolderOpenIcon {...animation.icon("layout-tools")} />
+              <span>排版工具</span>
             </SidebarMenuButton>
             <div
-              aria-hidden={!thesisExpanded}
-              inert={!thesisExpanded}
+              aria-hidden={!layoutToolsExpanded}
+              inert={!layoutToolsExpanded}
               className={`grid transition-[grid-template-rows,opacity] duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${
-                thesisExpanded
+                layoutToolsExpanded
                   ? "grid-rows-[1fr] opacity-100"
                   : "grid-rows-[0fr] opacity-0"
               }`}
@@ -328,13 +338,6 @@ export function NavDocuments({
               </div>
             </div>
           </SidebarMenuItem>
-
-        </SidebarMenu>
-      </SidebarGroup>
-
-      <SidebarSeparator className="mx-4 mt-auto w-auto opacity-60" />
-      <SidebarGroup>
-        <SidebarMenu>
 
           <SidebarMenuItem>
             <SidebarMenuButton
@@ -433,7 +436,9 @@ export function NavDocuments({
               初始内容
               <Select value={createSource} onValueChange={(value) => setCreateSource(value ?? "blank")}>
                 <SelectTrigger className="w-full">
-                  <SelectValue />
+                  <SelectValue>
+                    {createSource === "blank" ? "空白文档" : `基于：${documents.find(item => item.id === createSource)?.title ?? "已有文档"}`}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="blank">
@@ -466,7 +471,10 @@ export function NavDocuments({
                     title: createTitle.trim(),
                     sourceDocumentId: createSource === "blank" ? undefined : createSource,
                   }),
-                  () => setCreateType(null),
+                  () => {
+                    setExpanded(current => ({ ...current, [createType]: true }))
+                    setCreateType(null)
+                  },
                 )
               }}
             >

@@ -9,7 +9,7 @@ Draft 2020-12，并以稳定 `$id` 作为跨语言标识。
 | 文件 | 版本字段 | 用途 |
 | --- | --- | --- |
 | `ipc-envelope.schema.json` | `protocol=1.0` | JSONL 请求与响应信封 |
-| `student-profile.schema.json` | `schema_version=1.2` | 学生档案（1.2 新增所有过程文档共用的结构化论文题目） |
+| `student-profile.schema.json` | `schema_version=1.2` | 学生档案（共用的中文结构化论文题目及英文论文题目） |
 | `document-draft.schema.json` | `schema_version=1.0` | 允许不完整的过程文档草稿 |
 | `proposal.schema.json` | `schema_version=0.2` | 严格、可导出的开题报告数据 |
 | `content-block.schema.json` | 独立 `$defs` | 过程文档共用富文本、列表和图片内容块 |

@@ -14,6 +14,7 @@ from typing import Any
 from xml.etree import ElementTree
 
 W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+M_NS = "http://schemas.openxmlformats.org/officeDocument/2006/math"
 PKG_REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
 W = f"{{{W_NS}}}"
 
@@ -38,8 +39,6 @@ SECTION_LABELS = (
     "本选题的意义及国内外发展状况：",
     "研究内容：",
     "研究方法、手段及步骤：",
-    "本课题研究方法、手段如下：",
-    "本课题研究步骤如下：",
     "参考文献：",
     "学生签名：",
     "指导教师意见：",
@@ -212,7 +211,7 @@ def _paragraph_runs(value: Any) -> list[dict[str, Any]]:
                 "bold": bool(run.get("bold", False)),
                 "italic": bool(run.get("italic", False)),
             }
-            for run in value["runs"]
+            for run in value["runs"] if run.get("type") != "inline_equation"
         ]
     _raise("DOCX_EXPECTATION_INVALID", "DOCX 检查输入的数据结构无效。")
 
@@ -330,6 +329,9 @@ def _append_expected_blocks(
                     (f"{block_path}.caption", _paragraph_runs(block.get("caption")))
                 )
             continue
+        if allow_image and block.get("type") == "equation":
+            result.append((f"{block_path}.alt", _paragraph_runs(block["alt"])))
+            continue
         _raise(
             "DOCX_EXPECTATION_INVALID",
             "DOCX 检查输入的正文内容块无效。",
@@ -355,6 +357,10 @@ def _expected_paragraphs(proposal: dict[str, Any]) -> list[tuple[str, list[dict[
         "research_steps",
         "references",
     ):
+        if section in structured_sections:
+            intro = sections.get(f"{section}_intro", "")
+            if intro:
+                result.append((f"sections.{section}_intro", _paragraph_runs(intro)))
         if section in structured_sections:
             _append_expected_blocks(
                 result,
@@ -913,17 +919,24 @@ def _check_expected_content(
         "midterm": _expected_midterm_paragraphs,
         "task_book": _expected_task_book_paragraphs,
     }[document_type](proposal)
-    if document_type == "midterm":
+    if document_type in {"proposal", "midterm"}:
         labels: dict[str, str] = {}
-        counts: dict[int, int] = {}
-        for section in ("main_research_content", "progress"):
+        figure_counts: dict[int, int] = {}
+        equation_counts: dict[int, int] = {}
+        sections = ("main_research_content", "progress") if document_type == "midterm" else ("research_content", "methods_and_means", "research_steps")
+        for section in sections:
             for block in proposal["sections"][section]:
-                if isinstance(block, dict) and block.get("type") in {"image", "figure_group"}:
-                    chapter = block.get("chapter", 1)
-                    counts[chapter] = counts.get(chapter, 0) + 1
+                if not isinstance(block, dict):
+                    continue
+                chapter = block.get("chapter", 1)
+                if block.get("type") in {"image", "figure_group"}:
+                    figure_counts[chapter] = figure_counts.get(chapter, 0) + 1
                     if block.get("id"):
-                        labels[block["id"]] = f"图 {chapter}-{counts[chapter]}"
-        expected = [(field, [{**run, "text": re.sub(r"\{\{fig:(fig-[A-Za-z0-9_-]{8,96})\}\}", lambda match: labels.get(match.group(1), match.group(0)), run["text"])} for run in runs]) for field, runs in expected]
+                        labels[f"fig:{block['id']}"] = f"图 {chapter}-{figure_counts[chapter]}"
+                if block.get("type") == "equation" and block.get("id"):
+                    equation_counts[chapter] = equation_counts.get(chapter, 0) + 1
+                    labels[f"eq:{block['id']}"] = f"({chapter}-{equation_counts[chapter]})"
+        expected = [(field, [{**run, "text": re.sub(r"\{\{(fig|eq):([A-Za-z0-9_-]{8,100})\}\}", lambda match: labels.get(f"{match.group(1)}:{match.group(2)}", match.group(0)), run["text"])} for run in runs]) for field, runs in expected]
     for field, expected_runs in expected:
         expected_text = "".join(
             character
@@ -957,6 +970,32 @@ def _check_expected_content(
             rich_runs += int(is_rich)
         cursor = position + len(expected_text)
     return rich_paragraphs, rich_runs
+
+
+def _check_process_equations(root: ElementTree.Element, data: dict[str, Any], document_type: str) -> None:
+    if document_type == "task_book":
+        return
+    sections = data.get("sections", {})
+    body_names = ("main_research_content", "progress") if document_type == "midterm" else ("significance_and_status", "research_content", "methods_and_means", "research_steps")
+
+    def count(value: Any) -> tuple[int, int]:
+        if isinstance(value, list):
+            pairs = [count(item) for item in value]
+            return sum(pair[0] for pair in pairs), sum(pair[1] for pair in pairs)
+        if not isinstance(value, dict):
+            return 0, 0
+        if value.get("type") == "equation":
+            return 0, 1
+        if value.get("type") == "inline_equation":
+            return 1, 0
+        pairs = [count(item) for item in value.values()]
+        return sum(pair[0] for pair in pairs), sum(pair[1] for pair in pairs)
+
+    inline_expected, display_expected = count([sections.get(name, []) for name in body_names])
+    inline_actual = sum(len(paragraph.findall(f"{{{M_NS}}}oMath")) for paragraph in root.iter(f"{W}p"))
+    display_actual = sum(len(paragraph.findall(f"{{{M_NS}}}oMathPara")) for paragraph in root.iter(f"{W}p"))
+    if (inline_actual, display_actual) != (inline_expected, display_expected):
+        _raise("DOCX_EQUATION_MISMATCH", "Word 行内或行间公式数量与输入不一致。")
 
 
 def _check_fonts(
@@ -1065,14 +1104,20 @@ def inspect_docx(
         table = tables[-1]
     else:
         task_book_graduation_year = None
-        if document_type == "midterm":
-            body = document.find(f"{W}body")
-            tables = [] if body is None else body.findall(f"{W}tbl")
-            expected_nested = sum(1 for name in ("main_research_content", "progress") for block in proposal["sections"][name] if isinstance(block, dict) and block.get("type") in {"data_table", "figure_group"})
-            if len(list(document.iter(f"{W}tbl"))) != 1 + expected_nested:
-                _raise("DOCX_STRUCTURE_MISMATCH", "中期检查正文图表数量与输入不一致。")
-        else:
-            tables = list(document.iter(f"{W}tbl"))
+        body = document.find(f"{W}body")
+        tables = [] if body is None else body.findall(f"{W}tbl")
+        body_names = ("main_research_content", "progress") if document_type == "midterm" else ("research_content", "methods_and_means", "research_steps")
+        expected_nested = sum(
+            1
+            for name in body_names
+            for block in proposal["sections"][name]
+            if isinstance(block, dict) and (
+                block.get("type") in {"data_table", "figure_group"}
+                or (block.get("type") == "equation" and block.get("id"))
+            )
+        )
+        if len(list(document.iter(f"{W}tbl"))) != 1 + expected_nested:
+            _raise("DOCX_STRUCTURE_MISMATCH", "正文图表或编号公式数量与输入不一致。")
         if len(tables) != 1:
             _raise("DOCX_STRUCTURE_MISMATCH", "Word 过程文档必须包含一个主表格。", tables=len(tables))
         table = tables[0]
@@ -1177,6 +1222,7 @@ def inspect_docx(
 
     visible_runs, fonts = _check_fonts(document, document_type)
     rich_paragraphs, rich_runs = _check_expected_content(document, proposal, document_type)
+    _check_process_equations(document, proposal, document_type)
     return {
         "schema_version": "1.0",
         "check_id": "docx-deep-structure",

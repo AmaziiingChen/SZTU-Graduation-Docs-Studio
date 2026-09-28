@@ -30,10 +30,9 @@ describe("ReferenceImporter", () => {
       "@article{demo, author={张三}, title={合成论文}, journal={合成期刊}, year={2026}}",
     )
 
-    expect(container.querySelector('[data-slot="reference-toolbar"]')).toHaveClass(
-      "h-(--header-height)",
-      "items-center",
-    )
+    expect(container.querySelector('[data-slot="reference-toolbar"]')).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "继续添加" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "添加参考文献" })).not.toBeInTheDocument()
     expect(container.firstElementChild).not.toHaveClass("gap-4")
     expect(container.querySelector('[data-slot="reference-content"]')).toHaveClass(
       "flex-1",
@@ -65,7 +64,7 @@ describe("ReferenceImporter", () => {
     )
     const status = screen.getByRole("status")
     expect(status).toHaveTextContent("文献 1 条")
-    expect(status.parentElement).toHaveClass(
+    expect(status.closest('[data-slot="reference-status-footer"]')).toHaveClass(
       "min-h-8",
       "items-center",
       "px-3",
@@ -88,6 +87,9 @@ describe("ReferenceImporter", () => {
   it("keeps the empty reference state borderless", () => {
     const { container } = renderImporter()
 
+    expect(container.querySelector('[data-slot="reference-toolbar"]')).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "添加第一条参考文献" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "添加参考文献" })).not.toBeInTheDocument()
     expect(
       container.querySelector('[data-slot="reference-empty-state"]'),
     ).not.toHaveClass("rounded-lg", "border", "border-dashed")
@@ -145,7 +147,7 @@ describe("ReferenceImporter", () => {
   it("appends and separates multiple entries through the default add dialog", () => {
     const { onChange } = renderImporter(first)
 
-    fireEvent.click(screen.getByRole("button", { name: "添加参考文献" }))
+    fireEvent.click(screen.getByRole("button", { name: "继续添加" }))
     fireEvent.change(screen.getByRole("textbox", { name: "参考文献 BibTeX" }), {
       target: { value: `${second}\n\n@book{third, title={第三篇}, year={2026}}` },
     })
@@ -166,7 +168,7 @@ describe("ReferenceImporter", () => {
 }`
     const { onChange } = renderImporter()
 
-    fireEvent.click(screen.getByRole("button", { name: "添加参考文献" }))
+    fireEvent.click(screen.getByRole("button", { name: "添加第一条参考文献" }))
     fireEvent.change(screen.getByRole("textbox", { name: "参考文献 BibTeX" }), {
       target: { value: source },
     })
@@ -224,7 +226,7 @@ describe("ReferenceImporter", () => {
       screen.queryByRole("button", { name: "批量粘贴 BibTeX" }),
     ).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole("button", { name: "添加参考文献" }))
+    fireEvent.click(screen.getByRole("button", { name: "继续添加" }))
     fireEvent.change(screen.getByRole("textbox", { name: "参考文献 BibTeX" }), {
       target: { value: second },
     })

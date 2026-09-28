@@ -49,6 +49,7 @@ describe("document check navigation", () => {
         failedCheck(undefined, "GRADUATION_YEAR_MISSING"),
       ),
     ).toEqual({ pane: "profile", selector: "#graduationCohort" })
+    expect(checkNavigationTarget("thesis", failedCheck("thesis.englishTitle"))).toEqual({ pane: "profile", selector: "#englishTitle" })
   })
 
   it("returns null when a check has no actionable field", () => {

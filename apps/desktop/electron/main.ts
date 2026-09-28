@@ -1,3 +1,4 @@
+import { mkdirSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { createHash } from "node:crypto"
 import { lstat, mkdir, readFile, realpath, unlink, writeFile } from "node:fs/promises"
@@ -37,15 +38,20 @@ import {
   TelemetryService,
 } from "./telemetry.js"
 import { UpdateService, type UpdateStatus } from "./update-service.js"
+import { MidtermDatePolicyService, type MidtermDatePolicyStatus } from "./midterm-date-policy.js"
 
+import { developmentConfig } from "./development-config.js"
+
+const localDevelopment = developmentConfig(app.isPackaged)
 const moduleDirectory = path.dirname(fileURLToPath(import.meta.url))
-const developmentServerUrl = "http://127.0.0.1:5173"
+const developmentServerUrl = localDevelopment.url
 
 let mainWindow: BrowserWindow | undefined
 let tray: Tray | undefined
 let sidecar: SidecarClient | undefined
 let telemetry: TelemetryService | undefined
 let updateService: UpdateService | undefined
+let midtermDatePolicyService: MidtermDatePolicyService | undefined
 let diagnostics: DiagnosticService | undefined
 let remoteServicesStarted = false
 let shutdownStarted = false
@@ -197,31 +203,41 @@ function decodeClipboardPng(value: unknown): Buffer {
   return bytes
 }
 
+async function readManagedImageAsset(fileName: string): Promise<
+  | { status: 200; bytes: Buffer; mimeType: "image/png" | "image/jpeg" }
+  | { status: 403 | 404 | 422 }
+> {
+  const match = fileName.match(MANAGED_IMAGE_NAME_PATTERN)
+  if (!match) return { status: 404 }
+  const directory = imageAssetDirectory()
+  const target = path.resolve(directory, fileName)
+  if (!target.startsWith(`${directory}${path.sep}`)) return { status: 403 }
+  try {
+    const fileStat = await lstat(target)
+    if (!fileStat.isFile() || fileStat.isSymbolicLink() || fileStat.size > MAX_IMAGE_ASSET_BYTES) {
+      return { status: 403 }
+    }
+    const bytes = await readFile(target)
+    const digest = createHash("sha256").update(bytes).digest("hex")
+    const mimeType = detectImageMime(bytes)
+    if (digest !== match[1] || !mimeType) return { status: 422 }
+    return { status: 200, bytes, mimeType }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return { status: 404 }
+    throw error
+  }
+}
+
 async function registerAssetProtocol(): Promise<void> {
   protocol.handle("sztu-asset", async (request) => {
     const url = new URL(request.url)
+    if (url.hostname !== "asset") return new Response("Not found", { status: 404 })
     const fileName = decodeURIComponent(url.pathname.replace(/^\//, ""))
-    const match = url.hostname === "asset" ? fileName.match(MANAGED_IMAGE_NAME_PATTERN) : null
-    if (!match) return new Response("Not found", { status: 404 })
-    const directory = imageAssetDirectory()
-    const target = path.resolve(directory, fileName)
-    if (!target.startsWith(`${directory}${path.sep}`)) return new Response("Forbidden", { status: 403 })
-    try {
-      const fileStat = await lstat(target)
-      if (!fileStat.isFile() || fileStat.isSymbolicLink() || fileStat.size > MAX_IMAGE_ASSET_BYTES) {
-        return new Response("Forbidden", { status: 403 })
-      }
-      const bytes = await readFile(target)
-      const digest = createHash("sha256").update(bytes).digest("hex")
-      const mimeType = detectImageMime(bytes)
-      if (digest !== match[1] || !mimeType) return new Response("Invalid asset", { status: 422 })
-      return new Response(bytes, {
-        headers: { "Content-Type": mimeType, "Cache-Control": "private, max-age=31536000, immutable" },
-      })
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return new Response("Not found", { status: 404 })
-      throw error
-    }
+    const asset = await readManagedImageAsset(fileName)
+    if (asset.status !== 200) return new Response("Asset unavailable", { status: asset.status })
+    return new Response(Uint8Array.from(asset.bytes), {
+      headers: { "Content-Type": asset.mimeType, "Cache-Control": "private, max-age=31536000, immutable" },
+    })
   })
 }
 
@@ -341,6 +357,7 @@ function assertProfile(value: unknown): asserts value is Record<string, unknown>
       "advisor_title",
       "graduation_cohort",
       "thesis_title",
+      "thesis_title_en",
     ],
   )
   if (value.id !== undefined) assertResourceId(value.id, "profile.id")
@@ -355,6 +372,7 @@ function assertProfile(value: unknown): asserts value is Record<string, unknown>
   if (value.thesis_title !== undefined && value.thesis_title !== null) {
     assertThesisTitle(value.thesis_title, "profile.thesis_title")
   }
+  assertText(value.thesis_title_en, "profile.thesis_title_en", 300, false)
 }
 
 function assertProfileDraft(value: unknown): asserts value is Record<string, unknown> {
@@ -371,7 +389,7 @@ function assertProfileDraft(value: unknown): asserts value is Record<string, unk
   ] as const
   assertExactKeys(
     value,
-    [...fields.map(([field]) => field), "thesis_title"],
+    [...fields.map(([field]) => field), "thesis_title", "thesis_title_en"],
   )
   for (const [field, maximum] of fields) {
     const fieldValue = value[field]
@@ -380,6 +398,7 @@ function assertProfileDraft(value: unknown): asserts value is Record<string, unk
     }
   }
   assertThesisTitle(value.thesis_title, "profile draft.thesis_title")
+  assertText(value.thesis_title_en, "profile draft.thesis_title_en", 300, false)
 }
 
 function assertDocument(value: unknown): asserts value is Record<string, unknown> {
@@ -395,7 +414,8 @@ function assertDocument(value: unknown): asserts value is Record<string, unknown
   if (
     value.document_type !== "proposal" &&
     value.document_type !== "task_book" &&
-    value.document_type !== "midterm"
+    value.document_type !== "midterm" &&
+    value.document_type !== "thesis"
   ) {
     throw new IpcValidationError("document.document_type 暂不支持。")
   }
@@ -487,7 +507,7 @@ function configureSession(): void {
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     const connectSources = app.isPackaged
       ? "'self'"
-      : "'self' http://127.0.0.1:5173 ws://127.0.0.1:5173"
+      : `'self' ${developmentServerUrl} ${developmentServerUrl.replace("http:", "ws:")}`
     callback({
       responseHeaders: {
         ...details.responseHeaders,
@@ -596,6 +616,7 @@ async function startRemoteServices(): Promise<void> {
   remoteServicesStarted = true
   await telemetry?.start()
   updateService?.start()
+  midtermDatePolicyService?.start()
 }
 
 async function initializeRemoteServices(): Promise<void> {
@@ -640,6 +661,15 @@ async function initializeRemoteServices(): Promise<void> {
   updateService.onStatus((status) => {
     mainWindow?.webContents.send("sztu:update-status", status)
   })
+  midtermDatePolicyService = new MidtermDatePolicyService({
+    userDataPath: app.getPath("userData"),
+    policyUrl: resolved.midtermDatePolicyUrl,
+    publicKeyPem: resolved.updatePublicKeyPem,
+  })
+  midtermDatePolicyService.onStatus((status) => {
+    mainWindow?.webContents.send("sztu:midterm-date-policy-status", status)
+  })
+  await midtermDatePolicyService.initialize()
   if (privacyNoticeStatus().acknowledged) {
     await startRemoteServices()
   }
@@ -805,6 +835,13 @@ function registerIpc(): void {
     )
   })
 
+  ipcMain.handle("sztu:midterm-date-policy-status", (event) => {
+    assertTrustedSender(event)
+    return runBridge<MidtermDatePolicyStatus>(() =>
+      midtermDatePolicyService?.getStatus() ?? { state: "unconfigured", rules: [] },
+    )
+  })
+
   ipcMain.handle("sztu:update-reveal", (event) => {
     assertTrustedSender(event)
     return runBridge(() => {
@@ -889,6 +926,18 @@ function registerIpc(): void {
       sha256,
     }
   }
+
+  ipcMain.handle("sztu:asset-preview-data", async (event, fileName: unknown) => {
+    assertTrustedSender(event)
+    return runBridge(async () => {
+      if (typeof fileName !== "string" || !MANAGED_IMAGE_NAME_PATTERN.test(fileName)) {
+        throw new IpcValidationError("图片资源名称无效。")
+      }
+      const asset = await readManagedImageAsset(fileName)
+      if (asset.status !== 200) throw new IpcValidationError("图片资源不存在或已损坏，请重新导入。")
+      return `data:${asset.mimeType};base64,${asset.bytes.toString("base64")}`
+    })
+  })
 
   ipcMain.handle("sztu:asset-import-image", async (event) => {
     assertTrustedSender(event)
@@ -1394,16 +1443,19 @@ function registerIpc(): void {
       if (
         documentType !== "proposal" &&
         documentType !== "task_book" &&
-        documentType !== "midterm"
+        documentType !== "midterm" &&
+        documentType !== "thesis"
       ) {
         throw new IpcValidationError(
-          "documentType 必须是 proposal、task_book 或 midterm。",
+          "documentType 必须是 proposal、task_book、midterm 或 thesis。",
         )
       }
       const options: OpenDialogOptions = {
         title:
           documentType === "task_book"
             ? "关联包含任务书模板的本地工程"
+            : documentType === "thesis"
+              ? "关联包含毕业论文模板的本地工程"
             : documentType === "midterm"
               ? "关联包含中期检查模板的本地工程"
               : "关联包含开题报告模板的本地工程",
@@ -1486,7 +1538,11 @@ async function requestSidecar<T>(
 }
 
 app.enableSandbox()
-app.setName("SZTU文档工作台")
+app.setName(localDevelopment.dataDirectory ? "SZTU文档工作台 · 论文开发" : "SZTU文档工作台")
+if (localDevelopment.dataDirectory) {
+  mkdirSync(localDevelopment.dataDirectory, { recursive: true, mode: 0o700 })
+  app.setPath("userData", localDevelopment.dataDirectory)
+}
 
 if (!app.requestSingleInstanceLock()) {
   app.quit()
@@ -1520,6 +1576,7 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", (event) => {
   updateService?.stop()
+  midtermDatePolicyService?.stop()
   sidecar?.dispose()
   if (shutdownStarted) return
   shutdownStarted = true

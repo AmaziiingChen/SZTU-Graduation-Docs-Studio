@@ -33,6 +33,7 @@
 ## 部署拓扑
 
 - 腾讯 COS：公开只读的签名更新清单和安装包；使用自定义域名和 HTTPS。
+- 同一公开只读存储位置可放置独立的中期检查日期规则文件 `releases/stable/midterm-date-policy.json`；客户端只下载签名规则，不上传学生学院或所选日期。
 - 轻量服务器或云函数：接收遥测 `POST`。服务端必须再次校验 `contracts/telemetry-batch.schema.json`，限制请求体和频率，关闭或缩短接入层原始 IP 日志，按发布前隐私说明执行删除期限。
 - 同一遥测路由的只读 `GET ?aggregate=completed_documents` 仅返回匿名累计生成份数，不暴露原始事件或安装标识。
 - 客户端不包含 COS SecretId/SecretKey。遥测端点的公开项目标识不能被当作鉴权秘密；服务端依赖 Schema、速率限制、异常检测和批次 UUID 去重。
@@ -46,6 +47,7 @@ SZTU_TELEMETRY_ENDPOINT=https://amazingapp-d5giro9ac73398410-1412347033.ap-shang
 SZTU_DIAGNOSTIC_ENDPOINT=https://amazingapp-d5giro9ac73398410-1412347033.ap-shanghai.app.tcloudbase.com/api/diagnostics/v1/reports
 SZTU_UPDATE_MANIFEST_URL=https://downloads.example.com/stable/manifest.json
 SZTU_UPDATE_PUBLIC_KEY_PEM=-----BEGIN PUBLIC KEY-----...-----END PUBLIC KEY-----
+SZTU_MIDTERM_DATE_POLICY_URL=https://downloads.example.com/stable/midterm-date-policy.json
 ```
 
 正式安装包在 `process.resourcesPath/remote-services.json` 放置：
@@ -55,11 +57,18 @@ SZTU_UPDATE_PUBLIC_KEY_PEM=-----BEGIN PUBLIC KEY-----...-----END PUBLIC KEY-----
   "telemetry_endpoint": "https://amazingapp-d5giro9ac73398410-1412347033.ap-shanghai.app.tcloudbase.com/api/telemetry/v1/events",
   "diagnostic_endpoint": "https://amazingapp-d5giro9ac73398410-1412347033.ap-shanghai.app.tcloudbase.com/api/diagnostics/v1/reports",
   "update_manifest_url": "https://downloads.example.com/stable/manifest.json",
+  "midterm_date_policy_url": "https://downloads.example.com/stable/midterm-date-policy.json",
   "update_public_key_pem": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----\n"
 }
 ```
 
 本项目当前生产信任锚保存在 `config/remote-services.production.json`。它只包含公开端点和 Ed25519 公钥，不包含任何凭据；打包流程必须把它复制为安装包资源目录中的 `remote-services.json`。更换签名私钥后，已经安装的旧客户端不会自动信任新公钥，因此私钥轮换必须作为独立的客户端版本迁移处理。
+
+## 中期检查日期规则
+
+在本机“版本发布”管理页的“中期检查日期规则”中，为需要限制的学院填写档案中的**学院全称**、开始日期和结束日期。日期边界都可选；未列出的学院不受范围限制。“生成签名日期规则”只写出 `~/.sztu-docs-release/midterm-date-policy.json`，不会改变学生端。“发布日期规则到云端”会重新签名当前表单内容，并通过本机已登录的 CloudBase CLI 上传到正式配置中的 `midterm_date_policy_url`，上传后校验并检查云端文件列表。撤销所有限制时应发布包含空规则数组的新签名文件，不能只删除云端文件。
+
+规则与更新清单分离，避免旧版客户端因新字段拒绝更新清单。新版客户端每 30 分钟拉取一次规则，并缓存已经通过 Ed25519 签名验证的文件；离线时沿用缓存。若新安装设备尚未取得规则且网络不可用，就无法获知学院限制，需在联网后再用于有日期限制的学院。已填但后来超出范围的日期会显示为无效，预览和导出不会继续；学生端不显示额外说明文案。所有学院匹配都在本机完成。
 
 Ed25519 私钥只存在于隔离的发布环境。客户端只固定公钥。清单签名对象是 `payload` 的递归键排序紧凑 JSON；随后用 Base64 编码 64 字节签名。
 

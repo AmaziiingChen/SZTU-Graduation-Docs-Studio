@@ -233,6 +233,7 @@ def _safe_storage_details(details: Mapping[str, Any]) -> dict[str, Any]:
             "advisor_title",
             "graduation_cohort",
             "thesis_title",
+            "thesis_title_en",
             "document",
             "document_id",
             "source_document_id",
@@ -455,7 +456,7 @@ class ProtocolSession:
         workspace = self._require_workspace()
         payload = _object_param(params, "document")
         document_type = payload.get("document_type")
-        if document_type not in {"proposal", "midterm", "task_book"}:
+        if document_type not in {"proposal", "midterm", "task_book", "thesis"}:
             raise ProtocolError(
                 INVALID_PARAMS,
                 "Document type is not supported.",
@@ -873,7 +874,7 @@ class ProtocolSession:
     def _install_template(self, params: dict[str, Any]) -> dict[str, Any]:
         _shape_params(params, required={"source_directory", "document_type"})
         document_type = _string_param(params, "document_type")
-        if document_type not in {"proposal", "midterm", "task_book"}:
+        if document_type not in {"proposal", "midterm", "task_book", "thesis"}:
             raise ProtocolError(INVALID_PARAMS, "Document type is not supported.")
         return install_engine(
             self._require_workspace(),

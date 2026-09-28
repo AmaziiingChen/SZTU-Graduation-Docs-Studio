@@ -4,7 +4,7 @@ import { ArrowDownIcon } from "@/components/ui/arrow-down"
 import { PlusIcon } from "@/components/ui/plus"
 import { DeleteIcon } from "@/components/ui/delete"
 import { AnimatedActionIcon } from "@/components/workbench/animated-action-icon"
-import { useMemo, useState } from "react"
+import { useMemo, useState, type ReactNode } from "react"
 import { BookOpenCheckIcon, TriangleAlertIcon } from "lucide-react"
 
 import {
@@ -27,7 +27,7 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { ContentStatistics } from "@/components/workbench/content-statistics"
 import { FadingScrollArea } from "@/components/workbench/fading-scroll-area"
-import { formatBibtex, parseBibtex } from "@/lib/bibtex"
+import { formatBibtex, formatBibtexEntry, parseBibtex } from "@/lib/bibtex"
 import type { BibtexEntry, FormattedBibtexResult } from "@/types/references"
 import type {
   ParagraphInput,
@@ -37,11 +37,13 @@ import type {
 
 export type ReferenceImporterProps = {
   source: string
+  referenceOrder?: readonly string[]
   legacyReferences?: readonly ParagraphInput[]
   maximumEntries: number
   maximumReferenceLength: number
   disabled?: boolean
   onChange: (source: string) => void
+  footerStatus?: ReactNode
 }
 
 type EntryEditorState =
@@ -60,10 +62,10 @@ function ReferenceRun({ run }: { run: StructuredRun }) {
 function FormattedReferencePreview({ paragraph }: { paragraph: RichParagraph }) {
   return (
     <p className="text-sm leading-6">
-      {paragraph.runs.map((run, index) => (
+      {paragraph.runs.filter((run) => "text" in run).map((run, index) => (
         <ReferenceRun
-          key={`${index}-${run.text}-${run.script ?? "normal"}`}
-          run={run}
+          key={`${index}-${"text" in run ? run.text : ""}-${"script" in run ? run.script ?? "normal" : "normal"}`}
+          run={run as StructuredRun}
         />
       ))}
     </p>
@@ -140,11 +142,13 @@ const EMPTY_ENTRY =
 
 export function ReferenceImporter({
   source,
+  referenceOrder,
   legacyReferences = [],
   maximumEntries,
   maximumReferenceLength,
   disabled = false,
   onChange,
+  footerStatus,
 }: ReferenceImporterProps) {
   const [entryEditor, setEntryEditor] = useState<EntryEditorState | null>(null)
   const [deleteIndex, setDeleteIndex] = useState<number | null>(null)
@@ -158,11 +162,12 @@ export function ReferenceImporter({
   )
   const sourceIsAdvanced =
     sourcePresent && sourceRemainder(source, result.entries).trim().length > 0
-  const editableEntries = result.entries.map((entry, index) => ({
-    ...entry,
-    index,
-    paragraph: result.references[index]?.paragraph,
-  }))
+  const editableEntries = result.entries.map((entry, index) => {
+    const number = referenceOrder?.indexOf(entry.citationKey)
+    const paragraph = number === undefined ? result.references[index]?.paragraph : formatBibtexEntry(entry, number).paragraph
+    if (number === -1 && paragraph?.runs[0] && "text" in paragraph.runs[0]) paragraph.runs[0].text = paragraph.runs[0].text.replace(/^\[0\]/, "[未引用]")
+    return { ...entry, index, paragraph, position: number === undefined ? index : number < 0 ? Number.MAX_SAFE_INTEGER : number }
+  }).sort((a, b) => a.position - b.position)
 
   const entryCandidateSource = entryEditor?.source ?? ""
   const entryCandidate = useMemo(
@@ -233,16 +238,6 @@ export function ReferenceImporter({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div
-        data-slot="reference-toolbar"
-        className="flex h-(--header-height) shrink-0 items-center justify-end gap-2 border-b px-4"
-      >
-        <Button type="button" size="sm" onClick={openAdd} disabled={disabled}>
-          <AnimatedActionIcon icon={PlusIcon} />
-          添加参考文献
-        </Button>
-      </div>
-
-      <div
         data-slot="reference-content"
         className="flex min-h-0 flex-1 flex-col gap-4 pt-4"
       >
@@ -310,7 +305,7 @@ export function ReferenceImporter({
                         size="icon-sm"
                         variant="outline"
                         aria-label={`上移 ${reference.citationKey}`}
-                        disabled={disabled || sourceIsAdvanced || reference.index === 0}
+                        disabled={referenceOrder !== undefined || disabled || sourceIsAdvanced || reference.index === 0}
                         onClick={() => moveEntry(reference.index, -1)}
                       >
                         <AnimatedActionIcon icon={ArrowUpIcon} />
@@ -323,7 +318,7 @@ export function ReferenceImporter({
                         disabled={
                           disabled ||
                           sourceIsAdvanced ||
-                          reference.index === editableEntries.length - 1
+                          referenceOrder !== undefined || reference.index === editableEntries.length - 1
                         }
                         onClick={() => moveEntry(reference.index, 1)}
                       >
@@ -378,6 +373,12 @@ export function ReferenceImporter({
               </div>
             ))}
           </div>
+          <div className="flex justify-center border-t p-3">
+            <Button type="button" variant="outline" size="sm" onClick={openAdd} disabled={disabled}>
+              <AnimatedActionIcon icon={PlusIcon} />
+              继续添加
+            </Button>
+          </div>
         </FadingScrollArea>
       ) : (
         <div
@@ -401,16 +402,18 @@ export function ReferenceImporter({
       )}
       </div>
 
-      <ContentStatistics
-        className="min-h-8 items-center px-3 py-1"
-        summary={`文献 ${result.entries.length || legacyReferences.length} 条`}
-        details={[
-          { label: "文献条目", value: result.entries.length || legacyReferences.length },
-          { label: "BibTeX 条目", value: result.entries.length },
-          { label: "文献类型", value: new Set(result.entries.map((entry) => entry.type)).size },
-          { label: "待处理问题", value: currentMessages.length },
-        ]}
-      />
+      <div data-slot="reference-status-footer" className="flex min-h-8 shrink-0 items-center justify-end gap-3 px-3 py-1">
+        <ContentStatistics
+          summary={`文献 ${result.entries.length || legacyReferences.length} 条`}
+          details={[
+            { label: "文献条目", value: result.entries.length || legacyReferences.length },
+            { label: "BibTeX 条目", value: result.entries.length },
+            { label: "文献类型", value: new Set(result.entries.map((entry) => entry.type)).size },
+            { label: "待处理问题", value: currentMessages.length },
+          ]}
+        />
+        {footerStatus}
+      </div>
 
       <Dialog
         open={entryEditor !== null}

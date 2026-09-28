@@ -10,7 +10,8 @@ const PROFILE_FIELDS: Array<{
   fields: readonly string[]
   selector: string
 }> = [
-  { fields: ["metadata.title"], selector: '[aria-label="论文题目"]' },
+  { fields: ["metadata.title"], selector: '[aria-label="中文题目"]' },
+  { fields: ["thesis.englishTitle"], selector: "#englishTitle" },
   { fields: ["metadata.student_name"], selector: "#studentName" },
   { fields: ["metadata.student_id"], selector: "#studentId" },
   { fields: ["metadata.college"], selector: "#college" },
@@ -73,6 +74,7 @@ const DOCUMENT_SECTIONS: Record<
       selector: '[aria-label="毕业论文（设计）进展情况"]',
     },
   ],
+  thesis: [],
   task_book: [
     {
       field: "sections.basic_content_and_requirements",

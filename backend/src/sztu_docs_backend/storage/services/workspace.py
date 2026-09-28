@@ -95,7 +95,7 @@ class Workspace:
             {
                 field_name: (
                     profile.get(field_name)
-                    if field_name == "thesis_title"
+                    if field_name in {"thesis_title", "thesis_title_en"}
                     else profile.get(field_name) or ""
                 )
                 for field_name in PROFILE_DRAFT_FIELDS

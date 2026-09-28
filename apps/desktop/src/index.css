@@ -231,6 +231,35 @@
     }
 }
 
+/* Native overflow containers (including dialog content and textareas) cannot
+   use ScrollArea's custom thumb. Keep their scrollbar narrow and theme-aware. */
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 9999px;
+  background: color-mix(in oklab, var(--muted-foreground) 55%, transparent) padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklab, var(--muted-foreground) 75%, transparent) padding-box;
+}
+
+@supports (-moz-appearance: none) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--muted-foreground) transparent;
+  }
+}
+
 /* Functional editor-only decorations. These nodes are omitted from the
    structured document, clipboard serialization, and exported files. */
 .formatting-mark {

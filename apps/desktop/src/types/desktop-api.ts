@@ -61,7 +61,7 @@ export type PrivacyNoticeStatus = {
 export type TelemetryUsageEvent =
   | {
       name: "view_opened"
-      view: "profile" | "proposal" | "task_book" | "midterm" | "inspection"
+      view: "profile" | "proposal" | "task_book" | "midterm" | "thesis" | "inspection"
     }
   | {
       name: "document_action"
@@ -114,8 +114,19 @@ export type ReleaseControl = {
   announcement: ReleaseAnnouncement | null
 }
 
+export type MidtermDateRule = {
+  college: string
+  startDate: string
+  endDate: string
+}
+
+export type MidtermDatePolicyStatus = {
+  state: "unconfigured" | "loading" | "ready" | "error"
+  rules: MidtermDateRule[]
+}
+
 export type WorkspaceMode = "persistent" | "temporary"
-export type DocumentType = "proposal" | "task_book" | "midterm"
+export type DocumentType = "proposal" | "task_book" | "midterm" | "thesis"
 export type ToolLinkId =
   | "xmind"
   | "draw-io"
@@ -163,6 +174,7 @@ export type StudentProfileInput = {
   advisor_title?: string | null
   graduation_cohort?: string | null
   thesis_title?: StructuredBodyValue | null
+  thesis_title_en?: string | null
 }
 
 export type StudentProfile = {
@@ -176,6 +188,7 @@ export type StudentProfile = {
   advisor_title: string | null
   graduation_cohort: string | null
   thesis_title: StructuredBodyValue | null
+  thesis_title_en: string | null
   created_at: string
   updated_at: string
 }
@@ -190,6 +203,7 @@ export type StudentProfileDraft = {
   advisor_title: string
   graduation_cohort: string
   thesis_title: StructuredBodyValue | null
+  thesis_title_en: string | null
 }
 
 export type DocumentInput = {
@@ -476,6 +490,7 @@ export type SztuDesktopApi = {
     input: DocumentCompletionInput,
   ) => Promise<DocumentCompletionResult>
   getUpdateStatus: () => Promise<UpdateStatus>
+  getMidtermDatePolicyStatus: () => Promise<MidtermDatePolicyStatus>
   revealDownloadedUpdate: () => Promise<null>
   openReleaseHelp: () => Promise<null>
   openToolLink: (toolId: ToolLinkId) => Promise<null>
@@ -483,7 +498,9 @@ export type SztuDesktopApi = {
   writeClipboardPng: (dataUrl: string) => Promise<null>
   importImageAssets?: () => Promise<ImageAssetImportResult[]>
   importImageAsset: () => Promise<ImageAssetImportResult | null>
+  readImageAssetPreview?: (fileName: string) => Promise<string>
   onUpdateStatus: (callback: (status: UpdateStatus) => void) => () => void
+  onMidtermDatePolicyStatus: (callback: (status: MidtermDatePolicyStatus) => void) => () => void
   openWorkspace: (mode: WorkspaceMode) => Promise<WorkspaceState>
   saveProfileDraft: (profile: StudentProfileDraft) => Promise<StudentProfileDraft>
   saveProfile: (profile: StudentProfileInput) => Promise<StudentProfile>

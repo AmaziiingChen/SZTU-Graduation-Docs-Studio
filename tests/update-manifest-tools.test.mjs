@@ -10,6 +10,26 @@ import {
   createSignedManifest,
 } from "../scripts/create_update_manifest.mjs"
 import { generateSigningKeyPair } from "../scripts/generate_update_signing_key.mjs"
+import { createSignedMidtermDatePolicy, validateMidtermDateRules } from "../scripts/create_midterm_date_policy.mjs"
+
+test("signs strict college date rules independently of the update manifest", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "sztu-date-policy-"))
+  const keys = await generateSigningKeyPair(path.join(directory, "keys"))
+  const policy = createSignedMidtermDatePolicy({
+    privateKeyPem: await readFile(keys.privateKeyPath, "utf8"),
+    publishedAt: "2026-09-24T00:00:00.000Z",
+    rules: [{ college: "新材料与新能源学院", start_date: "2026-09-20", end_date: "2026-09-30" }],
+  })
+  assert.equal(policy.payload.rules.length, 1)
+  assert.equal(verify(null, Buffer.from(canonicalJson(policy.payload)),
+    await readFile(keys.publicKeyPath, "utf8"), Buffer.from(policy.signature, "base64")), true)
+  assert.throws(() => validateMidtermDateRules([
+    { college: "学院", start_date: "2026-09-31", end_date: "2026-10-01" },
+  ]), /无效/)
+  assert.throws(() => validateMidtermDateRules([
+    { college: "学院", start_date: "2026-10-01", end_date: "2026-09-30" },
+  ]), /无效/)
+})
 
 test("creates an Ed25519 manifest with exact size and SHA-256 metadata", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "sztu-update-manifest-"))

@@ -43,6 +43,39 @@ def proposal_fixture() -> dict:
 
 
 class ProposalContractTests(unittest.TestCase):
+    def test_unresolved_math_source_blocks_proposal_export(self) -> None:
+        proposal = proposal_fixture()
+        proposal["sections"]["research_content"][0] = "计算 $\\unknown{x}$ 的结果。"
+        with self.assertRaises(ExportError) as context:
+            validate_proposal(proposal)
+        self.assertEqual(context.exception.details["reason"], "unresolved_math_source")
+        self.assertEqual(context.exception.details["field"], "sections.research_content[0]")
+
+    def test_process_equations_accept_structured_math_and_reject_raw_commands(self) -> None:
+        proposal = proposal_fixture()
+        inline = {"type": "inline_equation", "expression": {"type": "fraction", "numerator": {"type": "text", "value": "a"}, "denominator": {"type": "text", "value": "b"}}, "alt": "a 除以 b"}
+        proposal["sections"]["significance_and_status"][0] = {"runs": [{"text": "研究比值 "}, inline, {"text": " 的意义。"}]}
+        proposal["sections"]["research_content"][0] = {"runs": [{"text": "比值 "}, inline, {"text": " 用于比较。"}]}
+        proposal["sections"]["research_content"].append({"type": "equation", "expression": inline["expression"], "alt": "独立比值公式"})
+        self.assertIs(validate_proposal(proposal), proposal)
+        inline["expression"]["numerator"]["value"] = r"\input{private}"
+        with self.assertRaises(ExportError) as context:
+            validate_proposal(proposal)
+        self.assertEqual(context.exception.details["reason"], "invalid_math")
+
+    def test_optional_intro_can_be_edited_or_removed_without_completing_body(self) -> None:
+        proposal = proposal_fixture()
+        proposal["sections"].update({
+            "research_content_intro": "研究范围如下：",
+            "methods_and_means_intro": "",
+            "research_steps_intro": "计划如下：",
+        })
+        self.assertIs(validate_proposal(proposal), proposal)
+        proposal["sections"]["methods_and_means"] = []
+        with self.assertRaises(ExportError) as context:
+            validate_proposal(proposal)
+        self.assertEqual(context.exception.details["field"], "sections.methods_and_means")
+
     def test_python_script_command_uses_frozen_sidecar_runner(self) -> None:
         script = Path("/private/template/render.py")
         with patch("sztu_docs_backend.exporter.sys.frozen", True, create=True):
@@ -389,6 +422,33 @@ def midterm_fixture() -> dict:
 
 
 class MidtermContractTests(unittest.TestCase):
+    def test_editable_headings_flag_is_validated(self) -> None:
+        midterm = midterm_fixture()
+        midterm["sections"]["editable_headings"] = True
+        midterm["sections"]["main_research_content"].insert(0, "主要研究内容：")
+        midterm["sections"]["progress"].insert(0, "毕业论文（设计）工作进展情况（详述）：")
+        self.assertIs(validate_midterm(midterm), midterm)
+        midterm["sections"]["editable_headings"] = "true"
+        with self.assertRaises(ExportError) as context:
+            validate_midterm(midterm)
+        self.assertEqual(context.exception.details["field"], "sections.editable_headings")
+
+    def test_unresolved_math_source_blocks_midterm_export(self) -> None:
+        midterm = midterm_fixture()
+        midterm["sections"]["main_research_content"][0]["runs"][0]["text"] = "未完成 $x^"
+        with self.assertRaises(ExportError) as context:
+            validate_midterm(midterm)
+        self.assertEqual(context.exception.details["reason"], "unresolved_math_source")
+        self.assertEqual(context.exception.details["field"], "sections.main_research_content[0].runs[0].text")
+
+    def test_process_equations_are_validated_in_midterm_body(self) -> None:
+        midterm = midterm_fixture()
+        midterm["sections"]["main_research_content"].append({"type": "equation", "expression": {"type": "square_root", "body": {"type": "text", "value": "x"}}, "alt": "x 的平方根"})
+        self.assertIs(validate_midterm(midterm), midterm)
+        midterm["sections"]["main_research_content"][-1]["alt"] = ""
+        with self.assertRaises(ExportError):
+            validate_midterm(midterm)
+
     def test_valid_midterm_accepts_directory_rich_text_and_ordered_lists(self) -> None:
         midterm = midterm_fixture()
         self.assertIs(validate_midterm(midterm), midterm)
@@ -808,6 +868,17 @@ class ProposalExportIntegrationTests(unittest.TestCase):
     )
     def test_real_engine_exports_docx_and_pdf_with_receipt(self) -> None:
         proposal = proposal_fixture()
+        proposal["sections"]["significance_and_status"][0] = {"runs": [
+            {"text": "研究比值 "},
+            {"type": "inline_equation", "expression": {"type": "fraction", "numerator": {"type": "text", "value": "a"}, "denominator": {"type": "text", "value": "b"}}, "alt": "a 除以 b"},
+            {"text": " 的意义。"},
+        ]}
+        proposal["sections"]["research_content"].append({"type": "paragraph", "runs": [
+            {"text": "局部关系 "},
+            {"type": "inline_equation", "expression": {"type": "fraction", "numerator": {"type": "text", "value": "a"}, "denominator": {"type": "text", "value": "b"}}, "alt": "a 除以 b"},
+            {"text": " 可用于比较。"},
+        ]})
+        proposal["sections"]["research_content"].append({"type": "equation", "expression": {"type": "square_root", "body": {"type": "text", "value": "x"}}, "alt": "x 的平方根"})
         with tempfile.TemporaryDirectory(prefix="sztu-export-test-") as root:
             root_path = Path(root)
             from PIL import Image as PILImage
@@ -883,6 +954,11 @@ class ProposalExportIntegrationTests(unittest.TestCase):
                     ["docx", "pdf"],
                 )
                 self.assertTrue(all(Path(item["path"]).is_file() for item in receipt["artifacts"]))
+                from docx import Document
+                exported_docx = next(Path(item["path"]) for item in receipt["artifacts"] if item["format"] == "docx")
+                document_xml = Document(exported_docx).element.xml
+                self.assertIn("<m:oMath>", document_xml)
+                self.assertIn("<m:oMathPara>", document_xml)
                 exported_pdf = next(
                     Path(item["path"])
                     for item in receipt["artifacts"]

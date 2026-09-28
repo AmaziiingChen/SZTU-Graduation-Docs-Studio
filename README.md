@@ -27,7 +27,7 @@
 中的毕业届别统一派生，教师意见、签名和日期继续保留为空白。
 中期检查当前开放检查日期、论文题目、论文目录、主要研究内容和进展情况；教师勾选、意见、
 签名和日期保持空白。底层模板支持的图片、列表和富文本尚未全部开放为可视化编辑控件。
-当前可在 Apple Silicon Mac 上生成未签名的本地预览安装包；该产物用于本机测试，不等于已发布版本。
+当前已发布 macOS Apple Silicon 0.1.3 安装包；它尚未经过 Apple Developer ID 签名或公证，Windows 安装包和目标编辑器验收仍需分别完成。
 
 姓名、学号、学院、专业、班级和指导教师只在“学生档案”中维护。过程文档页面不提供
 这些字段的重复覆盖入口；内容检查、导出预检和最终导出会读取当前关联档案，并把当时
@@ -84,6 +84,23 @@ pnpm dev
 Electron 或 Python 依赖时需要联网。`pnpm dev` 启动 Vite 与 Electron；开发态为保持严格 CSP
 已关闭 HMR，renderer 或 Electron 代码修改后请重新启动开发进程。
 
+在 Windows 上继续开发时，把应用仓库和模板 fork 克隆为同级目录；当前模板开发分支为
+`codex/thesis-workbench`，本地开发环境会从相邻的 `Thesis` 目录读取过程文档模板：
+
+```powershell
+git clone https://github.com/AmaziiingChen/SZTU-Graduation-Docs-Studio.git
+git clone --branch codex/thesis-workbench https://github.com/AmaziiingChen/SZTU-Thesis-Latex-Template.git Thesis
+cd SZTU-Graduation-Docs-Studio
+corepack enable
+pnpm install --frozen-lockfile
+pnpm setup:backend
+pnpm verify
+pnpm dev
+```
+
+Windows 还需按文档功能安装 XeLaTeX、Poppler 和所需的合法字体；Windows 构建与 Word/WPS
+验收须在目标机器上单独验证。
+
 ## macOS 本地预览安装包
 
 在 Apple Silicon Mac 上运行 `pnpm package:mac`，会先执行完整校验，再生成 ARM64 的 DMG 和 ZIP。
@@ -91,8 +108,7 @@ Electron 或 Python 依赖时需要联网。`pnpm dev` 启动 Vite 与 Electron�
 TeX Live、XeLaTeX、latexmk 或 Poppler；首次启动的环境检查会提示用户准备这些本机依赖。
 界面自身继续使用项目已有的开源 Geist Web 字体，这不属于文档模板字体。
 
-当前预览包没有 Apple Developer ID 签名或公证，macOS 可能显示 Gatekeeper 提示；它仅用于开发者
-本机验证，不应作为公开 Release 分发。具体构建边界见
+当前安装包没有 Apple Developer ID 签名或公证，macOS 可能显示 Gatekeeper 提示。具体构建边界见
 [macOS 打包说明](docs/MACOS_PACKAGING.md)。
 
 填写文档后点击顶部的“预览&导出”。右侧抽屉会立即打开，并在没有当前有效预览时自动保存、检查和生成与正式 PDF 导出共用模板引擎的
@@ -102,7 +118,7 @@ TeX Live、XeLaTeX、latexmk 或 Poppler；首次启动的环境检查会提示�
 开题报告和中期检查的本地开发模板可通过工作台“关联或更新本地模板工程”选择一次。之后每次
 环境检查、导出预检和正式导出都会重新读取允许清单中的文件、拒绝符号链接、计算组合 SHA-256，
 再复制为应用私有目录中的内容寻址快照；回执记录 `workspace.<指纹>` 版本。预检后源文件若变化，
-旧令牌不会匹配新快照，必须重新预检。开发检出中若存在相邻的 `/Users/chen/Thesis`，应用也会
+旧令牌不会匹配新快照，必须重新预检。开发检出中若存在相邻的 `../Thesis`，应用也会
 自动采用同一同步流程。`SZTU_DOCS_PROPOSAL_ENGINE_DIR` 和
 `SZTU_DOCS_MIDTERM_ENGINE_DIR` 可显式覆盖开发来源。
 

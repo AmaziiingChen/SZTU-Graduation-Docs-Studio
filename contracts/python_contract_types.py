@@ -26,6 +26,7 @@ class StudentProfileInput(TypedDict):
     advisor_title: NotRequired[str | None]
     graduation_cohort: NotRequired[str | None]
     thesis_title: NotRequired[list[str | dict[str, object]] | None]
+    thesis_title_en: NotRequired[str | None]
 
 
 class StudentProfile(TypedDict):
@@ -39,6 +40,7 @@ class StudentProfile(TypedDict):
     advisor_title: str | None
     graduation_cohort: str | None
     thesis_title: list[str | dict[str, object]] | None
+    thesis_title_en: str | None
     created_at: str
     updated_at: str
 
@@ -53,6 +55,7 @@ class ProfileDraft(TypedDict):
     advisor_title: str
     graduation_cohort: str
     thesis_title: list[str | dict[str, object]] | None
+    thesis_title_en: str | None
 
 
 class RichRun(TypedDict):

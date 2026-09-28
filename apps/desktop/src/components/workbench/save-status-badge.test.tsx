@@ -44,4 +44,14 @@ describe("SaveStatusBadge", () => {
       .querySelector('[data-slot="save-status-content"]')
     expect(content).toHaveClass("[&>svg]:size-3", "[&>svg]:shrink-0")
   })
+
+  it("renders a quiet footer status without a success fill while preserving failure contrast", () => {
+    const { rerender } = render(<SaveStatusBadge state="saved" quiet />)
+    const saved = screen.getByLabelText("保存状态：已保存")
+    expect(saved).toHaveClass("text-muted-foreground")
+    expect(saved).not.toHaveClass("bg-emerald-500")
+
+    rerender(<SaveStatusBadge state="error" quiet />)
+    expect(screen.getByLabelText("保存状态：保存失败")).toHaveClass("text-destructive")
+  })
 })

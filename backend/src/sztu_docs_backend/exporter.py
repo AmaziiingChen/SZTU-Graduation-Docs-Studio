@@ -17,7 +17,7 @@ import tempfile
 import time
 import uuid
 from collections.abc import Callable
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +41,7 @@ DOCUMENT_OUTPUT_LABELS = {
     "proposal": "开题报告",
     "midterm": "中期检查表",
     "task_book": "任务书",
+    "thesis": "毕业论文",
 }
 OUTPUT_FORMAT_SUFFIXES = {
     "docx": ".docx",
@@ -201,9 +202,71 @@ def _require_text(
     return normalized
 
 
-def _validate_paragraph(value: Any, path: str, maximum: int) -> None:
+_MATH_TEXT = re.compile(r"[A-Za-z0-9αβγδεζηθικλμνξοπρστυφχψωΓΔΘΛΞΠΣΥΦΨΩ +\-−=×·/(),.\[\]<>≤≥%|:]+")
+
+
+def _validate_math_expression(value: Any, path: str, *, depth: int = 1, count: list[int] | None = None) -> None:
+    count = [0] if count is None else count
+    count[0] += 1
+    if depth > 8 or count[0] > 100 or not isinstance(value, dict):
+        raise ExportError("DOCUMENT_NOT_READY", "公式结构过于复杂或无效。", {"field": path, "reason": "invalid_math"})
+    kind = value.get("type")
+    if kind == "text" and set(value) == {"type", "value"}:
+        text = value["value"]
+        if isinstance(text, str) and 0 < len(text) <= 100 and text.strip() and _MATH_TEXT.fullmatch(text):
+            return
+    elif kind == "row" and set(value) == {"type", "items"}:
+        items = value["items"]
+        if isinstance(items, list) and 1 <= len(items) <= 50:
+            for index, item in enumerate(items):
+                _validate_math_expression(item, f"{path}.items[{index}]", depth=depth + 1, count=count)
+            return
+    else:
+        fields = {"fraction": ("numerator", "denominator"), "subscript": ("base", "sub"), "superscript": ("base", "super"), "square_root": ("body",)}.get(kind)
+        if fields and set(value) == {"type", *fields}:
+            for field in fields:
+                _validate_math_expression(value[field], f"{path}.{field}", depth=depth + 1, count=count)
+            return
+    raise ExportError("DOCUMENT_NOT_READY", "公式包含不支持的字符或结构。", {"field": path, "reason": "invalid_math"})
+
+
+def _validate_equation(value: Any, path: str, *, inline: bool = False) -> None:
+    allowed = {"type", "expression", "alt"} if inline else {"type", "expression", "alt", "id", "chapter"}
+    expected = "inline_equation" if inline else "equation"
+    if not isinstance(value, dict) or value.get("type") != expected or set(value) - allowed:
+        raise ExportError("DOCUMENT_NOT_READY", "公式数据格式无效。", {"field": path, "reason": "invalid_equation"})
+    _require_text(value.get("alt"), f"{path}.alt", maximum=500)
+    _validate_math_expression(value.get("expression"), f"{path}.expression")
+    if not inline:
+        if "id" in value and (not isinstance(value["id"], str) or not re.fullmatch(r"eq-[A-Za-z0-9_-]{8,96}", value["id"])):
+            raise ExportError("DOCUMENT_NOT_READY", "公式编号标识无效。", {"field": f"{path}.id", "reason": "invalid_id"})
+        chapter = value.get("chapter", 1)
+        if isinstance(chapter, bool) or not isinstance(chapter, int) or not 1 <= chapter <= 99:
+            raise ExportError("DOCUMENT_NOT_READY", "公式章节无效。", {"field": f"{path}.chapter", "reason": "invalid_chapter"})
+
+
+def _reject_unresolved_math_source(text: str, path: str) -> None:
+    for index, character in enumerate(text):
+        if character != "$":
+            continue
+        slashes = 0
+        previous = index - 1
+        while previous >= 0 and text[previous] == "\\":
+            slashes += 1
+            previous -= 1
+        if slashes % 2 == 0:
+            raise ExportError(
+                "DOCUMENT_NOT_READY",
+                "正文中还有未完成或不支持的公式，请检查 $...$ / $$...$$ 写法。",
+                {"field": path, "reason": "unresolved_math_source"},
+            )
+
+
+def _validate_paragraph(value: Any, path: str, maximum: int, *, allow_inline_equations: bool = False) -> None:
     if isinstance(value, str):
         _require_text(value, path, maximum=maximum)
+        if allow_inline_equations:
+            _reject_unresolved_math_source(value, path)
         return
     if (
         not isinstance(value, dict)
@@ -226,6 +289,10 @@ def _validate_paragraph(value: Any, path: str, maximum: int) -> None:
     total = 0
     for index, run in enumerate(runs):
         run_path = f"{path}.runs[{index}]"
+        if allow_inline_equations and isinstance(run, dict) and run.get("type") == "inline_equation":
+            _validate_equation(run, run_path, inline=True)
+            total += len(run["alt"])
+            continue
         if not isinstance(run, dict) or set(run) - {"text", "script", "italic", "bold"}:
             raise ExportError(
                 "DOCUMENT_NOT_READY",
@@ -233,6 +300,8 @@ def _validate_paragraph(value: Any, path: str, maximum: int) -> None:
                 {"field": run_path, "reason": "unsupported_field"},
             )
         text = _require_text(run.get("text"), f"{run_path}.text", maximum=maximum)
+        if allow_inline_equations:
+            _reject_unresolved_math_source(text, f"{run_path}.text")
         total += len(text)
         if run.get("script", "normal") not in {"normal", "sub", "super"}:
             raise ExportError(
@@ -264,7 +333,7 @@ def _validate_proposal_content_paragraph(
     """Accept the common paragraph shape without changing legacy proposal fields."""
 
     if isinstance(value, str):
-        _validate_paragraph(value, path, maximum)
+        _validate_paragraph(value, path, maximum, allow_inline_equations=True)
         return
     if (
         not isinstance(value, dict)
@@ -277,7 +346,7 @@ def _validate_proposal_content_paragraph(
             "开题报告正文段落格式无效。",
             {"field": path, "reason": "invalid_paragraph"},
         )
-    _validate_paragraph({"runs": value.get("runs")}, path, maximum)
+    _validate_paragraph({"runs": value.get("runs")}, path, maximum, allow_inline_equations=True)
 
 
 def _validate_list_block(
@@ -478,6 +547,9 @@ def _validate_proposal_text_block(value: Any, path: str) -> None:
             document_name="开题报告",
         )
         return
+    if value.get("type") == "equation":
+        _validate_equation(value, path)
+        return
     raise ExportError(
         "DOCUMENT_NOT_READY",
         "开题报告正文只支持段落、有序列表、无序列表和本地图片。",
@@ -551,12 +623,25 @@ def validate_proposal(document: Any) -> dict[str, Any]:
         "research_steps",
         "references",
     }
-    if not isinstance(sections, dict) or set(sections) != section_names:
+    intro_names = {
+        "research_content_intro",
+        "methods_and_means_intro",
+        "research_steps_intro",
+    }
+    if not isinstance(sections, dict) or not section_names <= set(sections) or set(sections) - section_names - intro_names:
         raise ExportError(
             "DOCUMENT_NOT_READY",
             "开题报告正文结构不完整。",
             {"field": "sections", "reason": "invalid_shape"},
         )
+    for name in intro_names:
+        intro = sections.get(name, "")
+        if not isinstance(intro, str) or len(intro) > 200 or "\n" in intro or "\r" in intro:
+            raise ExportError(
+                "DOCUMENT_NOT_READY",
+                "开题报告引导句应为不超过 200 字的单行文字。",
+                {"field": f"sections.{name}", "reason": "invalid_intro"},
+            )
     structured_section_names = {
         "research_content",
         "methods_and_means",
@@ -582,7 +667,7 @@ def validate_proposal(document: Any) -> dict[str, Any]:
                 _validate_proposal_text_block(block, block_path)
             else:
                 maximum = 1000 if name == "references" else 5000
-                _validate_paragraph(block, block_path, maximum)
+                _validate_paragraph(block, block_path, maximum, allow_inline_equations=name == "significance_and_status")
     return document
 
 
@@ -594,6 +679,7 @@ def _validate_midterm_paragraph(value: Any, path: str, maximum: int) -> None:
                 "中期检查文本字段不完整或超过允许长度。",
                 {"field": path, "reason": "invalid_text", "maximum": maximum},
             )
+        _reject_unresolved_math_source(value, path)
         return
     if not isinstance(value, dict) or set(value) - {"type", "runs"} or value.get("type", "paragraph") != "paragraph":
         raise ExportError(
@@ -602,7 +688,7 @@ def _validate_midterm_paragraph(value: Any, path: str, maximum: int) -> None:
             {"field": path, "reason": "invalid_paragraph"},
         )
     paragraph = {"runs": value.get("runs")}
-    _validate_paragraph(paragraph, path, maximum)
+    _validate_paragraph(paragraph, path, maximum, allow_inline_equations=True)
 
 
 def _validate_midterm_tool(block: dict, path: str) -> None:
@@ -656,6 +742,14 @@ def _validate_midterm_tool(block: dict, path: str) -> None:
         _validate_midterm_paragraph(block["caption"], f"{path}.caption", 5000)
 
 
+def validate_authoring_media(block: dict, path: str) -> None:
+    """Shared media shape contract; does not claim export readiness or resolve assets."""
+    if block.get("type") == "image":
+        _validate_image_block(block, path, 5000, _validate_midterm_paragraph, document_name="文档")
+    else:
+        _validate_midterm_tool(block, path)
+
+
 def _validate_midterm_blocks(value: Any, path: str) -> None:
     if not isinstance(value, list) or not 1 <= len(value) <= 80:
         raise ExportError(
@@ -688,6 +782,9 @@ def _validate_midterm_blocks(value: Any, path: str) -> None:
                 _validate_midterm_paragraph,
                 document_name="中期检查",
             )
+            continue
+        if block.get("type") == "equation":
+            _validate_equation(block, block_path)
             continue
         raise ExportError(
             "DOCUMENT_NOT_READY",
@@ -835,7 +932,7 @@ def validate_midterm(document: Any) -> dict[str, Any]:
 
     sections = document.get("sections")
     required_sections = {"directory", "main_research_content", "progress"}
-    allowed_sections = required_sections | {"numbering_style"}
+    allowed_sections = required_sections | {"numbering_style", "editable_headings"}
     if (
         not isinstance(sections, dict)
         or not required_sections <= set(sections)
@@ -845,6 +942,12 @@ def validate_midterm(document: Any) -> dict[str, Any]:
             "DOCUMENT_NOT_READY",
             "中期检查正文结构不完整。",
             {"field": "sections", "reason": "invalid_shape"},
+        )
+    if "editable_headings" in sections and not isinstance(sections["editable_headings"], bool):
+        raise ExportError(
+            "DOCUMENT_NOT_READY",
+            "中期检查引导段落标志无效。",
+            {"field": "sections.editable_headings", "reason": "invalid_type"},
         )
     numbering_style = sections.get("numbering_style")
     if numbering_style is not None and numbering_style not in MIDTERM_OUTLINE_STYLE_DEPTHS:
@@ -1183,6 +1286,40 @@ def validate_document(document_type: str, document: Any) -> dict[str, Any]:
         return validate_midterm(document)
     if document_type == "task_book":
         return validate_task_book(document)
+    if document_type == "thesis":
+        from .thesis_contract import validate_thesis_content
+        from .storage.errors import ValidationError
+        try:
+            validate_thesis_content(document)
+        except (ValidationError, TypeError, KeyError) as exc:
+            raise ExportError("DOCUMENT_NOT_READY", "论文草稿结构无效，请检查章节和内容块。") from exc
+        metadata = document.get("metadata")
+        draft = document["thesis"]
+        required = ("title", "student_name", "student_id", "college", "major", "advisor")
+        if not isinstance(metadata, dict):
+            raise ExportError("DOCUMENT_NOT_READY", "请先填写论文基本信息。")
+        for field in required:
+            value = _paragraph_text(metadata.get(field)) if field == "title" else metadata.get(field)
+            if not isinstance(value, str) or not value.strip():
+                raise ExportError("DOCUMENT_NOT_READY", "论文基本信息尚未填写完整。", {"field": f"metadata.{field}"})
+        for field in ("englishTitle", "keywordsCn", "keywordsEn"):
+            if not draft[field].strip():
+                raise ExportError("DOCUMENT_NOT_READY", "论文英文题目和关键词尚未填写完整。", {"field": f"thesis.{field}"})
+        try:
+            submitted = date.fromisoformat(draft.get("submissionDate", ""))
+            if not 2000 <= submitted.year <= 2100:
+                raise ValueError
+        except (TypeError, ValueError) as exc:
+            raise ExportError("DOCUMENT_NOT_READY", "请填写有效的论文封面提交日期。", {"field": "thesis.submissionDate"}) from exc
+        if not draft["abstractCn"] or not draft["abstractEn"] or not draft["chapters"]:
+            raise ExportError("DOCUMENT_NOT_READY", "请先填写中英文摘要和至少一个章节。")
+        if not draft["referencesBibtex"].strip():
+            raise ExportError("DOCUMENT_NOT_READY", "请先导入参考文献。")
+        try:
+            count_valid_bibtex_entries(draft["referencesBibtex"])
+        except BibtexValidationError as exc:
+            raise ExportError("DOCUMENT_NOT_READY", "参考文献 BibTeX 内容无效。", {"reason": exc.reason}) from exc
+        return document
     raise ExportError("DOCUMENT_TYPE_UNSUPPORTED", "当前文档类型尚未接入导出管线。")
 
 
@@ -1557,9 +1694,13 @@ def build_export_document(workspace: Any, record: dict[str, Any]) -> dict[str, A
         shared_fields.append("class_name")
     elif record.get("document_type") == "task_book":
         shared_fields.extend(["student_id", "class_name", "graduation_year"])
+    elif record.get("document_type") == "thesis":
+        shared_fields.extend(["student_id", "advisor_title"])
     for field in shared_fields:
         merged_metadata[field] = ""
     profile_id = record.get("profile_id")
+    thesis = content.get("thesis")
+    merged_thesis = dict(thesis) if record.get("document_type") == "thesis" and isinstance(thesis, dict) else None
     if isinstance(profile_id, str) and profile_id:
         profile = workspace.get_profile(profile_id)
         merged_metadata.update(
@@ -1587,10 +1728,16 @@ def build_export_document(workspace: Any, record: dict[str, Any]) -> dict[str, A
                     ),
                 }
             )
+        elif record.get("document_type") == "thesis":
+            merged_metadata["student_id"] = profile["student_number"]
+            merged_metadata["advisor_title"] = profile.get("advisor_title") or ""
+            if merged_thesis is not None and isinstance(profile.get("thesis_title_en"), str):
+                merged_thesis["englishTitle"] = profile["thesis_title_en"]
     return {
         "schema_version": record["schema_version"],
         **content,
         "metadata": merged_metadata,
+        **({"thesis": merged_thesis} if merged_thesis is not None else {}),
     }
 
 
@@ -1642,7 +1789,11 @@ def content_check(
             else (
                 "中期检查基本信息、目录和进展内容已通过严格检查。"
                 if document_type == "midterm"
-                else "任务书基本信息、正文、进度安排、选题信息和当前模板封面容量已通过严格检查。"
+                else (
+                    "论文基本信息、摘要、章节和参考文献已通过内容检查。"
+                    if document_type == "thesis"
+                    else "任务书基本信息、正文、进度安排、选题信息和当前模板封面容量已通过严格检查。"
+                )
             )
         ),
         "checked_at": checked_at,
@@ -1828,6 +1979,16 @@ def _run(
                 )
     if process.returncode != 0:
         diagnostic = stdout + "\n" + stderr
+        if "尚不能编译" in diagnostic or "Required font" in diagnostic:
+            raise ExportError("REQUIRED_FONT_MISSING", "论文模板缺少规定字体；请在本机安装字体，或在本地模板 fonts.local 中提供已授权字体文件。")
+        if "公式命令不受支持" in diagnostic or "公式包含不支持" in diagnostic or "公式花括号不成对" in diagnostic:
+            raise ExportError("THESIS_EQUATION_INVALID", "论文公式包含当前预览不支持的数学命令或括号结构，请修改公式源码。")
+        if "引用目标不存在" in diagnostic or "引用标记格式无效" in diagnostic or "来源引用的文献不存在" in diagnostic:
+            raise ExportError("THESIS_REFERENCE_INVALID", "论文存在失效的图、公式或文献引用，请检查引用目标。")
+        if "图片不属于当前工作区" in diagnostic:
+            raise ExportError("IMAGE_ASSET_UNAVAILABLE", "论文图片资源不存在或不属于当前工作区，请重新插入图片。")
+        if "最终 PDF 仍有未解析引用" in diagnostic:
+            raise ExportError("THESIS_PDF_UNRESOLVED", "论文 PDF 仍有未解析引用、缺字或越界内容，请检查正文和参考文献。")
         if "required checkbox font is missing" in diagnostic:
             raise ExportError(
                 "REQUIRED_FONT_MISSING",
@@ -1847,17 +2008,17 @@ def _run(
                 {"exit_code": process.returncode},
             )
         if (
-            "No module named 'common.python.process_form'" in diagnostic
+            "ModuleNotFoundError: No module named 'common.python." in diagnostic
             or "sztu-process-form.tex' not found" in diagnostic
         ):
             raise ExportError(
                 "TEMPLATE_ENGINE_INCOMPLETE",
-                "当前模板快照缺少共享排版文件；请重新关联模板工程后重试。",
+                "当前模板快照缺少共享排版文件；请重启工作台后重试，仍失败则重新关联模板工程。",
                 {"exit_code": process.returncode},
             )
         raise ExportError(
             "RENDER_FAILED",
-            "文档渲染失败，请检查本机字体和文档引擎环境。",
+            "文档渲染失败；请重试，若持续失败请创建诊断包以便定位。",
             {"exit_code": process.returncode},
         )
     return (stdout + "\n" + stderr)[-20_000:]
@@ -1886,6 +2047,7 @@ def _check_pdf(
         "proposal": ("SimSun", "SimHei", "TimesNewRoman"),
         "midterm": ("FZXBSJW", "SimSun", "TimesNewRoman"),
         "task_book": ("STXingkai", "SimHei", "SimSun", "TimesNewRoman"),
+        "thesis": ("SimHei", "SimSun", "TimesNewRoman"),
     }[document_type]
     for required_font in required_fonts:
         if required_font not in fonts:
@@ -1979,6 +2141,8 @@ def _validate_export_request(
         )
     record = workspace.get_document(document_id)
     document_type = record["document_type"]
+    if document_type == "thesis" and formats != ["pdf"]:
+        raise ExportError("INVALID_EXPORT_FORMAT", "毕业论文当前支持 PDF 导出。")
     if document_type not in DOCUMENT_OUTPUT_LABELS or not isinstance(record.get("content"), dict):
         raise ExportError(
             "DOCUMENT_NOT_READY",
@@ -2009,6 +2173,8 @@ def preflight_export(
             raise ExportError("INVALID_EXPORT_FORMAT", "请选择有效的导出格式。")
         record = workspace.get_document(document_id)
         document_type = record["document_type"]
+        if document_type == "thesis" and formats != ["pdf"]:
+            raise ExportError("INVALID_EXPORT_FORMAT", "毕业论文当前支持 PDF 导出。")
         if document_type not in DOCUMENT_OUTPUT_LABELS or not isinstance(record.get("content"), dict):
             raise ExportError("DOCUMENT_NOT_READY", "当前文档尚未保存完整内容。")
         proposal = build_export_document(workspace, record)
@@ -2691,6 +2857,7 @@ def generate_preview(
                 request_id=request_id,
                 cancellation_file=cancellation_file,
                 app_version=app_version,
+                asset_directory=data_directory / "document-assets",
             )
 
         pdf_artifact = next(
@@ -2910,6 +3077,7 @@ def run_export(
     app_version: str = "unknown",
     preflight_token: str | None = None,
     preview_id: str | None = None,
+    asset_directory: Path | None = None,
 ) -> dict[str, Any]:
     output, record, proposal, ordered_formats = _validate_export_request(
         workspace, document_id, output_directory, formats
@@ -3067,11 +3235,20 @@ def run_export(
                 )
                 if "pdf" in ordered_formats and preview_pdf is None:
                     latex_command.append("--compile")
+                if record["document_type"] == "thesis":
+                    assets_root = asset_directory or (
+                        workspace.database.data_directory / "document-assets"
+                        if workspace.database.data_directory is not None else None
+                    )
+                    if assets_root is None:
+                        raise ExportError("IMAGE_ASSET_UNAVAILABLE", "论文图片资源目录不可用。")
+                    latex_command.extend(["--assets-root", str(assets_root)])
                 _run(
                     latex_command,
                     cwd=work,
                     cancellation_file=cancel_path,
                     environment=_engine_renderer_environment(descriptor),
+                    timeout=300 if record["document_type"] == "thesis" else RENDER_TIMEOUT_SECONDS,
                 )
 
             if "pdf" in ordered_formats:

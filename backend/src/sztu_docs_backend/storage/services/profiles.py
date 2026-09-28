@@ -9,7 +9,7 @@ from typing import Any
 from ..database import Database, utc_now
 from ..errors import NotFoundError, ValidationError
 from .common import decode_json, encode_json, new_id, require_text
-from .profile_drafts import normalize_thesis_title
+from .profile_drafts import normalize_english_thesis_title, normalize_thesis_title
 
 PROFILE_FIELDS = (
     "full_name",
@@ -21,6 +21,7 @@ PROFILE_FIELDS = (
     "advisor_title",
     "graduation_cohort",
     "thesis_title",
+    "thesis_title_en",
 )
 
 
@@ -51,6 +52,7 @@ class ProfileService:
                 payload, "graduation_cohort", maximum=20, required=False
             ),
             "thesis_title": normalize_thesis_title(payload.get("thesis_title")),
+            "thesis_title_en": normalize_english_thesis_title(payload.get("thesis_title_en")),
         }
         now = utc_now()
         profile_id = supplied_id or new_id()
@@ -63,9 +65,9 @@ class ProfileService:
                         INSERT INTO student_profiles(
                             id, full_name, student_number, college, major,
                             class_name, advisor_name, advisor_title,
-                            graduation_cohort, thesis_title_json,
+                            graduation_cohort, thesis_title_json, thesis_title_en,
                             created_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             profile_id,
@@ -82,6 +84,7 @@ class ProfileService:
                                 if values["thesis_title"] is not None
                                 else None
                             ),
+                            values["thesis_title_en"],
                             now,
                             now,
                         ),
@@ -97,6 +100,8 @@ class ProfileService:
                                 WHEN ? THEN ? ELSE graduation_cohort END,
                             thesis_title_json = CASE
                                 WHEN ? THEN ? ELSE thesis_title_json END,
+                            thesis_title_en = CASE
+                                WHEN ? THEN ? ELSE thesis_title_en END,
                             updated_at = ?
                         WHERE id = ? AND soft_deleted_at IS NULL
                         """,
@@ -117,6 +122,8 @@ class ProfileService:
                                 if values["thesis_title"] is not None
                                 else None
                             ),
+                            int("thesis_title_en" in payload),
+                            values["thesis_title_en"],
                             now,
                             profile_id,
                         ),
@@ -132,7 +139,7 @@ class ProfileService:
             """
             SELECT id, full_name, student_number, college, major, class_name,
                    advisor_name, advisor_title, graduation_cohort,
-                   thesis_title_json,
+                   thesis_title_json, thesis_title_en,
                    created_at, updated_at
             FROM student_profiles
             WHERE id = ? AND soft_deleted_at IS NULL
@@ -150,7 +157,7 @@ class ProfileService:
             """
             SELECT id, full_name, student_number, college, major, class_name,
                    advisor_name, advisor_title, graduation_cohort,
-                   thesis_title_json,
+                   thesis_title_json, thesis_title_en,
                    created_at, updated_at
             FROM student_profiles
             WHERE soft_deleted_at IS NULL

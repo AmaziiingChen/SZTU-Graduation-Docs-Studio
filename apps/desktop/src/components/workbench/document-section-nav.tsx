@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { SidebarTrigger } from "@/components/ui/sidebar"
 import { SectionCompletionMark } from "@/components/workbench/section-completion-mark"
 
 export type DocumentSectionState =
@@ -20,6 +21,7 @@ type DocumentSectionNavProps = {
   activeSection: string
   animationContextKey: string
   showCompletion?: boolean
+  showSidebarToggle?: boolean
   onSectionChange: (sectionId: string) => void
 }
 
@@ -28,6 +30,7 @@ export function DocumentSectionNav({
   activeSection,
   animationContextKey,
   showCompletion = true,
+  showSidebarToggle = false,
   onSectionChange,
 }: DocumentSectionNavProps) {
   return (
@@ -39,13 +42,12 @@ export function DocumentSectionNav({
         data-slot="document-section-header"
         className="flex h-(--header-height) shrink-0 items-center border-b px-4"
       >
-        <p className="text-sm font-medium">文档板块</p>
+        {showSidebarToggle ? <SidebarTrigger className="-ml-1" /> : null}
       </div>
       <ScrollArea className="min-h-0 flex-1">
         <nav className="grid gap-1 p-2" aria-label="当前文档板块">
           {sections.map((section) => {
             const selected = section.id === activeSection
-            const state = section.state ?? "incomplete"
             return (
               <Button
                 key={section.id}
@@ -56,10 +58,10 @@ export function DocumentSectionNav({
                 onClick={() => onSectionChange(section.id)}
               >
                 <span className="min-w-0 flex-1">{section.label}</span>
-                {showCompletion ? (
+                {showCompletion && section.state ? (
                   <SectionCompletionMark
                     key={`${animationContextKey}:${section.id}`}
-                    state={state}
+                    state={section.state}
                   />
                 ) : null}
               </Button>

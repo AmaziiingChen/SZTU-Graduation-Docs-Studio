@@ -377,6 +377,9 @@ describe("remote service configuration", () => {
     expect(config.updateManifestUrl).toBe(
       "https://amazingapp-d5giro9ac73398410-1412347033.tcloudbaseapp.com/releases/stable/manifest.json",
     )
+    expect(config.midtermDatePolicyUrl).toBe(
+      "https://amazingapp-d5giro9ac73398410-1412347033.tcloudbaseapp.com/releases/stable/midterm-date-policy.json",
+    )
     expect(config.updatePublicKeyPem).toContain("BEGIN PUBLIC KEY")
     expect(config.updatePublicKeyPem).not.toContain("PRIVATE KEY")
   })

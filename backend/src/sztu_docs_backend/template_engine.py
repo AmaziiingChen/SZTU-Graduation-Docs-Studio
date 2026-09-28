@@ -32,18 +32,18 @@ MIDTERM_ENGINE_DIRECTORY_NAME = "midterm-0.3-66c968c"
 TASK_BOOK_ENGINE_VERSION = "0.2+66c968c"
 TASK_BOOK_ENGINE_TEMPLATE_ID = "sztu.task-book.2026.local"
 TASK_BOOK_ENGINE_DIRECTORY_NAME = "task-book-0.2-66c968c"
-SUPPORTED_ENGINE_DOCUMENT_TYPES = frozenset({"proposal", "midterm", "task_book"})
+SUPPORTED_ENGINE_DOCUMENT_TYPES = frozenset({"proposal", "midterm", "task_book", "thesis"})
 INSTALL_MANIFEST_NAME = "install-manifest.json"
 WORKSPACE_LINKS_NAME = "workspace-links.json"
 WORKSPACE_SNAPSHOTS_DIRECTORY = "workspace-snapshots"
 BUNDLED_ENGINES_ENVIRONMENT = "SZTU_DOCS_BUNDLED_ENGINES_DIR"
 BUNDLED_ENGINES_MANIFEST_NAME = "bundle-manifest.json"
 ENGINE_FILE_HASHES = {
-    "word/render.py": "19bb3a35251dbf67978e1bebcf8cf447a0392280a87b223050bd90184301d1d2",
+    "word/render.py": "4e894ca023df69164723a998a6f2769869ac1a8e9d1a5602eb600b25fa27680a",
     "word/official-template.docx": "85b9ccc9d92e923fda81501a9f5abfd237fbc1c5021bafe449e51f044bfa5806",
-    "latex/render.py": "6bb81ca26fc7fee115ec4d99967c64ea58f492789504caf4d57fc8483750d2bd",
-    "latex/main.tex": "48d247245e69469fc04a253f0d242494f41df4f6d39a867854724fa74e5388e2",
-    "schema/proposal.schema.json": "555275e6e4a6058beeddf4031651f419b03c31566f4ed83807cb3a67c3f8c5cc",
+    "latex/render.py": "e901df9528604b92ad9e224329f145bd921514e3043ebcd5b2ff318a64eb9e06",
+    "latex/main.tex": "bb882d8ad60dffd86c3d25e11e52f310c56c72533abd0bdf9112e85f8e370eaa",
+    "schema/proposal.schema.json": "5f1e91693aea33b50f30efe5caf50eb393640d4a4697a421676f094d9f4d0315",
 }
 MIDTERM_ENGINE_FILE_HASHES = {
     "templates/common/__init__.py": "b5cf6a625cd4c58cac3e8bd2636bafe769bfe6394784d9c7dbb758edec251e5c",
@@ -104,9 +104,28 @@ PROPOSAL_WORKSPACE_FILE_NAMES = tuple(
         {
             *(f"templates/proposal/{name}" for name in ENGINE_FILE_HASHES),
             "templates/proposal/spec/layout.json",
+            "templates/common/python/list_layout.py",
             *WORKSPACE_COMMON_FILE_NAMES,
         }
     )
+)
+THESIS_WORKSPACE_FILE_NAMES = (
+    "SZTUthesis.cls",
+    "sztuthesis_main.tex",
+    "gbt7714.sty",
+    "gbt7714-numerical.bst",
+    "STXingkai.ttf",
+    "STXinwei.ttf",
+    "STZhongsong.ttf",
+    "images/school_title.pdf",
+    "scripts/check_fonts.py",
+    "templates/common/__init__.py",
+    "templates/common/python/__init__.py",
+    "templates/common/python/font_files.py",
+    "templates/common/python/typography.py",
+    "templates/common/typography/font-policy-2026.json",
+    "templates/thesis/latex/render.py",
+    "templates/thesis/spec/layout.json",
 )
 VALIDATOR_SHA256 = "c59f65c8a45305df2a14baab4be6c7b200755c07751f40fcafd82c44259f1572"
 
@@ -418,6 +437,7 @@ def installed_engine_root(data_directory: Path, document_type: str = "proposal")
         "proposal": ENGINE_DIRECTORY_NAME,
         "midterm": MIDTERM_ENGINE_DIRECTORY_NAME,
         "task_book": TASK_BOOK_ENGINE_DIRECTORY_NAME,
+        "thesis": "thesis-workspace",
     }[document_type]
     return data_directory / "template-engines" / directory_name
 
@@ -434,6 +454,7 @@ def resolve_engine(document_type: str = "proposal") -> EngineDescriptor:
         "proposal": "SZTU_DOCS_PROPOSAL_ENGINE_DIR",
         "midterm": "SZTU_DOCS_MIDTERM_ENGINE_DIR",
         "task_book": "SZTU_DOCS_TASK_BOOK_ENGINE_DIR",
+        "thesis": "SZTU_DOCS_THESIS_ENGINE_DIR",
     }[document_type]
     configured = os.environ.get(configured_name)
     if configured:
@@ -491,6 +512,11 @@ def resolve_engine(document_type: str = "proposal") -> EngineDescriptor:
                     validator=installed / "scripts" / "validate_cjk_render.py",
                     source="installed",
                 )
+            if document_type == "thesis":
+                return _snapshot_workspace_engine(
+                    data_directory, installed, document_type,
+                    source_label="installed-workspace",
+                )[0]
             return verify_task_book_engine(
                 installed,
                 validator=installed / "scripts" / "validate_cjk_render.py",
@@ -515,6 +541,11 @@ def resolve_engine(document_type: str = "proposal") -> EngineDescriptor:
                 selected,
                 validator=selected / "scripts" / "validate_cjk_render.py",
                 source="environment",
+            )
+        if document_type == "thesis":
+            raise TemplateEngineError(
+                "TEMPLATE_ENGINE_UNAVAILABLE",
+                "毕业论文模板需要持久工作区，请先关联本地 Thesis 工程。",
             )
         return verify_task_book_engine(
             selected,
@@ -637,6 +668,17 @@ def _workspace_source(selected: Path, document_type: str) -> WorkspaceEngineSour
             ),
         }
         files = tuple((name, selection_root / name) for name in sorted(names))
+    elif document_type == "thesis":
+        if not selected.is_absolute() or selected.is_symlink() or not selected.is_dir():
+            raise TemplateEngineError("TEMPLATE_SOURCE_INVALID", "请选择有效的毕业论文模板工程目录。")
+        selection_root = selected.resolve()
+        engine_root = _require_plain_descendant(
+            selection_root, selection_root / "templates" / "thesis"
+        )
+        validator = _require_plain_descendant(
+            selection_root, selection_root / "scripts" / "validate_cjk_render.py"
+        )
+        files = tuple((name, selection_root / name) for name in THESIS_WORKSPACE_FILE_NAMES)
     else:
         raise TemplateEngineError(
             "TEMPLATE_ENGINE_UNSUPPORTED", "当前文档类型没有可关联模板。"
@@ -693,6 +735,9 @@ def _workspace_identity(document_type: str, pack_sha256: str) -> tuple[str, str]
     elif document_type == "midterm":
         template_id = MIDTERM_ENGINE_TEMPLATE_ID
         base_version = MIDTERM_ENGINE_VERSION.split("+", 1)[0]
+    elif document_type == "thesis":
+        template_id = "sztu.thesis.2026.local"
+        base_version = "0.1"
     else:
         template_id = TASK_BOOK_ENGINE_TEMPLATE_ID
         base_version = TASK_BOOK_ENGINE_VERSION.split("+", 1)[0]

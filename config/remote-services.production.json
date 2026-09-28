@@ -2,5 +2,6 @@
   "telemetry_endpoint": "https://amazingapp-d5giro9ac73398410-1412347033.ap-shanghai.app.tcloudbase.com/api/telemetry/v1/events",
   "diagnostic_endpoint": "https://amazingapp-d5giro9ac73398410-1412347033.ap-shanghai.app.tcloudbase.com/api/diagnostics/v1/reports",
   "update_manifest_url": "https://amazingapp-d5giro9ac73398410-1412347033.tcloudbaseapp.com/releases/stable/manifest.json",
+  "midterm_date_policy_url": "https://amazingapp-d5giro9ac73398410-1412347033.tcloudbaseapp.com/releases/stable/midterm-date-policy.json",
   "update_public_key_pem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAg/H8KzlFtabYYB5BwpOauxBm7qd3/axFEuDrvlsXfNs=\n-----END PUBLIC KEY-----\n"
 }

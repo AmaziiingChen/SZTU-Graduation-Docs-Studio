@@ -6,10 +6,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { VisualTableEditor, type EditableTableValue } from "@/components/workbench/visual-table-editor"
 import { parseTableText } from "@/lib/three-line-table"
 import { managedFigurePreviewUrl } from "@/lib/structured-content-editor"
+import { recoverManagedImagePreview } from "@/lib/managed-image-preview"
 import type { ParagraphInput, StructuredToolBlock } from "@/types/structured-content"
 import type { SztuDesktopApi } from "@/types/desktop-api"
 
-const text = (value?: ParagraphInput) => typeof value === "string" ? value : value?.runs.map(run => run.text).join("") ?? ""
+const text = (value?: ParagraphInput) => typeof value === "string" ? value : value?.runs.map(run => "text" in run ? run.text : run.alt).join("") ?? ""
 const preserve = (value: ParagraphInput | undefined, next: string): ParagraphInput => value !== undefined && text(value) === next ? value : next
 
 export function BodyToolDialog({ value, chapters, onCancel, onSave }: {
@@ -79,7 +80,7 @@ export function BodyToolDialog({ value, chapters, onCancel, onSave }: {
           </div>
           <div className={`grid gap-4 ${["", "grid-cols-1", "grid-cols-2", "grid-cols-3", "grid-cols-4"][group.columns ?? 2]}`}>
             {group.items.map((item, index) => <div key={`${item.path}-${index}`} className="grid content-start gap-2 rounded-lg border p-3">
-              <img className="h-40 w-full object-contain" src={managedFigurePreviewUrl(item.path)} alt={item.alt} />
+              <img className="h-40 w-full object-contain" src={managedFigurePreviewUrl(item.path)} alt={item.alt} onError={event => void recoverManagedImagePreview(event.currentTarget)} />
               <label className="grid gap-1 text-sm">子图 ({String.fromCharCode(97 + index)}) 说明<Input value={text(item.caption)} maxLength={500} onChange={event => setDraft({ ...group, items: group.items.map((entry, i) => i === index ? { ...entry, caption: event.target.value || undefined } : entry) })} /></label>
               <div className="flex flex-wrap gap-1"><Button size="sm" variant="ghost" disabled={index === 0 || busy} onClick={() => move(index, -1)}>前移</Button><Button size="sm" variant="ghost" disabled={index === group.items.length - 1 || busy} onClick={() => move(index, 1)}>后移</Button><Button size="sm" variant="ghost" disabled={busy} onClick={() => setDraft({ ...group, items: group.items.filter((_, i) => i !== index) })}>移除</Button></div>
             </div>)}

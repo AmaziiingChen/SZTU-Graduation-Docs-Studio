@@ -84,7 +84,7 @@
         "runs": {
           "type": "array",
           "maxItems": 100,
-          "items": {"$ref": "content-block.schema.json#/$defs/run"}
+          "items": {"oneOf": [{"$ref": "content-block.schema.json#/$defs/run"}, {"$ref": "content-block.schema.json#/$defs/inlineEquation"}]}
         }
       }
     },
@@ -234,7 +234,8 @@
     "textContentBlock": {
       "oneOf": [
         {"$ref": "#/$defs/paragraph"},
-        {"$ref": "#/$defs/draftListLevel1"}
+        {"$ref": "#/$defs/draftListLevel1"},
+        {"$ref": "content-block.schema.json#/$defs/equation"}
       ]
     },
     "paragraphs": {
@@ -303,8 +304,11 @@
           "additionalProperties": false,
           "properties": {
             "significance_and_status": {"$ref": "#/$defs/paragraphs", "maxItems": 50},
+            "research_content_intro": {"type": "string", "maxLength": 200, "pattern": "^[^\\r\\n]*$"},
             "research_content": {"$ref": "#/$defs/textContentBlocks", "maxItems": 50},
+            "methods_and_means_intro": {"type": "string", "maxLength": 200, "pattern": "^[^\\r\\n]*$"},
             "methods_and_means": {"$ref": "#/$defs/textContentBlocks", "maxItems": 50},
+            "research_steps_intro": {"type": "string", "maxLength": 200, "pattern": "^[^\\r\\n]*$"},
             "research_steps": {"$ref": "#/$defs/textContentBlocks", "maxItems": 50},
             "references": {"$ref": "#/$defs/paragraphs", "maxItems": 50}
           }

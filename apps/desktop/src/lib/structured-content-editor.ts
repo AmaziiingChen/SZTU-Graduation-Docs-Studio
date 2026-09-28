@@ -1,3 +1,6 @@
+import { EquationBlock, ThesisReference, isEquation } from "@/lib/thesis-nodes"
+import { InlineEquationNode, ProcessEquationNode, isInlineEquation, isProcessEquation } from "@/lib/process-equation"
+import { createProcessMathLivePreview } from "@/lib/process-math-live-preview"
 import Subscript from "@tiptap/extension-subscript"
 import Superscript from "@tiptap/extension-superscript"
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model"
@@ -19,6 +22,7 @@ import type {
   StructuredDataTableBlock,
   StructuredListBlock,
   StructuredRun,
+  ParagraphRun,
 } from "@/types/structured-content"
 
 export const MAX_STRUCTURED_LIST_DEPTH = 4
@@ -41,7 +45,6 @@ export function editorShortcutLabels(platform: string) {
 }
 
 const LIST_NODE_NAMES = new Set(["orderedList", "bulletList"])
-const FIGURE_REFERENCE_PATTERN = /\{\{fig:(fig-[A-Za-z0-9_-]{8,96})\}\}/g
 const ALLOWED_MARK_NAMES = new Set([
   "bold",
   "italic",
@@ -160,7 +163,7 @@ export function isParagraphInput(value: unknown): value is ParagraphInput {
   return (
     (paragraph.type === undefined || paragraph.type === "paragraph") &&
     Array.isArray(paragraph.runs) &&
-    paragraph.runs.every(isStructuredRun)
+    paragraph.runs.every((run) => isStructuredRun(run) || isInlineEquation(run))
   )
 }
 
@@ -249,7 +252,7 @@ export function isStructuredBodyValue(value: unknown): value is StructuredBodyVa
       (block) =>
         isParagraphInput(block) ||
         isStructuredListBlock(block, 1) ||
-        isStructuredImageBlock(block) || isStructuredFigureGroupBlock(block) || isStructuredDataTableBlock(block),
+        isEquation(block) || isProcessEquation(block) || isStructuredImageBlock(block) || isStructuredFigureGroupBlock(block) || isStructuredDataTableBlock(block),
     )
   )
 }
@@ -300,14 +303,15 @@ function expandLegacyScientificText(
 function figureReferenceNodes(text: string, marks?: NonNullable<JSONContent["marks"]>): JSONContent[] {
   const nodes: JSONContent[] = []
   let cursor = 0
-  for (const match of text.matchAll(FIGURE_REFERENCE_PATTERN)) {
+  for (const match of text.matchAll(/\{\{(fig|cite|eq):([A-Za-z0-9_:.+/-]{1,200})\}\}/g)) {
+    if (match[1] === "fig" && !/^fig-[A-Za-z0-9_-]{8,96}$/.test(match[2])) continue
     const index = match.index ?? 0
     if (index > cursor) {
       nodes.push({ type: "text", text: text.slice(cursor, index), ...(marks ? { marks } : {}) })
     }
     nodes.push({
-      type: "figureReference",
-      attrs: { figureId: match[1], label: "图（待编号）" },
+      type: match[1] === "fig" ? "figureReference" : "thesisReference",
+      attrs: match[1] === "fig" ? { figureId: match[2], label: "图（待编号）" } : { kind: match[1], target: match[2], label: "引用待编号" },
     })
     cursor = index + match[0].length
   }
@@ -320,7 +324,7 @@ function figureReferenceNodes(text: string, marks?: NonNullable<JSONContent["mar
 function paragraphPlainText(paragraph: ParagraphInput | undefined): string {
   if (paragraph === undefined) return ""
   if (typeof paragraph === "string") return paragraph
-  return paragraph.runs.map((run) => run.text).join("")
+  return paragraph.runs.map((run) => isInlineEquation(run) ? run.alt : run.text).join("")
 }
 
 export type StructuredFigureCatalogItem = {
@@ -332,6 +336,7 @@ export type StructuredFigureCatalogItem = {
 
 export type FigureNumberingContext = {
   startCounts?: Readonly<Record<number, number>>
+  equationStartCounts?: Readonly<Record<number, number>>
   knownLabels?: Readonly<Record<string, string>>
 }
 
@@ -372,6 +377,29 @@ export function structuredFigureChapterCounts(
   return counts
 }
 
+export function structuredProcessEquationLabels(...bodyGroups: StructuredBodyValue[]): Record<string, string> {
+  const counts = new Map<number, number>()
+  const labels: Record<string, string> = {}
+  for (const body of bodyGroups) for (const block of body) {
+    if (!isProcessEquation(block) || !block.id) continue
+    const chapter = block.chapter ?? 1
+    const sequence = (counts.get(chapter) ?? 0) + 1
+    counts.set(chapter, sequence)
+    labels[`eq:${block.id}`] = `(${chapter}-${sequence})`
+  }
+  return labels
+}
+
+export function structuredProcessEquationChapterCounts(...bodyGroups: StructuredBodyValue[]): Record<number, number> {
+  const counts: Record<number, number> = {}
+  for (const body of bodyGroups) for (const block of body) {
+    if (!isProcessEquation(block) || !block.id) continue
+    const chapter = block.chapter ?? 1
+    counts[chapter] = (counts[chapter] ?? 0) + 1
+  }
+  return counts
+}
+
 export function managedFigurePreviewUrl(imagePath: string): string {
   const fileName = imagePath.split(/[\\/]/).at(-1) ?? ""
   return /^([a-f0-9]{64})\.(png|jpe?g)$/i.test(fileName)
@@ -398,12 +426,12 @@ function imageToTiptap(image: StructuredImageBlock): JSONContent {
 }
 
 function paragraphToTiptap(paragraph: ParagraphInput): JSONContent {
-  const sourceRuns: StructuredRun[] =
+  const sourceRuns: ParagraphRun[] =
     typeof paragraph === "string"
       ? [{ text: paragraph, bold: false, italic: false, script: "normal" }]
       : paragraph.runs
   const content = sourceRuns.flatMap((run) =>
-    expandLegacyScientificText(run.text, run).flatMap((expanded) => {
+    isInlineEquation(run) ? [{ type: "inlineEquation", attrs: { run } }] : expandLegacyScientificText(run.text, run).flatMap((expanded) => {
       if (!expanded.text) return []
       const marks = marksForRun(expanded)
       return figureReferenceNodes(expanded.text, marks)
@@ -470,6 +498,8 @@ export function structuredBodyToTiptap(
             typeof block !== "string" &&
             (block.type === "ordered_list" || block.type === "unordered_list")
           if (isList) return listToTiptap(block, 1)
+          if (isEquation(block)) return { type: "equationBlock", attrs: { block, label: numbering.knownLabels?.[`eq:${block.id}`] ?? "公式（待编号）" } }
+          if (isProcessEquation(block)) return { type: "processEquation", attrs: { block } }
           if (isStructuredDataTableBlock(block)) return { type: "dataTableBlock", attrs: { block } }
           if (isStructuredFigureGroupBlock(block)) return { type: "figureBlock", attrs: {
             figureId: block.id ?? "", chapter: block.chapter ?? 1, groupItems: block.items, groupColumns: block.columns ?? block.items.length,
@@ -502,6 +532,7 @@ export function structuredBodyToTiptap(
     if (typeof figureId === "string" && figureId) labels.set(figureId, label)
   })
   visit(document, (node) => {
+    if (node.type === "thesisReference") { node.attrs = { ...node.attrs, label: labels.get(`${node.attrs?.kind}:${node.attrs?.target}`) ?? "引用失效" }; return }
     if (node.type !== "figureReference") return
     const figureId = String(node.attrs?.figureId ?? "")
     node.attrs = {
@@ -549,8 +580,19 @@ function paragraphFromTiptap(node: JSONContent): ParagraphInput {
     throw new TypeError("列表项必须以正文段落开始。")
   }
 
-  const runs: StructuredRun[] = []
+  const runs: ParagraphRun[] = []
   for (const child of node.content ?? []) {
+    if (child.type === "inlineEquation") {
+      if (!isInlineEquation(child.attrs?.run)) throw new TypeError("行内公式数据无效。")
+      runs.push(child.attrs.run)
+      continue
+    }
+    if (child.type === "thesisReference") {
+      const { kind, target } = child.attrs ?? {}
+      if (!["cite", "eq"].includes(kind) || !/^[A-Za-z0-9_:.+/-]{1,200}$/.test(target)) throw new TypeError("引用目标无效。")
+      runs.push({ text: `{{${kind}:${target}}}`, bold: false, italic: false, script: "normal" })
+      continue
+    }
     if (child.type === "figureReference") {
       const figureId = child.attrs?.figureId
       if (typeof figureId !== "string" || !/^fig-[A-Za-z0-9_-]{8,96}$/.test(figureId)) {
@@ -563,7 +605,7 @@ function paragraphFromTiptap(node: JSONContent): ParagraphInput {
         script: "normal",
       }
       const previous = runs.at(-1)
-      if (previous && sameRunStyle(previous, token)) previous.text += token.text
+      if (previous && !isInlineEquation(previous) && sameRunStyle(previous, token)) previous.text += token.text
       else runs.push(token)
       continue
     }
@@ -575,7 +617,7 @@ function paragraphFromTiptap(node: JSONContent): ParagraphInput {
     const style = styleForTextNode(child)
     for (const expanded of expandLegacyScientificText(text, style)) {
       const previous = runs.at(-1)
-      if (previous && sameRunStyle(previous, expanded)) {
+      if (previous && !isInlineEquation(previous) && sameRunStyle(previous, expanded)) {
         previous.text += expanded.text
       } else {
         runs.push(expanded)
@@ -584,9 +626,9 @@ function paragraphFromTiptap(node: JSONContent): ParagraphInput {
   }
 
   const hasFormatting = runs.some(
-    (run) => run.bold || run.italic || run.script !== "normal",
+    (run) => isInlineEquation(run) || run.bold || run.italic || run.script !== "normal",
   )
-  if (!hasFormatting) return runs.map((run) => run.text).join("")
+  if (!hasFormatting) return runs.map((run) => isInlineEquation(run) ? run.alt : run.text).join("")
 
   return {
     type: "paragraph",
@@ -618,7 +660,7 @@ function imageFromTiptap(node: JSONContent): StructuredImageBlock | StructuredFi
 
 function paragraphHasText(paragraph: ParagraphInput): boolean {
   if (typeof paragraph === "string") return paragraph.trim().length > 0
-  return paragraph.runs.some((run) => run.text.trim().length > 0)
+  return paragraph.runs.some((run) => isInlineEquation(run) || run.text.trim().length > 0)
 }
 
 function listFromTiptap(node: JSONContent, depth: number): StructuredListBlock {
@@ -680,6 +722,14 @@ export function tiptapToStructuredBody(document: JSONContent): StructuredBodyVal
       const paragraph = paragraphFromTiptap(node)
       if (paragraphHasText(paragraph)) blocks.push(paragraph)
       continue
+    }
+    if (node.type === "equationBlock") {
+      if (!isEquation(node.attrs?.block)) throw new TypeError("公式数据无效。")
+      blocks.push(node.attrs.block); continue
+    }
+    if (node.type === "processEquation") {
+      if (!isProcessEquation(node.attrs?.block)) throw new TypeError("公式数据无效。")
+      blocks.push(node.attrs.block); continue
     }
     if (node.type === "dataTableBlock") {
       if (!isStructuredDataTableBlock(node.attrs?.block)) throw new TypeError("表格数据无效。")
@@ -794,13 +844,26 @@ const ContractListMarker = Extension.create({
 function figureLabelPlugin(numbering: FigureNumberingContext) {
   return new Plugin({
     appendTransaction(transactions, _oldState, newState) {
-      if (!transactions.some((transaction) => transaction.docChanged)) return null
+      if (!transactions.some((transaction) => transaction.docChanged || transaction.getMeta("figureNumbering"))) return null
       const counters = new Map<number, number>(
         Object.entries(numbering.startCounts ?? {}).map(([chapter, count]) => [Number(chapter), count]),
       )
       const labels = new Map<string, string>(Object.entries(numbering.knownLabels ?? {}))
       const figureUpdates: Array<{ position: number; label: string }> = []
+      const equationCounts = new Map<number, number>(
+        Object.entries(numbering.equationStartCounts ?? {}).map(([chapter, count]) => [Number(chapter), count]),
+      )
       newState.doc.descendants((node, position) => {
+        if (node.type.name === "processEquation" && isProcessEquation(node.attrs.block)) {
+          const block = node.attrs.block
+          if (block.id) {
+            const chapter = block.chapter ?? 1
+            const sequence = (equationCounts.get(chapter) ?? 0) + 1
+            equationCounts.set(chapter, sequence)
+            labels.set(`eq:${block.id}`, `(${chapter}-${sequence})`)
+          }
+          return
+        }
         if (node.type.name !== "figureBlock") return
         const chapter = Number.isInteger(node.attrs.chapter) && node.attrs.chapter > 0
           ? Number(node.attrs.chapter)
@@ -815,6 +878,12 @@ function figureLabelPlugin(numbering: FigureNumberingContext) {
       })
       const referenceUpdates: Array<{ position: number; label: string }> = []
       newState.doc.descendants((node, position) => {
+        if (node.type.name === "thesisReference" || node.type.name === "equationBlock") {
+          const key = node.type.name === "equationBlock" ? `eq:${node.attrs.block.id}` : `${node.attrs.kind}:${node.attrs.target}`
+          const label = labels.get(key) ?? "引用失效"
+          if (node.attrs.label !== label) referenceUpdates.push({ position, label })
+          return
+        }
         if (node.type.name !== "figureReference") return
         const label = labels.get(String(node.attrs.figureId)) ?? "图（引用失效）"
         if (node.attrs.label !== label) referenceUpdates.push({ position, label })
@@ -995,6 +1064,7 @@ function createRestrictedDocumentBehavior(mode: StructuredEditorMode) {
 export function createRestrictedEditorExtensions(
   mode: StructuredEditorMode = "body",
   figureNumbering: FigureNumberingContext = {},
+  enableProcessEquations = false,
 ) {
   const listsEnabled = mode === "body"
   return [
@@ -1017,6 +1087,9 @@ export function createRestrictedEditorExtensions(
     }),
     ...(listsEnabled ? [ContractListMarker] : []),
     ...(listsEnabled ? [createFigureBlock(figureNumbering), DataTableBlock, FigureReference] : []),
+    ...(listsEnabled ? [EquationBlock, ProcessEquationNode, ThesisReference] : []),
+    ...(mode !== "inline" ? [InlineEquationNode] : []),
+    ...(enableProcessEquations && mode !== "inline" ? [createProcessMathLivePreview(mode === "body")] : []),
     Subscript,
     Superscript,
     FormattingMarks,

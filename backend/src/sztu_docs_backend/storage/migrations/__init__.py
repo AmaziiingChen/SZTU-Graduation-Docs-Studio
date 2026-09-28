@@ -12,6 +12,7 @@ from . import (
     v0003_student_profile_shared_fields,
     v0004_student_profile_thesis_title,
     v0005_document_recycle_bin,
+    v0006_student_profile_english_thesis_title,
 )
 
 MigrationFunction = Callable[[sqlite3.Connection], None]
@@ -42,6 +43,7 @@ DEFAULT_MIGRATIONS = (
         "document_recycle_bin",
         v0005_document_recycle_bin.apply,
     ),
+    Migration(6, "student_profile_english_thesis_title", v0006_student_profile_english_thesis_title.apply),
 )
 
 

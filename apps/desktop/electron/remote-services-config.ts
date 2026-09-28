@@ -11,6 +11,7 @@ export type RemoteServicesConfig = {
   diagnosticEndpoint?: string
   updateManifestUrl?: string
   updatePublicKeyPem?: string
+  midtermDatePolicyUrl?: string
 }
 
 type RawRemoteServicesConfig = {
@@ -18,6 +19,7 @@ type RawRemoteServicesConfig = {
   diagnostic_endpoint?: unknown
   update_manifest_url?: unknown
   update_public_key_pem?: unknown
+  midterm_date_policy_url?: unknown
 }
 
 function validRemoteUrl(value: string, allowLoopback: boolean): string {
@@ -43,6 +45,7 @@ function parseConfig(
     "diagnostic_endpoint",
     "update_manifest_url",
     "update_public_key_pem",
+    "midterm_date_policy_url",
   ])
   if (!Object.keys(raw).every((key) => allowed.has(key))) {
     throw new Error("Remote services config contains unsupported fields.")
@@ -59,16 +62,20 @@ function parseConfig(
     typeof raw.update_manifest_url === "string" && raw.update_manifest_url.trim()
       ? validRemoteUrl(raw.update_manifest_url, allowLoopback)
       : undefined
+  const midtermDatePolicyUrl =
+    typeof raw.midterm_date_policy_url === "string" && raw.midterm_date_policy_url.trim()
+      ? validRemoteUrl(raw.midterm_date_policy_url, allowLoopback)
+      : undefined
   const updatePublicKeyPem =
     typeof raw.update_public_key_pem === "string" &&
     raw.update_public_key_pem.includes("BEGIN PUBLIC KEY") &&
     raw.update_public_key_pem.length <= 8_192
       ? raw.update_public_key_pem
       : undefined
-  if (Boolean(updateManifestUrl) !== Boolean(updatePublicKeyPem)) {
-    throw new Error("Update manifest URL and Ed25519 public key must be configured together.")
+  if (Boolean(updateManifestUrl || midtermDatePolicyUrl) !== Boolean(updatePublicKeyPem)) {
+    throw new Error("Signed remote URL and Ed25519 public key must be configured together.")
   }
-  return { telemetryEndpoint, diagnosticEndpoint, updateManifestUrl, updatePublicKeyPem }
+  return { telemetryEndpoint, diagnosticEndpoint, updateManifestUrl, updatePublicKeyPem, midtermDatePolicyUrl }
 }
 
 export async function loadRemoteServicesConfig(input: {
@@ -86,6 +93,7 @@ export async function loadRemoteServicesConfig(input: {
           environment.SZTU_DIAGNOSTIC_ENDPOINT ?? DEFAULT_DIAGNOSTIC_ENDPOINT,
         update_manifest_url: environment.SZTU_UPDATE_MANIFEST_URL,
         update_public_key_pem: environment.SZTU_UPDATE_PUBLIC_KEY_PEM,
+        midterm_date_policy_url: environment.SZTU_MIDTERM_DATE_POLICY_URL,
       },
       true,
     )

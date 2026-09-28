@@ -239,7 +239,7 @@ function parseOperationEntry(value: unknown): DiagnosticOperationEntry | null {
 
 function scanReport(report: DiagnosticReport): void {
   const serialized = JSON.stringify(report)
-  const forbiddenKeys = /"(?:full_name|student_number|thesis_title|content|filename|absolute_path|clipboard|hostname|username|ip_address|mac_address|serial_number|raw_log|message|details)"\s*:/i
+  const forbiddenKeys = /"(?:full_name|student_number|thesis_title|thesis_title_en|content|filename|absolute_path|clipboard|hostname|username|ip_address|mac_address|serial_number|raw_log|message|details)"\s*:/i
   const pathLike = /(?:\/Users\/|\/home\/|[A-Za-z]:\\Users\\|file:\/\/)/i
   const credentialLike = /(?:Bearer\s+[A-Za-z0-9._-]+|BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY|(?:secret|token|password)\s*[=:])/i
   if (

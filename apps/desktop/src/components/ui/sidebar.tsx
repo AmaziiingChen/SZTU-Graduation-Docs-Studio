@@ -252,7 +252,10 @@ function SidebarTrigger({
       data-slot="sidebar-trigger"
       variant="ghost"
       size="icon-sm"
-      className={cn(className)}
+      className={cn(
+        "shadow-none aria-expanded:bg-transparent hover:bg-transparent dark:hover:bg-transparent active:shadow-sm",
+        className,
+      )}
       onClick={(event) => {
         onClick?.(event)
         toggleSidebar()

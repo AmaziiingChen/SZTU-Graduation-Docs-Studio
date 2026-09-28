@@ -168,7 +168,7 @@ class ContractTests(unittest.TestCase):
         imported = CONTRACTS / "proposal.schema.json"
         self.assertEqual(
             hashlib.sha256(imported.read_bytes()).hexdigest(),
-            "3dbaf3fb9af5467cfa8403fb15185477d6090bc9806c3e4691265ef1e15e3df3",
+            "83b09f19d51d5c97474b2e0190f57243b7e82ebf33f490afca9a5f4377278565",
         )
         source_form = imported.read_text(encoding="utf-8").replace(
             "content-block.schema.json#",
@@ -176,7 +176,7 @@ class ContractTests(unittest.TestCase):
         )
         self.assertEqual(
             hashlib.sha256(source_form.encode("utf-8")).hexdigest(),
-            "555275e6e4a6058beeddf4031651f419b03c31566f4ed83807cb3a67c3f8c5cc",
+            "5f1e91693aea33b50f30efe5caf50eb393640d4a4697a421676f094d9f4d0315",
         )
         thesis_root = os.environ.get("SZTU_THESIS_ROOT")
         if thesis_root:
@@ -194,11 +194,11 @@ class ContractTests(unittest.TestCase):
         midterm = CONTRACTS / "midterm.schema.json"
         self.assertEqual(
             hashlib.sha256(common.read_bytes()).hexdigest(),
-            "60eced9ef46618174cd6070a904d6999b1c436dcad19ade785309d346255a9a7",
+            "afe86f7b383979c08e46189d591cb51245906fd982d21b3f30d54ab8782cb340",
         )
         self.assertEqual(
             hashlib.sha256(midterm.read_bytes()).hexdigest(),
-            "e5fa6677a0b878b59e21b13a3e8fb4174df4ee8c611a1f403902e5c692d6a0dd",
+            "bb2b3c315d85a99f8710aa74e3699e41535c8e838f76df6108f8c88bcc6d7bc6",
         )
         source_form = midterm.read_text(encoding="utf-8").replace(
             "content-block.schema.json#",
@@ -206,7 +206,7 @@ class ContractTests(unittest.TestCase):
         )
         self.assertEqual(
             hashlib.sha256(source_form.encode("utf-8")).hexdigest(),
-            "46fb159387e7312e7b955f75b109d4cb661e60f376521d9f0b736a1aade274a6",
+            "8e616c350a863c0d1d5aee7db5b1de2823765882622fb83d08009cadbd082199",
         )
         thesis_root = os.environ.get("SZTU_THESIS_ROOT")
         if thesis_root:
@@ -241,8 +241,12 @@ class ContractTests(unittest.TestCase):
             [
                 {"$ref": "#/$defs/paragraph"},
                 {"$ref": "#/$defs/listBlock"},
+                {"$ref": "#/$defs/figureGroup"},
+                {"$ref": "#/$defs/dataTable"},
+                {"$ref": "#/$defs/equation"},
             ],
         )
+        self.assertEqual(common["richParagraph"]["properties"]["runs"]["items"]["oneOf"][1], {"$ref": "#/$defs/inlineEquation"})
         for level in range(1, 5):
             list_level = common[f"listLevel{level}"]
             item = list_level["properties"]["items"]["items"]["properties"]
@@ -320,6 +324,7 @@ class ContractTests(unittest.TestCase):
             [
                 {"$ref": "#/$defs/paragraph"},
                 {"$ref": "#/$defs/draftListLevel1"},
+                {"$ref": "content-block.schema.json#/$defs/equation"},
             ],
         )
         self.assertEqual(
@@ -384,6 +389,7 @@ class ContractTests(unittest.TestCase):
         self.assertIn("graduation_cohort", student["properties"])
         self.assertIn("advisor_title", advisor["properties"])
         self.assertIn("thesis_title", profile["properties"])
+        self.assertEqual(profile["properties"]["thesis_title_en"]["oneOf"][1]["maxLength"], 300)
         self.assertEqual(
             profile["properties"]["thesis_title"]["oneOf"][1]["maxItems"],
             1,

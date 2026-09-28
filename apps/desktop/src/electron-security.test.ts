@@ -177,12 +177,14 @@ describe("Electron security boundary", () => {
       "getAnonymousDocumentCount",
       "recordDocumentCompletion",
       "getUpdateStatus",
+      "getMidtermDatePolicyStatus",
       "revealDownloadedUpdate",
       "openReleaseHelp",
       "openToolLink",
       "writeClipboardText",
       "writeClipboardPng",
       "onUpdateStatus",
+      "onMidtermDatePolicyStatus",
       "importImageAsset",
       "openWorkspace",
       "saveProfileDraft",
@@ -226,6 +228,7 @@ describe("Electron security boundary", () => {
       "sztu:telemetry-completion-count",
       "sztu:telemetry-complete-document",
       "sztu:update-status",
+      "sztu:midterm-date-policy-status",
       "sztu:update-reveal",
       "sztu:update-open-help",
       "sztu:tool-open",
@@ -455,6 +458,7 @@ describe("Electron security boundary", () => {
     expect(diagnosticsSource).toContain("MAX_OPERATION_ENTRIES = 200")
     expect(diagnosticsSource).toContain("source_fields_removed")
     expect(diagnosticsSource).toContain("full_name|student_number|thesis_title")
+    expect(diagnosticsSource).toContain("thesis_title|thesis_title_en")
     expect(diagnosticsSource).toContain("scanReport(prepared.report)")
     expect(diagnosticsSource).not.toMatch(/req\.headers|process\.env|x-cloudbase-context/i)
 

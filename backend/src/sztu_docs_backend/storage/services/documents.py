@@ -295,6 +295,9 @@ class DocumentService:
             raise ValidationError("reason", "unsupported")
         if not isinstance(content, Mapping):
             raise ValidationError("content", "must_be_object")
+        if self.get(document_id)["document_type"] == "thesis":
+            from ...thesis_contract import validate_thesis_content
+            validate_thesis_content(content)
         content_json = encode_json(dict(content), "content")
         return self._append_revision(
             document_id,

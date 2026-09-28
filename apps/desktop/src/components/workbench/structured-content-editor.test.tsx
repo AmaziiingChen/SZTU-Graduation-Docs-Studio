@@ -25,6 +25,7 @@ import type { StructuredBodyValue } from "@/types/structured-content"
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
 })
 
 const richValue: StructuredBodyValue = [
@@ -79,6 +80,60 @@ function deepestTextPosition(editor: Editor, text: string): number {
 }
 
 describe("structured content editor adapters", () => {
+  it("saves an image without manually entered alternative text", async () => {
+    const onChange = vi.fn()
+    vi.stubGlobal("sztuDesktop", {
+      importImageAsset: vi.fn().mockResolvedValue({
+        originalName: "iShot_2026-09-24.png",
+        path: "assets/example.png",
+        previewUrl: "sztu-asset://asset/example.png",
+      }),
+    })
+    render(<StructuredContentEditor value={[]} onChange={onChange} enableFigures />)
+
+    fireEvent.click(screen.getByRole("button", { name: "插入图片" }))
+    expect(await screen.findByRole("dialog", { name: "图片排版" })).toBeInTheDocument()
+    expect(screen.getByRole("textbox", { name: "图片内容说明（可选）" })).toHaveValue("")
+    fireEvent.change(screen.getByRole("textbox", { name: "题注" }), {
+      target: { value: "实验装置示意图" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "保存图片" }))
+
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith([
+      expect.objectContaining({
+        type: "image",
+        caption: "实验装置示意图",
+        alt: "实验装置示意图",
+      }),
+    ]))
+  })
+
+  it("focuses a view-only blank paragraph after prefilled text", async () => {
+    const onChange = vi.fn()
+    render(
+      <StructuredContentEditor
+        value={["本课题研究方法、手段如下："]}
+        onChange={onChange}
+        startOnNewParagraph
+      />,
+    )
+
+    const textbox = screen.getByRole("textbox", { name: "正文内容" })
+    expect(textbox.querySelectorAll("p")).toHaveLength(2)
+    await waitFor(() => expect(textbox).toHaveFocus())
+    expect(onChange).not.toHaveBeenCalled()
+    fireEvent.paste(textbox, {
+      clipboardData: {
+        types: ["text/plain"],
+        getData: (type: string) => type === "text/plain" ? "采用访谈法。" : "",
+      },
+    })
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith([
+      "本课题研究方法、手段如下：",
+      "采用访谈法。",
+    ]))
+  })
+
   it("represents an empty contract value with a valid empty editor paragraph", () => {
     const editorDocument = structuredBodyToTiptap([])
     expect(editorDocument).toEqual({
@@ -201,6 +256,50 @@ describe("structured content editor adapters", () => {
         caption: "",
       },
     ])
+  })
+
+  it("renders managed image URLs for single and grouped figures", () => {
+    const fileName = `${"a".repeat(64)}.png`
+    const path = `/private/document-assets/${fileName}`
+    const value: StructuredBodyValue = [
+      { type: "image", path, alt: "单图", caption: "单图" },
+      {
+        type: "figure_group",
+        items: [
+          { path, alt: "多图一", caption: "多图一" },
+          { path, alt: "多图二", caption: "多图二" },
+        ],
+        caption: "组合图",
+      },
+    ]
+    const editor = new Editor({
+      extensions: createRestrictedEditorExtensions(),
+      content: structuredBodyToTiptap(value),
+    })
+    const images = [...editor.view.dom.querySelectorAll("figure img")]
+    expect(images).toHaveLength(3)
+    expect(images.map((image) => image.getAttribute("src"))).toEqual(
+      Array(3).fill(`sztu-asset://asset/${fileName}`),
+    )
+    editor.destroy()
+  })
+
+  it("recovers failed figure previews in the editor without changing document data", async () => {
+    const fileName = `${"c".repeat(64)}.png`
+    const readImageAssetPreview = vi.fn().mockResolvedValue("data:image/png;base64,aGVsbG8=")
+    vi.stubGlobal("sztuDesktop", { readImageAssetPreview })
+    const onChange = vi.fn()
+    render(<StructuredContentEditor
+      value={[{ type: "image", path: `/private/document-assets/${fileName}`, alt: "实验图", caption: "实验图" }]}
+      onChange={onChange}
+      enableFigures
+    />)
+
+    const image = screen.getByAltText("实验图") as HTMLImageElement
+    fireEvent.error(image)
+    await waitFor(() => expect(image.getAttribute("src")).toBe("data:image/png;base64,aGVsbG8="))
+    expect(readImageAssetPreview).toHaveBeenCalledWith(fileName)
+    expect(onChange).not.toHaveBeenCalled()
   })
 
   it("renumbers figures by chapter and keeps references bound to stable ids", () => {

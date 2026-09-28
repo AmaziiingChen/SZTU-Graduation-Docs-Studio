@@ -1,3 +1,7 @@
+import { ThesisInsertControls } from "@/components/workbench/thesis-insert-controls"
+import { hasUnescapedMathDelimiter } from "@/lib/process-math-source"
+import { recoverManagedImagePreview } from "@/lib/managed-image-preview"
+import type { ThesisReferenceOption } from "@/lib/thesis-draft"
 import { AlignJustifyIcon } from "@/components/ui/align-justify-icon"
 import { LayoutGridIcon } from "@/components/ui/layout-grid-icon"
 import { TableGridIcon } from "@/components/workbench/table-grid-icon"
@@ -23,6 +27,7 @@ import { FileTextIcon } from "lucide-react"
 import { useReducedMotion } from "motion/react"
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type ComponentProps,
@@ -127,6 +132,7 @@ function replaceExternalContent(editor: Editor, document: JSONContent) {
 }
 
 type ToolbarState = {
+  equationSelected: boolean
   selectedTool: string | null
   bold: boolean
   italic: boolean
@@ -210,13 +216,20 @@ export type StructuredContentEditorProps = {
   ariaInvalid?: boolean
   footerMessage?: string
   footerMessageId?: string
+  footerStatus?: ReactNode
   className?: string
   mode?: StructuredEditorMode
   selectionSnapshot?: EditorSelectionSnapshot
   restoreFocus?: boolean
+  startOnNewParagraph?: boolean
   onSelectionChange?: (selection: EditorSelectionSnapshot) => void
   fillHeight?: boolean
+  contentHeader?: ReactNode
+  toolbarActions?: ReactNode
+  contentFooter?: ReactNode
+  thesisReferences?: ThesisReferenceOption[]
   enableDocumentTools?: boolean
+  enableProcessEquations?: boolean
   enableFigures?: boolean
   figureChapters?: FigureChapterOption[]
   figureCatalog?: StructuredFigureCatalogItem[]
@@ -248,6 +261,7 @@ function selectToolbarState(
     ? editor.getAttributes("figureBlock")
     : null
   return {
+    equationSelected: editor.isActive("equationBlock"),
     selectedTool: editor.isActive("dataTableBlock") ? JSON.stringify(editor.getAttributes("dataTableBlock")) : selectedAttrs?.groupItems ? JSON.stringify(selectedAttrs) : null,
     bold: editor.isActive("bold"),
     italic: editor.isActive("italic"),
@@ -293,7 +307,7 @@ function FigureDialog({
   onSave: (value: FigureFormValue) => void
 }) {
   const [draft, setDraft] = useState(value)
-  const valid = draft.alt.trim().length > 0 && draft.caption.trim().length > 0
+  const valid = draft.caption.trim().length > 0
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onCancel() }}>
       <DialogContent>
@@ -302,6 +316,12 @@ function FigureDialog({
           <DialogDescription>题注位于图片下方，图号按所属章自动生成。</DialogDescription>
         </DialogHeader>
         <div className="grid gap-3">
+          <img
+            src={draft.previewUrl}
+            alt={draft.alt || draft.caption || "待插入图片"}
+            className="max-h-48 w-full rounded-md border object-contain"
+            onError={(event) => void recoverManagedImagePreview(event.currentTarget)}
+          />
           <div className="grid gap-1.5">
             <label className="text-sm font-medium" htmlFor="figure-caption">题注</label>
             <Input
@@ -312,12 +332,12 @@ function FigureDialog({
             />
           </div>
           <div className="grid gap-1.5">
-            <label className="text-sm font-medium" htmlFor="figure-alt">替代文字</label>
+            <label className="text-sm font-medium" htmlFor="figure-alt">图片内容说明（可选）</label>
             <Input
               id="figure-alt"
               value={draft.alt}
               onChange={(event) => setDraft({ ...draft, alt: event.target.value })}
-              placeholder="说明图片内容"
+              placeholder="留空时自动使用题注"
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -479,22 +499,33 @@ export function StructuredContentEditor({
   ariaInvalid = false,
   footerMessage,
   footerMessageId,
+  footerStatus,
   className,
   mode = "body",
   selectionSnapshot,
   restoreFocus = false,
+  startOnNewParagraph = false,
   onSelectionChange,
   fillHeight = false,
+  contentHeader,
+  toolbarActions,
+  contentFooter,
   enableFigures = false,
   enableDocumentTools = false,
+  enableProcessEquations = false,
+  thesisReferences,
   figureChapters = [{ value: 1, label: "第 1 章" }],
   figureCatalog,
   figureNumbering = {},
 }: StructuredContentEditorProps) {
   const historyFeedback = useActionFeedback()
   const reducedMotion = useReducedMotion()
+  const toolbarRef = useRef<HTMLDivElement>(null)
+  const [toolbarHeight, setToolbarHeight] = useState(0)
   const onChangeRef = useRef(onChange)
   const onSelectionChangeRef = useRef(onSelectionChange)
+  const initialNewParagraphFocusRef = useRef(startOnNewParagraph)
+  const initialSelectionSnapshotRef = useRef(selectionSnapshot)
   const restoredSelectionRef = useRef("")
   const composingRef = useRef(false)
   const compositionBaselineRef = useRef("")
@@ -506,14 +537,29 @@ export function StructuredContentEditor({
   const [formattingMarksVisible, setFormattingMarksVisible] = useState(false)
   const [selectionToolbarPresentation, setSelectionToolbarPresentation] =
     useState<SelectionToolbarPresentation | null>(null)
+  const overlapToolbar = fillHeight && !contentHeader
+  useLayoutEffect(() => {
+    if (!overlapToolbar || !toolbarRef.current) return
+    const toolbar = toolbarRef.current
+    const updateHeight = () => setToolbarHeight(toolbar.offsetHeight)
+    updateHeight()
+    if (typeof ResizeObserver === "undefined") return
+    const observer = new ResizeObserver(updateHeight)
+    observer.observe(toolbar)
+    return () => observer.disconnect()
+  }, [overlapToolbar])
   const effectiveFigureChapters = figureChapters.length
     ? figureChapters
     : [{ value: 1, label: "第 1 章" }]
-  const [initialFigureNumbering] = useState(() => figureNumbering)
-  const [initialContent] = useState(() => structuredBodyToTiptap(value, initialFigureNumbering))
+  const [initialFigureNumbering] = useState(() => ({ ...figureNumbering }))
+  const [initialContent] = useState(() => {
+    const document = structuredBodyToTiptap(value, initialFigureNumbering)
+    if (startOnNewParagraph) document.content?.push({ type: "paragraph" })
+    return document
+  })
   const [toolDraft, setToolDraft] = useState<{ block: StructuredToolBlock; from: number; to: number; editing: boolean; document: string } | null>(null)
   const [figureDraft, setFigureDraft] = useState<FigureFormValue | null>(null)
-  const [extensions] = useState(() => createRestrictedEditorExtensions(mode, initialFigureNumbering))
+  const [extensions] = useState(() => createRestrictedEditorExtensions(mode, initialFigureNumbering, enableProcessEquations))
   const editorClass =
     mode === "inline"
       ? "min-h-12 whitespace-pre-wrap break-words px-3 py-3 text-sm leading-6 outline-none [&_p]:min-h-6"
@@ -563,6 +609,9 @@ export function StructuredContentEditor({
     editor,
     selector: ({ editor: currentEditor }) => selectToolbarState(currentEditor, figureCatalog),
   })
+  const mathDraftMessage = enableProcessEquations && hasUnescapedMathDelimiter(editor.getText())
+    ? "公式尚未完成或写法不受支持：行内用 $...$，行间单独一段用 $$...$$。"
+    : undefined
 
   const externalFingerprint = structuredBodyFingerprint(value)
 
@@ -573,6 +622,18 @@ export function StructuredContentEditor({
   useEffect(() => {
     onSelectionChangeRef.current = onSelectionChange
   }, [onSelectionChange])
+
+  useEffect(() => {
+    if (!initialNewParagraphFocusRef.current) return
+    if (initialSelectionSnapshotRef.current) {
+      initialNewParagraphFocusRef.current = false
+      return
+    }
+    if (disabled) return
+    initialNewParagraphFocusRef.current = false
+    editor.commands.setTextSelection(editor.state.doc.content.size - 1)
+    editor.view.focus()
+  }, [disabled, editor])
 
   useEffect(() => {
     if (!selectionSnapshot) return
@@ -592,6 +653,16 @@ export function StructuredContentEditor({
     if (restoreFocus) editor.commands.focus()
     restoredSelectionRef.current = selectionKey
   }, [editor, restoreFocus, selectionSnapshot])
+
+  const numberingFingerprint = JSON.stringify(figureNumbering)
+  useEffect(() => {
+    const numbering = JSON.parse(numberingFingerprint) as FigureNumberingContext
+    initialFigureNumbering.startCounts = numbering.startCounts
+    initialFigureNumbering.equationStartCounts = numbering.equationStartCounts
+    initialFigureNumbering.knownLabels = numbering.knownLabels
+    // Refresh view-only labels without replacing content, selection or undo history.
+    editor.view.dispatch(editor.state.tr.setMeta("figureNumbering", true).setMeta("addToHistory", false))
+  }, [editor, initialFigureNumbering, numberingFingerprint])
 
   useEffect(() => {
     editor.setEditable(!disabled, false)
@@ -845,7 +916,7 @@ export function StructuredContentEditor({
         figureId: `fig-${crypto.randomUUID()}`,
         path: asset.path,
         previewUrl: asset.previewUrl,
-        alt: defaultTitle,
+        alt: "",
         caption: defaultTitle,
         chapter: effectiveFigureChapters[0].value,
         widthMm: 120,
@@ -859,6 +930,7 @@ export function StructuredContentEditor({
   const saveFigure = (next: FigureFormValue) => {
     const attrs = {
       ...next,
+      alt: next.alt.trim() || next.caption.trim(),
       previewUrl: next.previewUrl || `sztu-asset://asset/${encodeURIComponent(next.path.split(/[\\/]/).at(-1) ?? "")}`,
       caption: next.caption,
       captionText: next.caption,
@@ -888,6 +960,9 @@ export function StructuredContentEditor({
     <TooltipProvider>
       <div
         data-formatting-marks={formattingMarksVisible ? "true" : "false"}
+        onErrorCapture={(event) => {
+          if (event.target instanceof HTMLImageElement) void recoverManagedImagePreview(event.target)
+        }}
         className={cn(
           fillHeight
             ? "flex h-full min-h-0 min-w-0 flex-col bg-background"
@@ -932,9 +1007,11 @@ export function StructuredContentEditor({
         }}
       >
         <div
+          ref={toolbarRef}
           role="toolbar"
           aria-label={`${ariaLabel}格式工具栏`}
-          className="z-10 flex h-(--header-height) shrink-0 flex-wrap items-center gap-1 border-b bg-muted/30 px-1.5"
+          className={cn("relative z-10 flex shrink-0 flex-wrap items-center gap-1 border-b bg-background/70 px-1.5 backdrop-blur-md", !fillHeight && "rounded-t-lg", thesisReferences || toolbarActions ? "min-h-(--header-height) py-1" : "h-(--header-height)")}
+          style={{ marginBottom: overlapToolbar ? -toolbarHeight : undefined }}
         >
           <ToggleGroup
             multiple
@@ -1039,6 +1116,7 @@ export function StructuredContentEditor({
             </>
           ) : null}
 
+          {thesisReferences && <ThesisInsertControls editor={editor} references={thesisReferences} disabled={disabled} equationSelected={toolbarState.equationSelected} />}
           {mode === "body" && enableDocumentTools ? <>
             <DropdownMenu>
               <DropdownMenuTrigger render={<Button type="button" size="sm" variant="ghost" disabled={disabled || toolbarState.listDepth > 0} />}><AnimatedActionIcon icon={PlusIcon} />插入图表</DropdownMenuTrigger>
@@ -1160,6 +1238,11 @@ export function StructuredContentEditor({
             <AnimatedActionIcon key={historyFeedback.completed.redo || 0} icon={RedoIcon} playOnMount={Boolean(historyFeedback.completed.redo)} />
           </ToolbarButton>
 
+          {toolbarActions ? (
+            <div data-slot="document-toolbar-actions" className="ml-auto flex shrink-0 items-center gap-2 px-2">
+              {toolbarActions}
+            </div>
+          ) : null}
         </div>
 
         {selectionToolbarPresentation
@@ -1205,17 +1288,22 @@ export function StructuredContentEditor({
 
         {fillHeight ? (
           <>
+            {contentHeader}
             <FadingScrollArea
               wrapperClassName="min-h-0 flex-1"
               // Flex sizing makes the actual contenteditable fill the viewport,
               // so blank-space clicks and the cursor stay native to the editor.
               className="h-full min-h-0 flex-1 [&_[data-slot=scroll-area-viewport]]:flex [&_[data-slot=scroll-area-viewport]]:flex-col"
             >
-              <div className="empty-writing-area relative flex flex-1 flex-col">
+              <div
+                className="empty-writing-area relative flex flex-1 flex-col"
+                style={{ paddingTop: overlapToolbar ? toolbarHeight : undefined }}
+              >
                 {toolbarState.empty ? (
                   <span
                     aria-hidden="true"
-                    className="pointer-events-none absolute top-3 left-3 inline-flex items-center gap-2 text-sm text-muted-foreground"
+                    className="pointer-events-none absolute left-3 inline-flex items-center gap-2 text-sm text-muted-foreground"
+                    style={{ top: overlapToolbar ? toolbarHeight + 12 : 12 }}
                   >
                     <FileTextIcon className="empty-writing-icon size-4" />
                     {placeholder}
@@ -1224,14 +1312,15 @@ export function StructuredContentEditor({
                 <EditorContent className="flex flex-1 flex-col" editor={editor} />
               </div>
             </FadingScrollArea>
-            <div className="flex min-h-8 shrink-0 items-center justify-between gap-3 px-3 py-1">
-              {footerMessage ? (
+            {contentFooter}
+            <div data-slot="editor-status-footer" className="flex min-h-8 shrink-0 items-center justify-between gap-3 px-3 py-1">
+              {footerMessage || mathDraftMessage ? (
                 <p
                   id={footerMessageId}
                   className="min-w-0 truncate text-xs text-destructive"
-                  title={footerMessage}
+                  title={footerMessage || mathDraftMessage}
                 >
-                  {footerMessage}
+                  {footerMessage || mathDraftMessage}
                 </p>
               ) : null}
               <ContentStatistics
@@ -1251,6 +1340,7 @@ export function StructuredContentEditor({
                   { label: "图片", value: toolbarState.imageCount },
                 ]}
               />
+              {footerStatus}
             </div>
           </>
         ) : (
@@ -1265,6 +1355,7 @@ export function StructuredContentEditor({
               </span>
             ) : null}
             <EditorContent editor={editor} />
+            {mathDraftMessage ? <p role="status" className="px-3 py-1 text-xs text-destructive">{mathDraftMessage}</p> : null}
           </div>
         )}
       </div>

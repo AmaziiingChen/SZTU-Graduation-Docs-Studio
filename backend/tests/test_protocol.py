@@ -55,6 +55,7 @@ def profile_draft_payload(**updates: object) -> dict[str, object]:
         "advisor_title": "",
         "graduation_cohort": "",
         "thesis_title": None,
+        "thesis_title_en": None,
     }
     draft.update(updates)
     return draft
@@ -119,6 +120,25 @@ class ProtocolTests(unittest.TestCase):
 
     def open(self, mode: str = "persistent") -> dict[str, object]:
         return self.request("workspace.open", {"mode": mode})
+
+    def test_thesis_create_save_and_reopen_over_protocol(self) -> None:
+        self.open()
+        payload = {**document_payload(), "document_type": "thesis", "title": "协议合成毕业论文"}
+        created = self.request("workspace.createDocument", {"document": payload})
+        self.assertTrue(created["ok"], created)
+        document_id = created["result"]["id"]
+        content = {"metadata": {"title": "合成论文"}, "thesis": {
+            "version": 1, "englishTitle": "", "abstractCn": [], "keywordsCn": "",
+            "abstractEn": [], "keywordsEn": "", "referencesBibtex": "", "acknowledgements": [], "appendix": [],
+            "chapters": [{"id": "stable-id", "level": 1, "title": "绪论", "body": ["协议正文"]}],
+        }}
+        saved = self.request("workspace.saveDraft", {"document_id": document_id, "content": content, "expected_revision": 0})
+        self.assertTrue(saved["ok"], saved)
+        self.session.close()
+        self.session = ProtocolSession()
+        reopened = self.open()["result"]["document"]
+        self.assertEqual(reopened["document_type"], "thesis")
+        self.assertEqual(reopened["content"], content)
 
     def test_ping(self) -> None:
         request_id = str(uuid.uuid4())
@@ -624,7 +644,7 @@ class ProtocolTests(unittest.TestCase):
             {
                 field: (
                     profile.get(field)
-                    if field == "thesis_title"
+                    if field in {"thesis_title", "thesis_title_en"}
                     else profile.get(field) or ""
                 )
                 for field in profile_draft_payload()

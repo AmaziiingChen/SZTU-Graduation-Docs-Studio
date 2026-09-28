@@ -85,13 +85,6 @@ export function AppearanceSettings() {
   return (
     <ScrollArea className="h-full">
       <div className="mx-auto grid w-full max-w-5xl gap-6 p-6">
-        <div className="grid gap-1">
-          <h2 className="text-lg font-semibold">选择工作台外观</h2>
-          <p className="text-sm text-muted-foreground">
-            先选择浅色、深色或跟随系统，再选择一套配套主题。外观不会影响文档内容和导出样式。
-          </p>
-        </div>
-
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm">基础外观</CardTitle>

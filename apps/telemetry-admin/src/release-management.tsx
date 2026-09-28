@@ -14,6 +14,8 @@ type ReleaseStatus = {
   publicKeyPem: string | null
   releaseDirectory: string
   manifestReady: boolean
+  datePolicyReady: boolean
+  dateRules: Array<{ college: string; start_date: string; end_date: string }>
 }
 
 type ApiResponse<T> =
@@ -22,7 +24,7 @@ type ApiResponse<T> =
 
 export function ReleaseManagement() {
   const [status, setStatus] = useState<ReleaseStatus | null>(null)
-  const [busy, setBusy] = useState<"key" | "manifest" | null>(null)
+  const [busy, setBusy] = useState<"key" | "manifest" | "date-policy" | "publishing-date-policy" | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [version, setVersion] = useState("0.2.0")
   const [artifacts, setArtifacts] = useState<Array<{
@@ -41,16 +43,20 @@ export function ReleaseManagement() {
   const [announcementSeverity, setAnnouncementSeverity] = useState<"none" | "info" | "important" | "critical">("none")
   const [announcementTitle, setAnnouncementTitle] = useState("")
   const [announcementBody, setAnnouncementBody] = useState("")
+  const [dateRules, setDateRules] = useState<ReleaseStatus["dateRules"]>([])
 
-  const loadStatus = useCallback(async () => {
+  const loadStatus = useCallback(async (hydrateRules = false) => {
     const response = await fetch("/api/release/status", { headers: { Accept: "application/json" } })
     const result = await response.json() as ApiResponse<ReleaseStatus>
-    if (result.status === "ready") setStatus(result.data)
+    if (result.status === "ready") {
+      setStatus(result.data)
+      if (hydrateRules) setDateRules(result.data.dateRules)
+    }
     else setMessage(result.message)
   }, [])
 
   useEffect(() => {
-    void loadStatus()
+    void loadStatus(true)
   }, [loadStatus])
 
   const initializeKeys = async () => {
@@ -103,6 +109,54 @@ export function ReleaseManagement() {
       await loadStatus()
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "发布清单生成失败。")
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const createDatePolicy = async () => {
+    setBusy("date-policy")
+    setMessage(null)
+    try {
+      const response = await fetch("/api/release/midterm-date-policy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(dateRules.map((rule) => ({
+          college: rule.college.trim(),
+          start_date: rule.start_date,
+          end_date: rule.end_date,
+        }))),
+      })
+      const result = await response.json() as ApiResponse<{ policyPath: string; ruleCount: number }>
+      if (result.status === "error") throw new Error(result.message)
+      setMessage(`已生成 ${result.data.ruleCount} 条学院日期规则：${result.data.policyPath}。上传至云端配置地址后生效。`)
+      await loadStatus(true)
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "日期规则生成失败。")
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const publishDatePolicy = async () => {
+    setBusy("publishing-date-policy")
+    setMessage(null)
+    try {
+      const response = await fetch("/api/release/publish-midterm-date-policy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(dateRules.map((rule) => ({
+          college: rule.college.trim(),
+          start_date: rule.start_date,
+          end_date: rule.end_date,
+        }))),
+      })
+      const result = await response.json() as ApiResponse<{ cloudPath: string; ruleCount: number }>
+      if (result.status === "error") throw new Error(result.message)
+      setMessage(`已发布 ${result.data.ruleCount} 条学院日期规则到云端：${result.data.cloudPath}`)
+      await loadStatus(true)
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "日期规则云端发布失败。")
     } finally {
       setBusy(null)
     }
@@ -183,6 +237,34 @@ export function ReleaseManagement() {
             {busy === "manifest" ? <LoaderCircleIcon className="animate-spin" /> : <PackageCheckIcon />}
             生成签名清单
           </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>中期检查日期规则</CardTitle>
+          <CardDescription>按学生档案中的学院名称匹配；未列出的学院可选择任意有效日期。生成签名文件后发布到云端。</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4">
+          {dateRules.map((rule, index) => (
+            <div key={index} className="grid gap-3 rounded-lg border p-3 lg:grid-cols-[1fr_12rem_12rem_auto]">
+              <Input aria-label={`规则 ${index + 1} 学院`} value={rule.college} onChange={(event) => setDateRules((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, college: event.target.value } : item))} placeholder="学院全称" />
+              <Input aria-label={`规则 ${index + 1} 开始日期`} type="date" value={rule.start_date} onChange={(event) => setDateRules((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, start_date: event.target.value } : item))} />
+              <Input aria-label={`规则 ${index + 1} 结束日期`} type="date" value={rule.end_date} onChange={(event) => setDateRules((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, end_date: event.target.value } : item))} />
+              <Button variant="ghost" size="icon" aria-label={`删除规则 ${index + 1}`} onClick={() => setDateRules((current) => current.filter((_, itemIndex) => itemIndex !== index))}><Trash2Icon /></Button>
+            </div>
+          ))}
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" disabled={dateRules.length >= 50} onClick={() => setDateRules((current) => [...current, { college: "", start_date: "", end_date: "" }])}><PlusIcon />添加学院规则</Button>
+            <Button disabled={busy !== null || !status?.keyReady} onClick={() => void createDatePolicy()}>
+              {busy === "date-policy" ? <LoaderCircleIcon className="animate-spin" /> : <ShieldCheckIcon />}
+              生成签名日期规则
+            </Button>
+            <Button variant="secondary" disabled={busy !== null || !status?.keyReady} onClick={() => void publishDatePolicy()}>
+              {busy === "publishing-date-policy" ? <LoaderCircleIcon className="animate-spin" /> : <PackageCheckIcon />}
+              发布日期规则到云端
+            </Button>
+          </div>
         </CardContent>
       </Card>
 

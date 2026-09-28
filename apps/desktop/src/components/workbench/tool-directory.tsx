@@ -41,10 +41,6 @@ export function ToolDirectory({
   return (
     <ScrollArea className="h-full">
       <main className="mx-auto flex w-full max-w-6xl flex-col gap-5 px-6 py-5 lg:px-8">
-        <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
-          集中打开毕业论文写作常用的网站、应用和浏览器扩展。外部工具仅作为效率参考，使用前请自行核对内容与数据政策。
-        </p>
-
         {TOOL_CATEGORY_ORDER.map((category) => {
           const items = TOOL_DIRECTORY.filter((item) => item.category === category)
           return (

@@ -7,9 +7,20 @@ export type StructuredRun = {
   bold?: boolean
 }
 
+export type MathExpression =
+  | { type: "text"; value: string }
+  | { type: "row"; items: MathExpression[] }
+  | { type: "fraction"; numerator: MathExpression; denominator: MathExpression }
+  | { type: "subscript"; base: MathExpression; sub: MathExpression }
+  | { type: "superscript"; base: MathExpression; super: MathExpression }
+  | { type: "square_root"; body: MathExpression }
+
+export type InlineEquationRun = { type: "inline_equation"; expression: MathExpression; alt: string }
+export type ParagraphRun = StructuredRun | InlineEquationRun
+
 export type RichParagraph = {
   type?: "paragraph"
-  runs: StructuredRun[]
+  runs: ParagraphRun[]
 }
 
 export type ParagraphInput = string | RichParagraph
@@ -66,6 +77,9 @@ export type StructuredDataTableBlock = {
   rows: { cells: ParagraphInput[] }[]
   caption?: ParagraphInput
 }
+export type StructuredEquationBlock = { type: "equation"; id: string; latex: string }
+export type ProcessEquationBlock = { type: "equation"; expression: MathExpression; alt: string; id?: string; chapter?: number }
+
 export type StructuredToolBlock = StructuredFigureGroupBlock | StructuredDataTableBlock
 
 /**
@@ -76,5 +90,7 @@ export type StructuredTextBlock =
   | StructuredListBlock
   | StructuredImageBlock
   | StructuredToolBlock
+  | StructuredEquationBlock
+  | ProcessEquationBlock
 
 export type StructuredBodyValue = StructuredTextBlock[]

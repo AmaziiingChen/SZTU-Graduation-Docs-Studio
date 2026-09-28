@@ -585,6 +585,39 @@ class ExportPipelineTests(unittest.TestCase):
         self.assertEqual(caught.exception.code, "TEMPLATE_ENGINE_INCOMPLETE")
         self.assertIn("模板快照", caught.exception.message)
 
+    def test_renderer_maps_missing_list_layout_snapshot(self) -> None:
+        with self.assertRaises(ExportError) as caught:
+            _run(
+                [
+                    sys.executable,
+                    "-c",
+                    (
+                        "import sys; "
+                        "sys.stderr.write(\"ModuleNotFoundError: No module named "
+                        "'common.python.list_layout'\"); "
+                        "sys.exit(1)"
+                    ),
+                ],
+                cwd=self.root,
+            )
+
+        self.assertEqual(caught.exception.code, "TEMPLATE_ENGINE_INCOMPLETE")
+        self.assertNotIn("字体", caught.exception.message)
+
+    def test_unknown_renderer_failure_does_not_blame_fonts(self) -> None:
+        with self.assertRaises(ExportError) as caught:
+            _run(
+                [
+                    sys.executable,
+                    "-c",
+                    "import sys; sys.stderr.write('synthetic failure'); sys.exit(1)",
+                ],
+                cwd=self.root,
+            )
+
+        self.assertEqual(caught.exception.code, "RENDER_FAILED")
+        self.assertNotIn("字体", caught.exception.message)
+
     def test_docx_inspection_preserves_specific_failure(self) -> None:
         from sztu_docs_backend.docx_inspector import DocxInspectionError
         failure = DocxInspectionError(

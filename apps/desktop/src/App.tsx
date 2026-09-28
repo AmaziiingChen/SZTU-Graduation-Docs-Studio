@@ -1,3 +1,4 @@
+import { emptyThesisDraft, readThesisDraft, type ThesisDraft } from "@/lib/thesis-draft"
 import { celebrateExportSuccess } from "@/lib/export-celebration"
 import { useEditableSelection } from "@/hooks/use-editable-selection"
 import { SaveIcon as SaveIconAnimated } from "@/components/ui/animateicons/save"
@@ -10,7 +11,6 @@ import { useActionFeedback } from "@/hooks/use-action-feedback"
 import { ActionFeedbackIcon } from "@/components/workbench/action-feedback-icon"
 import { ArrowUpIcon } from "@/components/ui/arrow-up"
 import { ArrowDownIcon } from "@/components/ui/arrow-down"
-import { CalendarDaysIcon } from "@/components/ui/calendar-days"
 import { PlusIcon } from "@/components/ui/plus"
 import { DeleteIcon } from "@/components/ui/delete"
 import { AnimatedActionIcon } from "@/components/workbench/animated-action-icon"
@@ -22,13 +22,14 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
+  type ReactNode,
 } from "react"
 import { ChevronDownIcon, LoaderCircleIcon, PackageCheckIcon, TriangleAlertIcon, UserRoundIcon } from "lucide-react"
-import { format, isValid, parseISO } from "date-fns"
-import { zhCN } from "date-fns/locale"
 import { ThinkingOrb } from "thinking-orbs"
 
 import { AppSidebar } from "@/components/workbench/app-sidebar"
+import { DocumentDateField, parseDocumentDate } from "@/components/workbench/document-date-field"
+import { midtermDateIsAllowed, midtermDateRuleForCollege } from "@/lib/midterm-date-rules"
 import { AppearanceSettings } from "@/components/workbench/appearance-settings"
 import type { CreateDocumentRequest } from "@/components/workbench/nav-documents"
 import { DiagnosticSupport } from "@/components/workbench/diagnostic-support"
@@ -68,7 +69,6 @@ import { ToolDirectory } from "@/components/workbench/tool-directory"
 import { ThesisToolsWorkbench } from "@/components/workbench/thesis-tools-workbench"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
-import { Calendar } from "@/components/ui/calendar"
 import {
   Card,
   CardContent,
@@ -100,11 +100,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Select,
@@ -171,6 +166,8 @@ import {
   isStructuredBodyValue,
   structuredFigureCatalog,
   structuredFigureChapterCounts,
+  structuredProcessEquationChapterCounts,
+  structuredProcessEquationLabels,
   type FigureNumberingContext,
   type StructuredEditorMode,
   type StructuredFigureCatalogItem,
@@ -191,6 +188,8 @@ import type {
   ExportJobSummary,
   ExportReceipt,
   JsonObject,
+  MidtermDatePolicyStatus,
+  MidtermDateRule,
   PrivacyNoticeStatus,
   PreviewResult,
   StudentProfile,
@@ -209,7 +208,9 @@ import type {
 } from "@/types/structured-content"
 
 type Draft = {
+  thesis: ThesisDraft
   title: StructuredBodyValue
+  englishTitle: string
   studentName: string
   studentId: string
   major: string
@@ -229,6 +230,7 @@ type Draft = {
   directory: OutlineEditorItem[]
   mainResearchContent: StructuredBodyValue
   progress: StructuredBodyValue
+  midtermEditableHeadings: boolean
   taskBasicContent: StructuredBodyValue
   taskSchedule: TaskScheduleEditorItem[]
   taskRequiredMaterials: StructuredBodyValue
@@ -256,10 +258,12 @@ type StructuredDraftField =
 type TextDraftField = Exclude<
   keyof Draft,
   | StructuredDraftField
+  | "thesis"
   | "directory"
   | "taskSchedule"
   | "references"
   | "taskReferences"
+  | "midtermEditableHeadings"
 >
 
 type ExportState =
@@ -357,7 +361,9 @@ async function loadEnvironmentState(): Promise<EnvironmentState> {
 }
 
 const emptyDraft: Draft = {
+  thesis: emptyThesisDraft(),
   title: [],
+  englishTitle: "",
   studentName: "",
   studentId: "",
   major: "",
@@ -377,6 +383,7 @@ const emptyDraft: Draft = {
   directory: [createOutlineEditorItem()],
   mainResearchContent: [],
   progress: [],
+  midtermEditableHeadings: false,
   taskBasicContent: [],
   taskSchedule: [createTaskScheduleEditorItem()],
   taskRequiredMaterials: [],
@@ -390,7 +397,37 @@ const emptyDraft: Draft = {
   taskSelfProposedBy: "",
 }
 
+const proposalStarterParagraphs = {
+  researchContent: "本课题研究内容如下：",
+  methods: "本课题研究方法、手段如下：",
+  steps: "本课题研究步骤如下：",
+} as const
+
+const midtermStarterParagraphs = {
+  mainResearchContent: "主要研究内容：",
+  progress: "毕业论文（设计）工作进展情况（详述）：",
+} as const
+
+function newMidtermDraft(): Draft {
+  return {
+    ...emptyDraft,
+    mainResearchContent: [midtermStarterParagraphs.mainResearchContent],
+    progress: [midtermStarterParagraphs.progress],
+    midtermEditableHeadings: true,
+  }
+}
+
+function newProposalDraft(): Draft {
+  return {
+    ...emptyDraft,
+    researchContent: [proposalStarterParagraphs.researchContent],
+    methods: [proposalStarterParagraphs.methods],
+    steps: [proposalStarterParagraphs.steps],
+  }
+}
+
 const PROFILE_FIELDS = new Set<TextDraftField>([
+  "englishTitle",
   "studentName",
   "studentId",
   "college",
@@ -502,12 +539,23 @@ function sharedThesisTitleValue(
   return inlineStructuredBodyValue(...fallbacks)
 }
 
+function sharedEnglishThesisTitleValue(
+  profileDraft: StudentProfileDraft | null,
+  profile: StudentProfile | null,
+  legacyTitle: unknown,
+  fallbackTitle: unknown,
+): string {
+  if (typeof profileDraft?.thesis_title_en === "string") return profileDraft.thesis_title_en
+  if (typeof profile?.thesis_title_en === "string") return profile.thesis_title_en
+  return textValue(legacyTitle) || textValue(fallbackTitle)
+}
+
 function paragraphInputPlainText(value: unknown): string {
   if (typeof value === "string") return value
   const paragraph = recordValue(value)
   if (!Array.isArray(paragraph.runs)) return ""
   return paragraph.runs
-    .map((run) => textValue(recordValue(run).text))
+    .map((run) => textValue(recordValue(run).text || recordValue(run).alt))
     .join("")
 }
 
@@ -575,12 +623,13 @@ function structuredBodyHasText(value: StructuredBodyValue): boolean {
     const record = recordValue(paragraph)
     return (
       Array.isArray(record.runs) &&
-      record.runs.some((run) => textValue(recordValue(run).text).trim().length > 0)
+      record.runs.some((run) => textValue(recordValue(run).text || recordValue(run).alt).trim().length > 0)
     )
   }
   const blockHasText = (block: unknown): boolean => {
     if (paragraphHasText(block)) return true
     const record = recordValue(block)
+    if (record.type === "equation") return textValue(record.alt).trim().length > 0
     if (record.type === "image") return textValue(record.path).trim().length > 0
     if (record.type === "data_table" || record.type === "figure_group") return isStructuredBodyValue([block])
     return (
@@ -593,6 +642,30 @@ function structuredBodyHasText(value: StructuredBodyValue): boolean {
     )
   }
   return value.some(blockHasText)
+}
+
+function bodyHasUserTextBeyondStarter(
+  value: StructuredBodyValue,
+  starter: string,
+): boolean {
+  const firstIsStarter =
+    value.length > 0 &&
+    isParagraphInput(value[0]) &&
+    paragraphInputPlainText(value[0]).trim() === starter
+  return structuredBodyHasText(firstIsStarter ? value.slice(1) : value)
+}
+
+function proposalBodyValue(intro: unknown, ...candidates: unknown[]): StructuredBodyValue {
+  const body = structuredBodyValue(...candidates)
+  if (typeof intro !== "string" || !intro.trim()) return body
+  if (
+    body.length > 0 &&
+    isParagraphInput(body[0]) &&
+    paragraphInputPlainText(body[0]).trim() === intro.trim()
+  ) {
+    return body
+  }
+  return [intro, ...body]
 }
 
 function structuredBodyPlainText(value: StructuredBodyValue): string {
@@ -880,7 +953,7 @@ function taskTopicIsComplete(draft: Draft): boolean {
 }
 
 function documentTypeFromRecord(value: string | undefined): DocumentType {
-  if (value === "task_book" || value === "midterm") return value
+  if (value === "task_book" || value === "midterm" || value === "thesis") return value
   return "proposal"
 }
 
@@ -888,12 +961,14 @@ const documentTypeLabels: Record<DocumentType, string> = {
   proposal: "开题报告",
   task_book: "任务书",
   midterm: "中期检查表",
+  thesis: "毕业论文",
 }
 
 const defaultDocumentSections: Record<DocumentType, string> = {
   proposal: "proposal_significance",
   task_book: "task_basic",
   midterm: "document_info",
+  thesis: "thesis_template",
 }
 
 function completionState(
@@ -907,7 +982,11 @@ function completionState(
 function documentSectionOptions(
   draft: Draft,
   documentType: DocumentType,
-): DocumentSectionOption[] {
+  midtermDateRule?: MidtermDateRule,
+ ): DocumentSectionOption[] {
+  if (documentType === "thesis") return [
+    { id: "thesis_template", label: "LaTeX 模板", description: "下载毕业论文源码工程" },
+  ]
   if (documentType === "task_book") {
     const scheduleErrors = validateTaskScheduleItems(draft.taskSchedule)
     const references = referenceState(
@@ -974,7 +1053,7 @@ function documentSectionOptions(
         label: "检查日期",
         description: "填写本次中期检查日期",
         state: completionState(
-          isValidDraftDate(draft.checkDate),
+          isValidDraftDate(draft.checkDate) && midtermDateIsAllowed(draft.checkDate, midtermDateRule),
           draft.checkDate.trim().length > 0,
         ),
       },
@@ -994,8 +1073,8 @@ function documentSectionOptions(
         label: "研究内容",
         description: "当前论文研究内容",
         state: completionState(
-          structuredBodyHasText(draft.mainResearchContent),
-          structuredBodyHasText(draft.mainResearchContent),
+          bodyHasUserTextBeyondStarter(draft.mainResearchContent, midtermStarterParagraphs.mainResearchContent),
+          bodyHasUserTextBeyondStarter(draft.mainResearchContent, midtermStarterParagraphs.mainResearchContent),
         ),
       },
       {
@@ -1003,8 +1082,8 @@ function documentSectionOptions(
         label: "进展情况",
         description: "已完成工作和当前进度",
         state: completionState(
-          structuredBodyHasText(draft.progress),
-          structuredBodyHasText(draft.progress),
+          bodyHasUserTextBeyondStarter(draft.progress, midtermStarterParagraphs.progress),
+          bodyHasUserTextBeyondStarter(draft.progress, midtermStarterParagraphs.progress),
         ),
       },
     ]
@@ -1027,8 +1106,8 @@ function documentSectionOptions(
       label: "研究内容",
       description: "研究对象、问题和拟完成内容",
       state: completionState(
-        structuredBodyHasText(draft.researchContent),
-        structuredBodyHasText(draft.researchContent),
+        bodyHasUserTextBeyondStarter(draft.researchContent, proposalStarterParagraphs.researchContent),
+        bodyHasUserTextBeyondStarter(draft.researchContent, proposalStarterParagraphs.researchContent),
       ),
     },
     {
@@ -1036,8 +1115,8 @@ function documentSectionOptions(
       label: "研究方法",
       description: "研究方法与技术手段",
       state: completionState(
-        structuredBodyHasText(draft.methods),
-        structuredBodyHasText(draft.methods),
+        bodyHasUserTextBeyondStarter(draft.methods, proposalStarterParagraphs.methods),
+        bodyHasUserTextBeyondStarter(draft.methods, proposalStarterParagraphs.methods),
       ),
     },
     {
@@ -1045,8 +1124,8 @@ function documentSectionOptions(
       label: "研究步骤",
       description: "实际推进顺序和阶段安排",
       state: completionState(
-        structuredBodyHasText(draft.steps),
-        structuredBodyHasText(draft.steps),
+        bodyHasUserTextBeyondStarter(draft.steps, proposalStarterParagraphs.steps),
+        bodyHasUserTextBeyondStarter(draft.steps, proposalStarterParagraphs.steps),
       ),
     },
     {
@@ -1065,7 +1144,14 @@ function documentSectionOptions(
   ]
 }
 
-function draftIsExportReady(draft: Draft, documentType: DocumentType): boolean {
+function draftIsExportReady(draft: Draft, documentType: DocumentType, midtermDateRule?: MidtermDateRule): boolean {
+  if (documentType === "thesis") return profileIsComplete(draft) &&
+    !!structuredBodyPlainText(draft.title).trim() && structuredBodyPlainText(draft.title).length <= THESIS_TITLE_MAX_LENGTH &&
+    !!draft.englishTitle.trim() && /^\d{4}-\d{2}-\d{2}$/.test(draft.thesis.submissionDate) && !!draft.thesis.keywordsCn.trim() &&
+    !!draft.thesis.keywordsEn.trim() && structuredBodyHasText(draft.thesis.abstractCn) &&
+    structuredBodyHasText(draft.thesis.abstractEn) && draft.thesis.chapters.length > 0 &&
+    draft.thesis.chapters.every(chapter => !!chapter.title.trim()) &&
+    !!draft.thesis.referencesBibtex.trim() && formatBibtex(draft.thesis.referencesBibtex).issues.length === 0
   if (!profileIsComplete(draft)) return false
   const sharedTitle = structuredBodyPlainText(draft.title).trim()
   if (!sharedTitle || sharedTitle.length > THESIS_TITLE_MAX_LENGTH) return false
@@ -1097,9 +1183,10 @@ function draftIsExportReady(draft: Draft, documentType: DocumentType): boolean {
     return (
       draft.checkDate.trim().length > 0 &&
       isValidDraftDate(draft.checkDate) &&
+      midtermDateIsAllowed(draft.checkDate, midtermDateRule) &&
       directoryErrors.length === 0 &&
-      structuredBodyHasText(draft.mainResearchContent) &&
-      structuredBodyHasText(draft.progress)
+      bodyHasUserTextBeyondStarter(draft.mainResearchContent, midtermStarterParagraphs.mainResearchContent) &&
+      bodyHasUserTextBeyondStarter(draft.progress, midtermStarterParagraphs.progress)
     )
   }
   return (
@@ -1119,6 +1206,7 @@ function draftIsExportReady(draft: Draft, documentType: DocumentType): boolean {
 }
 
 function draftToContent(draft: Draft, documentType: DocumentType): JsonObject {
+  if (documentType === "thesis") return { metadata: { title: inlineParagraphFromBody(draft.title) }, thesis: { ...structuredClone(draft.thesis), englishTitle: draft.englishTitle } } as unknown as JsonObject
   if (documentType === "task_book") {
     const references = referenceState(
       draft.taskReferencesBibtex,
@@ -1171,6 +1259,7 @@ function draftToContent(draft: Draft, documentType: DocumentType): JsonObject {
         check_date: draft.checkDate,
       },
       sections: {
+        editable_headings: draft.midtermEditableHeadings,
         ...(draft.directoryNumberingStyle
           ? { numbering_style: draft.directoryNumberingStyle }
           : {}),
@@ -1232,10 +1321,12 @@ function draftFromRecords(
       ? `${metadata.graduation_year}届`
       : ""
   const legacyContent = isDraft(document.content) ? document.content : {}
+  const thesis = document.document_type === "thesis" ? readThesisDraft(content.thesis) : emptyThesisDraft()
   return {
     ...emptyDraft,
     ...fallback,
     ...legacyContent,
+    thesis,
     title: sharedThesisTitleValue(
       profileDraft,
       profile,
@@ -1243,6 +1334,7 @@ function draftFromRecords(
       legacyContent.title,
       fallback?.title,
     ),
+    englishTitle: sharedEnglishThesisTitleValue(profileDraft, profile, thesis.englishTitle, fallback?.englishTitle),
     studentName: profileDraftValue(
       profileDraft,
       "full_name",
@@ -1310,17 +1402,20 @@ function draftFromRecords(
       legacyContent.significance,
       fallback?.significance,
     ),
-    researchContent: structuredBodyValue(
+    researchContent: proposalBodyValue(
+      sections.research_content_intro ?? recordValue(legacyContent).researchContentIntro,
       sections.research_content,
       legacyContent.researchContent,
       fallback?.researchContent,
     ),
-    methods: structuredBodyValue(
+    methods: proposalBodyValue(
+      sections.methods_and_means_intro ?? recordValue(legacyContent).methodsIntro,
       sections.methods_and_means,
       legacyContent.methods,
       fallback?.methods,
     ),
-    steps: structuredBodyValue(
+    steps: proposalBodyValue(
+      sections.research_steps_intro ?? recordValue(legacyContent).stepsIntro,
       sections.research_steps,
       legacyContent.steps,
       fallback?.steps,
@@ -1366,16 +1461,31 @@ function draftFromRecords(
     directory: Array.isArray(sections.directory)
       ? legacyDirectoryItems(sections.directory)
       : legacyDirectoryItems(legacyContent.directory ?? fallback?.directory),
-    mainResearchContent: structuredBodyValue(
-      sections.main_research_content,
-      legacyContent.mainResearchContent,
-      fallback?.mainResearchContent,
-    ),
-    progress: structuredBodyValue(
-      sections.progress,
-      legacyContent.progress,
-      fallback?.progress,
-    ),
+    mainResearchContent: document.document_type === "midterm" && sections.editable_headings !== true
+      ? proposalBodyValue(
+          midtermStarterParagraphs.mainResearchContent,
+          sections.main_research_content,
+          legacyContent.mainResearchContent,
+          fallback?.mainResearchContent,
+        )
+      : structuredBodyValue(
+          sections.main_research_content,
+          legacyContent.mainResearchContent,
+          fallback?.mainResearchContent,
+        ),
+    progress: document.document_type === "midterm" && sections.editable_headings !== true
+      ? proposalBodyValue(
+          midtermStarterParagraphs.progress,
+          sections.progress,
+          legacyContent.progress,
+          fallback?.progress,
+        )
+      : structuredBodyValue(
+          sections.progress,
+          legacyContent.progress,
+          fallback?.progress,
+        ),
+    midtermEditableHeadings: document.document_type === "midterm",
     taskBasicContent: structuredBodyValue(
       sections.basic_content_and_requirements,
       legacyContent.taskBasicContent,
@@ -1479,6 +1589,7 @@ function profileFromDraft(
       .join(ADVISOR_SEPARATOR),
     graduation_cohort: normalizeGraduationCohort(draft.graduationCohort),
     thesis_title: structuredClone(draft.title),
+    thesis_title_en: draft.englishTitle,
   }
 }
 
@@ -1493,6 +1604,7 @@ function profileDraftFromDraft(draft: Draft): StudentProfileDraft {
     advisor_title: draft.advisorTitle,
     graduation_cohort: draft.graduationCohort,
     thesis_title: structuredClone(draft.title),
+    thesis_title_en: draft.englishTitle,
   }
 }
 
@@ -1512,15 +1624,8 @@ function normalizeGraduationCohort(value: string): string {
   return /^\d{4}$/.test(cohort) ? `${cohort}届` : cohort
 }
 
-function parseDraftDate(value: string): Date | undefined {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined
-  const parsed = parseISO(value)
-  if (!isValid(parsed) || format(parsed, "yyyy-MM-dd") !== value) return undefined
-  return parsed
-}
-
 function isValidDraftDate(value: string): boolean {
-  return parseDraftDate(value) !== undefined
+  return parseDocumentDate(value) !== undefined
 }
 
 function Field({
@@ -1615,73 +1720,6 @@ function Field({
   )
 }
 
-function DateField({
-  id,
-  label,
-  value,
-  onChange,
-  error,
-  disabled,
-}: {
-  id: TextDraftField
-  label: string
-  value: string
-  onChange: (field: TextDraftField, value: string) => void
-  error?: string
-  disabled?: boolean
-}) {
-  const [open, setOpen] = useState(false)
-  const selectedDate = parseDraftDate(value)
-
-  return (
-    <div className="grid gap-2">
-      <label className="sr-only" htmlFor={id}>
-        {label}
-      </label>
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger
-          render={
-            <Button
-              id={id}
-              variant="outline"
-              aria-invalid={Boolean(error)}
-              aria-describedby={error ? `${id}-error` : undefined}
-              data-empty={!selectedDate}
-              disabled={disabled}
-              className="w-full justify-start text-left font-normal data-[empty=true]:text-muted-foreground"
-            />
-          }
-        >
-          <AnimatedActionIcon icon={CalendarDaysIcon} />
-          {selectedDate ? (
-            format(selectedDate, "yyyy年M月d日", { locale: zhCN })
-          ) : (
-            <span>选择检查日期</span>
-          )}
-        </PopoverTrigger>
-        <PopoverContent className="w-auto p-0" align="start">
-          <Calendar
-            mode="single"
-            selected={selectedDate}
-            defaultMonth={selectedDate}
-            locale={zhCN}
-            onSelect={(date) => {
-              if (!date) return
-              onChange(id, format(date, "yyyy-MM-dd"))
-              setOpen(false)
-            }}
-          />
-        </PopoverContent>
-      </Popover>
-      {error ? (
-        <p className="text-xs text-destructive" id={`${id}-error`}>
-          {error}
-        </p>
-      ) : null}
-    </div>
-  )
-}
-
 function StructuredBodyField({
   id,
   label,
@@ -1696,9 +1734,13 @@ function StructuredBodyField({
   fillHeight = false,
   enableFigures = false,
   enableDocumentTools = false,
+  enableProcessEquations = false,
   figureChapters,
   figureCatalog,
   figureNumbering,
+  startOnNewParagraph = false,
+  toolbarActions,
+  footerStatus,
 }: {
   id: StructuredDraftField
   label: string
@@ -1713,9 +1755,13 @@ function StructuredBodyField({
   fillHeight?: boolean
   enableFigures?: boolean
   enableDocumentTools?: boolean
+  enableProcessEquations?: boolean
   figureChapters?: FigureChapterOption[]
   figureCatalog?: StructuredFigureCatalogItem[]
   figureNumbering?: FigureNumberingContext
+  startOnNewParagraph?: boolean
+  toolbarActions?: ReactNode
+  footerStatus?: ReactNode
 }) {
   const describedBy = error ? `${id}-description ${id}-error` : `${id}-description`
   const editorSupported =
@@ -1741,6 +1787,7 @@ function StructuredBodyField({
           ariaInvalid={Boolean(error)}
           footerMessage={fillHeight ? error : undefined}
           footerMessageId={fillHeight && error ? `${id}-error` : undefined}
+          footerStatus={footerStatus}
           placeholder={`输入${label}`}
           mode={mode}
           selectionSnapshot={selectionSnapshot}
@@ -1748,24 +1795,39 @@ function StructuredBodyField({
           fillHeight={fillHeight}
           enableFigures={enableFigures}
           enableDocumentTools={enableDocumentTools}
+          enableProcessEquations={enableProcessEquations}
           figureChapters={figureChapters}
           figureCatalog={figureCatalog}
           figureNumbering={figureNumbering}
+          startOnNewParagraph={startOnNewParagraph}
+          toolbarActions={toolbarActions}
           className={fillHeight ? "min-h-0 flex-1" : undefined}
         />
       ) : (
-        <Alert>
-          <TriangleAlertIcon />
-          <AlertTitle>本栏包含暂不支持编辑的内容块</AlertTitle>
-          <AlertDescription>
-            检测到图片或其他非文本结构。为避免覆盖原内容，本栏已暂停编辑；原始结构仍会原样保存并可继续检查、预览和导出。
-          </AlertDescription>
-        </Alert>
+        <>
+          {toolbarActions ? (
+            <div data-slot="document-action-bar" className="flex min-h-(--header-height) shrink-0 items-center justify-end gap-2 border-b bg-muted/30 px-4">
+              {toolbarActions}
+            </div>
+          ) : null}
+          <Alert>
+            <TriangleAlertIcon />
+            <AlertTitle>本栏包含暂不支持编辑的内容块</AlertTitle>
+            <AlertDescription>
+              检测到图片或其他非文本结构。为避免覆盖原内容，本栏已暂停编辑；原始结构仍会原样保存并可继续检查、预览和导出。
+            </AlertDescription>
+          </Alert>
+        </>
       )}
       {error && (!editorSupported || !fillHeight) ? (
         <p className="text-xs text-destructive" id={`${id}-error`}>
           {error}
         </p>
+      ) : null}
+      {!editorSupported && fillHeight && footerStatus ? (
+        <div className="mt-auto flex min-h-8 items-center justify-end px-3 py-1">
+          {footerStatus}
+        </div>
       ) : null}
     </div>
   )
@@ -1931,7 +1993,7 @@ function StudentProfileEditor({
   const classSuggestions = selectedMajor?.classes ?? []
   const advisorEntries = advisorEntriesFromDraft(draft)
   const titleError = !structuredBodyPlainText(draft.title).trim()
-    ? "请输入论文题目。"
+    ? "请输入中文论文题目。"
     : structuredBodyPlainText(draft.title).length > THESIS_TITLE_MAX_LENGTH
       ? `论文题目最多 ${THESIS_TITLE_MAX_LENGTH} 个字符。`
       : undefined
@@ -2015,7 +2077,7 @@ function StudentProfileEditor({
     <ScrollArea className="h-full">
       <div className="mx-auto grid max-w-4xl gap-6 p-6">
         <p className="text-sm text-muted-foreground">
-          基础信息和论文题目只在这里维护一次，开题报告、任务书、中期检查和后续过程文档统一读取。
+          基础信息和论文题目只在这里维护一次，开题报告、任务书、中期检查和毕业论文统一读取。
         </p>
 
         {workspace.status === "loading" ? (
@@ -2040,22 +2102,24 @@ function StudentProfileEditor({
           <CardHeader>
             <CardTitle>论文题目</CardTitle>
           </CardHeader>
-          <CardContent>
-            <StructuredContentEditor
-              value={draft.title}
-              onChange={(value) => onStructuredBodyChange("title", value)}
-              disabled={disabled}
-              ariaLabel="论文题目"
-              ariaDescribedBy={titleError ? "title-error" : undefined}
-              ariaInvalid={Boolean(titleError)}
-              placeholder="输入论文题目"
-              mode="inline"
-            />
-            {titleError ? (
-              <p className="mt-2 text-xs text-destructive" id="title-error">
-                {titleError}
-              </p>
-            ) : null}
+          <CardContent className="grid gap-4">
+            <div className="grid gap-2">
+              <StructuredContentEditor
+                value={draft.title}
+                onChange={(value) => onStructuredBodyChange("title", value)}
+                disabled={disabled}
+                ariaLabel="中文题目"
+                ariaDescribedBy={titleError ? "title-error" : undefined}
+                ariaInvalid={Boolean(titleError)}
+                placeholder="输入论文题目"
+                mode="inline"
+              />
+              {titleError ? (
+                <p className="mt-2 text-xs text-destructive" id="title-error">
+                  {titleError}
+                </p>
+              ) : null}
+            </div>
           </CardContent>
         </Card>
 
@@ -2259,6 +2323,14 @@ function StudentProfileEditor({
   )
 }
 
+function SaveStatusFooter({ state }: { state: SaveState }) {
+  return (
+    <div data-slot="save-status-footer" className="flex min-h-8 shrink-0 items-center justify-end px-3 py-1">
+      <SaveStatusBadge state={state} quiet />
+    </div>
+  )
+}
+
 function DocumentEditor({
   documentId,
   documentType,
@@ -2266,6 +2338,7 @@ function DocumentEditor({
   viewState,
   onViewStateChange,
   draft,
+  midtermDateRule,
   onChange,
   onStructuredBodyChange,
   onDirectoryChange,
@@ -2276,6 +2349,7 @@ function DocumentEditor({
   saveState,
   onRetryLoad,
   onRetrySave,
+  toolbarActions,
 }: {
   documentId: string
   documentType: DocumentType
@@ -2285,6 +2359,7 @@ function DocumentEditor({
     update: (current: DocumentViewState) => DocumentViewState,
   ) => void
   draft: Draft
+  midtermDateRule?: MidtermDateRule
   onChange: (field: TextDraftField, value: string) => void
   onStructuredBodyChange: (
     field: StructuredDraftField,
@@ -2298,9 +2373,11 @@ function DocumentEditor({
   saveState: SaveState
   onRetryLoad: () => void
   onRetrySave: () => void
+  toolbarActions?: ReactNode
 }) {
   const isMidterm = documentType === "midterm"
   const isTaskBook = documentType === "task_book"
+  const isThesis = documentType === "thesis"
   const scrollRootRef = useRef<HTMLDivElement>(null)
   const immersiveSection = isTaskBook
     ? [
@@ -2378,13 +2455,25 @@ function DocumentEditor({
   const figureLabels = Object.fromEntries(
     figureCatalog.map((figure) => [figure.id, figure.label]),
   )
+  Object.assign(figureLabels, structuredProcessEquationLabels(...figureBodies))
   const DocumentScrollContainer = immersiveSection ? "div" : ScrollArea
+  const hasRichTextToolbar = [
+    "task_basic", "task_materials", "midterm_research", "midterm_progress",
+    "proposal_significance", "proposal_research", "proposal_methods", "proposal_steps",
+  ].includes(activeSection)
   const EditorSurface = immersiveSection ? "div" : Card
   const EditorSurfaceContent = immersiveSection ? "div" : CardContent
+  const documentFooterStatus = <SaveStatusBadge state={saveState} quiet />
 
   return (
-    <div className="h-full" ref={scrollRootRef}>
-    <DocumentScrollContainer className="h-full">
+    <div className="flex h-full min-h-0 flex-col" ref={scrollRootRef}>
+    <h1 className="sr-only">{documentTypeLabels[documentType]}</h1>
+    {!hasRichTextToolbar && toolbarActions ? (
+      <div data-slot="document-action-bar" className="flex min-h-(--header-height) shrink-0 items-center justify-end gap-2 border-b bg-muted/30 px-4">
+        {toolbarActions}
+      </div>
+    ) : null}
+    <DocumentScrollContainer className="min-h-0 flex-1">
       <div
         className={cn(
           immersiveSection
@@ -2393,7 +2482,7 @@ function DocumentEditor({
         )}
       >
 
-        {!profileIsComplete(draft) && workspace.status === "ready" ? (
+        {!isThesis && !profileIsComplete(draft) && workspace.status === "ready" ? (
           <Alert>
             <UserRoundIcon />
             <AlertTitle>学生档案尚未补全</AlertTitle>
@@ -2403,7 +2492,7 @@ function DocumentEditor({
           </Alert>
         ) : null}
 
-        {!structuredBodyPlainText(draft.title).trim() &&
+        {!isThesis && !structuredBodyPlainText(draft.title).trim() &&
         workspace.status === "ready" ? (
           <Alert>
             <UserRoundIcon />
@@ -2467,22 +2556,42 @@ function DocumentEditor({
           </Alert>
         ) : null}
 
+        {isThesis && activeSection === "thesis_template" ? (
+          <Card className="border-0 shadow-none ring-0">
+            <CardHeader>
+              <CardTitle>毕业论文 LaTeX 模板</CardTitle>
+              <CardDescription>论文源码工程正在整理，确认内容后将在这里提供下载。</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-4">
+              <Button type="button" disabled className="w-fit">
+                <AnimatedActionIcon icon={DownloadIcon} />
+                下载 LaTeX 模板
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                此文档记录和已有草稿仍保存在本机；当前暂停论文正文编辑与预览导出。
+              </p>
+            </CardContent>
+          </Card>
+        ) : null}
+
         {activeSection === "document_info" && isMidterm ? (
         <Card className="border-0 shadow-none ring-0">
           <CardHeader>
             <CardTitle>检查日期</CardTitle>
           </CardHeader>
           <CardContent>
-            <DateField
+            <DocumentDateField
               id="checkDate"
               label="检查日期"
               value={draft.checkDate}
+              allowedRange={midtermDateRule}
+              placeholder="选择检查日期"
               error={
-                isValidDraftDate(draft.checkDate)
+                isValidDraftDate(draft.checkDate) && midtermDateIsAllowed(draft.checkDate, midtermDateRule)
                   ? undefined
                   : "请选择有效的检查日期。"
               }
-              onChange={onChange}
+              onChange={(value) => onChange("checkDate", value)}
               disabled={disabled}
             />
           </CardContent>
@@ -2500,7 +2609,7 @@ function DocumentEditor({
           </Alert>
         ) : null}
 
-        {activeSection !== "document_info" ? (
+        {!isThesis && activeSection !== "document_info" ? (
         <EditorSurface
           className={cn(
             immersiveSection ? "min-h-0 flex-1" : "border-0 shadow-none ring-0",
@@ -2523,6 +2632,8 @@ function DocumentEditor({
               <>
                 {activeSection === "task_basic" ? (
                   <StructuredBodyField
+                  toolbarActions={toolbarActions}
+                  footerStatus={documentFooterStatus}
                     id="taskBasicContent"
                     {...editorLocationProps("taskBasicContent")}
                     label="内容要求"
@@ -2553,6 +2664,8 @@ function DocumentEditor({
                 ) : null}
                 {activeSection === "task_materials" ? (
                   <StructuredBodyField
+                  toolbarActions={toolbarActions}
+                  footerStatus={documentFooterStatus}
                     id="taskRequiredMaterials"
                     {...editorLocationProps("taskRequiredMaterials")}
                     label="需收集的资料及主要参考文献资料"
@@ -2577,6 +2690,7 @@ function DocumentEditor({
                 ) : null}
                 {activeSection === "task_references" ? (
                   <ReferenceImporter
+                    footerStatus={documentFooterStatus}
                     source={draft.taskReferencesBibtex}
                     legacyReferences={draft.taskReferences}
                     maximumEntries={TASK_BOOK_REFERENCE_RULES.maximumEntries}
@@ -2703,15 +2817,23 @@ function DocumentEditor({
                 ) : null}
                 {activeSection === "midterm_research" ? (
                 <StructuredBodyField
+                  toolbarActions={toolbarActions}
+                  footerStatus={documentFooterStatus}
                   id="mainResearchContent"
                   {...editorLocationProps("mainResearchContent")}
                   label="研究内容"
                   description="填写当前论文的主要研究内容，可组合段落和列表。"
                   value={draft.mainResearchContent}
+                  startOnNewParagraph={
+                    draft.mainResearchContent.length === 1 &&
+                    isParagraphInput(draft.mainResearchContent[0]) &&
+                    paragraphInputPlainText(draft.mainResearchContent[0]).trim() === midtermStarterParagraphs.mainResearchContent
+                  }
                   onChange={onStructuredBodyChange}
                   disabled={disabled}
                   fillHeight
                   enableDocumentTools
+                  enableProcessEquations
                   enableFigures
                   figureChapters={figureChapters}
                   figureCatalog={figureCatalog}
@@ -2720,20 +2842,29 @@ function DocumentEditor({
                 ) : null}
                 {activeSection === "midterm_progress" ? (
                 <StructuredBodyField
+                  toolbarActions={toolbarActions}
+                  footerStatus={documentFooterStatus}
                   id="progress"
                   {...editorLocationProps("progress")}
                   label="毕业论文（设计）进展情况"
                   description="按实际完成情况填写，可组合段落和列表。"
                   value={draft.progress}
+                  startOnNewParagraph={
+                    draft.progress.length === 1 &&
+                    isParagraphInput(draft.progress[0]) &&
+                    paragraphInputPlainText(draft.progress[0]).trim() === midtermStarterParagraphs.progress
+                  }
                   onChange={onStructuredBodyChange}
                   disabled={disabled}
                   fillHeight
                   enableDocumentTools
+                  enableProcessEquations
                   enableFigures
                   figureChapters={figureChapters}
                   figureCatalog={figureCatalog}
                   figureNumbering={{
                     startCounts: structuredFigureChapterCounts(draft.mainResearchContent),
+                    equationStartCounts: structuredProcessEquationChapterCounts(draft.mainResearchContent),
                     knownLabels: figureLabels,
                   }}
                 />
@@ -2743,6 +2874,8 @@ function DocumentEditor({
               <>
                 {activeSection === "proposal_significance" ? (
                 <StructuredBodyField
+                  toolbarActions={toolbarActions}
+                  footerStatus={documentFooterStatus}
                   id="significance"
                   {...editorLocationProps("significance")}
                   label="本选题的意义及国内外发展状况"
@@ -2759,19 +2892,28 @@ function DocumentEditor({
                   onChange={onStructuredBodyChange}
                   disabled={disabled}
                   fillHeight
+                  enableProcessEquations
                 />
                 ) : null}
                 {activeSection === "proposal_research" ? (
                 <StructuredBodyField
+                  toolbarActions={toolbarActions}
+                  footerStatus={documentFooterStatus}
                   id="researchContent"
                   {...editorLocationProps("researchContent")}
                   label="研究内容"
                   description="说明研究对象、主要问题和拟完成内容。"
                   value={draft.researchContent}
+                  startOnNewParagraph={
+                    draft.researchContent.length === 1 &&
+                    isParagraphInput(draft.researchContent[0]) &&
+                    paragraphInputPlainText(draft.researchContent[0]).trim() === proposalStarterParagraphs.researchContent
+                  }
                   onChange={onStructuredBodyChange}
                   disabled={disabled}
                   fillHeight
                   enableFigures
+                  enableProcessEquations
                   figureChapters={figureChapters}
                   figureCatalog={figureCatalog}
                   figureNumbering={{ knownLabels: figureLabels }}
@@ -2779,38 +2921,59 @@ function DocumentEditor({
                 ) : null}
                 {activeSection === "proposal_methods" ? (
                 <StructuredBodyField
+                  toolbarActions={toolbarActions}
+                  footerStatus={documentFooterStatus}
                   id="methods"
                   {...editorLocationProps("methods")}
                   label="研究方法与手段"
                   description="与研究步骤分开填写。"
                   value={draft.methods}
+                  startOnNewParagraph={
+                    draft.methods.length === 1 &&
+                    isParagraphInput(draft.methods[0]) &&
+                    paragraphInputPlainText(draft.methods[0]).trim() === proposalStarterParagraphs.methods
+                  }
                   onChange={onStructuredBodyChange}
                   disabled={disabled}
                   fillHeight
                   enableFigures
+                  enableProcessEquations
                   figureChapters={figureChapters}
                   figureCatalog={figureCatalog}
                   figureNumbering={{
                     startCounts: structuredFigureChapterCounts(draft.researchContent),
+                    equationStartCounts: structuredProcessEquationChapterCounts(draft.researchContent),
                     knownLabels: figureLabels,
                   }}
                 />
                 ) : null}
                 {activeSection === "proposal_steps" ? (
                 <StructuredBodyField
+                  toolbarActions={toolbarActions}
+                  footerStatus={documentFooterStatus}
                   id="steps"
                   {...editorLocationProps("steps")}
                   label="研究步骤"
                   description="按实际推进顺序填写。"
                   value={draft.steps}
+                  startOnNewParagraph={
+                    draft.steps.length === 1 &&
+                    isParagraphInput(draft.steps[0]) &&
+                    paragraphInputPlainText(draft.steps[0]).trim() === proposalStarterParagraphs.steps
+                  }
                   onChange={onStructuredBodyChange}
                   disabled={disabled}
                   fillHeight
                   enableFigures
+                  enableProcessEquations
                   figureChapters={figureChapters}
                   figureCatalog={figureCatalog}
                   figureNumbering={{
                     startCounts: structuredFigureChapterCounts(
+                      draft.researchContent,
+                      draft.methods,
+                    ),
+                    equationStartCounts: structuredProcessEquationChapterCounts(
                       draft.researchContent,
                       draft.methods,
                     ),
@@ -2820,6 +2983,7 @@ function DocumentEditor({
                 ) : null}
                 {activeSection === "proposal_references" ? (
                 <ReferenceImporter
+                  footerStatus={documentFooterStatus}
                   source={draft.referencesBibtex}
                   legacyReferences={draft.references}
                   maximumEntries={PROPOSAL_REFERENCE_RULES.maximumEntries}
@@ -2837,6 +3001,9 @@ function DocumentEditor({
         ) : null}
       </div>
     </DocumentScrollContainer>
+    {!hasRichTextToolbar && !["task_references", "proposal_references"].includes(activeSection) ? (
+      <SaveStatusFooter state={saveState} />
+    ) : null}
     </div>
   )
 }
@@ -2847,7 +3014,9 @@ function activeTemplateCheck(
 ): EnvironmentCheck | undefined {
   if (environment.status !== "ready") return undefined
   const checkId =
-    documentType === "task_book"
+    documentType === "thesis"
+      ? "thesis_engine"
+      : documentType === "task_book"
       ? "task_book_engine"
       : documentType === "midterm"
         ? "midterm_engine"
@@ -3007,6 +3176,7 @@ function PaginatedPreviewPanel({
 function InspectionPanel({
   environment,
   templateCheck,
+  thesisTemplatePending,
   onRefresh,
   onInstallTemplate,
   templateInstalling,
@@ -3019,6 +3189,7 @@ function InspectionPanel({
 }: {
   environment: EnvironmentState
   templateCheck: EnvironmentCheck | undefined
+  thesisTemplatePending: boolean
   onRefresh: () => void
   onInstallTemplate: () => void
   templateInstalling: boolean
@@ -3049,6 +3220,8 @@ function InspectionPanel({
                       ? "文档引擎未连接，可创建故障诊断包协助排查。"
                       : !environment.result.ready
                         ? "运行环境异常，可创建故障诊断包协助排查。"
+                        : thesisTemplatePending
+                          ? "毕业论文 LaTeX 模板仍在整理，当前文档暂停预览和导出。"
                         : templateNeedsRepair
                           ? "当前文档模板需要重新关联。"
                           : "运行环境正常，可以继续检查、预览和导出。"}
@@ -3394,6 +3567,10 @@ export default function App() {
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({
     state: "unconfigured",
   })
+  const [midtermDatePolicyStatus, setMidtermDatePolicyStatus] = useState<MidtermDatePolicyStatus>({
+    state: "unconfigured",
+    rules: [],
+  })
   const [dismissedUpdateVersion, setDismissedUpdateVersion] = useState<string | null>(
     null,
   )
@@ -3475,9 +3652,11 @@ export default function App() {
     [previewDrawerMaxWidth, previewDrawerWidth],
   )
   const activeDocumentType = documentTypeFromRecord(document?.document_type)
-  const sections = documentSectionOptions(draft, activeDocumentType)
-  const activeSection = activeSections[activeDocumentType]
-  const graduationCohort = normalizeGraduationCohort(draft.graduationCohort)
+  const midtermDateRule = midtermDateRuleForCollege(midtermDatePolicyStatus.rules, draft.college)
+  const sections = documentSectionOptions(draft, activeDocumentType, midtermDateRule)
+  const activeSection = sections.some(section => section.id === activeSections[activeDocumentType])
+    ? activeSections[activeDocumentType]
+    : sections[0].id
   const editVersion = useRef(0)
   const autosaveVersions = useRef(createAutosaveVersionState())
   const saving = useRef(false)
@@ -3545,6 +3724,7 @@ export default function App() {
   }, [activePane, activeSection, previewOpen])
 
   const recordTelemetry = useCallback((input: TelemetryUsageEvent) => {
+    if (("documentType" in input && input.documentType === "thesis") || ("view" in input && input.view === "thesis")) return
     const api = getDesktopApi()
     if (!api) return
     void api.recordTelemetry(input).catch(() => undefined)
@@ -3554,15 +3734,17 @@ export default function App() {
     const api = getDesktopApi()
     if (!api) return
     try {
-      const [notice, update] = await Promise.all([
+      const [notice, update, datePolicy] = await Promise.all([
         api.getPrivacyNoticeStatus(),
         api.getUpdateStatus(),
+        api.getMidtermDatePolicyStatus(),
       ])
       setPrivacyNotice({
         status: notice.acknowledged ? "accepted" : "required",
         result: notice,
       })
       setUpdateStatus(update)
+      setMidtermDatePolicyStatus(datePolicy)
     } catch (error) {
       setPrivacyNotice({
         status: "error",
@@ -3580,13 +3762,14 @@ export default function App() {
     saveStateRef.current === "saved"
 
   const applyWorkspace = useCallback(
-    async (snapshot: WorkspaceSnapshot, fallback?: Draft) => {
+    async (snapshot: WorkspaceSnapshot, fallback?: Draft, prefillNewProposal = false) => {
       const api = getDesktopApi()
       if (!api) throw new Error("请在 Electron 桌面应用中运行工作台。")
 
       let activeDocument = snapshot.document
+      const createdProposal = !activeDocument
       if (!activeDocument) {
-        const initial = fallback ?? emptyDraft
+        const initial = fallback ?? newProposalDraft()
         activeDocument = await api.createDocument({
           profile_id: snapshot.profile?.id ?? null,
           document_type: "proposal",
@@ -3598,6 +3781,26 @@ export default function App() {
       }
 
       const resolvedDocument = activeDocument
+      const shouldPrefillProposal =
+        (createdProposal || prefillNewProposal) &&
+        resolvedDocument.document_type === "proposal" &&
+        resolvedDocument.content === null
+      const shouldPrefillMidterm =
+        resolvedDocument.document_type === "midterm" && resolvedDocument.content === null
+      const shouldMigrateMidterm =
+        resolvedDocument.document_type === "midterm" &&
+        resolvedDocument.content !== null &&
+        recordValue(recordValue(resolvedDocument.content).sections).editable_headings !== true
+      const draftFallback = fallback ?? (
+        shouldPrefillProposal ? newProposalDraft() :
+        shouldPrefillMidterm ? newMidtermDraft() : undefined
+      )
+      const resolvedDraft = draftFromRecords(
+        snapshot.profile,
+        snapshot.profile_draft,
+        resolvedDocument,
+        draftFallback,
+      )
       setProfile(snapshot.profile)
       setDocument(resolvedDocument)
       setDocuments(
@@ -3607,12 +3810,6 @@ export default function App() {
       )
       setDeletedDocuments(snapshot.deleted_documents ?? [])
       setRevision(currentRevision(resolvedDocument))
-      const resolvedDraft = draftFromRecords(
-        snapshot.profile,
-        snapshot.profile_draft,
-        resolvedDocument,
-        fallback,
-      )
       setDraft(resolvedDraft)
       setPreviewState({ status: "idle" })
       setExportState({ status: "idle" })
@@ -3624,11 +3821,11 @@ export default function App() {
       )
       autosaveVersions.current = createAutosaveVersionState({
         profileDirty: Boolean(fallback),
-        documentDirty: Boolean(fallback),
+        documentDirty: Boolean(fallback) || shouldPrefillProposal || shouldPrefillMidterm || shouldMigrateMidterm,
         profileFingerprint: initialFingerprints.profile,
-        documentFingerprint: initialFingerprints.document,
+        documentFingerprint: shouldPrefillProposal || shouldPrefillMidterm || shouldMigrateMidterm ? undefined : initialFingerprints.document,
       })
-      setSaveState(fallback ? "dirty" : "saved")
+      setSaveState(fallback || shouldPrefillProposal || shouldPrefillMidterm || shouldMigrateMidterm ? "dirty" : "saved")
       setWorkspace({ status: "ready" })
     },
     [setSaveState],
@@ -3694,7 +3891,9 @@ export default function App() {
     if (!api) return
     // oxlint-disable-next-line react/set-state-in-effect -- initial IPC hydration synchronizes React with the main-process remote-service state.
     void loadRemoteServiceState()
-    return api.onUpdateStatus((status) => setUpdateStatus(status))
+    const stopUpdate = api.onUpdateStatus((status) => setUpdateStatus(status))
+    const stopDatePolicy = api.onMidtermDatePolicyStatus((status) => setMidtermDatePolicyStatus(status))
+    return () => { stopUpdate(); stopDatePolicy() }
   }, [loadRemoteServiceState])
 
   useEffect(() => {
@@ -3863,6 +4062,7 @@ export default function App() {
       profile_id: profile?.id ?? null,
       document_type: request.type,
       template_version:
+        request.type === "thesis" ? "0.1.0-authoring" :
         request.type === "task_book"
           ? "0.2+66c968c"
           : request.type === "midterm"
@@ -3873,7 +4073,11 @@ export default function App() {
       source_document_id: request.sourceDocumentId,
     })
     const snapshot = await api.selectDocument(created.id)
-    await applyWorkspace(snapshot)
+    await applyWorkspace(
+      snapshot,
+      undefined,
+      request.type === "proposal" && !request.sourceDocumentId,
+    )
     setActivePane("document")
   }
 
@@ -4000,6 +4204,7 @@ export default function App() {
   }
 
   const checkContent = async (): Promise<boolean> => {
+    if (activeDocumentType === "thesis") return false
     const api = getDesktopApi()
     if (!api || !document || workspace.status !== "ready") return false
     const documentIdAtStart = document.id
@@ -4040,7 +4245,7 @@ export default function App() {
       const message = !thesisTitle
         ? "请先打开左侧“学生档案”，填写共用论文题目。"
         : `学生档案中的论文题目最多 ${THESIS_TITLE_MAX_LENGTH} 个字符。`
-      navigateToCheck({ pane: "profile", selector: '[aria-label="论文题目"]' })
+      navigateToCheck({ pane: "profile", selector: '[aria-label="中文题目"]' })
       recordTelemetry({
         name: "document_action",
         action: "check",
@@ -4133,6 +4338,11 @@ export default function App() {
   }
 
   const generatePreview = async () => {
+    if (activeDocumentType === "thesis") return
+    if (activeDocumentType === "midterm" && !midtermDateIsAllowed(draft.checkDate, midtermDateRule)) {
+      setPreviewState({ status: "error", message: "请重新选择有效的检查日期。" })
+      return
+    }
     const api = getDesktopApi()
     if (
       !api ||
@@ -4333,7 +4543,7 @@ export default function App() {
         outcome: "success",
         formatCount: pending.formats.length,
       })
-      void api
+      if (pending.documentType !== "thesis") void api
         .recordDocumentCompletion({
           documentId: pending.documentId,
           documentType: pending.documentType,
@@ -4544,7 +4754,9 @@ export default function App() {
   }
 
   const workspaceDisabled = workspace.status !== "ready"
-  const templateCheck = activeTemplateCheck(environment, activeDocumentType)
+  const templateCheck = activeDocumentType === "thesis"
+    ? undefined
+    : activeTemplateCheck(environment, activeDocumentType)
   const templateReady = templateCheck?.status === "pass"
   const environmentFailure =
     environment.status === "ready"
@@ -4562,6 +4774,7 @@ export default function App() {
     previewState.status === "checking" || previewState.status === "generating"
   const previewTriggerDisabled =
     workspaceDisabled ||
+    activeDocumentType === "thesis" ||
     activePane !== "document" ||
     !document ||
     saveState === "loading" ||
@@ -4570,9 +4783,10 @@ export default function App() {
     exportState.status === "exporting"
   const previewGenerationDisabled =
     previewTriggerDisabled || !environmentReady || !templateReady
-  const draftExportReady = draftIsExportReady(draft, activeDocumentType)
+  const draftExportReady = draftIsExportReady(draft, activeDocumentType, midtermDateRule)
   const exportDisabled =
     workspaceDisabled ||
+    activeDocumentType === "thesis" ||
     activePane !== "document" ||
     !document ||
     saveState !== "saved" ||
@@ -4581,7 +4795,9 @@ export default function App() {
     !draftExportReady ||
     !previewReady ||
     exportState.status === "exporting"
-  const exportDisabledReason = !environmentReady
+  const exportDisabledReason = activeDocumentType === "thesis"
+    ? "毕业论文 LaTeX 模板仍在整理，暂不能预览或导出"
+    : !environmentReady
     ? environmentFailure?.message ?? "请先修复本机文档环境"
     : !templateReady
       ? "请先在左侧“导出记录”中关联可用的本地模板工程"
@@ -4596,6 +4812,7 @@ export default function App() {
               : "请先填写全部必填字段，并确保选题意义至少有两个段落"
 
   const openPreviewAndExport = () => {
+    if (activeDocumentType === "thesis") return
     previewCheckTarget.current = null
     setPreviewOpen(true)
     if (previewReady) {
@@ -4643,6 +4860,27 @@ export default function App() {
         (releaseAnnouncement && releaseAnnouncement.id !== dismissedAnnouncementId)),
   )
 
+  const documentActions = (
+    <>
+      {activeDocumentType !== "thesis" ? (
+        <Button
+          size={isMobile ? "icon" : "default"}
+          aria-label="预览&导出"
+          title="预览&导出"
+          onClick={openPreviewAndExport}
+          disabled={previewTriggerDisabled}
+        >
+          {previewBusy ? (
+            <ThinkingOrb state="solving" size={20} aria-label="正在生成预览" />
+          ) : (
+            <AnimatedActionIcon icon={FileTextIconAnimated} />
+          )}
+          {isMobile ? null : <span>预览&导出</span>}
+        </Button>
+      ) : null}
+    </>
+  )
+
   const editor =
     activePane === "profile" ? (
       <StudentProfileEditor
@@ -4660,6 +4898,7 @@ export default function App() {
         viewState={activeDocumentViewState}
         onViewStateChange={updateActiveDocumentViewState}
         draft={draft}
+        midtermDateRule={midtermDateRule}
         onChange={updateDraft}
         onStructuredBodyChange={updateStructuredBody}
         onDirectoryChange={updateDirectory}
@@ -4670,6 +4909,7 @@ export default function App() {
         saveState={saveState}
         onRetryLoad={() => void openWorkspace("persistent")}
         onRetrySave={() => void saveNow("manual")}
+        toolbarActions={documentActions}
       />
     )
 
@@ -4677,6 +4917,7 @@ export default function App() {
     <InspectionPanel
       environment={environment}
       templateCheck={templateCheck}
+      thesisTemplatePending={activeDocumentType === "thesis"}
       onRefresh={refreshEnvironment}
       onInstallTemplate={() => void installTemplate()}
       templateInstalling={templateInstalling}
@@ -4694,6 +4935,7 @@ export default function App() {
       sections={sections}
       activeSection={activeSection}
       animationContextKey={document?.id ?? activeDocumentType}
+      showSidebarToggle
       onSectionChange={(sectionId) =>
         setActiveSections((current) => ({
           ...current,
@@ -4708,6 +4950,7 @@ export default function App() {
       sections={thesisToolOptions satisfies DocumentSectionOption[]}
       activeSection={activeThesisTool}
       animationContextKey="thesis-tools"
+      showSidebarToggle
       showCompletion={false}
       onSectionChange={(toolId) => setActiveThesisTool(toolId as ThesisToolId)}
     />
@@ -4736,16 +4979,24 @@ export default function App() {
 
   const mainPanel =
     activePane === "inspection" ? (
-      inspectionPanel
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="min-h-0 flex-1">{inspectionPanel}</div>
+        <SaveStatusFooter state={saveState} />
+      </div>
     ) : activePane === "tools" ? (
       <ToolDirectory onOpenTool={openToolLink} />
     ) : activePane === "appearance" ? (
       <AppearanceSettings />
     ) : activePane === "thesis_tools" ? (
-      <ThesisToolsWorkbench
-        activeTool={activeThesisTool}
-        onSaveStateChange={handleThesisToolSaveStateChange}
-      />
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="min-h-0 flex-1">
+          <ThesisToolsWorkbench
+            activeTool={activeThesisTool}
+            onSaveStateChange={handleThesisToolSaveStateChange}
+          />
+        </div>
+        <SaveStatusFooter state={thesisToolSaveStates[activeThesisTool]} />
+      </div>
     ) : (
       editor
     )
@@ -4798,7 +5049,7 @@ export default function App() {
         inspectionDisabled={workspaceDisabled}
       />
       <SidebarInset className="min-h-0 overflow-hidden">
-        <SiteHeader
+        {activePane !== "document" ? <SiteHeader
           title={
             activePane === "profile"
               ? "学生档案"
@@ -4809,54 +5060,12 @@ export default function App() {
               : activePane === "inspection"
                 ? "导出记录"
               : activePane === "thesis_tools"
-                ? "毕业论文工具箱"
-                : activeDocumentType === "task_book"
-                  ? isMobile
-                    ? `${graduationCohort}任务书`
-                    : `${graduationCohort}任务书工作台`
-                  : activeDocumentType === "midterm"
-                    ? isMobile
-                      ? `${graduationCohort}中期检查`
-                      : `${graduationCohort}中期检查工作台`
-                    : isMobile
-                      ? `${graduationCohort}开题报告`
-                      : `${graduationCohort}开题报告工作台`
+                ? "排版工具"
+                : ""
           }
-          status={
-            activePane === "tools" ||
-            activePane === "appearance"
-              ? undefined
-              : <SaveStatusBadge
-                  state={activePane === "thesis_tools"
-                    ? thesisToolSaveStates[activeThesisTool]
-                    : saveState}
-                />
-          }
-          actions={
-            activePane === "document" ? (
-              <>
-                <Button
-                  size={isMobile ? "icon-sm" : "sm"}
-                  aria-label="预览&导出"
-                  title="预览&导出"
-                  onClick={openPreviewAndExport}
-                  disabled={previewTriggerDisabled}
-                >
-                  {previewBusy ? (
-                    <ThinkingOrb
-                      state="solving"
-                      size={20}
-                      aria-label="正在生成预览"
-                    />
-                  ) : (
-                    <AnimatedActionIcon icon={FileTextIconAnimated} />
-                  )}
-                  {isMobile ? null : <span>预览&导出</span>}
-                </Button>
-              </>
-            ) : undefined
-          }
-        />
+          status={activePane === "profile" ? <SaveStatusBadge state={saveState} /> : undefined}
+          showSidebarTrigger={activePane !== "thesis_tools"}
+        /> : null}
 
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="@container/main flex min-h-0 flex-1 flex-col gap-2">
@@ -4876,7 +5085,7 @@ export default function App() {
         </div>
       </SidebarInset>
       <Sheet
-        open={previewOpen && activePane === "document"}
+        open={previewOpen && activePane === "document" && activeDocumentType !== "thesis"}
         onOpenChange={setPreviewOpen}
       >
         <SheetContent
@@ -4947,20 +5156,20 @@ export default function App() {
                 <ChevronDownIcon />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuItem onClick={() => void startExport(["docx"])}>
+                {activeDocumentType !== "thesis" ? <DropdownMenuItem onClick={() => void startExport(["docx"])}>
                   导出 Word
-                </DropdownMenuItem>
+                </DropdownMenuItem> : null}
                 <DropdownMenuItem onClick={() => void startExport(["pdf"])}>
                   导出 PDF
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => void startExport(["tex"])}>
+                {activeDocumentType !== "thesis" ? <DropdownMenuItem onClick={() => void startExport(["tex"])}>
                   导出 LaTeX 源码包
-                </DropdownMenuItem>
-                <DropdownMenuItem
+                </DropdownMenuItem> : null}
+                {activeDocumentType !== "thesis" ? <DropdownMenuItem
                   onClick={() => void startExport(["docx", "pdf"])}
                 >
                   同时导出 Word 和 PDF
-                </DropdownMenuItem>
+                </DropdownMenuItem> : null}
               </DropdownMenuContent>
             </DropdownMenu>
           </SheetHeader>

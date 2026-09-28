@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -11,6 +13,41 @@ from sztu_docs_backend import template_engine
 
 
 class TemplateSnapshotUpgradeTests(unittest.TestCase):
+    def test_proposal_snapshot_keeps_list_layout_importable(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source = root / "source"
+            for relative_name in template_engine.PROPOSAL_WORKSPACE_FILE_NAMES:
+                file = source / relative_name
+                file.parent.mkdir(parents=True, exist_ok=True)
+                file.write_bytes(b"")
+            (source / "templates/common/python/list_layout.py").write_text(
+                "marker_advance_pt = lambda: 42\n", encoding="utf-8"
+            )
+            (source / "templates/proposal/word/render.py").write_text(
+                "from pathlib import Path\n"
+                "import sys\n"
+                "sys.path.insert(0, str(Path(__file__).resolve().parents[2]))\n"
+                "from common.python.list_layout import marker_advance_pt\n"
+                "print(marker_advance_pt())\n",
+                encoding="utf-8",
+            )
+            validator = source / "scripts/validate_cjk_render.py"
+            validator.parent.mkdir(parents=True)
+            validator.write_bytes(b"synthetic validator")
+
+            descriptor, _, created = template_engine._snapshot_workspace_engine(
+                root / "data", source, "proposal", source_label="test-workspace"
+            )
+            result = subprocess.run(
+                [sys.executable, str(descriptor.root / "word/render.py")],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            self.assertTrue(created)
+            self.assertEqual(result.stdout.strip(), "42")
+
     def test_base_version_change_creates_a_new_immutable_snapshot(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)

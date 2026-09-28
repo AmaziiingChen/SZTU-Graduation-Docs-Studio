@@ -24,6 +24,8 @@ import type {
 } from "./src/types.ts"
 import {
   createReleaseManifest,
+  createMidtermDatePolicy,
+  publishMidtermDatePolicy,
   getReleaseStatus,
   initializeReleaseKeys,
   readJsonBody,
@@ -102,6 +104,48 @@ function telemetryApiPlugin(environment: Record<string, string>): Plugin {
         } catch (error) {
           response.statusCode = 400
           response.end(JSON.stringify({ status: "error", message: error instanceof Error ? error.message : "发布清单生成失败。" }))
+        }
+      })
+      server.middlewares.use("/api/release/midterm-date-policy", async (request, response) => {
+        response.setHeader("Content-Type", "application/json; charset=utf-8")
+        response.setHeader("Cache-Control", "no-store")
+        if (request.method !== "POST") {
+          response.statusCode = 405
+          response.end(JSON.stringify({ status: "error", message: "仅支持 POST 请求。" }))
+          return
+        }
+        if (!isTrustedLocalOrigin(request.headers.origin)) {
+          response.statusCode = 403
+          response.end(JSON.stringify({ status: "error", message: "拒绝非本机页面请求。" }))
+          return
+        }
+        try {
+          const data = await createMidtermDatePolicy(await readJsonBody(request), environment, repositoryRoot)
+          response.end(JSON.stringify({ status: "ready", data }))
+        } catch (error) {
+          response.statusCode = 400
+          response.end(JSON.stringify({ status: "error", message: error instanceof Error ? error.message : "日期规则生成失败。" }))
+        }
+      })
+      server.middlewares.use("/api/release/publish-midterm-date-policy", async (request, response) => {
+        response.setHeader("Content-Type", "application/json; charset=utf-8")
+        response.setHeader("Cache-Control", "no-store")
+        if (request.method !== "POST") {
+          response.statusCode = 405
+          response.end(JSON.stringify({ status: "error", message: "仅支持 POST 请求。" }))
+          return
+        }
+        if (!isTrustedLocalOrigin(request.headers.origin)) {
+          response.statusCode = 403
+          response.end(JSON.stringify({ status: "error", message: "拒绝非本机页面请求。" }))
+          return
+        }
+        try {
+          const data = await publishMidtermDatePolicy(await readJsonBody(request), environment, repositoryRoot)
+          response.end(JSON.stringify({ status: "ready", data }))
+        } catch (error) {
+          response.statusCode = 400
+          response.end(JSON.stringify({ status: "error", message: error instanceof Error ? error.message : "云端发布失败。" }))
         }
       })
       server.middlewares.use("/api/telemetry/overview", async (request, response) => {

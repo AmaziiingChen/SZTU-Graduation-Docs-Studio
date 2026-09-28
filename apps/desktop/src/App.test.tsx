@@ -1,3 +1,4 @@
+import { emptyThesisDraft } from "@/lib/thesis-draft"
 import { celebrateExportSuccess } from "@/lib/export-celebration"
 vi.mock("@/lib/export-celebration", () => ({ celebrateExportSuccess: vi.fn() }))
 import {
@@ -110,6 +111,7 @@ const profile: StudentProfile = {
   advisor_title: "副教授",
   graduation_cohort: "2026届",
   thesis_title: ["合成开题报告"],
+  thesis_title_en: "Synthetic Thesis Title",
   created_at: "2026-08-30T00:00:00Z",
   updated_at: "2026-08-30T00:00:00Z",
 }
@@ -124,6 +126,7 @@ const completeProfileDraft: StudentProfileDraft = {
   advisor_title: profile.advisor_title ?? "",
   graduation_cohort: profile.graduation_cohort ?? "",
   thesis_title: structuredClone(profile.thesis_title ?? []),
+  thesis_title_en: profile.thesis_title_en,
 }
 
 const emptyProfileDraft: StudentProfileDraft = {
@@ -136,6 +139,7 @@ const emptyProfileDraft: StudentProfileDraft = {
   advisor_title: "",
   graduation_cohort: "",
   thesis_title: [],
+  thesis_title_en: "",
 }
 
 const formDraft = {
@@ -425,10 +429,12 @@ function mockApi(): SztuDesktopApi {
       total: 1287,
     }),
     getUpdateStatus: vi.fn().mockResolvedValue({ state: "unconfigured" }),
+    getMidtermDatePolicyStatus: vi.fn().mockResolvedValue({ state: "unconfigured", rules: [] }),
     revealDownloadedUpdate: vi.fn().mockResolvedValue(null),
     openToolLink: vi.fn().mockResolvedValue(null),
     importImageAsset: vi.fn().mockResolvedValue(null),
     onUpdateStatus: vi.fn().mockReturnValue(() => undefined),
+    onMidtermDatePolicyStatus: vi.fn().mockReturnValue(() => undefined),
     openWorkspace: vi.fn().mockResolvedValue({
       mode: "persistent",
       profile,
@@ -617,7 +623,7 @@ async function openSharedThesisTitle() {
     )
   }
   fireEvent.click(await screen.findByRole("button", { name: "学生档案" }))
-  return screen.findByRole("textbox", { name: "论文题目" })
+  return screen.findByRole("textbox", { name: "中文题目" })
 }
 
 async function generateCurrentPreview(api: SztuDesktopApi) {
@@ -789,15 +795,88 @@ describe("M3 workbench persistence", () => {
     await waitFor(() => expect(dialog).not.toBeInTheDocument())
   })
 
+  it("keeps thesis document records and shows the pending template download", async () => {
+    const api = mockApi()
+    const thesis = documentFixture({ id: "thesis-fixture", document_type: "thesis", title: "未命名毕业论文", content: null, current_revision: 0 })
+    vi.mocked(api.createDocument).mockResolvedValue(thesis)
+    vi.mocked(api.selectDocument).mockResolvedValue({ mode: "persistent", profile, profile_draft: null, document: thesis, documents: [documentFixture(), thesis] })
+    installApi(api)
+    renderApp()
+    const createButton = await screen.findByRole("button", { name: "新建毕业论文" })
+    const layout = screen.getByRole("button", { name: "排版工具" })
+    const trash = screen.getByRole("button", { name: /回收站（/ })
+    expect(layout.compareDocumentPosition(trash) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    fireEvent.click(createButton)
+    const dialog = await screen.findByRole("dialog", { name: "新建毕业论文" })
+    fireEvent.click(within(dialog).getByRole("button", { name: "新建" }))
+    await waitFor(() => expect(api.createDocument).toHaveBeenCalledWith(expect.objectContaining({ document_type: "thesis", title: "未命名毕业论文" })))
+    expect(await screen.findByRole("heading", { name: "毕业论文" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "毕业论文" })).toHaveAttribute("aria-expanded", "true")
+    expect(screen.getByRole("button", { name: "未命名毕业论文" })).toBeInTheDocument()
+    const thesisSections = within(screen.getByRole("navigation", { name: "当前文档板块" })).getAllByRole("button")
+    expect(thesisSections.map(button => button.firstElementChild?.textContent)).toEqual(["LaTeX 模板"])
+    expect(screen.getByRole("button", { name: "下载 LaTeX 模板" })).toBeDisabled()
+    expect(screen.getByText(/论文源码工程正在整理/)).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "预览&导出" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("textbox", { name: "章节正文" })).not.toBeInTheDocument()
+    expect(api.saveDraft).not.toHaveBeenCalled()
+    expect(api.generatePreview).not.toHaveBeenCalled()
+  })
+
+  it("opens an existing thesis record without rewriting its saved draft", async () => {
+    const api = mockApi()
+    const thesis = documentFixture({ id: "thesis-fixture", document_type: "thesis", content: { thesis: { ...emptyThesisDraft(), abstractCn: ["已保存的合成摘要"], chapters: [{ id: "stable-chapter", title: "合成章节", level: 1, body: ["已保存的章节正文"] }] } } })
+    vi.mocked(api.openWorkspace).mockResolvedValue({ mode: "persistent", profile, profile_draft: null, document: thesis, documents: [thesis] })
+    installApi(api)
+    renderApp()
+    expect(await screen.findByText(/此文档记录和已有草稿仍保存在本机/)).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "下载 LaTeX 模板" })).toBeDisabled()
+    expect(screen.queryByRole("textbox", { name: "章节正文" })).not.toBeInTheDocument()
+    expect(api.saveDraft).not.toHaveBeenCalled()
+  })
+
+  it("does not expose thesis references or export while the template is pending", async () => {
+    const api = mockApi()
+    const thesis = documentFixture({
+      id: "thesis-reference-fixture",
+      document_type: "thesis",
+      content: { thesis: emptyThesisDraft() },
+    })
+    vi.mocked(api.openWorkspace).mockResolvedValue({
+      mode: "persistent",
+      profile,
+      profile_draft: null,
+      document: thesis,
+      documents: [thesis],
+    })
+    installApi(api)
+    renderApp()
+
+    const navigation = await screen.findByRole("navigation", { name: "当前文档板块" })
+    expect(within(navigation).getAllByRole("button")).toHaveLength(1)
+    expect(screen.queryByRole("button", { name: "添加第一条参考文献" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "预览&导出" })).not.toBeInTheDocument()
+    expect(api.generatePreview).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole("button", { name: "导出记录" }))
+    expect(await screen.findByText(/毕业论文 LaTeX 模板仍在整理/)).toBeInTheDocument()
+  })
+
+  it("shows the thesis title editor without the redundant title fields", async () => {
+    const api = mockApi()
+    installApi(api)
+    renderApp()
+    fireEvent.click(await screen.findByRole("button", { name: "学生档案" }))
+    expect(await screen.findByRole("textbox", { name: "中文题目" })).toBeInTheDocument()
+    expect(screen.queryByText("中文题目")).not.toBeInTheDocument()
+    expect(screen.queryByLabelText("英文题目")).not.toBeInTheDocument()
+  })
+
   it("restores the active persistent profile and document", async () => {
     renderApp()
 
     const savedStatus = await screen.findByLabelText("保存状态：已保存")
-    expect(savedStatus).toHaveClass(
-      "border-transparent",
-      "bg-emerald-500",
-      "text-white",
-    )
+    expect(savedStatus).toHaveClass("text-muted-foreground")
+    expect(savedStatus.closest('[data-slot="editor-status-footer"]')).toBeInTheDocument()
     expect(
       screen.queryByRole("dialog", { name: "预览&导出" }),
     ).not.toBeInTheDocument()
@@ -806,6 +885,8 @@ describe("M3 workbench persistence", () => {
     expect(screen.getByRole("button", { name: "预览&导出" })).toBeEnabled()
     expect(screen.queryByRole("button", { name: "导出" })).not.toBeInTheDocument()
     expect(await openSharedThesisTitle()).toHaveTextContent("合成开题报告")
+    const profileHeader = screen.getByRole("heading", { level: 1, name: "学生档案" }).closest("header")
+    expect(within(profileHeader as HTMLElement).getByLabelText("保存状态：已保存")).toHaveClass("bg-emerald-500")
   })
 
   it("uses the official dashboard shell composition", async () => {
@@ -829,7 +910,7 @@ describe("M3 workbench persistence", () => {
     expect(sidebarInset).toHaveClass("min-h-0", "overflow-hidden")
     expect(sidebarInset).not.toHaveClass("h-svh")
     expect(
-      screen.getByRole("heading", { level: 1, name: "2026届开题报告工作台" }),
+      screen.getByRole("heading", { level: 1, name: "开题报告" }),
     ).toBeInTheDocument()
     expect(screen.queryByText("本地工作台")).not.toBeInTheDocument()
     expect(screen.queryByText("可用")).not.toBeInTheDocument()
@@ -842,19 +923,24 @@ describe("M3 workbench persistence", () => {
           "已帮助生成 1,286 份过程文档",
       ),
     ).toBeInTheDocument()
-    const thesisFolder = screen.getByRole("button", { name: "毕业论文" })
+    const thesisFolder = screen.getByRole("button", { name: "排版工具" })
     expect(thesisFolder).toHaveAttribute("aria-expanded", "false")
     fireEvent.click(thesisFolder)
     expect(thesisFolder).toHaveAttribute("aria-expanded", "true")
     expect(screen.getByRole("button", { name: "三线表生成器" })).toBeInTheDocument()
-    const header = container.querySelector("header")
-    expect(header).not.toBeNull()
-    expect(within(header!).queryByRole("button", { name: "检查内容" })).not.toBeInTheDocument()
-    expect(within(header!).getByRole("button", { name: "预览&导出" })).toHaveClass(
+    expect(container.querySelector("header")).toBeNull()
+    const toolbar = screen.getByRole("toolbar", { name: /格式工具栏/ })
+    expect(within(toolbar).queryByLabelText("保存状态：已保存")).not.toBeInTheDocument()
+    expect(within(toolbar).getByRole("button", { name: "预览&导出" })).toHaveClass(
       "bg-primary",
       "text-primary-foreground",
     )
-    expect(within(header!).queryByRole("button", { name: "导出" })).not.toBeInTheDocument()
+    const editorFooter = container.querySelector<HTMLElement>('[data-slot="editor-status-footer"]')
+    expect(editorFooter).not.toBeNull()
+    expect(within(editorFooter!).getByLabelText("保存状态：已保存")).toHaveClass("text-muted-foreground")
+    expect(within(editorFooter!).getByRole("button", { name: /查看内容统计/ })).toBeInTheDocument()
+    expect(toolbar.querySelector('[data-slot="document-toolbar-actions"]')).toHaveClass("ml-auto")
+    expect(within(toolbar).queryByRole("button", { name: "导出" })).not.toBeInTheDocument()
     const sectionNavigation = screen.getByRole("navigation", {
       name: "当前文档板块",
     }).closest('[data-slot="document-section-nav"]')
@@ -862,6 +948,9 @@ describe("M3 workbench persistence", () => {
       "w-40",
       "shrink-0",
     )
+    const sectionHeader = sectionNavigation?.querySelector('[data-slot="document-section-header"]')
+    expect(within(sectionHeader as HTMLElement).getByRole("button", { name: "Toggle Sidebar" })).toBeInTheDocument()
+    expect(sectionHeader).not.toHaveTextContent("文档板块")
     expect(
       sectionNavigation?.querySelector('[data-slot="document-section-header"]'),
     ).toHaveClass("h-(--header-height)", "items-center")
@@ -875,7 +964,7 @@ describe("M3 workbench persistence", () => {
       screen.getByRole("toolbar", {
         name: "本选题的意义及国内外发展状况格式工具栏",
       }),
-    ).toHaveClass("h-(--header-height)")
+    ).toHaveClass("min-h-(--header-height)")
     expect(immersiveTextbox.closest('[data-slot="card"]')).toBeNull()
     const immersiveSurface = immersiveTextbox.closest(
       '[data-slot="immersive-writing-surface"]',
@@ -894,6 +983,15 @@ describe("M3 workbench persistence", () => {
       screen.getByText("请分别说明选题意义和国内外发展状况，至少填写两个段落。"),
     ).toHaveClass("sr-only")
     expect(screen.queryByRole("button", { name: "预览与检查" })).not.toBeInTheDocument()
+    fireEvent.click(within(sectionNavigation as HTMLElement).getByRole("button", { name: /参考文献/ }))
+    const actionBar = container.querySelector<HTMLElement>('[data-slot="document-action-bar"]')
+    expect(actionBar).not.toBeNull()
+    expect(within(actionBar!).queryByLabelText("保存状态：已保存")).not.toBeInTheDocument()
+    expect(within(actionBar!).getByRole("button", { name: "预览&导出" })).toBeInTheDocument()
+    const referenceFooter = container.querySelector<HTMLElement>('[data-slot="reference-status-footer"]')
+    expect(referenceFooter).not.toBeNull()
+    expect(within(referenceFooter!).getByLabelText("保存状态：已保存")).toBeInTheDocument()
+    expect(within(referenceFooter!).getByRole("button", { name: /查看内容统计/ })).toBeInTheDocument()
     expect(await openSharedThesisTitle()).toHaveTextContent("合成开题报告")
   })
 
@@ -913,7 +1011,7 @@ describe("M3 workbench persistence", () => {
     expect(
       screen.queryByRole("heading", { level: 2, name: "效率工具" }),
     ).not.toBeInTheDocument()
-    expect(screen.getByText(/集中打开毕业论文写作常用的网站/)).toBeInTheDocument()
+    expect(screen.queryByText(/集中打开毕业论文写作常用的网站/)).not.toBeInTheDocument()
     expect(
       screen.getByRole("heading", { level: 3, name: "效率工具" }),
     ).toBeInTheDocument()
@@ -933,12 +1031,12 @@ describe("M3 workbench persistence", () => {
     installApi(mockApi())
     renderApp()
 
-    const thesisFolder = await screen.findByRole("button", { name: "毕业论文" })
+    const thesisFolder = await screen.findByRole("button", { name: "排版工具" })
     fireEvent.click(thesisFolder)
     fireEvent.click(screen.getByRole("button", { name: "三线表生成器" }))
 
     expect(
-      await screen.findByRole("heading", { level: 1, name: "毕业论文工具箱" }),
+      await screen.findByRole("heading", { level: 1, name: "排版工具" }),
     ).toBeInTheDocument()
     expect(screen.getByRole("main", { name: "三线表生成器" })).toBeInTheDocument()
     const thesisSectionNavigation = screen.getByRole("navigation", {
@@ -947,25 +1045,26 @@ describe("M3 workbench persistence", () => {
     expect(
       within(thesisSectionNavigation).getByRole("button", { name: "三线表生成器" }),
     ).toHaveAttribute("aria-current", "page")
-    const expectSaveStatusInHeader = (toolTitle: string, stateLabel = "已保存") => {
+    const expectSaveStatusInFooter = (toolTitle: string, stateLabel = "已保存") => {
       const workbenchHeader = screen
-        .getByRole("heading", { level: 1, name: "毕业论文工具箱" })
+        .getByRole("heading", { level: 1, name: "排版工具" })
         .closest("header")
       const toolMain = screen.getByRole("main", { name: toolTitle })
+      const footer = document.querySelector<HTMLElement>('[data-slot="save-status-footer"]')
 
       expect(workbenchHeader).not.toBeNull()
-      expect(
-        within(workbenchHeader as HTMLElement).getByLabelText(`保存状态：${stateLabel}`),
-      ).toBeInTheDocument()
+      expect(within(workbenchHeader as HTMLElement).queryByLabelText(/^保存状态：/)).not.toBeInTheDocument()
+      expect(footer).not.toBeNull()
+      expect(within(footer!).getByLabelText(`保存状态：${stateLabel}`)).toHaveClass("text-muted-foreground")
       expect(within(toolMain).queryByLabelText(/^保存状态：/)).not.toBeInTheDocument()
       expect(screen.getAllByLabelText(/^保存状态：/)).toHaveLength(1)
     }
-    expectSaveStatusInHeader("三线表生成器")
+    expectSaveStatusInFooter("三线表生成器")
     fireEvent.change(screen.getByLabelText("表题（可选）"), {
       target: { value: "保存状态位置测试" },
     })
-    await waitFor(() => expectSaveStatusInHeader("三线表生成器", "未保存"))
-    await waitFor(() => expectSaveStatusInHeader("三线表生成器"))
+    await waitFor(() => expectSaveStatusInFooter("三线表生成器", "未保存"))
+    await waitFor(() => expectSaveStatusInFooter("三线表生成器"))
     expect(screen.queryByRole("button", { name: "检查内容" })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "预览&导出" })).not.toBeInTheDocument()
 
@@ -976,13 +1075,13 @@ describe("M3 workbench persistence", () => {
     expect(
       within(thesisSectionNavigation).getByRole("button", { name: "表格生成器" }),
     ).toHaveAttribute("aria-current", "page")
-    expectSaveStatusInHeader("表格生成器")
+    expectSaveStatusInFooter("表格生成器")
 
     fireEvent.click(
       within(thesisSectionNavigation).getByRole("button", { name: "多图排版" }),
     )
     expect(screen.getByRole("main", { name: "多图排版" })).toBeInTheDocument()
-    expectSaveStatusInHeader("多图排版")
+    expectSaveStatusInFooter("多图排版")
   })
 
   it("shows the local maintainer contact without a feedback backend", async () => {
@@ -1076,7 +1175,7 @@ describe("M3 workbench persistence", () => {
     expect(
       await screen.findByRole("heading", {
         level: 1,
-        name: "秋季毕业批次开题报告工作台",
+        name: "开题报告",
       }),
     ).toBeInTheDocument()
     expect(screen.queryByText("秋季毕业批次开题报告")).not.toBeInTheDocument()
@@ -1280,6 +1379,9 @@ describe("M3 workbench persistence", () => {
     expect(
       screen.getByRole("heading", { level: 1, name: "导出记录" }),
     ).toBeInTheDocument()
+    const inspectionFooter = document.querySelector<HTMLElement>('[data-slot="save-status-footer"]')
+    expect(inspectionFooter).not.toBeNull()
+    expect(within(inspectionFooter!).getByLabelText("保存状态：已保存")).toBeInTheDocument()
     expect(screen.getByText("当前状态")).toBeInTheDocument()
     expect(screen.queryByText("文档质量")).not.toBeInTheDocument()
     expect(screen.queryByText("Python 3.14.4 is supported.")).not.toBeInTheDocument()
@@ -1296,10 +1398,10 @@ describe("M3 workbench persistence", () => {
     expect(
       (await screen.findAllByRole("heading", {
         level: 1,
-        name: "2026届开题报告",
+        name: "开题报告",
       })).length,
     ).toBeGreaterThan(0)
-    expect(screen.queryByRole("textbox", { name: "论文题目" })).toBeNull()
+    expect(screen.queryByRole("textbox", { name: "中文题目" })).toBeNull()
     expect(await openSharedThesisTitle()).toHaveTextContent("合成开题报告")
   })
 
@@ -1533,7 +1635,100 @@ describe("M3 workbench persistence", () => {
       schema_version: "0.2",
       title: "未命名开题报告",
     })
-    expect(screen.getByLabelText("保存状态：已保存")).toBeInTheDocument()
+    await waitFor(() => expect(api.saveDraft).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.objectContaining({
+          sections: expect.objectContaining({
+            research_content: ["本课题研究内容如下："],
+            methods_and_means: ["本课题研究方法、手段如下："],
+            research_steps: ["本课题研究步骤如下："],
+          }),
+        }),
+      }),
+    ), { timeout: 5000 })
+    expect(await screen.findByLabelText("保存状态：已保存")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: /研究内容未完成/ }))
+    const researchEditor = screen.getByRole("textbox", { name: "研究内容" })
+    expect(researchEditor).toHaveTextContent("本课题研究内容如下：")
+    expect(researchEditor.querySelectorAll("p")).toHaveLength(2)
+    await waitFor(() => expect(researchEditor).toHaveFocus())
+    fireEvent.paste(researchEditor, {
+      clipboardData: {
+        types: ["text/plain"],
+        getData: (type: string) => type === "text/plain" ? "研究合成样本。" : "",
+      },
+    })
+    await waitFor(() => expect(api.saveDraft).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.objectContaining({
+          sections: expect.objectContaining({
+            research_content: ["本课题研究内容如下：", "研究合成样本。"],
+          }),
+        }),
+      }),
+    ), { timeout: 5000 })
+    expect(screen.queryByRole("textbox", { name: "引导句（可删改）" })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: /研究方法未完成/ }))
+    const methodsEditor = screen.getByRole("textbox", { name: "研究方法与手段" })
+    expect(methodsEditor).toHaveTextContent("本课题研究方法、手段如下：")
+    expect(methodsEditor.querySelectorAll("p")).toHaveLength(2)
+    await waitFor(() => expect(methodsEditor).toHaveFocus())
+    fireEvent.paste(methodsEditor, {
+      clipboardData: {
+        types: ["text/plain"],
+        getData: (type: string) => type === "text/plain" ? "采用访谈与对比分析。" : "",
+      },
+    })
+    await waitFor(() => expect(api.saveDraft).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.objectContaining({
+          sections: expect.objectContaining({
+            methods_and_means: ["本课题研究方法、手段如下：", "采用访谈与对比分析。"],
+          }),
+        }),
+      }),
+    ), { timeout: 5000 })
+    const savedContent = vi.mocked(api.saveDraft).mock.calls.at(-1)?.[0].content as { sections: Record<string, unknown> }
+    expect(savedContent.sections).not.toHaveProperty("methods_and_means_intro")
+    expect(screen.getByRole("button", { name: /研究方法已填写/ })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: /研究步骤未完成/ }))
+    const stepsEditor = screen.getByRole("textbox", { name: "研究步骤" })
+    expect(stepsEditor.querySelectorAll("p")).toHaveLength(2)
+    await waitFor(() => expect(stepsEditor).toHaveFocus())
+  })
+
+  it("moves an older separate proposal intro into the body when saving", async () => {
+    const api = mockApi()
+    const legacyContent = {
+      ...draftContent,
+      sections: {
+        ...draftContent.sections,
+        methods_and_means_intro: "旧版自定义引导句：",
+      },
+    }
+    vi.mocked(api.openWorkspace).mockResolvedValue({
+      mode: "persistent",
+      profile,
+      profile_draft: null,
+      document: documentFixture({ content: legacyContent }),
+      documents: [documentFixture({ content: legacyContent })],
+    })
+    installApi(api)
+    renderApp()
+
+    fireEvent.click(await screen.findByRole("button", { name: /研究方法已填写/ }))
+    const methodsEditor = screen.getByRole("textbox", { name: "研究方法与手段" })
+    expect(methodsEditor.querySelector("p")?.textContent).toMatch(/^旧版自定义引导句：/)
+    expect(methodsEditor).toHaveTextContent("合成研究方法")
+    fireEvent.click(screen.getByRole("button", { name: /研究内容已填写/ }))
+    replaceRichText(screen.getByRole("textbox", { name: "研究内容" }), "更新研究内容。")
+    await waitFor(() => expect(api.saveDraft).toHaveBeenCalled(), { timeout: 5000 })
+    const savedContent = vi.mocked(api.saveDraft).mock.calls.at(-1)?.[0].content as { sections: Record<string, unknown> }
+    expect(savedContent.sections.methods_and_means).toEqual([
+      "旧版自定义引导句：",
+      "合成研究方法",
+    ])
+    expect(savedContent.sections).not.toHaveProperty("methods_and_means_intro")
   })
 
   it("autosaves the shared thesis title through the student profile", async () => {
@@ -1701,7 +1896,7 @@ describe("M3 workbench persistence", () => {
   number={1},
   pages={1--8}
 }`
-    fireEvent.click(screen.getByRole("button", { name: "添加参考文献" }))
+    fireEvent.click(screen.getByRole("button", { name: "继续添加" }))
     fireEvent.change(
       screen.getByRole("textbox", { name: "参考文献 BibTeX" }),
       { target: { value: source } },
@@ -1747,7 +1942,7 @@ describe("M3 workbench persistence", () => {
     fireEvent.click(await screen.findByRole("button", { name: /参考文献/ }))
     const validSource =
       "@article{valid, author={张三}, title={可用条目}, journal={合成期刊}, year={2026}}"
-    fireEvent.click(screen.getByRole("button", { name: "添加参考文献" }))
+    fireEvent.click(screen.getByRole("button", { name: "继续添加" }))
     fireEvent.change(
       screen.getByRole("textbox", { name: "参考文献 BibTeX" }),
       { target: { value: validSource } },
@@ -2265,7 +2460,7 @@ describe("M3 workbench persistence", () => {
   it("exposes the existing image tool only in proposal body sections", async () => {
     renderApp()
 
-    await screen.findByRole("heading", { name: "2026届开题报告工作台" })
+    await screen.findByRole("heading", { name: "开题报告" })
     fireEvent.click(screen.getByRole("button", { name: /选题意义/ }))
     expect(screen.queryByRole("button", { name: "插入图片" })).toBeNull()
 
@@ -2309,12 +2504,12 @@ describe("M3 workbench persistence", () => {
     )
 
     expect(
-      await screen.findByRole("heading", { name: "2026届任务书工作台" }),
+      await screen.findByRole("heading", { name: "任务书" }),
     ).toBeInTheDocument()
     expect(
       screen.getByRole("button", { name: "所需资料可留空" }),
     ).toBeEnabled()
-    expect(screen.queryByRole("textbox", { name: "论文题目" })).toBeNull()
+    expect(screen.queryByRole("textbox", { name: "中文题目" })).toBeNull()
     fireEvent.click(screen.getByRole("button", { name: /内容要求/ }))
     expect(
       screen.getByRole("textbox", { name: "内容要求" }),
@@ -2502,7 +2697,7 @@ describe("M3 workbench persistence", () => {
       }),
     )
     expect(
-      await screen.findByRole("heading", { name: "2026届任务书工作台" }),
+      await screen.findByRole("heading", { name: "任务书" }),
     ).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: /选题信息/ }))
     expect(screen.getByLabelText("选题性质")).toHaveTextContent("毕业论文")
@@ -2611,6 +2806,7 @@ describe("M3 workbench persistence", () => {
     installApi(api)
     renderApp()
 
+    await screen.findByRole("heading", { name: "任务书" })
     fireEvent.click(await screen.findByRole("button", { name: "预览&导出" }))
     await waitFor(() =>
       expect(api.checkDocument).toHaveBeenCalledWith("task-book-document"),
@@ -2669,6 +2865,10 @@ describe("M3 workbench persistence", () => {
 
   it("switches to an existing midterm document and exposes only student-owned fields", async () => {
     const api = mockApi()
+    vi.mocked(api.getMidtermDatePolicyStatus).mockResolvedValue({
+      state: "ready",
+      rules: [{ college: "示例学院", startDate: "2026-03-26", endDate: "2026-03-30" }],
+    })
     vi.mocked(api.checkEnvironment).mockResolvedValue(
       environmentWithUnavailableTemplate("midterm_engine"),
     )
@@ -2687,7 +2887,7 @@ describe("M3 workbench persistence", () => {
           major: "示例专业",
           class_name: "示例一班",
           advisor: "合成教师乙",
-          check_date: "2026-03-26",
+          check_date: "2026-03-25",
         },
         sections: {
           directory: [
@@ -2726,15 +2926,31 @@ describe("M3 workbench persistence", () => {
       expect(api.selectDocument).toHaveBeenCalledWith("midterm-document"),
     )
     expect(
-      await screen.findByRole("heading", { name: "2026届中期检查工作台" }),
+      await screen.findByRole("heading", { name: "中期检查表" }),
     ).toBeInTheDocument()
     const checkDate = screen.getByLabelText("检查日期")
+    const documentFooter = document.querySelector<HTMLElement>('[data-slot="save-status-footer"]')
+    expect(documentFooter).not.toBeNull()
+    await waitFor(() => expect(api.saveDraft).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.objectContaining({
+          sections: expect.objectContaining({
+            editable_headings: true,
+            main_research_content: ["主要研究内容：", { type: "paragraph", runs: [{ text: "研究虚构问题。" }] }],
+            progress: ["毕业论文（设计）工作进展情况（详述）：", { type: "paragraph", runs: [{ text: "已完成合成验证。" }] }],
+          }),
+        }),
+      }),
+    ), { timeout: 5000 })
+    await waitFor(() => expect(within(documentFooter!).getByLabelText("保存状态：已保存")).toBeInTheDocument())
     expect(checkDate.closest('[data-slot="card"]')).toHaveClass(
       "border-0",
       "shadow-none",
     )
-    expect(checkDate).toHaveTextContent("2026年3月26日")
+    expect(checkDate).toHaveTextContent("2026年3月25日")
+    expect(screen.getByText("请选择有效的检查日期。")).toBeInTheDocument()
     fireEvent.click(checkDate)
+    expect(screen.getByRole("button", { name: /25/ })).toBeDisabled()
     fireEvent.click(screen.getByRole("button", { name: /30/ }))
     expect(checkDate).toHaveTextContent("2026年3月30日")
     fireEvent.click(screen.getByRole("button", { name: /论文目录/ }))
@@ -2774,6 +2990,52 @@ describe("M3 workbench persistence", () => {
     await waitFor(() =>
       expect(api.installTemplatePack).toHaveBeenCalledWith("midterm"),
     )
+  })
+
+  it("prefills both midterm headings as editable body paragraphs", async () => {
+    const api = mockApi()
+    const midterm = documentFixture({
+      id: "new-midterm",
+      document_type: "midterm",
+      template_version: "0.3+66c968c",
+      schema_version: "0.1",
+      title: "未命名中期检查表",
+      content: null,
+      current_revision: 0,
+    })
+    vi.mocked(api.createDocument).mockResolvedValue(midterm)
+    vi.mocked(api.selectDocument).mockResolvedValue({
+      mode: "persistent",
+      profile,
+      profile_draft: null,
+      document: midterm,
+      documents: [documentFixture(), midterm],
+      deleted_documents: [],
+    })
+    installApi(api)
+    renderApp()
+
+    fireEvent.click(await screen.findByRole("button", { name: "新建中期检查" }))
+    fireEvent.click(await screen.findByRole("button", { name: "新建" }))
+    await waitFor(() => expect(api.saveDraft).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.objectContaining({
+          sections: expect.objectContaining({
+            editable_headings: true,
+            main_research_content: ["主要研究内容："],
+            progress: ["毕业论文（设计）工作进展情况（详述）："],
+          }),
+        }),
+      }),
+    ), { timeout: 5000 })
+    fireEvent.click(screen.getByRole("button", { name: /研究内容未完成/ }))
+    const researchEditor = screen.getByRole("textbox", { name: "研究内容" })
+    expect(researchEditor.querySelectorAll("p")).toHaveLength(2)
+    expect(researchEditor).toHaveTextContent("主要研究内容：")
+    fireEvent.click(screen.getByRole("button", { name: /进展情况未完成/ }))
+    const progressEditor = screen.getByRole("textbox", { name: "毕业论文（设计）进展情况" })
+    expect(progressEditor.querySelectorAll("p")).toHaveLength(2)
+    expect(progressEditor).toHaveTextContent("毕业论文（设计）工作进展情况（详述）：")
   })
 
   it("opens an existing image block in the structured midterm editor", async () => {
@@ -2819,7 +3081,7 @@ describe("M3 workbench persistence", () => {
     installApi(api)
     renderApp()
 
-    await screen.findByRole("heading", { name: "2026届中期检查工作台" })
+    await screen.findByRole("heading", { name: "中期检查表" })
     fireEvent.click(screen.getByRole("button", { name: /研究内容/ }))
 
     expect(await screen.findByText("图片：合成示意图")).toBeInTheDocument()
@@ -2874,7 +3136,7 @@ describe("M3 workbench persistence", () => {
     installApi(api)
     renderApp()
 
-    await screen.findByRole("heading", { name: "2026届中期检查工作台" })
+    await screen.findByRole("heading", { name: "中期检查表" })
     fireEvent.click(screen.getByRole("button", { name: /研究内容/ }))
 
     expect(await screen.findByText("测试表")).toBeInTheDocument()

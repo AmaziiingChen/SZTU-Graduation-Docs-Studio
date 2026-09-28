@@ -52,6 +52,12 @@
         }
       ]
     },
+    "thesis_title_en": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "string", "maxLength": 300}
+      ]
+    },
     "created_at": {"type": "string", "format": "date-time"},
     "updated_at": {"type": "string", "format": "date-time"}
   }

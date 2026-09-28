@@ -199,7 +199,7 @@ def _font_search_roots() -> list[Path]:
         configured_font = os.environ.get(environment_name)
         if configured_font:
             roots.append(Path(configured_font).expanduser().parent)
-    for document_type in ("proposal", "task_book", "midterm"):
+    for document_type in ("proposal", "task_book", "midterm", "thesis"):
         try:
             descriptor = resolve_engine(document_type)
         except ExportError:
@@ -510,6 +510,21 @@ def _check_task_book_engine() -> dict[str, Any]:
     }
 
 
+def _check_thesis_engine() -> dict[str, Any]:
+    try:
+        engine = resolve_engine("thesis")
+    except ExportError as exc:
+        return {
+            "id": "thesis_engine", "required": False, "status": "warn",
+            "message": exc.message, "details": {"code": exc.code},
+        }
+    return {
+        "id": "thesis_engine", "required": False, "status": "pass",
+        "message": "毕业论文模板已同步为本地快照，可生成 PDF。",
+        "details": {"version": engine.version, "pack_sha256": engine.pack_sha256, "source": engine.source},
+    }
+
+
 def _check_task_book_docx_font() -> dict[str, Any]:
     try:
         engine = resolve_engine("task_book")
@@ -635,6 +650,7 @@ def check_environment() -> dict[str, Any]:
         _check_proposal_engine(),
         _check_midterm_engine(),
         _check_task_book_engine(),
+        _check_thesis_engine(),
         _check_task_book_docx_font(),
     ]
     ready = not any(

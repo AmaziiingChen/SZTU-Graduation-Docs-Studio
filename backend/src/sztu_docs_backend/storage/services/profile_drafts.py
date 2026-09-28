@@ -19,7 +19,17 @@ PROFILE_DRAFT_FIELD_LIMITS = {
     "advisor_title": 100,
     "graduation_cohort": 20,
 }
-PROFILE_DRAFT_FIELDS = (*PROFILE_DRAFT_FIELD_LIMITS, "thesis_title")
+PROFILE_DRAFT_FIELDS = (*PROFILE_DRAFT_FIELD_LIMITS, "thesis_title", "thesis_title_en")
+
+
+def normalize_english_thesis_title(value: Any) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValidationError("thesis_title_en", "must_be_text")
+    if len(value) > 300:
+        raise ValidationError("thesis_title_en", "too_long")
+    return value
 
 
 def normalize_thesis_title(value: Any) -> list[Any] | None:
@@ -80,6 +90,7 @@ def normalize_profile_draft(payload: Mapping[str, Any]) -> dict[str, Any]:
             raise ValidationError(field_name, "too_long")
         normalized[field_name] = value
     normalized["thesis_title"] = normalize_thesis_title(payload.get("thesis_title"))
+    normalized["thesis_title_en"] = normalize_english_thesis_title(payload.get("thesis_title_en"))
     return normalized
 
 

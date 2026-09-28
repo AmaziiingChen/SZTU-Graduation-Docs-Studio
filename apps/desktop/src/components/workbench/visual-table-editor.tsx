@@ -284,52 +284,54 @@ export function VisualTableEditor({
       </div>
 
       {rows.length > 0 ? (
-        <div className="overflow-x-auto rounded-lg border" role="grid" aria-label="表格内容编辑区">
-          <div
-            className="grid w-full"
-            style={{ gridTemplateColumns: `2.5rem repeat(${rows[0].length}, minmax(6rem, 1fr))` }}
-          >
-            <div className="sticky left-0 z-20 border-b border-r bg-muted" aria-hidden="true" />
-            {rows[0].map((_, columnIndex) => (
-              <div
-                key={`column-${columnIndex}`}
-                className={`flex h-8 items-center justify-center border-b border-r text-xs font-medium text-muted-foreground last:border-r-0 ${selectedCell?.column === columnIndex ? "bg-accent text-accent-foreground" : "bg-muted"}`}
-                role="columnheader"
-              >
-                {columnName(columnIndex)}
-              </div>
-            ))}
-            {rows.flatMap((row, rowIndex) => [
-              <div
-                key={`row-${rowIndex}`}
-                className={`sticky left-0 z-10 flex h-10 items-center justify-center border-b border-r text-xs font-medium text-muted-foreground ${selectedCell?.row === rowIndex ? "bg-accent text-accent-foreground" : "bg-muted"}`}
-                role="rowheader"
-              >
-                {rowIndex + 1}
-              </div>,
-              ...row.map((cell, columnIndex) => (
+        <div className="overflow-hidden rounded-lg border" role="grid" aria-label="表格内容编辑区">
+          <div className="overflow-x-auto">
+            <div
+              className="grid w-full"
+              style={{ gridTemplateColumns: `2.5rem repeat(${rows[0].length}, minmax(6rem, 1fr))` }}
+            >
+              <div className="sticky left-0 z-20 border-b border-r bg-muted" aria-hidden="true" />
+              {rows[0].map((_, columnIndex) => (
                 <div
-                  key={`cell-${rowIndex}-${columnIndex}`}
-                  role="gridcell"
-                  className={`border-b border-r last:border-r-0 ${rowIndex < headerRows ? "bg-muted/40" : "bg-background"}`}
+                  key={`column-${columnIndex}`}
+                  className={`flex h-8 items-center justify-center border-b border-r text-xs font-medium text-muted-foreground last:border-r-0 ${selectedCell?.column === columnIndex ? "bg-accent text-accent-foreground" : "bg-muted"}`}
+                  role="columnheader"
                 >
-                  <Input
-                    ref={(element) => {
-                      const key = `${rowIndex}-${columnIndex}`
-                      if (element) cellRefs.current.set(key, element)
-                      else cellRefs.current.delete(key)
-                    }}
-                    value={cell}
-                    aria-label={`${columnName(columnIndex)}${rowIndex + 1}`}
-                    className="h-10 rounded-none border-0 px-3 shadow-none focus-visible:z-10 focus-visible:ring-2"
-                    onFocus={() => setSelectedCell({ row: rowIndex, column: columnIndex })}
-                    onChange={(event) => updateCell(rowIndex, columnIndex, event.target.value)}
-                    onPaste={(event) => handleCellPaste(event, rowIndex, columnIndex)}
-                    onKeyDown={(event) => handleCellKeyDown(event, rowIndex, columnIndex)}
-                  />
+                  {columnName(columnIndex)}
                 </div>
-              )),
-            ])}
+              ))}
+              {rows.flatMap((row, rowIndex) => [
+                <div
+                  key={`row-${rowIndex}`}
+                  className={`sticky left-0 z-10 flex h-10 items-center justify-center border-b border-r text-xs font-medium text-muted-foreground ${selectedCell?.row === rowIndex ? "bg-accent text-accent-foreground" : "bg-muted"}`}
+                  role="rowheader"
+                >
+                  {rowIndex + 1}
+                </div>,
+                ...row.map((cell, columnIndex) => (
+                  <div
+                    key={`cell-${rowIndex}-${columnIndex}`}
+                    role="gridcell"
+                    className={`border-b border-r last:border-r-0 ${rowIndex < headerRows ? "bg-muted/40" : "bg-background"}`}
+                  >
+                    <Input
+                      ref={(element) => {
+                        const key = `${rowIndex}-${columnIndex}`
+                        if (element) cellRefs.current.set(key, element)
+                        else cellRefs.current.delete(key)
+                      }}
+                      value={cell}
+                      aria-label={`${columnName(columnIndex)}${rowIndex + 1}`}
+                      className="h-10 rounded-none border-0 px-3 shadow-none focus-visible:z-10 focus-visible:ring-2"
+                      onFocus={() => setSelectedCell({ row: rowIndex, column: columnIndex })}
+                      onChange={(event) => updateCell(rowIndex, columnIndex, event.target.value)}
+                      onPaste={(event) => handleCellPaste(event, rowIndex, columnIndex)}
+                      onKeyDown={(event) => handleCellKeyDown(event, rowIndex, columnIndex)}
+                    />
+                  </div>
+                )),
+              ])}
+            </div>
           </div>
         </div>
       ) : (

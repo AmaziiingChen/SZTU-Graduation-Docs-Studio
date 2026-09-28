@@ -100,10 +100,11 @@ describe("NavDocuments file tree", () => {
     expect(action).toHaveClass("right-1")
   })
 
-  it("opens each thesis tool without exposing a thesis creation action", () => {
+  it("opens layout tools independently from the thesis creation action", () => {
     const callbacks = renderNavigation()
-    const thesisFolder = screen.getByRole("button", { name: "毕业论文" })
+    const thesisFolder = screen.getByRole("button", { name: "排版工具" })
 
+    expect(screen.getByRole("button", { name: "新建毕业论文" })).toBeEnabled()
     expect(thesisFolder).toHaveAttribute("aria-expanded", "false")
     expect(
       screen.queryByRole("button", { name: "新建毕业论文（暂未开放）" }),
@@ -122,7 +123,7 @@ describe("NavDocuments file tree", () => {
   it("keeps standalone thesis tools available while document storage is unavailable", () => {
     const callbacks = renderNavigation({ disabled: true })
 
-    fireEvent.click(screen.getByRole("button", { name: "毕业论文" }))
+    fireEvent.click(screen.getByRole("button", { name: "排版工具" }))
     const tool = screen.getByRole("button", { name: "三线表生成器" })
     expect(tool).not.toBeDisabled()
     expect(screen.getByRole("button", { name: "开题报告第一版" })).toBeDisabled()

@@ -48,6 +48,7 @@ contextBridge.exposeInMainWorld("sztuDesktop", {
   recordDocumentCompletion: (input: unknown) =>
     invoke("sztu:telemetry-complete-document", input),
   getUpdateStatus: () => invoke("sztu:update-status"),
+  getMidtermDatePolicyStatus: () => invoke("sztu:midterm-date-policy-status"),
   revealDownloadedUpdate: () => invoke("sztu:update-reveal"),
   openReleaseHelp: () => invoke("sztu:update-open-help"),
   openToolLink: (toolId: unknown) => invoke("sztu:tool-open", toolId),
@@ -55,6 +56,7 @@ contextBridge.exposeInMainWorld("sztuDesktop", {
   writeClipboardPng: (dataUrl: unknown) => invoke("sztu:clipboard-write-png", dataUrl),
   importImageAssets: () => invoke("sztu:asset-import-images"),
   importImageAsset: () => invoke("sztu:asset-import-image"),
+  readImageAssetPreview: (fileName: unknown) => invoke("sztu:asset-preview-data", fileName),
   onUpdateStatus: (callback: unknown) => {
     if (typeof callback !== "function") {
       throw new DesktopApiError("INVALID_CALLBACK", "更新状态监听器必须是函数。")
@@ -62,6 +64,14 @@ contextBridge.exposeInMainWorld("sztuDesktop", {
     const listener = (_event: Electron.IpcRendererEvent, status: unknown) => callback(status)
     ipcRenderer.on("sztu:update-status", listener)
     return () => ipcRenderer.removeListener("sztu:update-status", listener)
+  },
+  onMidtermDatePolicyStatus: (callback: unknown) => {
+    if (typeof callback !== "function") {
+      throw new DesktopApiError("INVALID_CALLBACK", "日期规则监听器必须是函数。")
+    }
+    const listener = (_event: Electron.IpcRendererEvent, status: unknown) => callback(status)
+    ipcRenderer.on("sztu:midterm-date-policy-status", listener)
+    return () => ipcRenderer.removeListener("sztu:midterm-date-policy-status", listener)
   },
   openWorkspace: (mode: unknown) => invoke("sztu:workspace-open", mode),
   saveProfileDraft: (profile: unknown) =>
