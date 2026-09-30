@@ -39,6 +39,12 @@ MacPorts 与 `/usr/local` 工具目录，使环境检查和实际渲染使用同
 `node_modules`、非中英文 Electron 语言资源、文档字体或开发机路径的安装包。macOS 包仅保留
 `zh_CN` 与 `en` 两种 Electron 语言资源。
 
-当前构建显式设置 `identity: null`，没有 Apple Developer ID 签名或公证。公开安装包因此可能触发
-Gatekeeper 拦截，需要用户按安装指引手动确认来源。Ed25519 清单、文件长度与 SHA-256 只验证下载完整性，
+当前构建显式设置 `identity: "-"`，对整个应用包做 ad-hoc 签名并在打包后检查签名完整性。
+它没有 Apple Developer ID 签名或公证；从网络下载后，Gatekeeper 仍可能拦截，
+需要用户在“系统设置 → 隐私与安全性”手动允许可信来源的应用。Ed25519 清单、文件长度与 SHA-256 只验证下载完整性，
 不等同于 Apple 平台签名、公证、自动安装、升级回滚、全新机器或 Word/WPS 验收。
+
+若系统仍提示应用“已损坏”，先核对下载文件与签名清单中的 SHA-256，并运行
+`hdiutil verify` 确认 DMG 完整。仅在确认该文件确实来自本项目后，可对已安装的这份应用
+执行 `xattr -dr com.apple.quarantine "/Applications/SZTU文档工作台.app"`，再从“应用程序”打开。
+这只解除本机的下载隔离标记，不会给应用补上 Apple Developer ID 签名或公证。

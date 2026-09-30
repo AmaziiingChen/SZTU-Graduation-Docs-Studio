@@ -41,6 +41,13 @@ const publicReleaseRedistribution = "public-release-authorized"
 const releaseDocxMetadataPolicy = "public-release-scrubbed-v1"
 const failures = []
 
+const signatureCheck = spawnSync("/usr/bin/codesign", ["--verify", "--deep", "--strict", appRoot], {
+  encoding: "utf8",
+})
+if (signatureCheck.status !== 0) {
+  failures.push(`app bundle code signature is invalid: ${signatureCheck.stderr.trim()}`)
+}
+
 function sha256File(target) {
   return createHash("sha256").update(readFileSync(target)).digest("hex")
 }
@@ -295,6 +302,7 @@ if (failures.length > 0) {
     JSON.stringify(
       {
         verified: true,
+        bundleSignatureVerified: true,
         asarBytes,
         appLocales,
         frameworkLocales,
