@@ -41,6 +41,7 @@ import { UpdateService, type UpdateStatus } from "./update-service.js"
 import { MidtermDatePolicyService, type MidtermDatePolicyStatus } from "./midterm-date-policy.js"
 
 import { developmentConfig } from "./development-config.js"
+import { privatePreviewRoot } from "./preview-path.js"
 
 const localDevelopment = developmentConfig(app.isPackaged)
 const moduleDirectory = path.dirname(fileURLToPath(import.meta.url))
@@ -1163,9 +1164,8 @@ function registerIpc(): void {
         if (result.pages.length < 1 || result.pages.length > 80) {
           throw new SidecarError("INVALID_SIDECAR_RESULT", "Sidecar preview page count is invalid.")
         }
-        const previewRoot = path.resolve(
+        const previewRoot = await privatePreviewRoot(
           app.getPath("userData"),
-          "previews",
           input.documentId,
           result.preview_id,
         )
