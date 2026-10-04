@@ -2844,9 +2844,9 @@ describe("M3 workbench persistence", () => {
     fireEvent.change(screen.getByLabelText("第 1 项时间范围"), {
       target: { value: "" },
     })
-    expect(
-      screen.getByText("第 1 项缺少时间范围。"),
-    ).toBeInTheDocument()
+    expect(screen.queryByText("缺少时间范围。")).not.toBeInTheDocument()
+    fireEvent.blur(screen.getByLabelText("第 1 项时间范围"))
+    expect(screen.getByText("缺少时间范围。")).toBeInTheDocument()
   })
 
   it("restores an incomplete structured schedule row without dropping it", async () => {
@@ -2881,7 +2881,9 @@ describe("M3 workbench persistence", () => {
       screen.getByRole("button", { name: "编辑第 3 项进度内容" }),
     )
     expect(screen.getByLabelText("第 3 项时间范围")).toHaveValue("")
-    expect(screen.getByText("第 3 项缺少时间范围。")).toBeInTheDocument()
+    expect(screen.queryByText("缺少时间范围。")).not.toBeInTheDocument()
+    fireEvent.blur(screen.getByLabelText("第 3 项时间范围"))
+    expect(screen.getByText("缺少时间范围。")).toBeInTheDocument()
   })
 
   it("checks, previews, and exports the active task-book document", async () => {

@@ -2,6 +2,8 @@ import { Field, FieldLabel } from "@/components/ui/field"
 import { ThesisInsertControls } from "@/components/workbench/thesis-insert-controls"
 import { hasUnescapedMathDelimiter } from "@/lib/process-math-source"
 import { recoverManagedImagePreview } from "@/lib/managed-image-preview"
+import { tidyFormatting } from "@/lib/editor-cleanup"
+import { ArticleMediumIcon } from "@/components/ui/icons/article-medium"
 import type { ThesisReferenceOption } from "@/lib/thesis-draft"
 import { AlignJustifyIcon } from "@/components/ui/align-justify-icon"
 import { LayoutGridIcon } from "@/components/ui/layout-grid-icon"
@@ -836,6 +838,26 @@ export function StructuredContentEditor({
       : []
   const shortcuts = currentEditorShortcutLabels()
 
+  function tidyContent() {
+    if (disabled || composingRef.current || editor.view.composing) return
+    const result = tidyFormatting(editor)
+    const target = result.selected ? "选区" : "当前栏目"
+    const changes = [
+      result.citations.changed ? `${result.citations.changed} 处引用上标` : "",
+      result.punctuation.changed ? `${result.punctuation.changed} 处中文标点` : "",
+      result.lists.groups ? `${result.lists.groups} 组列表` : "",
+    ].filter(Boolean)
+    const description = [
+      result.citations.skipped || result.punctuation.skipped || result.lists.skipped
+        ? "已保留受保护或含义不明确的内容。" : "",
+      result.citations.limited ? "部分段落的格式片段已达上限，请分段后重试。" : "",
+      result.lists.limited ? "列表超过 100 项，请分成较短的列表后重试。" : "",
+    ].filter(Boolean).join(" ")
+    toast.info(changes.length
+      ? `已整理${target}中的${changes.join("、")}，可一次撤销。`
+      : `${target}中没有需要整理的排版问题。`, description ? { description } : undefined)
+  }
+
   const toggleFormatting = (
     format: "bold" | "italic" | "subscript" | "superscript",
   ) => {
@@ -1018,6 +1040,20 @@ export function StructuredContentEditor({
           <SuperscriptIcon />
         </ToolbarToggle>
       </ToggleGroup>
+
+      {mode !== "inline" ? (
+        <ToolbarButton
+          label="一键整理排版"
+          variant="ghost"
+          disabled={disabled}
+          unavailableReason="整理选区或当前栏目的引用上标、中文标点和列表，可一次撤销。"
+          onMouseDown={(event) => event.preventDefault()}
+          onFocus={(event) => event.currentTarget.scrollIntoView?.({ block: "nearest", inline: "nearest" })}
+          onClick={tidyContent}
+        >
+          <AnimatedActionIcon icon={ArticleMediumIcon} disabled={disabled} className="pointer-events-none" />
+        </ToolbarButton>
+      ) : null}
 
       {mode === "body" ? (
         <>

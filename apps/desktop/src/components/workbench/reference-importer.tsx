@@ -52,7 +52,7 @@ type EntryEditorState =
   | { mode: "add"; source: string }
   | { mode: "edit"; index: number; source: string }
 
-function ReferenceRun({ run }: { run: StructuredRun }) {
+export function ReferenceRun({ run }: { run: StructuredRun }) {
   let content = <>{run.text}</>
   if (run.script === "sub") content = <sub>{content}</sub>
   if (run.script === "super") content = <sup>{content}</sup>

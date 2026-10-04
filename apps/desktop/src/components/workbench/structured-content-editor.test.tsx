@@ -34,6 +34,76 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
+describe("one-click editor cleanup controls", () => {
+  it("merges cleanup into one icon button, one saved update and one undo", () => {
+    const onChange = vi.fn()
+    const value = ["3. 研究[1]，发展,OpenMV", "4. 结果[2]，H7,提供"]
+    render(<StructuredContentEditor ariaLabel="统一整理正文" value={value} onChange={onChange} />)
+    const editor = (screen.getByRole("textbox", { name: "统一整理正文" }) as HTMLElement & { editor: Editor }).editor
+    const button = screen.getByRole("button", { name: "一键整理排版", exact: true })
+    expect(button.textContent).toBe("")
+    expect(button.querySelector("svg")).not.toBeNull()
+    for (const name of ["引用上标", "整理中文标点", "整理列表"]) {
+      expect(screen.queryByRole("button", { name, exact: true })).toBeNull()
+    }
+    fireEvent.mouseDown(button)
+    fireEvent.click(button)
+    expect(editor.getHTML()).toContain('start="3"')
+    expect(editor.getHTML()).toContain("<sup>[1]</sup>，发展，OpenMV")
+    expect(editor.getHTML()).toContain("<sup>[2]</sup>，H7，提供")
+    expect(onChange).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByRole("button", { name: "撤销", exact: true }))
+    expect(onChange).toHaveBeenLastCalledWith(value)
+  })
+
+  it("converts list paragraphs through the toolbar, saves numbering and undoes in one step", () => {
+    const onChange = vi.fn()
+    render(<StructuredContentEditor ariaLabel="列表整理正文" value={["3. 研究方法", "4. 实验验证", "1、保留写法"]} onChange={onChange} />)
+    const editor = (screen.getByRole("textbox", { name: "列表整理正文" }) as HTMLElement & { editor: Editor }).editor
+    fireEvent.click(screen.getByRole("button", { name: "一键整理排版", exact: true }))
+    expect(onChange).toHaveBeenLastCalledWith([
+      { type: "ordered_list", items: [{ marker: "3.", content: "研究方法" }, { marker: "4.", content: "实验验证" }] }, "1、保留写法",
+    ])
+    expect(editor.getHTML()).toContain('start="3"')
+    fireEvent.click(screen.getByRole("button", { name: "撤销", exact: true }))
+    expect(editor.getHTML()).not.toContain("<ol")
+    expect(editor.getText()).toContain("3. 研究方法")
+  })
+
+  it("exposes combined cleanup in body and paragraph editors only", () => {
+    const { rerender } = render(<StructuredContentEditor value={[]} onChange={vi.fn()} disabled />)
+    expect(screen.getByRole("button", { name: "一键整理排版", exact: true })).toBeDisabled()
+    rerender(<StructuredContentEditor value={[]} onChange={vi.fn()} mode="paragraphs" />)
+    expect(screen.getByRole("button", { name: "一键整理排版", exact: true })).toBeEnabled()
+    rerender(<StructuredContentEditor value={[]} onChange={vi.fn()} mode="inline" />)
+    expect(screen.queryByRole("button", { name: "一键整理排版", exact: true })).toBeNull()
+  })
+
+  it("applies only selected citations, emits canonical changes and supports one undo", () => {
+    const onChange = vi.fn()
+    render(<StructuredContentEditor ariaLabel="整理正文" value={["研究[1][2]，中文,测试"]} onChange={onChange} />)
+    const editor = (screen.getByRole("textbox", { name: "整理正文" }) as HTMLElement & { editor: Editor }).editor
+    act(() => { editor.commands.setTextSelection({ from: 3, to: 6 }) })
+    fireEvent.mouseDown(screen.getByRole("button", { name: "一键整理排版", exact: true }))
+    fireEvent.click(screen.getByRole("button", { name: "一键整理排版", exact: true }))
+    expect(editor.getHTML()).toContain("研究<sup>[1]</sup>[2]")
+    expect(onChange).toHaveBeenLastCalledWith(tiptapToStructuredBody(editor.getJSON()))
+    fireEvent.click(screen.getByRole("button", { name: "撤销", exact: true }))
+    expect(editor.getHTML()).not.toContain("<sup>")
+    act(() => { editor.commands.setTextSelection(1) })
+    fireEvent.click(screen.getByRole("button", { name: "一键整理排版", exact: true }))
+    expect(editor.getText()).toBe("研究[1][2]，中文，测试")
+    expect(onChange).toHaveBeenLastCalledWith(tiptapToStructuredBody(editor.getJSON()))
+  })
+
+  it("disables cleanup with the editor and does not expose it in inline fields", () => {
+    const { rerender } = render(<StructuredContentEditor value={["研究[1]"]} onChange={vi.fn()} disabled />)
+    expect(screen.getByRole("button", { name: "一键整理排版", exact: true })).toBeDisabled()
+    rerender(<StructuredContentEditor value={["研究[1]"]} onChange={vi.fn()} mode="inline" />)
+    expect(screen.queryByRole("button", { name: "一键整理排版", exact: true })).toBeNull()
+  })
+})
+
 describe("editable writing guidance in the shared body editor", () => {
   const guide = "（写作说明）"
   function createEditor(body: StructuredBodyValue = ["已有正文"], guidance: ParagraphInput | null = guide) {

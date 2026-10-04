@@ -2130,6 +2130,7 @@ function DocumentEditor({
   onRestoreRecovery,
   onDismissRecovery,
   toolbarActions,
+  validationRequested,
 }: {
   documentId: string
   documentType: DocumentType
@@ -2160,6 +2161,7 @@ function DocumentEditor({
   onRestoreRecovery: () => void
   onDismissRecovery: () => void
   toolbarActions?: ReactNode
+  validationRequested: boolean
 }) {
   const isAssessment = isAssessmentDocumentType(documentType)
   const isMidterm = documentType === "midterm"
@@ -2385,7 +2387,7 @@ function DocumentEditor({
           </Alert>
         ) : null}
 
-        {isAssessmentDocumentType(documentType) && !isAssessmentBodySection ? <AssessmentDocumentEditor type={documentType} activeSection={activeSection} value={draft.assessment} onChange={onAssessmentChange} disabled={disabled} sharedInformation={[{ label: "论文题目", value: structuredBodyPlainText(draft.title) }, { label: "姓名", value: draft.studentName }, { label: "学号", value: draft.studentId }, { label: "学院", value: draft.college }, { label: "专业", value: draft.major }, ...(documentType === "advisor_review" ? [{ label: "指导教师", value: draft.advisor }, { label: "指导教师职称", value: draft.advisorTitle }] : [])]} /> : null}
+        {isAssessmentDocumentType(documentType) && !isAssessmentBodySection ? <AssessmentDocumentEditor type={documentType} activeSection={activeSection} value={draft.assessment} onChange={onAssessmentChange} disabled={disabled} sharedInformation={[{ label: "论文题目", value: inlineParagraphFromBody(draft.title) }, { label: "姓名", value: draft.studentName }, { label: "学号", value: draft.studentId }, { label: "学院", value: draft.college }, { label: "专业", value: draft.major }, ...(documentType === "advisor_review" ? [{ label: "指导教师", value: draft.advisor }, { label: "指导教师职称", value: draft.advisorTitle }] : [])]} /> : null}
 
         {isThesis && activeSection === "thesis_template" ? (
           <Card className="border-0 shadow-none ring-0">
@@ -2501,9 +2503,11 @@ function DocumentEditor({
                 ) : null}
                 {activeSection === "task_schedule" ? (
                   <TaskScheduleEditor
+                    key={documentId}
                     value={draft.taskSchedule}
                     onChange={onTaskScheduleChange}
                     disabled={disabled}
+                    validationRequested={validationRequested}
                   />
                 ) : null}
                 {activeSection === "task_materials" ? (
@@ -4913,6 +4917,7 @@ export default function App() {
       />
     ) : (
       <DocumentEditor
+        validationRequested={profileValidationRequested}
         documentId={document?.id ?? ""}
         documentType={activeDocumentType}
         activeSection={activeSection}
@@ -5087,7 +5092,7 @@ export default function App() {
         disabled={workspaceDisabled || exportState.status === "exporting"}
         inspectionDisabled={workspaceDisabled}
       />
-      <SidebarInset className="min-h-0 overflow-hidden md:peer-data-[variant=inset]:shadow-none">
+      <SidebarInset className="min-h-0 overflow-hidden">
         {activePane !== "document" ? <SiteHeader
           title={
             activePane === "profile"

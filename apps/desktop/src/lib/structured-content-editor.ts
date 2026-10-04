@@ -507,10 +507,15 @@ function listToTiptap(
   const ordered = list.type === "ordered_list"
   const firstMarker = ordered ? list.items[0]?.marker : undefined
   const start = markerStart(firstMarker)
+  // Sequential decimal markers are a saved representation of live numbering.
+  // Do not pin their old values to individual items after reload: insertion or
+  // deletion must continue to follow the list's start and current item order.
+  const decimalMarkers = ordered && list.items.some(item => item.marker !== undefined)
+    && list.items.every((item, index) => item.marker === undefined || item.marker === `${(start ?? 1) + index}.`)
 
   return {
     type: ordered ? "orderedList" : "bulletList",
-    attrs: ordered && start ? { start } : undefined,
+    attrs: ordered && (start || decimalMarkers) ? { ...(start ? { start } : {}), ...(decimalMarkers ? { contractDecimalMarkers: true } : {}) } : undefined,
     content: list.items.map((item) => {
       if (!ordered && "marker" in item && item.marker !== undefined) {
         throw new TypeError("无序列表项不能包含 marker。")
@@ -518,7 +523,7 @@ function listToTiptap(
       return {
         type: "listItem",
         attrs:
-          ordered && item.marker !== undefined
+          ordered && item.marker !== undefined && !decimalMarkers
             ? { contractMarker: item.marker }
             : undefined,
         content: [
@@ -717,7 +722,11 @@ function listFromTiptap(node: JSONContent, depth: number): StructuredListBlock {
     throw new TypeError(`正文包含不受支持的列表节点：${node.type ?? "未知"}。`)
   }
 
-  const items = (node.content ?? []).map((itemNode) => {
+  const start = node.attrs?.start ?? 1
+  if (ordered && (!Number.isSafeInteger(start) || start < 1)) {
+    throw new TypeError("有序列表的起始编号必须是正整数。")
+  }
+  const items = (node.content ?? []).map((itemNode, index) => {
     if (itemNode.type !== "listItem") {
       throw new TypeError("列表只能包含列表项。")
     }
@@ -738,7 +747,9 @@ function listFromTiptap(node: JSONContent, depth: number): StructuredListBlock {
 
     return {
       content: paragraphFromTiptap(children[0]),
-      ...(ordered && typeof marker === "string" ? { marker } : {}),
+      ...(ordered && typeof marker === "string" ? { marker }
+        : ordered && (start !== 1 || node.attrs?.contractDecimalMarkers)
+          ? { marker: `${start + index}.` } : {}),
       ...(children[1]
         ? { children: listFromTiptap(children[1], depth + 1) }
         : {}),
@@ -900,6 +911,12 @@ const ContractListMarker = Extension.create({
   name: "contractListMarker",
   addGlobalAttributes() {
     return [
+      {
+        types: ["orderedList"],
+        attributes: {
+          contractDecimalMarkers: { default: false, rendered: false, keepOnSplit: true },
+        },
+      },
       {
         types: ["listItem"],
         attributes: {

@@ -1,3 +1,4 @@
+import { format } from "date-fns"
 import { ArrowDownIcon } from "@/components/ui/arrow-down"
 import { ArrowUpIcon } from "@/components/ui/arrow-up"
 import { PlusIcon } from "@/components/ui/plus"
@@ -9,9 +10,10 @@ import { Card, CardContent } from "@/components/ui/card"
 import { DocumentDateField, parseDocumentDate } from "@/components/workbench/document-date-field"
 import { StructuredContentEditor } from "@/components/workbench/structured-content-editor"
 import { FormField } from "@/components/workbench/form-field"
+import { ReferenceRun } from "@/components/workbench/reference-importer"
 import { TEACHER_TITLE_OPTIONS } from "@/lib/teacher-title-options"
 import { assessmentDocumentRegistry, assessmentGradeError, moveAssessmentItem, type AssessmentDocumentType, type AssessmentDraft } from "@/lib/assessment-documents"
-import type { StructuredBodyValue } from "@/types/structured-content"
+import type { ParagraphInput, StructuredBodyValue } from "@/types/structured-content"
 
 export function AssessmentDocumentEditor({ type, activeSection, value, onChange, disabled, sharedInformation, lowerEditingEnabled = assessmentDocumentRegistry[type].lowerEditingEnabled }: {
   type: AssessmentDocumentType
@@ -19,15 +21,18 @@ export function AssessmentDocumentEditor({ type, activeSection, value, onChange,
   value: AssessmentDraft
   onChange: (value: AssessmentDraft) => void
   disabled: boolean
-  sharedInformation: { label: string; value: string }[]
+  sharedInformation: { label: string; value: ParagraphInput }[]
   lowerEditingEnabled?: boolean
 }) {
   const lowerDisabled = disabled || !lowerEditingEnabled
   const update = <K extends keyof AssessmentDraft>(field: K, next: AssessmentDraft[K]) => onChange({ ...value, [field]: next })
-  const textField = (field: "reviewer" | "reviewerTitle" | "defenseTime" | "defenseLocation" | "recorder" | "leader" | "suggestedGrade" | "finalGrade", label: string, lower = false, error?: string | null) => (
+  const textField = (field: "reviewer" | "reviewerTitle" | "defenseLocation" | "recorder" | "leader" | "suggestedGrade" | "finalGrade", label: string, lower = false, error?: string | null) => (
     <FormField key={field} id={`assessment-${field}`} label={label} value={value[field]} disabled={lower ? lowerDisabled : disabled} onChange={(_field, next) => update(field, next)} error={error ?? undefined} orientation="horizontal" />
   )
   const dateField = <DocumentDateField id="assessment-date" label="日期" orientation="horizontal" value={value.date} onChange={next => update("date", next)} disabled={lowerDisabled} placeholder="选择日期" error={value.date && !parseDocumentDate(value.date) ? "请选择有效日期。" : undefined} />
+  // Existing defense dates are exported as Chinese text; adapt only the picker
+  // value so opening a draft never silently rewrites an older saved value.
+  const defenseDate = value.defenseTime.replace(/^(\d{4})年(\d{1,2})月(\d{1,2})日$/, (_match, year: string, month: string, day: string) => `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`)
   const membersEditor = <div className="grid gap-3">
     {value.members.map((member, index) => (
       <FormField key={index} id={`assessment-member-${index}`} label={`答辩成员 ${index + 1}`} value={member} disabled={lowerDisabled} onChange={(_field, next) => update("members", value.members.map((entry, i) => i === index ? next : entry))} orientation="horizontal" />
@@ -43,12 +48,34 @@ export function AssessmentDocumentEditor({ type, activeSection, value, onChange,
     {!lowerEditingEnabled && activeSection !== "assessment_info" ? <Alert><AlertTitle>评审内容当前仅供查看</AlertTitle></Alert> : null}
     {activeSection === "assessment_info" ? <Card className="border-0 shadow-none ring-0">
       <CardContent className="grid gap-3">
-        <dl className="grid gap-3 text-sm">{sharedInformation.map(entry => <div key={entry.label} className="grid grid-cols-2 gap-3"><dt className="text-muted-foreground">{entry.label}</dt><dd className="select-text break-words">{entry.value || "未填写"}</dd></div>)}</dl>
+        <dl className="grid gap-3 text-sm">{sharedInformation.map(entry => <div key={entry.label} className="grid grid-cols-2 gap-3">
+          <dt className="text-muted-foreground">{entry.label}</dt>
+          <dd className="select-text break-words">{typeof entry.value === "string"
+            ? entry.value || "未填写"
+            : entry.value.runs.some(run => ("text" in run ? run.text : run.alt).trim())
+              ? entry.value.runs.map((run, index) => <ReferenceRun key={index} run={"text" in run ? run : { text: run.alt }} />)
+              : "未填写"}</dd>
+        </div>)}</dl>
         {type === "reviewer_review" ? <div className="grid gap-3">
           <FormField id="assessment-reviewer" label="评阅教师姓名" value={value.reviewer} onChange={(_field, next) => update("reviewer", next)} disabled={disabled} orientation="horizontal" />
           <FormField id="assessment-reviewerTitle" label="评阅教师职称" value={value.reviewerTitle} onChange={(_field, next) => update("reviewerTitle", next)} suggestions={TEACHER_TITLE_OPTIONS} placeholder="选择或输入职称" disabled={disabled} orientation="horizontal" />
         </div> : null}
-        {type === "defense_record" ? <div className="grid gap-3">{textField("defenseTime", "答辩时间")}{textField("defenseLocation", "答辩地点")}</div> : null}
+        {type === "defense_record" ? <div className="grid gap-3">
+          <DocumentDateField
+            id="assessment-defenseTime"
+            label="答辩时间"
+            orientation="horizontal"
+            value={defenseDate}
+            onChange={next => {
+              const date = parseDocumentDate(next)
+              update("defenseTime", date ? format(date, "yyyy年M月d日") : "")
+            }}
+            disabled={disabled}
+            placeholder="选择答辩日期"
+            error={value.defenseTime && !parseDocumentDate(defenseDate) ? `原答辩时间“${value.defenseTime}”不是有效日期，请重新选择。` : undefined}
+          />
+          {textField("defenseLocation", "答辩地点")}
+        </div> : null}
       </CardContent>
     </Card> : null}
     {activeSection === "assessment_suggested_grade" && (type === "advisor_review" || type === "reviewer_review") ? <Card className="border-0 shadow-none ring-0">

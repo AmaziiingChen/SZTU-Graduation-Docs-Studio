@@ -1,8 +1,8 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { AssessmentDocumentEditor } from "./assessment-document-editor"
-import { emptyAssessmentDraft, type AssessmentDraft } from "@/lib/assessment-documents"
-import type { StructuredBodyValue } from "@/types/structured-content"
+import { assessmentContent, emptyAssessmentDraft, readAssessmentDraft, type AssessmentDraft } from "@/lib/assessment-documents"
+import type { ParagraphInput, StructuredBodyValue } from "@/types/structured-content"
 
 vi.mock("@/components/workbench/structured-content-editor", () => ({
   StructuredContentEditor: ({ value, disabled, ariaLabel }: { value: StructuredBodyValue; disabled: boolean; ariaLabel: string }) => <textarea aria-label={ariaLabel} disabled={disabled} readOnly value={JSON.stringify(value)} />,
@@ -12,6 +12,26 @@ afterEach(cleanup)
 const common = { disabled: false, sharedInformation: [{ label: "姓名", value: "示例学生" }] }
 
 describe("assessment editor", () => {
+  it.each(["advisor_review", "reviewer_review", "defense_record", "grade_assessment"] as const)("preserves shared title marks and live changes in %s", type => {
+    const title: ParagraphInput = { runs: [{ text: "ZrO" }, { text: "2", script: "sub" }, { text: " 与 Al" }, { text: "2", script: "sub" }, { text: "O" }, { text: "3", script: "sub" }, { text: " 的 x", italic: true }, { text: "2", script: "super", bold: true }, { text: " 研究", bold: true }] }
+    const original = structuredClone(title)
+    const props = { ...common, type, activeSection: "assessment_info", value: emptyAssessmentDraft(), onChange: vi.fn() }
+    const { container, rerender } = render(<AssessmentDocumentEditor {...props} sharedInformation={[{ label: "论文题目", value: title }]} />)
+    expect(Array.from(container.querySelectorAll("dd sub")).map(node => node.textContent)).toEqual(["2", "2", "3"])
+    expect(container.querySelector("dd strong sup")).toHaveTextContent("2")
+    expect(container.querySelector("dd em")).toHaveTextContent("x")
+    expect(container.querySelector("dd")).toHaveTextContent("ZrO2 与 Al2O3 的 x2 研究")
+    expect(title).toEqual(original)
+    expect(props.onChange).not.toHaveBeenCalled()
+    rerender(<AssessmentDocumentEditor {...props} sharedInformation={[{ label: "论文题目", value: { runs: [{ text: "新题目" }, { text: "3", script: "super" }] } }]} />)
+    expect(container.querySelector("dd sup")).toHaveTextContent("3")
+    expect(container.querySelector("dd sub")).toBeNull()
+    rerender(<AssessmentDocumentEditor {...props} sharedInformation={[{ label: "论文题目", value: "纯文字题目" }]} />)
+    expect(container.querySelector("dd")).toHaveTextContent("纯文字题目")
+    rerender(<AssessmentDocumentEditor {...props} sharedInformation={[{ label: "论文题目", value: { runs: [] } }]} />)
+    expect(container.querySelector("dd")).toHaveTextContent("未填写")
+  })
+
   it("previews shared information and supports preset and custom reviewer titles", () => {
     const onChange = vi.fn()
     const props = { ...common, type: "reviewer_review" as const, activeSection: "assessment_info", onChange }
@@ -49,6 +69,40 @@ describe("assessment editor", () => {
     render(<AssessmentDocumentEditor {...common} type="defense_record" activeSection="assessment_info" value={emptyAssessmentDraft()} onChange={vi.fn()} lowerEditingEnabled={false} />)
     expect(screen.getByLabelText("答辩时间")).toBeEnabled()
     expect(screen.getByLabelText("答辩地点")).toBeEnabled()
+  })
+
+  it.each(["2026年6月1日", "2026-06-01"])("opens the existing calendar for saved defense date %s and preserves the export format", async defenseTime => {
+    const onChange = vi.fn()
+    const props = { ...common, type: "defense_record" as const, activeSection: "assessment_info", onChange }
+    const value = { ...emptyAssessmentDraft(), defenseTime, defenseLocation: "合成答辩室", date: "2026-06-03" }
+    const { container, rerender } = render(<AssessmentDocumentEditor {...props} value={value} />)
+    expect(screen.getByRole("button", { name: "答辩时间", exact: true })).toHaveTextContent("2026年6月1日")
+    expect(container.querySelector('input[type="date"]')).toBeNull()
+    expect(onChange).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole("button", { name: "答辩时间", exact: true }))
+    const calendar = await screen.findByRole("grid")
+    const day = Array.from(calendar.querySelectorAll("button")).find(button => button.textContent === "15")!
+    fireEvent.click(day)
+    expect(onChange).toHaveBeenLastCalledWith({ ...value, defenseTime: "2026年6月15日" })
+    const content = assessmentContent(onChange.mock.lastCall![0], {})
+    expect(readAssessmentDraft(content.metadata as Record<string, unknown>, content.sections as Record<string, unknown>).defenseTime).toBe("2026年6月15日")
+    rerender(<AssessmentDocumentEditor {...props} value={onChange.mock.lastCall![0]} />)
+    await waitFor(() => expect(screen.queryByRole("grid")).not.toBeInTheDocument())
+    fireEvent.click(screen.getByRole("button", { name: "答辩时间", exact: true }))
+    fireEvent.click(await screen.findByRole("button", { name: "清空日期" }))
+    expect(onChange).toHaveBeenLastCalledWith({ ...value, defenseTime: "" })
+  })
+
+  it("flags an invalid legacy defense time without modifying it, and respects disabled state", () => {
+    const onChange = vi.fn()
+    const props = { ...common, type: "defense_record" as const, activeSection: "assessment_info", onChange }
+    const value = { ...emptyAssessmentDraft(), defenseTime: "13123" }
+    const { rerender } = render(<AssessmentDocumentEditor {...props} value={value} />)
+    expect(screen.getByRole("button", { name: "答辩时间", exact: true })).toHaveAttribute("aria-invalid", "true")
+    expect(screen.getByText('原答辩时间“13123”不是有效日期，请重新选择。')).toBeInTheDocument()
+    expect(onChange).not.toHaveBeenCalled()
+    rerender(<AssessmentDocumentEditor {...props} value={value} disabled />)
+    expect(screen.getByRole("button", { name: "答辩时间", exact: true })).toBeDisabled()
   })
 
   it("adds and deletes only the last defense member while retaining personnel and date", () => {
