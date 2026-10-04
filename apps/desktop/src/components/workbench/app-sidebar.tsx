@@ -60,7 +60,6 @@ export function AppSidebar({
   onDeleteDocument,
   onRestoreDocument,
   onPurgeDocument,
-  onClearTrash,
   disabled,
   inspectionDisabled,
   ...props
@@ -92,7 +91,6 @@ export function AppSidebar({
   onDeleteDocument: (documentId: string) => Promise<void>
   onRestoreDocument: (documentId: string) => Promise<void>
   onPurgeDocument: (documentId: string) => Promise<void>
-  onClearTrash: () => Promise<void>
   disabled: boolean
   inspectionDisabled: boolean
 }) {
@@ -159,7 +157,6 @@ export function AppSidebar({
           onDeleteDocument={onDeleteDocument}
           onRestoreDocument={onRestoreDocument}
           onPurgeDocument={onPurgeDocument}
-          onClearTrash={onClearTrash}
         />
       </SidebarContent>
       <SidebarFooter>
