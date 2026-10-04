@@ -133,8 +133,8 @@ def _output_filenames(
     *,
     version: int = 1,
 ) -> dict[str, str]:
-    document_label = DOCUMENT_OUTPUT_LABELS[record["document_type"]]
-    stem = f"{_safe_export_title(record.get('title'))}-{document_label}"
+    # The saved title already owns the document name, including any type label.
+    stem = _safe_export_title(record.get("title"))
     version_suffix = "" if version == 1 else f"-{version}"
     return {
         format_name: f"{stem}{version_suffix}{OUTPUT_FORMAT_SUFFIXES[format_name]}"

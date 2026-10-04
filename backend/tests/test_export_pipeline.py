@@ -13,6 +13,7 @@ from unittest.mock import patch
 from sztu_docs_backend import template_engine
 from sztu_docs_backend.exporter import (
     ExportError,
+    _output_filenames,
     _run,
     build_export_document,
     delete_export_history_record,
@@ -77,6 +78,48 @@ def write_task_book_layout(engine_root: Path) -> None:
         json.dumps({"sizes": {"三号": {"pt": 16.0}}}),
         encoding="utf-8",
     )
+
+
+class ExportFilenameTests(unittest.TestCase):
+    def test_saved_document_names_are_not_given_another_type_suffix(self) -> None:
+        labels = {
+            "proposal": "开题报告",
+            "midterm": "中期检查表",
+            "task_book": "任务书",
+            "thesis": "毕业论文",
+            "advisor_review": "指导教师评审表",
+            "reviewer_review": "评阅人评审表",
+            "defense_record": "答辩记录表",
+            "grade_assessment": "成绩考核表",
+        }
+        for document_type, label in labels.items():
+            for title in (label, f"合成学生-{label}"):
+                with self.subTest(document_type=document_type, title=title):
+                    self.assertEqual(
+                        _output_filenames(
+                            {"document_type": document_type, "title": title},
+                            ["docx", "pdf", "tex"],
+                        ),
+                        {
+                            "docx": f"{title}.docx",
+                            "pdf": f"{title}.pdf",
+                            "tex": f"{title}-LaTeX.zip",
+                        },
+                    )
+
+    def test_custom_title_is_preserved_and_conflicts_only_add_a_version(self) -> None:
+        self.assertEqual(
+            _output_filenames(
+                {"document_type": "task_book", "title": "第二版修改稿"},
+                ["docx", "pdf", "tex"],
+                version=2,
+            ),
+            {
+                "docx": "第二版修改稿-2.docx",
+                "pdf": "第二版修改稿-2.pdf",
+                "tex": "第二版修改稿-2-LaTeX.zip",
+            },
+        )
 
 
 class ExportPipelineTests(unittest.TestCase):
@@ -146,7 +189,7 @@ class ExportPipelineTests(unittest.TestCase):
         return "synthetic renderer completed"
 
     def test_preflight_uses_tree_title_and_allocates_one_shared_version(self) -> None:
-        stem = f"{self.proposal['metadata']['title']}-开题报告"
+        stem = self.proposal["metadata"]["title"]
         existing_pdf = self.output / f"{stem}.pdf"
         existing_pdf.write_bytes(b"existing")
         result = preflight_export(
@@ -351,9 +394,9 @@ class ExportPipelineTests(unittest.TestCase):
         self.assertEqual(
             [target["filename"] for target in targets],
             [
-                "中期检查表-中期检查表.docx",
-                "中期检查表-中期检查表.pdf",
-                "中期检查表-中期检查表-LaTeX.zip",
+                "中期检查表.docx",
+                "中期检查表.pdf",
+                "中期检查表-LaTeX.zip",
             ],
         )
         self.assertEqual(result["template"]["template_id"], "sztu.midterm.synthetic")
@@ -460,7 +503,7 @@ class ExportPipelineTests(unittest.TestCase):
         )["details"]["targets"]
         self.assertEqual(
             [target["filename"] for target in targets],
-            ["任务书-任务书.docx", "任务书-任务书.pdf", "任务书-任务书-LaTeX.zip"],
+            ["任务书.docx", "任务书.pdf", "任务书-LaTeX.zip"],
         )
 
         with patch(
@@ -638,7 +681,7 @@ class ExportPipelineTests(unittest.TestCase):
         self.assertEqual(list(self.output.glob("*.docx")), [])
 
     def test_existing_target_allocates_next_version_without_overwriting(self) -> None:
-        stem = f"{self.proposal['metadata']['title']}-开题报告"
+        stem = self.proposal["metadata"]["title"]
         original_target = self.output / f"{stem}.docx"
         original_target.write_bytes(b"original-user-file")
         request_id = str(uuid.uuid4())
@@ -711,8 +754,8 @@ class ExportPipelineTests(unittest.TestCase):
 
     def test_preflight_sanitizes_tree_title_and_advances_past_multiple_versions(self) -> None:
         self.workspace.rename_document(self.document_id, " 方案/A:*? ")
-        (self.output / "方案-A-开题报告.docx").write_bytes(b"version-one")
-        (self.output / "方案-A-开题报告-2.docx").write_bytes(b"version-two")
+        (self.output / "方案-A.docx").write_bytes(b"version-one")
+        (self.output / "方案-A-2.docx").write_bytes(b"version-two")
 
         result = preflight_export(
             self.workspace,
@@ -725,7 +768,7 @@ class ExportPipelineTests(unittest.TestCase):
             check for check in result["checks"] if check["check_id"] == "output-targets"
         )["details"]["targets"][0]
 
-        self.assertEqual(target["filename"], "方案-A-开题报告-3.docx")
+        self.assertEqual(target["filename"], "方案-A-3.docx")
         self.assertFalse(target["exists"])
 
     def test_existing_cancel_marker_cancels_without_partial_artifacts(self) -> None:
