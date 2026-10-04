@@ -2166,6 +2166,27 @@ function DocumentEditor({
   const isTaskBook = documentType === "task_book"
   const isThesis = documentType === "thesis"
   const scrollRootRef = useRef<HTMLDivElement>(null)
+  const [templateDownloading, setTemplateDownloading] = useState(false)
+  const templateDownloadInFlight = useRef(false)
+  const downloadTemplate = async () => {
+    if (templateDownloadInFlight.current) return
+    const api = getDesktopApi()
+    if (!api?.downloadThesisTemplate) {
+      toast.error("请在桌面应用中下载 LaTeX 模板。")
+      return
+    }
+    templateDownloadInFlight.current = true
+    setTemplateDownloading(true)
+    try {
+      const result = await api.downloadThesisTemplate()
+      if (result.saved) toast.success("LaTeX 模板已保存，解压后打开 README.md 开始使用。")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "模板下载失败，请重试。")
+    } finally {
+      templateDownloadInFlight.current = false
+      setTemplateDownloading(false)
+    }
+  }
   const isAssessmentBodySection = isAssessment && ["assessment_comments", "assessment_division"].includes(activeSection)
   const immersiveSection = isAssessment
     ? isAssessmentBodySection
@@ -2370,12 +2391,12 @@ function DocumentEditor({
           <Card className="border-0 shadow-none ring-0">
             <CardHeader>
               <CardTitle className="sr-only">毕业论文 LaTeX 模板</CardTitle>
-              <CardDescription>LaTeX 模板暂未开放下载。</CardDescription>
+              <CardDescription>下载后解压，在 LaTeX 编辑器或 Agent 中打开工程文件夹。</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4">
-              <Button type="button" disabled className="w-fit">
+              <Button type="button" disabled={templateDownloading} onClick={() => void downloadTemplate()} className="w-fit">
                 <AnimatedActionIcon icon={DownloadIcon} />
-                下载 LaTeX 模板
+                {templateDownloading ? "正在保存模板…" : "下载 LaTeX 模板"}
               </Button>
             </CardContent>
           </Card>

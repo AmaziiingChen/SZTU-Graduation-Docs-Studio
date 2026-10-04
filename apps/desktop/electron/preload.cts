@@ -34,6 +34,7 @@ async function invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
 
 contextBridge.exposeInMainWorld("sztuDesktop", {
   getAppInfo: () => invoke("sztu:app-info"),
+  downloadThesisTemplate: () => invoke("sztu:thesis-template-download"),
   checkEnvironment: () => invoke("sztu:environment-check"),
   prepareDiagnosticReport: () => invoke("sztu:diagnostic-prepare"),
   saveDiagnosticReport: (reportId: unknown) =>

@@ -44,6 +44,7 @@ import { developmentConfig } from "./development-config.js"
 import { privatePreviewRoot } from "./preview-path.js"
 import { CloseCoordinator } from "./close-coordinator.js"
 import { SidecarChannels } from "./sidecar-channels.js"
+import { downloadThesisTemplate, ThesisTemplateError } from "./thesis-template.js"
 
 const localDevelopment = developmentConfig(app.isPackaged)
 const moduleDirectory = path.dirname(fileURLToPath(import.meta.url))
@@ -478,7 +479,7 @@ function assertExportFormats(value: unknown): asserts value is Array<"docx" | "p
 }
 
 function bridgeFailure(error: unknown): BridgeResponse<never> {
-  if (error instanceof SidecarError || error instanceof IpcValidationError) {
+  if (error instanceof SidecarError || error instanceof IpcValidationError || error instanceof ThesisTemplateError) {
     return {
       ok: false,
       error: {
@@ -814,6 +815,25 @@ function registerIpc(): void {
       await diagnostics.save(reportId, result.filePath)
       return { saved: true }
     })
+  })
+
+  ipcMain.handle("sztu:thesis-template-download", async (event) => {
+    assertTrustedSender(event)
+    return runBridge(() => downloadThesisTemplate(
+      path.join(app.getAppPath(), "resources", "thesis-template"),
+      async (fileName) => {
+        const options: SaveDialogOptions = {
+          title: "下载毕业论文 LaTeX 模板",
+          defaultPath: path.join(app.getPath("downloads"), fileName),
+          filters: [{ name: "LaTeX 源码工程", extensions: ["zip"] }],
+          properties: ["createDirectory", "showOverwriteConfirmation"],
+        }
+        const result = mainWindow
+          ? await dialog.showSaveDialog(mainWindow, options)
+          : await dialog.showSaveDialog(options)
+        return result.canceled || !result.filePath ? null : result.filePath
+      },
+    ))
   })
 
   ipcMain.handle("sztu:diagnostic-send", async (event, reportId: unknown) => {

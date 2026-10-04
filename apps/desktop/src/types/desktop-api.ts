@@ -498,6 +498,7 @@ export type RecordQaResult = {
 }
 
 export type SztuDesktopApi = {
+  downloadThesisTemplate: () => Promise<{ saved: boolean }>
   getAppInfo: () => Promise<AppInfo>
   checkEnvironment: () => Promise<EnvironmentResult>
   prepareDiagnosticReport: () => Promise<DiagnosticSummary>

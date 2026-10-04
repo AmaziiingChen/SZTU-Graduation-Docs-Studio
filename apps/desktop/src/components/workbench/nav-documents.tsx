@@ -218,7 +218,7 @@ export function NavDocuments({
                 <CollapsibleTrigger
                   render={<SidebarMenuButton tooltip={group.label} />}
                   aria-label={group.label}
-                  aria-description={group.type === "thesis" ? "论文模板预览和下载暂未开放" : undefined}
+                  aria-description={group.type === "thesis" ? "下载 LaTeX 工程，在外部编辑器中撰写论文" : undefined}
                 >
                   <ChevronRightIcon
                     className={isExpanded
@@ -227,7 +227,7 @@ export function NavDocuments({
                   />
                   <AnimatedActionIcon icon={FolderOpenIcon} />
                   <span>{group.label}</span>
-                  {group.type === "thesis" ? <span className="text-xs text-muted-foreground">未开放</span> : null}
+                  {group.type === "thesis" ? <span className="text-xs text-muted-foreground">模板下载</span> : null}
                 </CollapsibleTrigger>
                 <SidebarMenuAction
                   aria-label={`新建${group.label}`}
@@ -443,7 +443,7 @@ export function NavDocuments({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>新建{documentGroups.find((item) => item.type === createType)?.label}</DialogTitle>
-            <DialogDescription>{createType === "thesis" ? "论文模板功能暂未开放，创建的文件目前不能预览或导出。" : "新建空白文档，或复制一份已有内容后独立编辑。"}</DialogDescription>
+            <DialogDescription>{createType === "thesis" ? "创建记录后可下载 LaTeX 模板，在自己的编辑器或 Agent 中撰写论文。" : "新建空白文档，或复制一份已有内容后独立编辑。"}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-3">
             <Field>

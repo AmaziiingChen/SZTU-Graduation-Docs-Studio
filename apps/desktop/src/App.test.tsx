@@ -388,6 +388,7 @@ function taskBookDocumentFixture(
 
 function mockApi(): SztuDesktopApi {
   return {
+    downloadThesisTemplate: vi.fn().mockResolvedValue({ saved: true }),
     getAppInfo: vi.fn().mockResolvedValue({
       appVersion: "0.1.0",
       electronVersion: "test",
@@ -805,7 +806,7 @@ describe("M3 workbench persistence", () => {
     await waitFor(() => expect(dialog).not.toBeInTheDocument())
   })
 
-  it("keeps thesis document records and shows the pending template download", async () => {
+  it("downloads the bundled thesis template without changing the document or requiring a preview", async () => {
     const api = mockApi()
     const thesis = documentFixture({ id: "thesis-fixture", document_type: "thesis", title: "合成学生甲-毕业论文", content: null, current_revision: 0 })
     vi.mocked(api.createDocument).mockResolvedValue(thesis)
@@ -825,8 +826,12 @@ describe("M3 workbench persistence", () => {
     expect(screen.getByRole("button", { name: "合成学生甲-毕业论文" })).toBeInTheDocument()
     const thesisSections = within(screen.getByRole("navigation", { name: "当前文档板块" })).getAllByRole("button")
     expect(thesisSections.map(button => button.firstElementChild?.textContent)).toEqual(["LaTeX 模板"])
-    expect(screen.getByRole("button", { name: "下载 LaTeX 模板" })).toBeDisabled()
-    expect(screen.getByText("LaTeX 模板暂未开放下载。")).toBeInTheDocument()
+    const download = screen.getByRole("button", { name: "下载 LaTeX 模板" })
+    expect(download).toBeEnabled()
+    const notify = vi.spyOn(toast, "success")
+    fireEvent.click(download)
+    await waitFor(() => expect(api.downloadThesisTemplate).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("LaTeX 模板已保存，解压后打开 README.md 开始使用。"))
     expect(screen.queryByRole("button", { name: "预览&导出" })).not.toBeInTheDocument()
     expect(screen.queryByRole("textbox", { name: "章节正文" })).not.toBeInTheDocument()
     expect(api.saveDraft).not.toHaveBeenCalled()
@@ -840,13 +845,40 @@ describe("M3 workbench persistence", () => {
     installApi(api)
     renderApp()
     expect(await screen.findByRole("heading", { name: "毕业论文" })).toBeInTheDocument()
-    expect(screen.getByText("LaTeX 模板暂未开放下载。")).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "下载 LaTeX 模板" })).toBeDisabled()
+    expect(screen.getByText("下载后解压，在 LaTeX 编辑器或 Agent 中打开工程文件夹。")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "下载 LaTeX 模板" })).toBeEnabled()
     expect(screen.queryByRole("textbox", { name: "章节正文" })).not.toBeInTheDocument()
     expect(api.saveDraft).not.toHaveBeenCalled()
   })
 
-  it("does not expose thesis references or export while the template is pending", async () => {
+  it.each(["cancel", "failure"])("handles template download %s and allows retry", async (outcome) => {
+    const api = mockApi()
+    const thesis = documentFixture({ document_type: "thesis", content: null })
+    vi.mocked(api.openWorkspace).mockResolvedValue({ mode: "persistent", profile: null, profile_draft: null, document: thesis, documents: [thesis] })
+    let resolve!: (value: { saved: boolean }) => void
+    let reject!: (reason: Error) => void
+    const promise = new Promise<{ saved: boolean }>((complete, fail) => { resolve = complete; reject = fail })
+    const pending = { promise, resolve, reject }
+    vi.mocked(api.downloadThesisTemplate).mockReturnValueOnce(pending.promise)
+    const success = vi.spyOn(toast, "success")
+    const failure = vi.spyOn(toast, "error")
+    installApi(api)
+    renderApp()
+    fireEvent.click(await screen.findByRole("button", { name: "下载 LaTeX 模板" }))
+    expect(screen.getByRole("button", { name: "正在保存模板…" })).toBeDisabled()
+    if (outcome === "cancel") pending.resolve({ saved: false })
+    else pending.reject(new Error("模板未保存"))
+    await waitFor(() => expect(screen.getByRole("button", { name: "下载 LaTeX 模板" })).toBeEnabled())
+    expect(success).not.toHaveBeenCalled()
+    if (outcome === "failure") expect(failure).toHaveBeenCalledWith("模板未保存")
+    fireEvent.click(screen.getByRole("button", { name: "下载 LaTeX 模板" }))
+    await waitFor(() => expect(api.downloadThesisTemplate).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(success).toHaveBeenCalledTimes(1))
+    expect(api.saveDraft).not.toHaveBeenCalled()
+    expect(api.generatePreview).not.toHaveBeenCalled()
+  })
+
+  it("keeps thesis authoring and document export closed while allowing template download", async () => {
     const api = mockApi()
     const thesis = documentFixture({
       id: "thesis-reference-fixture",
