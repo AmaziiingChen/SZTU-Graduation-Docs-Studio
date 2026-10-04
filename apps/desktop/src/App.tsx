@@ -7,6 +7,7 @@ import { inferStudentNumberAcademics } from "@/lib/student-number-academics"
 import { AssessmentDocumentEditor } from "@/components/workbench/assessment-document-editor"
 import { assessmentDocumentRegistry, assessmentContent, assessmentGradeError, emptyAssessmentDraft, isAssessmentDocumentType, readAssessmentDraft, type AssessmentDraft } from "@/lib/assessment-documents"
 import { defaultDocumentTitle, documentTypeLabels } from "@/lib/document-names"
+import { clearRecycleBin, RecycleBinClearError } from "@/lib/recycle-bin"
 import { emptyThesisDraft, readThesisDraft, type ThesisDraft } from "@/lib/thesis-draft"
 import { celebrateExportSuccess } from "@/lib/export-celebration"
 import { useEditableSelection } from "@/hooks/use-editable-selection"
@@ -5062,6 +5063,18 @@ export default function App() {
         }
         onPurgeDocument={(documentId) =>
           runDocumentMutation((api) => api.purgeDocument(documentId))
+        }
+        onClearTrash={() =>
+          runDocumentMutation(async (api) => {
+            try {
+              return await clearRecycleBin(api) ?? await api.openWorkspace("persistent")
+            } catch (error) {
+              if (error instanceof RecycleBinClearError && error.snapshot) {
+                await applyWorkspace(error.snapshot)
+              }
+              throw error
+            }
+          })
         }
         disabled={workspaceDisabled || exportState.status === "exporting"}
         inspectionDisabled={workspaceDisabled}

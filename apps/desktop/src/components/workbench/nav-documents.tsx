@@ -44,6 +44,7 @@ import {
   SidebarGroup,
   SidebarMenu,
   SidebarMenuAction,
+  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarSeparator,
@@ -82,6 +83,7 @@ export type CreateDocumentRequest = {
 type ConfirmAction =
   | { kind: "recycle"; document: DocumentRecord }
   | { kind: "purge"; document: DocumentRecord }
+  | { kind: "clear" }
   | null
 
 export function NavDocuments({
@@ -107,6 +109,7 @@ export function NavDocuments({
   onDeleteDocument,
   onRestoreDocument,
   onPurgeDocument,
+  onClearTrash,
 }: {
   studentName: string
   profileActive: boolean
@@ -130,6 +133,7 @@ export function NavDocuments({
   onDeleteDocument: (documentId: string) => Promise<void>
   onRestoreDocument: (documentId: string) => Promise<void>
   onPurgeDocument: (documentId: string) => Promise<void>
+  onClearTrash: () => Promise<void>
 }) {
   const componentFieldId = useId()
   const activeRecordType = documents.find((item) => item.id === activeDocumentId)?.document_type
@@ -358,7 +362,7 @@ export function NavDocuments({
 
           <Collapsible open={trashExpanded} onOpenChange={setTrashExpanded} render={<SidebarMenuItem />}>
             <CollapsibleTrigger
-              render={<SidebarMenuButton tooltip="回收站" />}
+              render={<SidebarMenuButton tooltip="回收站" className="pr-8" />}
               aria-label={deletedDocumentsHasMore ? `回收站（已载入 ${deletedDocuments.length} 个文档，还有更多）` : `回收站（${deletedDocuments.length} 个文档）`}
             >
               <ChevronRightIcon
@@ -368,13 +372,29 @@ export function NavDocuments({
               />
               <AnimatedActionIcon icon={DeleteIcon} />
               <span>回收站</span>
-              {deletedDocuments.length > 0 ? (
-                <span className="ml-auto text-xs text-muted-foreground">{deletedDocuments.length}{deletedDocumentsHasMore ? "+" : ""}</span>
-              ) : null}
             </CollapsibleTrigger>
+            {deletedDocuments.length > 0 ? (
+              <SidebarMenuBadge className="text-muted-foreground">
+                {deletedDocuments.length}{deletedDocumentsHasMore ? "+" : ""}
+              </SidebarMenuBadge>
+            ) : null}
             <CollapsibleContent>
                 <SidebarMenuSub className="mr-0 pr-0">
-                {deletedDocuments.length === 0 ? (
+                {deletedDocuments.length > 0 || deletedDocumentsHasMore ? (
+                  <SidebarMenuSubItem>
+                    <SidebarMenuSubButton
+                      render={<button type="button" disabled={disabled || pending || deletedDocumentsLoading} />}
+                      onClick={() => {
+                        setConfirmAction({ kind: "clear" })
+                        setError(null)
+                      }}
+                    >
+                      <AnimatedActionIcon icon={DeleteIcon} />
+                      <span>清空回收站</span>
+                    </SidebarMenuSubButton>
+                  </SidebarMenuSubItem>
+                ) : null}
+                {deletedDocuments.length === 0 && !deletedDocumentsHasMore ? (
                   <SidebarMenuSubItem>
                     <span className="block px-2 py-1 text-xs text-muted-foreground">回收站为空</span>
                   </SidebarMenuSubItem>
@@ -530,35 +550,39 @@ export function NavDocuments({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={confirmAction !== null} onOpenChange={(open) => !open && setConfirmAction(null)}>
+      <Dialog open={confirmAction !== null} onOpenChange={(open) => !open && !pending && setConfirmAction(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{confirmAction?.kind === "purge" ? "永久删除文档？" : "移到回收站？"}</DialogTitle>
+            <DialogTitle>{confirmAction?.kind === "clear" ? "清空回收站？" : confirmAction?.kind === "purge" ? "永久删除文档？" : "移到回收站？"}</DialogTitle>
             <DialogDescription>
-              {confirmAction?.kind === "purge"
+              {confirmAction?.kind === "clear"
+                ? "将永久删除回收站中的所有文档，包括尚未载入的文档、草稿和历史记录，且无法恢复。已经导出的文件不会被删除。"
+                : confirmAction?.kind === "purge"
                 ? "将永久删除软件内的正文、草稿和历史记录，且无法恢复。已经导出的文件不会被删除。"
                 : "文档会从当前列表移入回收站，之后仍可恢复。已经导出的文件不会被删除。"}
             </DialogDescription>
           </DialogHeader>
-          <p className="truncate text-sm font-medium">{confirmAction?.document.title}</p>
+          {confirmAction && confirmAction.kind !== "clear" ? <p className="truncate text-sm font-medium">{confirmAction.document.title}</p> : null}
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
           <DialogFooter>
             <Button variant="outline" disabled={pending} onClick={() => setConfirmAction(null)}>取消</Button>
             <Button
               variant="destructive"
-              disabled={pending || !confirmAction}
+              disabled={pending || disabled || !confirmAction}
               onClick={() => {
-                if (!confirmAction) return
+                if (!confirmAction || pending || disabled) return
                 const action = confirmAction
                 void run(
-                  () => action.kind === "purge"
+                  () => action.kind === "clear"
+                    ? onClearTrash()
+                    : action.kind === "purge"
                     ? onPurgeDocument(action.document.id)
                     : onDeleteDocument(action.document.id),
                   () => setConfirmAction(null),
                 )
               }}
             >
-              {confirmAction?.kind === "purge" ? "永久删除" : "移到回收站"}
+              {confirmAction?.kind === "clear" ? pending ? "正在清空…" : "清空回收站" : confirmAction?.kind === "purge" ? "永久删除" : "移到回收站"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { Sidebar, SidebarContent, SidebarProvider } from "@/components/ui/sidebar"
@@ -55,6 +55,7 @@ function renderNavigation({
     onDeleteDocument: vi.fn().mockResolvedValue(undefined),
     onRestoreDocument: vi.fn().mockResolvedValue(undefined),
     onPurgeDocument: vi.fn().mockResolvedValue(undefined),
+    onClearTrash: vi.fn().mockResolvedValue(undefined),
     onLoadMoreDocuments: vi.fn().mockResolvedValue(undefined),
   }
   const navigation = (nextDocuments = documents) => (
@@ -87,6 +88,41 @@ function renderNavigation({
 }
 
 describe("NavDocuments file tree", () => {
+  it("confirms clearing the recycle bin and prevents repeated submission while pending", async () => {
+    const callbacks = renderNavigation({ deletedDocuments: [documentRecord("trash-a", "合成回收文档")], deletedDocumentsHasMore: true })
+    fireEvent.click(screen.getByRole("button", { name: /回收站（已载入/ }))
+    fireEvent.click(screen.getByRole("button", { name: "清空回收站", exact: true }))
+    const dialog = screen.getByRole("dialog", { name: "清空回收站？" })
+    expect(dialog).toHaveTextContent("所有文档")
+    expect(dialog).toHaveTextContent("且无法恢复")
+    expect(callbacks.onClearTrash).not.toHaveBeenCalled()
+    fireEvent.click(within(dialog).getByRole("button", { name: "取消" }))
+    expect(callbacks.onClearTrash).not.toHaveBeenCalled()
+    let finish!: () => void
+    callbacks.onClearTrash.mockImplementation(() => new Promise<void>(resolve => { finish = resolve }))
+    fireEvent.click(screen.getByRole("button", { name: "清空回收站", exact: true }))
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "清空回收站", exact: true }))
+    expect(callbacks.onClearTrash).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole("button", { name: "正在清空…" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "取消" })).toBeDisabled()
+    finish()
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+  })
+
+  it("keeps a failed clear operation available for retry and has no clear action for an empty bin", async () => {
+    const empty = renderNavigation()
+    fireEvent.click(screen.getByRole("button", { name: "回收站（0 个文档）" }))
+    expect(screen.queryByRole("button", { name: "清空回收站" })).toBeNull()
+    cleanup()
+    const callbacks = renderNavigation({ deletedDocuments: [documentRecord("trash-a", "合成回收文档")] })
+    callbacks.onClearTrash.mockRejectedValueOnce(new Error("合成删除失败"))
+    fireEvent.click(screen.getByRole("button", { name: "回收站（1 个文档）" }))
+    fireEvent.click(screen.getByRole("button", { name: "清空回收站", exact: true }))
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "清空回收站", exact: true }))
+    await waitFor(() => expect(screen.getByRole("dialog")).toHaveTextContent("合成删除失败"))
+    expect(within(screen.getByRole("dialog")).getByRole("button", { name: "清空回收站", exact: true })).toBeEnabled()
+    expect(empty.onClearTrash).not.toHaveBeenCalled()
+  })
   it.each([
     ["task_book", "任务书", "任务书"],
     ["proposal", "开题报告", "开题报告"],
