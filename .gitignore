@@ -91,3 +91,7 @@ logs/
 *.ttc
 *.woff
 *.woff2
+
+# Local QA captures and scratch projects; preserve locally, never publish.
+/tmp/
+/apps/desktop/tmp/
