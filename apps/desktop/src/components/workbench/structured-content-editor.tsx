@@ -963,8 +963,21 @@ export function StructuredContentEditor({
       data-slot="editor-format-toolbar"
       role="toolbar"
       aria-label={`${ariaLabel}格式工具栏`}
-      className={cn("z-10 flex shrink-0 flex-wrap items-center gap-1 border-b bg-background supports-backdrop-filter:bg-background/70 supports-backdrop-filter:backdrop-blur-md px-1.5", fillHeight ? "sticky top-0" : "relative rounded-t-lg", thesisReferences || toolbarActions ? "min-h-(--header-height) py-1" : "h-(--header-height)")}
+      className={cn(
+        "z-10 flex shrink-0 items-center border-b bg-background supports-backdrop-filter:bg-background/70 supports-backdrop-filter:backdrop-blur-md",
+        fillHeight ? "sticky top-0" : "relative rounded-t-lg",
+        toolbarActions
+          ? "h-(--header-height) gap-2 px-4"
+          : "flex-wrap gap-1 px-1.5",
+        !toolbarActions && (thesisReferences ? "min-h-(--header-height) py-1" : "h-(--header-height)"),
+      )}
     >
+      <div
+        data-slot="editor-format-controls"
+        className={toolbarActions
+          ? "flex h-full min-w-0 flex-1 items-center gap-1 overflow-x-auto overflow-y-hidden [&>*]:shrink-0"
+          : "contents"}
+      >
       <ToggleGroup
         multiple
         size="sm"
@@ -1197,8 +1210,9 @@ export function StructuredContentEditor({
         <AnimatedActionIcon key={historyFeedback.completed.redo || 0} icon={RedoIcon} playOnMount={Boolean(historyFeedback.completed.redo)} />
       </ToolbarButton>
 
+      </div>
       {toolbarActions ? (
-        <div data-slot="document-toolbar-actions" className="contents">
+        <div data-slot="document-toolbar-actions" className="flex shrink-0 items-center gap-2">
           {toolbarActions}
         </div>
       ) : null}

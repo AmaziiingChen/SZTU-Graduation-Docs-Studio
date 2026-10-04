@@ -1730,7 +1730,7 @@ function StructuredBodyField<TField extends string>({
       ) : (
         <>
           {toolbarActions ? (
-            <div data-slot="document-action-bar" className="flex min-h-(--header-height) shrink-0 items-center justify-end gap-2 border-b bg-muted/30 px-4">
+            <div data-slot="document-action-bar" className="flex h-(--header-height) shrink-0 items-center justify-end gap-2 border-b bg-background px-4">
               {toolbarActions}
             </div>
           ) : null}
@@ -2256,10 +2256,10 @@ function DocumentEditor({
   const documentFooterStatus = <SaveStatusBadge state={saveState} quiet />
 
   return (
-    <div className="flex h-full min-h-0 flex-col" ref={scrollRootRef}>
+    <div className="flex h-full min-h-0 flex-col bg-background" ref={scrollRootRef}>
     <h1 className="sr-only">{documentTypeLabels[documentType]}</h1>
     {!hasRichTextToolbar && toolbarActions ? (
-      <div data-slot="document-action-bar" className="flex min-h-(--header-height) shrink-0 items-center justify-end gap-2 border-b bg-muted/30 px-4">
+      <div data-slot="document-action-bar" className="flex h-(--header-height) shrink-0 items-center justify-end gap-2 border-b bg-background px-4">
         {toolbarActions}
       </div>
     ) : null}
