@@ -1198,8 +1198,10 @@ describe("M3 workbench persistence", () => {
     renderApp()
 
     fireEvent.click(await screen.findByRole("button", { name: "学生档案" }))
-    expect(screen.getByRole("button", { name: "删除指导教师" })).toBeDisabled()
-    const firstTitle = screen.getByLabelText("指导教师职称")
+    const advisorGroup = screen.getByRole("group", { name: "指导信息" })
+    expect(within(advisorGroup).getByRole("button", { name: "添加指导教师" })).toBeEnabled()
+    expect(within(advisorGroup).getByRole("button", { name: "删除指导教师" })).toBeDisabled()
+    const firstTitle = within(advisorGroup).getByLabelText("指导教师职称")
     openComboboxSuggestions(firstTitle)
     for (const option of [
       "教授",

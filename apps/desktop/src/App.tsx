@@ -1,5 +1,7 @@
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 import { FormField as Field } from "@/components/workbench/form-field"
+import { FieldLegend, FieldSet } from "@/components/ui/field"
+import { Separator } from "@/components/ui/separator"
 import { TEACHER_TITLE_OPTIONS } from "@/lib/teacher-title-options"
 import { inferStudentNumberAcademics } from "@/lib/student-number-academics"
 import { AssessmentDocumentEditor } from "@/components/workbench/assessment-document-editor"
@@ -1947,7 +1949,7 @@ function StudentProfileEditor({
           </Alert>
         ) : null}
 
-        <Card>
+        <Card size="sm">
           <CardHeader>
             <CardTitle>论文题目</CardTitle>
           </CardHeader>
@@ -1962,6 +1964,7 @@ function StudentProfileEditor({
                 ariaInvalid={Boolean(titleError)}
                 placeholder="输入论文题目"
                 mode="inline"
+                className="[&_[data-slot=editor-format-toolbar]]:h-8 [&_.ProseMirror]:min-h-10 [&_.ProseMirror]:py-2"
               />
               {titleError ? (
                 <p className="mt-2 text-xs text-destructive" id="title-error">
@@ -1976,113 +1979,121 @@ function StudentProfileEditor({
           <CardHeader>
             <CardTitle>基础信息</CardTitle>
           </CardHeader>
-          <CardContent className="grid gap-4 md:grid-cols-2">
-            <Field
-              id="studentName"
-              label="学生姓名"
-              value={draft.studentName}
-              error={visibleError("studentName", !draft.studentName.trim() ? "请输入学生姓名。" : undefined)}
-              onChange={onChange}
-              disabled={disabled}
-            />
-            <Field
-              id="studentId"
-              label="学号"
-              value={draft.studentId}
-              error={visibleError("studentId", !draft.studentId.trim() ? "请输入学号。" : undefined)}
-              onChange={onChange}
-              disabled={disabled}
-            />
-            <Field
-              id="graduationCohort"
-              label="毕业届别"
-              value={draft.graduationCohort}
-              placeholder="例如：2026届"
-              suggestions={GRADUATION_COHORT_OPTIONS}
-              maxLength={GRADUATION_COHORT_MAX_LENGTH}
-              error={visibleError("graduationCohort",
-                !draft.graduationCohort.trim()
-                  ? assessmentMode ? undefined : "请输入毕业届别。"
-                  : draft.graduationCohort.length >
-                      GRADUATION_COHORT_MAX_LENGTH
-                    ? "毕业届别最多 20 个字符。"
-                    : undefined
-              )}
-              onChange={onChange}
-              disabled={disabled}
-            />
-            <Field
-              id="college"
-              label="学院"
-              value={draft.college}
-              suggestions={collegeSuggestions}
-              error={visibleError("college", !draft.college.trim() ? "请输入学院。" : undefined)}
-              onChange={changeCollege}
-              disabled={disabled}
-            />
-            <Field
-              id="major"
-              label="专业"
-              value={draft.major}
-              suggestions={majorSuggestions}
-              error={visibleError("major", !draft.major.trim() ? "请输入专业。" : undefined)}
-              onChange={changeMajor}
-              disabled={disabled}
-            />
-            <Field
-              id="className"
-              label="班级"
-              value={draft.className}
-              suggestions={classSuggestions}
-              error={visibleError("className", !assessmentMode && !draft.className.trim() ? "请输入班级。" : undefined)}
-              onChange={onChange}
-              disabled={disabled}
-            />
-            {advisorEntries.map((entry, index) => (
-              <Fragment key={index}>
-                <Field
-                  id={`advisor-${index}`}
-                  label={index === 0 ? "指导教师" : `第${index + 1}指导教师`}
-                  value={entry.name}
-                  placeholder="只填写姓名，不填写职称"
-                  maxLength={30}
-                  error={visibleError(`advisor-${index}`, !assessmentMode && !entry.name.trim() ? "请输入指导教师姓名。" : undefined)}
-                  onChange={(_field, nextValue) => updateAdvisorEntry(index, "name", nextValue)}
-                  disabled={disabled}
-                />
-                <Field
-                  id={`advisor-title-${index}`}
-                  label={index === 0 ? "指导教师职称" : `第${index + 1}指导教师职称`}
-                  value={entry.title}
-                  placeholder="选择或输入职称"
-                  suggestions={TEACHER_TITLE_OPTIONS}
-                  maxLength={30}
-                  error={visibleError(`advisor-title-${index}`, !assessmentMode && !entry.title.trim() ? "请输入指导教师职称。" : undefined)}
-                  onChange={(_field, nextValue) => updateAdvisorEntry(index, "title", nextValue)}
-                  disabled={disabled}
-                />
-              </Fragment>
-            ))}
-            <div className="flex flex-wrap gap-2 md:col-span-2">
-              <Button
-                type="button"
-                variant="outline"
+          <CardContent className="grid gap-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field
+                id="studentName"
+                label="学生姓名"
+                value={draft.studentName}
+                error={visibleError("studentName", !draft.studentName.trim() ? "请输入学生姓名。" : undefined)}
+                onChange={onChange}
                 disabled={disabled}
-                onClick={addAdvisorEntry}
-              >
-                <AnimatedActionIcon icon={PlusIcon} />
-                添加指导教师
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={disabled || advisorEntries.length <= 1}
-                onClick={removeLastAdvisorEntry}
-              >
-                <AnimatedActionIcon icon={DeleteIcon} />
-                删除指导教师
-              </Button>
+              />
+              <Field
+                id="studentId"
+                label="学号"
+                value={draft.studentId}
+                error={visibleError("studentId", !draft.studentId.trim() ? "请输入学号。" : undefined)}
+                onChange={onChange}
+                disabled={disabled}
+              />
+              <Field
+                id="college"
+                label="学院"
+                value={draft.college}
+                suggestions={collegeSuggestions}
+                error={visibleError("college", !draft.college.trim() ? "请输入学院。" : undefined)}
+                onChange={changeCollege}
+                disabled={disabled}
+              />
+              <Field
+                id="major"
+                label="专业"
+                value={draft.major}
+                suggestions={majorSuggestions}
+                error={visibleError("major", !draft.major.trim() ? "请输入专业。" : undefined)}
+                onChange={changeMajor}
+                disabled={disabled}
+              />
+              <Field
+                id="graduationCohort"
+                label="毕业届别"
+                value={draft.graduationCohort}
+                placeholder="例如：2026届"
+                suggestions={GRADUATION_COHORT_OPTIONS}
+                maxLength={GRADUATION_COHORT_MAX_LENGTH}
+                error={visibleError("graduationCohort",
+                  !draft.graduationCohort.trim()
+                    ? assessmentMode ? undefined : "请输入毕业届别。"
+                    : draft.graduationCohort.length >
+                        GRADUATION_COHORT_MAX_LENGTH
+                      ? "毕业届别最多 20 个字符。"
+                      : undefined
+                )}
+                onChange={onChange}
+                disabled={disabled}
+              />
+              <Field
+                id="className"
+                label="班级"
+                value={draft.className}
+                suggestions={classSuggestions}
+                error={visibleError("className", !assessmentMode && !draft.className.trim() ? "请输入班级。" : undefined)}
+                onChange={onChange}
+                disabled={disabled}
+              />
             </div>
+            <Separator />
+            <FieldSet>
+              <FieldLegend variant="label">指导信息</FieldLegend>
+              <div className="grid gap-4 md:grid-cols-2">
+                {advisorEntries.map((entry, index) => (
+                  <Fragment key={index}>
+                    <Field
+                      id={`advisor-${index}`}
+                      label={index === 0 ? "指导教师" : `第${index + 1}指导教师`}
+                      value={entry.name}
+                      placeholder="只填写姓名，不填写职称"
+                      maxLength={30}
+                      error={visibleError(`advisor-${index}`, !assessmentMode && !entry.name.trim() ? "请输入指导教师姓名。" : undefined)}
+                      onChange={(_field, nextValue) => updateAdvisorEntry(index, "name", nextValue)}
+                      disabled={disabled}
+                    />
+                    <Field
+                      id={`advisor-title-${index}`}
+                      label={index === 0 ? "指导教师职称" : `第${index + 1}指导教师职称`}
+                      value={entry.title}
+                      placeholder="选择或输入职称"
+                      suggestions={TEACHER_TITLE_OPTIONS}
+                      maxLength={30}
+                      error={visibleError(`advisor-title-${index}`, !assessmentMode && !entry.title.trim() ? "请输入指导教师职称。" : undefined)}
+                      onChange={(_field, nextValue) => updateAdvisorEntry(index, "title", nextValue)}
+                      disabled={disabled}
+                    />
+                  </Fragment>
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={disabled}
+                  onClick={addAdvisorEntry}
+                >
+                  <AnimatedActionIcon icon={PlusIcon} />
+                  添加指导教师
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={disabled || advisorEntries.length <= 1}
+                  onClick={removeLastAdvisorEntry}
+                >
+                  <AnimatedActionIcon icon={DeleteIcon} />
+                  删除指导教师
+                </Button>
+              </div>
+            </FieldSet>
           </CardContent>
         </Card>
       </div>
