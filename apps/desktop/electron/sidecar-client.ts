@@ -10,6 +10,7 @@ export type SidecarMethod =
   | "system.version"
   | "environment.check"
   | "workspace.open"
+  | "workspace.listDocuments"
   | "workspace.saveProfileDraft"
   | "workspace.saveProfile"
   | "workspace.createDocument"
@@ -40,6 +41,7 @@ const ALLOWED_METHODS = new Set<SidecarMethod>([
   "system.version",
   "environment.check",
   "workspace.open",
+  "workspace.listDocuments",
   "workspace.saveProfileDraft",
   "workspace.saveProfile",
   "workspace.createDocument",
@@ -65,6 +67,7 @@ const RECOVERABLE_METHODS = new Set<SidecarMethod>([
   "system.version",
   "environment.check",
   "workspace.open",
+  "workspace.listDocuments",
   "workspace.selectDocument",
   "document.check",
   "preview.generate",
@@ -154,6 +157,17 @@ type PendingRequest = {
   resolve: (value: unknown) => void
   reject: (error: Error) => void
   timeout: NodeJS.Timeout
+  deadlineReached?: boolean
+}
+
+export type SidecarRequestOptions = {
+  onDeadline?: () => Promise<void>
+  cancellationGraceMs?: number
+}
+
+export type SidecarClientOptions = {
+  role?: "control" | "render"
+  retryRequests?: boolean
 }
 
 export class SidecarError extends Error {
@@ -235,11 +249,16 @@ export class SidecarClient {
   private readonly pending = new Map<RequestId, PendingRequest>()
   private readonly settledIds = new Set<RequestId>()
   private readonly pythonExecutable: string
+  private stopping: Promise<void> | undefined
+  private stopError: SidecarError | undefined
+
+  get running(): boolean { return Boolean(this.process && !this.process.killed && !this.stopping) }
 
   constructor(
     private readonly backendRoot: string,
     private readonly dataRoot: string,
     pythonExecutable?: string,
+    private readonly options: SidecarClientOptions = {},
   ) {
     this.pythonExecutable =
       pythonExecutable ?? resolveSidecarPython(backendRoot)
@@ -249,6 +268,7 @@ export class SidecarClient {
     method: SidecarMethod,
     params: Record<string, unknown> = {},
     timeoutMs = 15_000,
+    requestOptions: SidecarRequestOptions = {},
   ): Promise<T> {
     if (!ALLOWED_METHODS.has(method)) {
       throw new SidecarError("INVALID_METHOD", "Sidecar method is not allowed.")
@@ -258,10 +278,10 @@ export class SidecarClient {
     }
 
     try {
-      return await this.requestOnce<T>(method, params, timeoutMs)
+      return await this.requestOnce<T>(method, params, timeoutMs, requestOptions)
     } catch (error) {
-      if (!shouldRetrySidecarRequest(method, error, 0)) throw error
-      return this.requestOnce<T>(method, params, timeoutMs)
+      if (this.options.retryRequests === false || !shouldRetrySidecarRequest(method, error, 0)) throw error
+      return this.requestOnce<T>(method, params, timeoutMs, requestOptions)
     }
   }
 
@@ -269,19 +289,19 @@ export class SidecarClient {
     method: SidecarMethod,
     params: Record<string, unknown>,
     timeoutMs: number,
+    options: SidecarRequestOptions,
   ): Promise<T> {
     const id = randomUUID()
     const message = `${JSON.stringify({ protocol: "1.0", id, method, params })}\n`
     if (Buffer.byteLength(message, "utf8") > MAX_MESSAGE_BYTES) {
       return Promise.reject(new SidecarError("MESSAGE_TOO_LARGE", "Sidecar request exceeds the size limit."))
     }
+    if (this.stopping) return Promise.reject(new SidecarError("SIDECAR_STOPPING", "The document engine is stopping. Please try again after it exits."))
     const child = this.ensureProcess()
 
     return new Promise<T>((resolve, reject) => {
       const timeout = setTimeout(() => {
-        this.pending.delete(id)
-        this.rememberSettled(id)
-        reject(new SidecarError("REQUEST_TIMEOUT", "Sidecar request timed out."))
+        void this.handleDeadline(id, options)
       }, timeoutMs)
 
       this.pending.set(id, {
@@ -306,6 +326,42 @@ export class SidecarClient {
     this.buffer = ""
     this.generation += 1
     this.rejectAll(new SidecarError("SIDECAR_STOPPED", "Sidecar stopped."))
+  }
+
+  /** Stop confirmation precedes rejection, so a timed-out mutation cannot commit later. */
+  async stop(error = new SidecarError("SIDECAR_STOPPED", "Sidecar stopped.")): Promise<void> {
+    if (this.stopping) return this.stopping
+    const child = this.process
+    if (!child) { this.rejectAll(error); return }
+    this.stopError = error
+    this.stopping = new Promise<void>((resolve) => {
+      const finish = () => { clearTimeout(forceKill); resolve() }
+      child.once("exit", finish)
+      const forceKill = setTimeout(() => { child.kill("SIGKILL") }, 1_000)
+      forceKill.unref?.()
+      if (child.exitCode !== null || child.signalCode !== null) finish()
+      else child.kill()
+    })
+    try { await this.stopping } finally { this.stopping = undefined; this.stopError = undefined }
+  }
+
+  private async handleDeadline(id: string, options: SidecarRequestOptions): Promise<void> {
+    const pending = this.pending.get(id)
+    if (!pending) return
+    pending.deadlineReached = true
+    if (!options.onDeadline) {
+      await this.stop(new SidecarError("REQUEST_TIMEOUT", "请求超时，文档进程已停止；请重新打开并核对任务状态。"))
+      return
+    }
+    // Keep the request pending until a backend terminal response or confirmed exit.
+    // A completion racing the cancellation remains a real successful completion.
+    pending.timeout = setTimeout(() => {
+      if (!this.pending.has(id)) return
+      void this.stop(new SidecarError("REQUEST_OUTCOME_UNKNOWN", "任务未确认完成或取消，渲染进程已停止；请检查导出历史和输出目录。"))
+    }, Math.min(10_000, Math.max(1, options.cancellationGraceMs ?? 10_000)))
+    try { await options.onDeadline() } catch {
+      if (this.pending.has(id)) await this.stop(new SidecarError("REQUEST_OUTCOME_UNKNOWN", "取消信号发送失败，渲染进程已停止；请检查导出历史和输出目录。"))
+    }
   }
 
   private ensureProcess(): ChildProcessWithoutNullStreams {
@@ -338,6 +394,8 @@ export class SidecarClient {
         TMP: process.env.TMP,
         PYTHONPATH: sourceRoot,
         SZTU_DOCS_DATA_DIR: this.dataRoot,
+        SZTU_DOCS_SIDECAR_ROLE: this.options.role ?? "control",
+        SZTU_DOCS_RECOVER_INTERRUPTED: this.options.role === "render" || generation > 1 ? "0" : "1",
         SZTU_DOCS_TEMPLATE_PACKS_DIR: path.resolve(this.backendRoot, "../template-packs"),
         SZTU_DOCS_BUNDLED_ENGINES_DIR: existsSync(bundledEnginesRoot)
           ? bundledEnginesRoot
@@ -345,6 +403,10 @@ export class SidecarClient {
         SZTU_DOCS_PROPOSAL_ENGINE_DIR: process.env.SZTU_DOCS_PROPOSAL_ENGINE_DIR,
         SZTU_DOCS_TASK_BOOK_ENGINE_DIR: process.env.SZTU_DOCS_TASK_BOOK_ENGINE_DIR,
         SZTU_DOCS_MIDTERM_ENGINE_DIR: process.env.SZTU_DOCS_MIDTERM_ENGINE_DIR,
+        SZTU_DOCS_ADVISOR_REVIEW_ENGINE_DIR: process.env.SZTU_DOCS_ADVISOR_REVIEW_ENGINE_DIR,
+        SZTU_DOCS_REVIEWER_REVIEW_ENGINE_DIR: process.env.SZTU_DOCS_REVIEWER_REVIEW_ENGINE_DIR,
+        SZTU_DOCS_DEFENSE_RECORD_ENGINE_DIR: process.env.SZTU_DOCS_DEFENSE_RECORD_ENGINE_DIR,
+        SZTU_DOCS_GRADE_ASSESSMENT_ENGINE_DIR: process.env.SZTU_DOCS_GRADE_ASSESSMENT_ENGINE_DIR,
         SZTU_DOCS_CJK_VALIDATOR: process.env.SZTU_DOCS_CJK_VALIDATOR,
         SZTU_FONT_DIR: process.env.SZTU_FONT_DIR,
         SZTU_FZXIAOBIAOSONG_FONT: process.env.SZTU_FZXIAOBIAOSONG_FONT,
@@ -368,13 +430,13 @@ export class SidecarClient {
     child.stderr.on("data", () => {
       console.error("[document-engine] A diagnostic was emitted; details are suppressed.")
     })
-    child.on("error", () => this.failProcess("SIDECAR_START_FAILED"))
+    child.on("error", () => { if (generation === this.generation) this.failProcess("SIDECAR_START_FAILED") })
     child.on("exit", (code, signal) => {
       if (generation !== this.generation) return
       this.process = undefined
       this.buffer = ""
       const errorCode = code === 0 && signal === null ? "SIDECAR_CLOSED" : "SIDECAR_EXITED"
-      this.rejectAll(new SidecarError(errorCode, "Sidecar process exited."))
+      this.rejectAll(this.stopError ?? new SidecarError(errorCode, "Sidecar process exited."))
     })
 
     this.process = child
@@ -438,7 +500,9 @@ export class SidecarClient {
       pending.resolve(envelope.result)
       return
     }
-    pending.reject(new SidecarError(envelope.error.code, envelope.error.message, envelope.error.details))
+    if (pending.deadlineReached && ["EXPORT_CANCELLED", "PREVIEW_CANCELLED", "REQUEST_CANCELLED"].includes(envelope.error.code)) {
+      pending.reject(new SidecarError("REQUEST_TIMEOUT", "任务超时，后台已确认取消。", { cancellation_confirmed: true }))
+    } else pending.reject(new SidecarError(envelope.error.code, envelope.error.message, envelope.error.details))
   }
 
   private rejectAll(error: Error): void {

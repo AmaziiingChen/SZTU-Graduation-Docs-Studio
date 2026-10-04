@@ -1,5 +1,6 @@
 import { useState } from "react"
-import { EraserIcon } from "lucide-react"
+import { DeleteIcon } from "@/components/ui/delete"
+import { AnimatedActionIcon } from "@/components/animated-action-icon"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -24,7 +25,7 @@ export function ToolDraftActions({
     <>
       <div className="flex shrink-0 items-center gap-2">
         <Button type="button" variant="outline" size="sm" onClick={() => setOpen(true)}>
-          <EraserIcon />
+          <AnimatedActionIcon icon={DeleteIcon} />
           清空草稿
         </Button>
       </div>
@@ -46,6 +47,7 @@ export function ToolDraftActions({
                 setOpen(false)
               }}
             >
+              <AnimatedActionIcon icon={DeleteIcon} />
               清空草稿
             </Button>
           </DialogFooter>

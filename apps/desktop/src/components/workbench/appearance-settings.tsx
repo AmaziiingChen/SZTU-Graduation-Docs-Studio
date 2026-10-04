@@ -1,10 +1,11 @@
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
+import { flushSync } from "react-dom"
 import { useTheme } from "next-themes"
 import { CheckIcon } from "lucide-react"
 import { AirplayIcon } from "@/components/ui/airplay"
 import { MoonIcon } from "@/components/ui/moon"
 import { SunIcon } from "@/components/ui/sun"
-import { AnimatedActionIcon } from "@/components/workbench/animated-action-icon"
+import { AnimatedActionIcon } from "@/components/animated-action-icon"
 
 
 import { Button } from "@/components/ui/button"
@@ -76,6 +77,68 @@ export function AppearanceSettings() {
   const [selectedPresetId, setSelectedPresetId] = useState(
     () => getStoredAppearancePreset().id,
   )
+  const transitionRef = useRef<ViewTransition | null>(null)
+  const animationRef = useRef<Animation | null>(null)
+  const themeRequestRef = useRef(0)
+  const requestedThemeRef = useRef<(typeof baseThemes)[number]["value"] | null>(null)
+
+  useEffect(() => () => {
+    themeRequestRef.current += 1
+    transitionRef.current?.skipTransition()
+    animationRef.current?.cancel()
+    document.documentElement.removeAttribute("data-theme-transition")
+  }, [])
+
+  const selectTheme = async (nextTheme: (typeof baseThemes)[number]["value"]) => {
+    const root = document.documentElement
+    const request = ++themeRequestRef.current
+    requestedThemeRef.current = nextTheme
+    transitionRef.current?.skipTransition()
+    animationRef.current?.cancel()
+    transitionRef.current = null
+    animationRef.current = null
+    const nextDark = nextTheme === "dark" || (nextTheme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches)
+    if (root.classList.contains("dark") === nextDark || window.matchMedia("(prefers-reduced-motion: reduce)").matches || !document.startViewTransition) {
+      root.removeAttribute("data-theme-transition")
+      setTheme(nextTheme)
+      return
+    }
+
+    // Animate UI ThemeToggler's directional wipe, applied to our existing buttons.
+    // Commit through next-themes inside the snapshot update so storage, resolved
+    // mode and the root class agree even if the visual transition is interrupted.
+    root.setAttribute("data-theme-transition", "true")
+    try {
+      const transition = document.startViewTransition(() => {
+        // A skipped transition still invokes its update callback. Always apply
+        // the latest request, including when navigation unmounts this settings page.
+        flushSync(() => setTheme(requestedThemeRef.current ?? nextTheme))
+      })
+      transitionRef.current = transition
+      await transition.ready
+      if (themeRequestRef.current !== request) return
+      const animation = root.animate(
+        { clipPath: ["inset(0 100% 0 0)", "inset(0 0 0 0)"] },
+        { duration: 700, easing: "ease-in-out", pseudoElement: "::view-transition-new(root)" },
+      )
+      animationRef.current = animation
+      await animation.finished
+      await transition.finished
+    } catch {
+      // Snapshot/animation support can fail (for example in a hidden window).
+      // The theme choice still takes effect; only the decorative wipe is skipped.
+      if (themeRequestRef.current === request) {
+        transitionRef.current?.skipTransition()
+        setTheme(nextTheme)
+      }
+    } finally {
+      if (themeRequestRef.current === request) {
+        root.removeAttribute("data-theme-transition")
+        transitionRef.current = null
+        animationRef.current = null
+      }
+    }
+  }
 
   const selectPreset = (preset: AppearancePreset) => {
     applyAppearancePreset(preset)
@@ -99,7 +162,7 @@ export function AppearanceSettings() {
                   type="button"
                   variant="outline"
                   aria-pressed={selected}
-                  onClick={() => setTheme(option.value)}
+                  onClick={() => void selectTheme(option.value)}
                   className={cn("justify-start", selected && "border-ring ring-3 ring-ring/20")}
                 >
                   <AnimatedActionIcon icon={Icon} className="text-muted-foreground" />

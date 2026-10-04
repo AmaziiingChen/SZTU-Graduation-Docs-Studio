@@ -2,7 +2,7 @@ import { DownloadIcon } from "@/components/ui/download"
 import { CircleCheckIcon } from "@/components/ui/circle-check"
 import { SendIcon } from "@/components/ui/send"
 import { FolderCodeIcon } from "@/components/ui/folder-code"
-import { AnimatedActionIcon } from "@/components/workbench/animated-action-icon"
+import { AnimatedActionIcon } from "@/components/animated-action-icon"
 import { useState } from "react"
 import { LoaderCircleIcon, ShieldCheckIcon, TriangleAlertIcon } from "lucide-react"
 

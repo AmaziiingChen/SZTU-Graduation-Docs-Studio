@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, expect, it, vi } from "vitest"
-import { LatexSourceCard } from "./latex-source-card"
+import { LatexSourceSheet } from "./latex-source-sheet"
 import { SectionCompletionMark } from "./section-completion-mark"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { writeClipboardText } from "@/lib/desktop-clipboard"
@@ -13,8 +13,8 @@ it("waits for clipboard success, restarts its receipt, and restores the original
   vi.useFakeTimers()
   let resolve!: () => void
   vi.mocked(writeClipboardText).mockImplementationOnce(() => new Promise<void>((done) => { resolve = done }))
-  const { container } = render(<LatexSourceCard latex="example" filename="example.tex" />)
-  const button = screen.getByRole("button", { name: "复制 LaTeX" })
+  const { container } = render(<TooltipProvider><LatexSourceSheet latex="example" filename="example.tex" /></TooltipProvider>)
+  const button = screen.getByRole("button", { name: "复制源码" })
   fireEvent.click(button)
   expect(container.querySelector('[data-slot="action-success"]')).toBeNull()
   await act(async () => resolve())
@@ -26,13 +26,13 @@ it("waits for clipboard success, restarts its receipt, and restores the original
   expect(container.querySelector('[data-slot="action-success"]')).not.toBeNull()
   act(() => vi.advanceTimersByTime(800))
   expect(container.querySelector('[data-slot="action-success"]')).toBeNull()
-  expect(button).toHaveAccessibleName("复制 LaTeX")
+  expect(button).toHaveAccessibleName("复制源码")
 })
 
 it("shows only the error when copying fails", async () => {
   vi.mocked(writeClipboardText).mockRejectedValueOnce(new Error("denied"))
-  const { container } = render(<LatexSourceCard latex="example" filename="example.tex" />)
-  await act(async () => fireEvent.click(screen.getByRole("button", { name: "复制 LaTeX" })))
+  const { container } = render(<TooltipProvider><LatexSourceSheet latex="example" filename="example.tex" /></TooltipProvider>)
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: "复制源码" })))
   expect(container.querySelector('[data-slot="action-success"]')).toBeNull()
   expect(toast.success).not.toHaveBeenCalled()
   expect(toast.error).toHaveBeenCalledOnce()

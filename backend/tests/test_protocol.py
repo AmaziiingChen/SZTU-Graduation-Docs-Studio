@@ -686,6 +686,8 @@ class ProtocolTests(unittest.TestCase):
             "document": None,
             "documents": [],
             "deleted_documents": [],
+            "documents_page": {"profile_id": None, "next_cursor": None, "has_more": False},
+            "deleted_documents_page": {"profile_id": None, "next_cursor": None, "has_more": False},
         })
         profile = self.request(
             "workspace.saveProfile", {"profile": profile_payload()}

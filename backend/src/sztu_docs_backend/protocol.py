@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import platform
 import re
 import time
@@ -14,6 +15,7 @@ from typing import Any
 from .environment import check_environment
 from .exporter import (
     build_export_document,
+    capture_export_source,
     ExportError,
     content_check,
     delete_export_history_record,
@@ -239,6 +241,9 @@ def _safe_storage_details(details: Mapping[str, Any]) -> dict[str, Any]:
             "source_document_id",
             "title",
             "profile_id",
+            "deleted",
+            "cursor",
+            "limit",
             "content",
             "expected_revision",
             "reason",
@@ -264,6 +269,9 @@ def _safe_storage_details(details: Mapping[str, Any]) -> dict[str, Any]:
             "temporary_document",
             "must_be_internal_id",
             "must_be_between_1_and_500",
+            "must_be_between_1_and_100",
+            "must_be_boolean",
+            "invalid_cursor",
         },
     }
     for key, allowed in text_enums.items():
@@ -292,6 +300,14 @@ class ProtocolSession:
         self.workspace: Workspace | None = None
         self.mode: str | None = None
         self.preflight_tokens: dict[str, dict[str, Any]] = {}
+        self.render_only = os.environ.get("SZTU_DOCS_SIDECAR_ROLE") == "render"
+        # The Electron control process owns one startup recovery. A render
+        # connection, or a replacement control process, must not mark work in
+        # the other live process as interrupted.
+        self.recover_interrupted = (
+            not self.render_only
+            and os.environ.get("SZTU_DOCS_RECOVER_INTERRUPTED", "1") == "1"
+        )
 
     def dispatch(self, payload: Any) -> dict[str, Any]:
         request_id = _request_id(payload.get("id")) if isinstance(payload, dict) else None
@@ -332,6 +348,7 @@ class ProtocolSession:
             "workspace.saveProfileDraft": self._save_profile_draft,
             "workspace.saveProfile": self._save_profile,
             "workspace.createDocument": self._create_document,
+            "workspace.listDocuments": self._list_documents,
             "workspace.selectDocument": self._select_document,
             "workspace.renameDocument": self._rename_document,
             "workspace.deleteDocument": self._delete_document,
@@ -367,7 +384,7 @@ class ProtocolSession:
     @staticmethod
     def _bind_unassigned_documents(
         workspace: Workspace, profile_id: str
-    ) -> dict[str, dict[str, Any]]:
+    ) -> int:
         """Attach pre-profile drafts to the shared student profile.
 
         The workbench exposes one shared profile. Documents may be created before
@@ -376,12 +393,7 @@ class ProtocolSession:
         changed.
         """
 
-        assigned: dict[str, dict[str, Any]] = {}
-        for document in workspace.list_documents(limit=500):
-            if document.get("profile_id") is None:
-                bound = workspace.assign_profile(document["id"], profile_id)
-                assigned[bound["id"]] = bound
-        return assigned
+        return workspace.bind_unassigned_profile(profile_id)
 
     def _workspace_open(self, params: dict[str, Any]) -> dict[str, Any]:
         _shape_params(params, required={"mode"})
@@ -392,6 +404,20 @@ class ProtocolSession:
                 "Workspace mode must be persistent or temporary.",
                 {"field": "mode"},
             )
+        if self.render_only:
+            if mode != "persistent":
+                raise ProtocolError(
+                    INVALID_PARAMS,
+                    "The render process requires a persistent workspace.",
+                    {"field": "mode"},
+                )
+            if self.workspace is None:
+                self.workspace = Workspace.open_persistent(recover_interrupted=False)
+                self.mode = "persistent"
+            # Rendering never changes the active document or binds drafts. In
+            # particular, do not call _selection while the control process is
+            # saving or changing its own selection.
+            return {"mode": "persistent", "render_ready": True}
         if self.workspace is not None and self.mode == mode:
             return self._selection()
         if self.workspace is not None and self.mode == "persistent" and mode == "temporary":
@@ -404,7 +430,7 @@ class ProtocolSession:
                 "Close the temporary workspace before returning to persistent data.",
             )
         self.workspace = (
-            Workspace.open_persistent()
+            Workspace.open_persistent(recover_interrupted=self.recover_interrupted)
             if mode == "persistent"
             else Workspace.create_temporary()
         )
@@ -456,7 +482,7 @@ class ProtocolSession:
         workspace = self._require_workspace()
         payload = _object_param(params, "document")
         document_type = payload.get("document_type")
-        if document_type not in {"proposal", "midterm", "task_book", "thesis"}:
+        if document_type not in {"proposal", "midterm", "task_book", "thesis", "advisor_review", "reviewer_review", "defense_record", "grade_assessment"}:
             raise ProtocolError(
                 INVALID_PARAMS,
                 "Document type is not supported.",
@@ -476,6 +502,19 @@ class ProtocolSession:
             _string_param(params, "title"),
         )
         return self._selection()
+
+    def _list_documents(self, params: dict[str, Any]) -> dict[str, Any]:
+        _shape_params(
+            params,
+            required={"profile_id", "deleted"},
+            optional={"cursor", "limit"},
+        )
+        return self._require_workspace().list_document_page(
+            profile_id=params["profile_id"],
+            deleted=params["deleted"],
+            cursor=params.get("cursor"),
+            limit=params.get("limit", 100),
+        )
 
     def _delete_document(self, params: dict[str, Any]) -> dict[str, Any]:
         _shape_params(params, required={"document_id"})
@@ -560,7 +599,9 @@ class ProtocolSession:
         workspace.close()
         self.workspace = None
         self.mode = None
-        self.workspace = Workspace.open_persistent()
+        self.workspace = Workspace.open_persistent(
+            recover_interrupted=self.recover_interrupted
+        )
         self.mode = "persistent"
         return self._selection()
 
@@ -716,13 +757,15 @@ class ProtocolSession:
                 "Preview id must be a UUID.",
                 {"field": "preview_id"},
             )
-        document = workspace.get_document(document_id)
+        source_snapshot = capture_export_source(workspace, document_id)
+        document = source_snapshot[0]
         result = preflight_export(
             workspace,
             document_id=document_id,
             output_directory=output_directory,
             formats=formats,
             preview_id=preview_id,
+            source_snapshot=source_snapshot,
         )
         now = time.monotonic()
         self.preflight_tokens = {
@@ -874,7 +917,7 @@ class ProtocolSession:
     def _install_template(self, params: dict[str, Any]) -> dict[str, Any]:
         _shape_params(params, required={"source_directory", "document_type"})
         document_type = _string_param(params, "document_type")
-        if document_type not in {"proposal", "midterm", "task_book", "thesis"}:
+        if document_type not in {"proposal", "midterm", "task_book", "thesis", "advisor_review", "reviewer_review", "defense_record", "grade_assessment"}:
             raise ProtocolError(INVALID_PARAMS, "Document type is not supported.")
         return install_engine(
             self._require_workspace(),
@@ -951,16 +994,14 @@ class ProtocolSession:
         profile_id = profile.get("id") if isinstance(profile, dict) else None
         if profile_id is not None:
             assigned = self._bind_unassigned_documents(workspace, profile_id)
-            if isinstance(document, dict) and document.get("id") in assigned:
-                document = assigned[document["id"]]
-        documents = workspace.list_documents(profile_id=profile_id, limit=100)
-        if not documents and profile_id is not None:
-            documents = workspace.list_documents(limit=100)
-        deleted_documents = workspace.list_deleted_documents(
-            profile_id=profile_id, limit=100
-        )
-        if not deleted_documents and profile_id is not None:
-            deleted_documents = workspace.list_deleted_documents(limit=100)
+            if assigned and isinstance(document, dict) and document.get("profile_id") is None:
+                document = workspace.get_document(document["id"])
+        documents_page = workspace.list_document_page(profile_id=profile_id)
+        if not documents_page["documents"] and profile_id is not None:
+            documents_page = workspace.list_document_page()
+        deleted_documents_page = workspace.list_document_page(profile_id=profile_id, deleted=True)
+        if not deleted_documents_page["documents"] and profile_id is not None:
+            deleted_documents_page = workspace.list_document_page(deleted=True)
         if profile is not None or document is not None:
             workspace.save_active(
                 profile_id=profile_id,
@@ -971,8 +1012,14 @@ class ProtocolSession:
             "profile": profile,
             "profile_draft": workspace.load_profile_draft(),
             "document": document,
-            "documents": documents,
-            "deleted_documents": deleted_documents,
+            "documents": documents_page["documents"],
+            "deleted_documents": deleted_documents_page["documents"],
+            "documents_page": {
+                key: documents_page[key] for key in ("profile_id", "next_cursor", "has_more")
+            },
+            "deleted_documents_page": {
+                key: deleted_documents_page[key] for key in ("profile_id", "next_cursor", "has_more")
+            },
         }
 
     def close(self) -> None:

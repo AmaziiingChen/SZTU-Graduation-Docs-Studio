@@ -1,0 +1,56 @@
+# 软件审查修复记录
+
+2026 年 10 月 3 日。对应 [软件审查](SOFTWARE_REVIEW_20261003.md) 的 F1–F9、U1–U6，按草稿保全、主要交互、次要体验与服务的顺序完成源码修复。保持现有工作台布局，复用已有组件及 shadcn/ui；本轮未新增 UI 原语或前端依赖。
+
+## 修复结果
+
+| 批次 | 编号 | 修复后的行为 |
+| --- | --- | --- |
+| 草稿保全 | F1 | 文档切换、新建、重命名、回收和恢复在保存到快照回填期间锁定编辑与重复操作；迟到操作不会覆盖新输入。 |
+| 草稿保全 | F2 | 关闭窗口和退出应用先请求渲染层保存最新文档、档案及已挂载工具草稿，收到有效确认后再关闭；失败或确认超时保留窗口。保存进行中仍会补存后续修改。 |
+| 草稿保全 | F3 | 保存和长渲染使用独立侧车进程；渲染捕获同一份文档与档案快照。到期请求等待取消终态或进程退出，取消未能确认时报告结果未知，不伪报取消成功。普通请求超时也等待进程退出，阻止退出后的晚提交。 |
+| 草稿保全 | F4 | 冲突重载前持久保存本机副本，支持重开后恢复或明确移除；副本写入失败则取消重载，恢复后的副本只在保存成功后清除。 |
+| 主要操作 | F5 | 文档和回收站使用稳定游标分页，每页最多 100 条；当前旧文档仍可定位，可继续加载所有后页，去重并丢弃工作区切换前发出的迟到页面。 |
+| 主要操作 | U1 | 异步恢复及切换后自动展开当前分组并滚动到当前项；现有操作栏显示文件名。 |
+| 主要操作 | U2 | 可选日期支持取消选中和“清空日期”，保持原有日期范围限制。 |
+| 主要操作 | U3 | 预览的环境错误及检查页面可直接重开现有修复指引，查看缺失依赖、重新检查并返回工作台。 |
+| 次要体验 | U4 | 空档案初次进入不立即报错；字段失焦或尝试检查/预览后显示对应错误，原有必填规则继续生效。 |
+| 次要体验 | U5 | 参考文献添加弹窗提供可展开的 BibTeX 获取说明，说明导出入口和当前输入格式。 |
+| 次要体验 | U6 | 论文入口显示“未开放”，创建弹窗明确当前预览与下载范围。 |
+| 服务可靠性 | F6 | 更新检查和下载的截止时间覆盖响应体及文件流；卡住后终止并允许重试。 |
+| 服务可靠性 | F7 | 更新缓存命中时核对当前签名清单并重算文件 SHA-256，同版本、同长度的旧内容不会被误用。 |
+| 服务可靠性 | F8 | schema 2 清单允许只有公告或策略；没有安装包时正常处理控制信息。 |
+| 服务可靠性 | F9 | 遥测快照串行落盘，较旧写入不会覆盖新事件；单次失败不阻断后续写入。 |
+
+复查补修：工作区首次载入失败或冲突重载失败后，“重新载入”可继续使用。修复过程中也补上了慢保存完成后继续保存后续输入的保障。共享渲染快照同时纳入 `thesis_title_en`，未启用当前关闭的论文预览入口。
+
+## 验证证据
+
+- 桌面端完整回归：58 个文件、457 项通过，覆盖前端和 Electron 服务。命令为 `pnpm --filter @sztu-docs/desktop exec vitest run --maxWorkers=2 --testTimeout=15000`。首轮旧测试仍要求重开空字段立即报错，已保留“空值不被旧档案回填”的断言并改为失焦后检查提示，最终全量通过。[日志](../tmp/software-fixes-20261003/frontend-tests-final.log)
+- Python 完整回归：运行 241 项，其中 239 项通过、2 项跳过。[日志](../tmp/software-fixes-20261003/backend-tests.log)
+- `pnpm lint`、组件复用规则、设计系统检查、`pnpm build`、`git diff --check` 通过。lint 仍有既有 React/Fast Refresh 警告，构建保留大体积 chunk 提示。[lint](../tmp/software-fixes-20261003/lint-final.log)、[构建](../tmp/software-fixes-20261003/build-final.log)
+- 真实 Node SidecarClient + Python ProtocolSession + 临时 SQLite：合成慢渲染期间保存耗时 1ms；150ms 请求期限在取消清理完成后才返回；普通保存超时后进程停止，回读未出现晚提交。慢任务由测试桩控制，没有以此冒充真实 TeX 渲染验收。[脚本](../tmp/software-fixes-20261003/sidecar-integration.mjs)、[结果](../tmp/software-fixes-20261003/real-sidecar-KXNEsV/evidence.json)
+- 原始 Python 侧车分页：创建 115 份虚构文档，首页 100、次页 15，115 个 ID 唯一，最早的活动文档仍被保留。[脚本](../tmp/software-fixes-20261003/pagination-integration.mjs)、[结果](../tmp/software-fixes-20261003/pagination-L259ZN/evidence.json)
+- 后台 Chrome 使用真实 App 与虚构 IPC 数据检查界面，覆盖文件定位、日期清空、校验时机、BibTeX 帮助、环境修复、分页、论文入口、1100×700 最小窗口，以及冲突副本的保留和恢复。11 张界面截图已逐张检查，脚本未收到页面异常。[界面结果](../tmp/software-fixes-20261003/visual-evidence.json)、[冲突恢复结果](../tmp/software-fixes-20261003/recovery-visual-evidence.json)
+
+## 界面证据
+
+当前文件名和活动分组：
+
+![当前文档定位](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/tmp/software-fixes-20261003/01-current-document.png)
+
+冲突重新载入后仍能恢复保留草稿：
+
+![草稿恢复入口](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/tmp/software-fixes-20261003/10-conflict-retained.png)
+
+环境错误可返回具体修复步骤：
+
+![环境修复指引](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/tmp/software-fixes-20261003/06-environment-recovery.png)
+
+## 完成边界
+
+改动位于当前开发工作树，未提交、发布或替换已安装应用。真实学生数据库、私人文档和系统依赖未修改。
+
+本轮不包含已打包应用的红色关闭按钮/Cmd+Q 实机验收、真实网络更新、实际 exFAT 目的盘兼容测试，也不包含 Word/WPS 或 PDF 版式验收。文档的内容提取、中文字形、逐页版式和目标编辑器四个门禁没有新增通过结论。
+
+本轮后台服务已停止。视觉测试入口保存于 `tmp/software-fixes-20261003/software-fixes.html` 和 `software-fixes.tsx`；复现时将它们临时放回 `apps/desktop/`，运行独立 Vite 5176，再运行该目录的 `capture.mjs` / `capture-recovery.mjs`。原审查中的旧缺陷复现保留为 `.repro.tsx`，避免当作修复后的回归用例自动执行。

@@ -1,8 +1,7 @@
+import { Pagination, PaginationContent, PaginationItem, PaginationNext, PaginationPrevious } from "@/components/ui/pagination"
 import { useEffect, useMemo, useState } from "react"
 import {
   CheckCircle2Icon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
   Clock3Icon,
   FileSearchIcon,
   SearchIcon,
@@ -20,7 +19,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group"
 import { Progress, ProgressLabel, ProgressValue } from "@/components/ui/progress"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select"
@@ -75,7 +74,7 @@ function outcomeBadge(outcome: DiagnosticOutcome) {
   return <Badge variant="outline">成功</Badge>
 }
 
-function MetricCard({
+export function MetricCard({
   title,
   value,
   description,
@@ -222,24 +221,8 @@ function ReportDetails({ report }: { report: DiagnosticReportItem }) {
               <p className="text-xs text-muted-foreground">
                 第 {operationPage + 1}/{operationPageCount} 页 · 共 {report.recentOperations.length} 条
               </p>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setOperationPage((current) => Math.max(0, current - 1))}
-                  disabled={operationPage === 0}
-                >
-                  <ChevronLeftIcon />上一页
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setOperationPage((current) => Math.min(operationPageCount - 1, current + 1))}
-                  disabled={operationPage >= operationPageCount - 1}
-                >
-                  下一页<ChevronRightIcon />
-                </Button>
-              </div>
+              <Pagination className="mx-0 w-auto" aria-label="列表分页"><PaginationContent><PaginationItem><PaginationPrevious href="#" text="上一页" aria-label="上一页操作记录" aria-disabled={operationPage === 0} tabIndex={(operationPage === 0) ? -1 : 0} className="aria-disabled:pointer-events-none aria-disabled:opacity-50" onClick={event => { event.preventDefault(); if (!(operationPage === 0)) (() => setOperationPage((current) => Math.max(0, current - 1)))() }} /></PaginationItem>
+<PaginationItem><PaginationNext href="#" text="下一页" aria-label="下一页操作记录" aria-disabled={operationPage >= operationPageCount - 1} tabIndex={(operationPage >= operationPageCount - 1) ? -1 : 0} className="aria-disabled:pointer-events-none aria-disabled:opacity-50" onClick={event => { event.preventDefault(); if (!(operationPage >= operationPageCount - 1)) (() => setOperationPage((current) => Math.min(operationPageCount - 1, current + 1)))() }} /></PaginationItem></PaginationContent></Pagination>
             </div>
           ) : null}
         </section>
@@ -316,16 +299,15 @@ export function DiagnosticsDashboard({ data }: { data: DiagnosticDashboardData }
 
       <Card size="sm">
         <CardContent className="grid gap-3 pt-4 md:grid-cols-[minmax(16rem,1fr)_12rem_12rem]">
-          <div className="relative">
-            <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
+          <InputGroup>
+            <InputGroupAddon><SearchIcon /></InputGroupAddon>
+            <InputGroupInput
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              className="pl-8"
               placeholder="搜索报告编号或应用版本"
               aria-label="搜索诊断报告"
             />
-          </div>
+          </InputGroup>
           <Select value={platform} onValueChange={(value) => value && setPlatform(value)}>
             <SelectTrigger className="w-full" aria-label="筛选操作系统">
               <span>{({ all: "全部系统", darwin: "macOS", win32: "Windows", linux: "Linux" })[platform] ?? platform}</span>
@@ -400,26 +382,8 @@ export function DiagnosticsDashboard({ data }: { data: DiagnosticDashboardData }
               <span className="text-xs text-muted-foreground">
                 第 {reportPage + 1}/{reportPageCount} 页
               </span>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="icon-sm"
-                  aria-label="上一页诊断报告"
-                  onClick={() => setReportPage((current) => Math.max(0, current - 1))}
-                  disabled={reportPage === 0}
-                >
-                  <ChevronLeftIcon />
-                </Button>
-                <Button
-                  variant="outline"
-                  size="icon-sm"
-                  aria-label="下一页诊断报告"
-                  onClick={() => setReportPage((current) => Math.min(reportPageCount - 1, current + 1))}
-                  disabled={reportPage >= reportPageCount - 1}
-                >
-                  <ChevronRightIcon />
-                </Button>
-              </div>
+              <Pagination className="mx-0 w-auto" aria-label="列表分页"><PaginationContent><PaginationItem><PaginationPrevious href="#" text="上一页" aria-label="上一页诊断报告" aria-disabled={reportPage === 0} tabIndex={(reportPage === 0) ? -1 : 0} className="aria-disabled:pointer-events-none aria-disabled:opacity-50" onClick={event => { event.preventDefault(); if (!(reportPage === 0)) (() => setReportPage((current) => Math.max(0, current - 1)))() }} /></PaginationItem>
+<PaginationItem><PaginationNext href="#" text="下一页" aria-label="下一页诊断报告" aria-disabled={reportPage >= reportPageCount - 1} tabIndex={(reportPage >= reportPageCount - 1) ? -1 : 0} className="aria-disabled:pointer-events-none aria-disabled:opacity-50" onClick={event => { event.preventDefault(); if (!(reportPage >= reportPageCount - 1)) (() => setReportPage((current) => Math.min(reportPageCount - 1, current + 1)))() }} /></PaginationItem></PaginationContent></Pagination>
             </div>
           </Card>
           {selected ? <ReportDetails report={selected} /> : null}

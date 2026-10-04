@@ -7,6 +7,16 @@ type StoredDraft<T> = {
   value: T
 }
 
+const mountedDrafts = new Map<string, () => boolean>()
+
+export function flushLocalDrafts(): boolean {
+  let saved = true
+  for (const flush of mountedDrafts.values()) {
+    if (!flush()) saved = false
+  }
+  return saved
+}
+
 function browserStorage(): Storage | undefined {
   if (typeof window === "undefined") return undefined
   try {
@@ -75,6 +85,14 @@ export function useLocalDraft<T>({
     })
   }, [])
 
+  const flushDraft = useCallback(() => {
+    if (!dirtyRef.current) return true
+    const saved = writeDraft(storageKey, latestValueRef.current)
+    dirtyRef.current = !saved
+    setSaveState(saved ? "saved" : "error")
+    return saved
+  }, [storageKey])
+
   useEffect(() => {
     if (!dirtyRef.current) return
     const timeout = window.setTimeout(() => {
@@ -86,9 +104,13 @@ export function useLocalDraft<T>({
     return () => window.clearTimeout(timeout)
   }, [delay, storageKey, value])
 
-  useEffect(() => () => {
-    if (dirtyRef.current) writeDraft(storageKey, latestValueRef.current)
-  }, [storageKey])
+  useEffect(() => {
+    mountedDrafts.set(storageKey, flushDraft)
+    return () => {
+      if (mountedDrafts.get(storageKey) === flushDraft) mountedDrafts.delete(storageKey)
+      if (dirtyRef.current) writeDraft(storageKey, latestValueRef.current)
+    }
+  }, [flushDraft, storageKey])
 
   useEffect(() => {
     onSaveStateChange?.(saveState)

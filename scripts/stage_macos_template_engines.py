@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stage the three authorized process-document engines for a macOS release."""
+"""Stage the authorized process-document engines for a macOS release."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ from sztu_docs_backend.docx_privacy import (  # noqa: E402
 
 OUTPUT_ROOT = ROOT / "build" / "bundled-template-engines"
 FORBIDDEN_SUFFIXES = {".otf", ".ttc", ".ttf"}
-DOCUMENT_TYPES = ("proposal", "task_book", "midterm")
+DOCUMENT_TYPES = ("proposal", "task_book", "midterm", "advisor_review", "reviewer_review", "defense_record", "grade_assessment")
 
 
 def template_source_root() -> Path:

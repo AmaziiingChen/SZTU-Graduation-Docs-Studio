@@ -10,13 +10,13 @@
     "schema_version": {"const": "1.0"},
     "draft_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
     "profile_id": {"type": ["string", "null"], "maxLength": 128},
-    "document_type": {"enum": ["proposal", "midterm", "task_book"]},
+    "document_type": {"enum": ["proposal", "midterm", "task_book", "advisor_review", "reviewer_review", "defense_record", "grade_assessment"]},
     "document_schema": {
       "type": "object",
       "additionalProperties": false,
       "required": ["id", "version"],
       "properties": {
-        "id": {"enum": ["proposal", "midterm", "task_book"]},
+        "id": {"enum": ["proposal", "midterm", "task_book", "advisor_review", "reviewer_review", "defense_record", "grade_assessment"]},
         "version": {"enum": ["0.1", "0.2"]}
       }
     },
@@ -68,9 +68,146 @@
           "payload": {"$ref": "#/$defs/incompleteTaskBook"}
         }
       }
-    }
+    },
+    {"if": {"properties": {"document_type": {"const": "advisor_review"}}}, "then": {"properties": {"document_schema": {"properties": {"id": {"const": "advisor_review"}, "version": {"const": "0.1"}}}, "payload": {"$ref": "#/$defs/incompleteAssessment"}}}},
+    {"if": {"properties": {"document_type": {"const": "reviewer_review"}}}, "then": {"properties": {"document_schema": {"properties": {"id": {"const": "reviewer_review"}, "version": {"const": "0.1"}}}, "payload": {"$ref": "#/$defs/incompleteAssessment"}}}},
+    {"if": {"properties": {"document_type": {"const": "defense_record"}}}, "then": {"properties": {"document_schema": {"properties": {"id": {"const": "defense_record"}, "version": {"const": "0.1"}}}, "payload": {"$ref": "#/$defs/incompleteAssessment"}}}},
+    {"if": {"properties": {"document_type": {"const": "grade_assessment"}}}, "then": {"properties": {"document_schema": {"properties": {"id": {"const": "grade_assessment"}, "version": {"const": "0.1"}}}, "payload": {"$ref": "#/$defs/incompleteAssessment"}}}}
   ],
   "$defs": {
+    "incompleteAssessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "metadata": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [],
+          "properties": {
+            "title": {
+              "$ref": "#/$defs/paragraph"
+            },
+            "student_name": {
+              "type": "string",
+              "maxLength": 240
+            },
+            "student_id": {
+              "type": "string",
+              "maxLength": 240
+            },
+            "college": {
+              "type": "string",
+              "maxLength": 240
+            },
+            "major": {
+              "type": "string",
+              "maxLength": 240
+            },
+            "advisor": {
+              "type": "string",
+              "maxLength": 240
+            },
+            "advisor_title": {
+              "type": "string",
+              "maxLength": 240
+            },
+            "reviewer": {
+              "type": "string",
+              "maxLength": 240
+            },
+            "reviewer_title": {
+              "type": "string",
+              "maxLength": 240
+            },
+            "defense_time": {
+              "type": "string",
+              "maxLength": 240
+            },
+            "defense_location": {
+              "type": "string",
+              "maxLength": 240
+            },
+            "recorder": {
+              "type": "string",
+              "maxLength": 240
+            },
+            "leader": {
+              "type": "string",
+              "maxLength": 240
+            }
+          }
+        },
+        "sections": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [],
+          "properties": {
+            "comments": {
+              "type": "array",
+              "maxItems": 100,
+              "items": {
+                "$ref": "#/$defs/textContentBlock"
+              }
+            },
+            "division_of_work": {
+              "type": "array",
+              "maxItems": 100,
+              "items": {
+                "$ref": "#/$defs/textContentBlock"
+              }
+            },
+            "suggested_grade": {
+              "type": "string",
+              "maxLength": 50
+            },
+            "final_grade": {
+              "type": "string",
+              "maxLength": 50
+            },
+            "date": {
+              "type": "string",
+              "maxLength": 50
+            },
+            "members": {
+              "type": "array",
+              "maxItems": 30,
+              "items": {
+                "type": "string",
+                "maxLength": 80
+              }
+            },
+            "questions": {
+              "type": "array",
+              "maxItems": 50,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "question",
+                  "answer"
+                ],
+                "properties": {
+                  "question": {
+                    "type": "array",
+                    "maxItems": 100,
+                    "items": {
+                      "$ref": "#/$defs/textContentBlock"
+                    }
+                  },
+                  "answer": {
+                    "type": "array",
+                    "maxItems": 100,
+                    "items": {
+                      "$ref": "#/$defs/textContentBlock"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "text": {"type": "string", "maxLength": 5000},
     "richParagraph": {
       "$ref": "content-block.schema.json#/$defs/richParagraph"

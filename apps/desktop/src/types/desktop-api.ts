@@ -61,7 +61,7 @@ export type PrivacyNoticeStatus = {
 export type TelemetryUsageEvent =
   | {
       name: "view_opened"
-      view: "profile" | "proposal" | "task_book" | "midterm" | "thesis" | "inspection"
+      view: "profile" | DocumentType | "inspection"
     }
   | {
       name: "document_action"
@@ -126,7 +126,7 @@ export type MidtermDatePolicyStatus = {
 }
 
 export type WorkspaceMode = "persistent" | "temporary"
-export type DocumentType = "proposal" | "task_book" | "midterm" | "thesis"
+export type DocumentType = "proposal" | "task_book" | "midterm" | "thesis" | "advisor_review" | "reviewer_review" | "defense_record" | "grade_assessment"
 export type ToolLinkId =
   | "xmind"
   | "draw-io"
@@ -234,6 +234,26 @@ export type DocumentRecord = {
   restored_from_revision?: number
 }
 
+export type DocumentListCursor = { updated_at: string; id: string }
+
+export type DocumentListPageState = {
+  profile_id: string | null
+  next_cursor: DocumentListCursor | null
+  has_more: boolean
+}
+
+export type DocumentListInput = {
+  profileId: string | null
+  deleted: boolean
+  cursor?: DocumentListCursor
+  limit?: number
+}
+
+export type DocumentListResult = DocumentListPageState & {
+  documents: DocumentRecord[]
+  deleted: boolean
+}
+
 export type WorkspaceState = {
   mode: WorkspaceMode
   profile: StudentProfile | null
@@ -241,6 +261,8 @@ export type WorkspaceState = {
   document: DocumentRecord | null
   documents: DocumentRecord[]
   deleted_documents: DocumentRecord[]
+  documents_page?: DocumentListPageState
+  deleted_documents_page?: DocumentListPageState
 }
 
 export type RenameDocumentInput = {
@@ -484,6 +506,12 @@ export type SztuDesktopApi = {
   getPrivacyNoticeStatus: () => Promise<PrivacyNoticeStatus>
   acceptPrivacyNotice: () => Promise<PrivacyNoticeStatus>
   quitApp: () => Promise<null>
+  onCloseRequest: (callback: (requestId: string) => void) => () => void
+  completeCloseRequest: (input: {
+    requestId: string
+    outcome: "saved" | "failed"
+    reason?: "conflict" | "save_failed"
+  }) => Promise<{ accepted: boolean }>
   recordTelemetry: (input: TelemetryUsageEvent) => Promise<null>
   getAnonymousDocumentCount: () => Promise<number | null>
   recordDocumentCompletion: (
@@ -502,6 +530,7 @@ export type SztuDesktopApi = {
   onUpdateStatus: (callback: (status: UpdateStatus) => void) => () => void
   onMidtermDatePolicyStatus: (callback: (status: MidtermDatePolicyStatus) => void) => () => void
   openWorkspace: (mode: WorkspaceMode) => Promise<WorkspaceState>
+  listDocuments: (input: DocumentListInput) => Promise<DocumentListResult>
   saveProfileDraft: (profile: StudentProfileDraft) => Promise<StudentProfileDraft>
   saveProfile: (profile: StudentProfileInput) => Promise<StudentProfile>
   createDocument: (document: DocumentInput) => Promise<DocumentRecord>

@@ -12,6 +12,8 @@ import zipfile
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from .template_engine import ASSESSMENT_DOCUMENT_TYPES
+
 SAFE_SOURCE_FILES = (
     "main.tex",
     "proposal-data.tex",
@@ -100,6 +102,24 @@ PORTABLE_FONTS_TEX = """% Generated portable configuration; font binaries are no
   BoldItalicFont={Times New Roman Bold Italic}
 ]{Times New Roman}
 """
+ASSESSMENT_PORTABLE_FONTS_TEX = (
+    PORTABLE_FONTS_TEX
+    .replace(r"\setCJKmainfont[Path=fonts/]", r"\setCJKmainfont[Path=fonts/,AutoFakeBold=3,AutoFakeSlant=0.2]")
+    .replace(r"\newCJKfontfamily\songti[Path=fonts/]", r"\newCJKfontfamily\songti[Path=fonts/,AutoFakeBold=3,AutoFakeSlant=0.2]")
+    .replace(r"\setCJKmainfont{", r"\setCJKmainfont[AutoFakeBold=3,AutoFakeSlant=0.2]{")
+    .replace(r"\newCJKfontfamily\songti{", r"\newCJKfontfamily\songti[AutoFakeBold=3,AutoFakeSlant=0.2]{")
+    + r"""% Official assessment titles use the same blackface for ASCII glyphs.
+\IfFileExists{fonts/SimHei.ttf}{
+  \newfontfamily\assessmentTitleLatin[Path=fonts/,AutoFakeBold=3]{SimHei.ttf}
+}{
+  \IfFontExistsTF{SimHei}{
+    \newfontfamily\assessmentTitleLatin[AutoFakeBold=3]{SimHei}
+  }{
+    \newfontfamily\assessmentTitleLatin[AutoFakeBold=3]{黑体}
+  }
+}
+"""
+)
 README_TEXT = """# 开题报告 LaTeX 源码包
 
 使用 XeLaTeX 编译 `main.tex`。本包不包含字体、官方 Office 模板或本机绝对路径。
@@ -299,7 +319,7 @@ def build_latex_bundle(
     but font files and its absolute font paths are never copied into the archive.
     """
 
-    if document_type not in {"proposal", "midterm", "task_book"}:
+    if document_type not in {"proposal", "midterm", "task_book"} | ASSESSMENT_DOCUMENT_TYPES:
         _raise("LATEX_BUNDLE_INVALID_INPUT", "当前文档类型没有 LaTeX 源码包配置。")
     generated = _validate_input_path(latex_dir, kind="latex_dir")
     proposal = _validate_input_path(proposal_json, kind="proposal_json")
@@ -343,6 +363,7 @@ def build_latex_bundle(
             "proposal": SAFE_SOURCE_FILES,
             "midterm": MIDTERM_SAFE_SOURCE_FILES,
             "task_book": TASK_BOOK_SAFE_SOURCE_FILES,
+            **{kind: ("main.tex", "body.tex", "assessment-fonts.tex") for kind in ASSESSMENT_DOCUMENT_TYPES},
         }[document_type]
         source_files += tuple(
             name for name in OPTIONAL_SOURCE_FILES
@@ -352,21 +373,25 @@ def build_latex_bundle(
             "proposal": "proposal-fonts.tex",
             "midterm": "midterm-fonts.tex",
             "task_book": "task-book-fonts.tex",
+            **{kind: "assessment-fonts.tex" for kind in ASSESSMENT_DOCUMENT_TYPES},
         }[document_type]
         input_name = {
             "proposal": "proposal.json",
             "midterm": "midterm.json",
             "task_book": "task-book.json",
+            **{kind: f"{kind.replace(chr(95), chr(45))}.json" for kind in ASSESSMENT_DOCUMENT_TYPES},
         }[document_type]
         readme = {
             "proposal": README_TEXT,
             "midterm": MIDTERM_README_TEXT,
             "task_book": TASK_BOOK_README_TEXT,
+            **{kind: "# 评审表 LaTeX 源码包\n\n使用 XeLaTeX 连续编译 main.tex 两次，以完成页面坐标解析；或使用 latexmk -xelatex main.tex。本包不包含字体或官方 Office 模板。请先合法安装宋体、黑体与 Times New Roman。结构化 JSON 为冻结输入，修改后请从工作台重新导出。\n" for kind in ASSESSMENT_DOCUMENT_TYPES},
         }[document_type]
         portable_fonts = {
             "proposal": PORTABLE_FONTS_TEX,
             "midterm": MIDTERM_PORTABLE_FONTS_TEX,
             "task_book": TASK_BOOK_PORTABLE_FONTS_TEX,
+            **{kind: ASSESSMENT_PORTABLE_FONTS_TEX for kind in ASSESSMENT_DOCUMENT_TYPES},
         }[document_type]
         for raw_name in source_files:
             name = _safe_archive_name(raw_name)

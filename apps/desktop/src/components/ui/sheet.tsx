@@ -4,7 +4,7 @@ import { Dialog as SheetPrimitive } from "@base-ui/react/dialog"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { XIcon } from "@/components/ui/x"
-import { AnimatedActionIcon } from "@/components/workbench/animated-action-icon"
+import { AnimatedActionIcon } from "@/components/animated-action-icon"
 
 
 function Sheet({ ...props }: SheetPrimitive.Root.Props) {

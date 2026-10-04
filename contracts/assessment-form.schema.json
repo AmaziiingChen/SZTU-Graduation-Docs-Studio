@@ -1,0 +1,277 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sztu-docs.local/contracts/assessment-form.schema.json",
+  "title": "Fixed-page assessment form",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "metadata",
+    "sections"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "0.1"
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "title",
+        "student_name",
+        "student_id",
+        "college",
+        "major",
+        "advisor",
+        "advisor_title",
+        "reviewer",
+        "reviewer_title",
+        "defense_time",
+        "defense_location",
+        "recorder",
+        "leader"
+      ],
+      "properties": {
+        "title": {
+          "$ref": "#/$defs/title"
+        },
+        "student_name": {
+          "type": "string",
+          "maxLength": 240,
+          "minLength": 1
+        },
+        "student_id": {
+          "type": "string",
+          "maxLength": 240,
+          "minLength": 1
+        },
+        "college": {
+          "type": "string",
+          "maxLength": 240,
+          "minLength": 1
+        },
+        "major": {
+          "type": "string",
+          "maxLength": 240,
+          "minLength": 1
+        },
+        "advisor": {
+          "type": "string",
+          "maxLength": 240
+        },
+        "advisor_title": {
+          "type": "string",
+          "maxLength": 240
+        },
+        "reviewer": {
+          "type": "string",
+          "maxLength": 240
+        },
+        "reviewer_title": {
+          "type": "string",
+          "maxLength": 240
+        },
+        "defense_time": {
+          "type": "string",
+          "maxLength": 240
+        },
+        "defense_location": {
+          "type": "string",
+          "maxLength": 240
+        },
+        "recorder": {
+          "type": "string",
+          "maxLength": 240
+        },
+        "leader": {
+          "type": "string",
+          "maxLength": 240
+        }
+      }
+    },
+    "sections": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "comments",
+        "division_of_work",
+        "suggested_grade",
+        "questions",
+        "members",
+        "final_grade",
+        "date"
+      ],
+      "properties": {
+        "editable_headings": {
+          "type": "boolean",
+          "description": "True when printable prompt paragraphs are supplied in the editable body; missing or false preserves legacy fixed prompts."
+        },
+        "writing_guidance": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "comments": {"$ref": "#/$defs/writingGuidance"},
+            "division_of_work": {"$ref": "#/$defs/writingGuidance"},
+            "questions": {"$ref": "#/$defs/writingGuidance"}
+          },
+          "description": "Explicit guidance separate from fixed headings and body; null or an empty paragraph deletes guidance, while a missing key preserves legacy behavior."
+        },
+        "comments": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "oneOf": [
+              {
+                "$ref": "#/$defs/paragraph"
+              },
+              {
+                "$ref": "content-block.schema.json#/$defs/orderedList"
+              },
+              {
+                "$ref": "content-block.schema.json#/$defs/unorderedList"
+              }
+            ]
+          }
+        },
+        "division_of_work": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "oneOf": [
+              {
+                "$ref": "#/$defs/paragraph"
+              },
+              {
+                "$ref": "content-block.schema.json#/$defs/orderedList"
+              },
+              {
+                "$ref": "content-block.schema.json#/$defs/unorderedList"
+              }
+            ]
+          }
+        },
+        "suggested_grade": {
+          "type": "string",
+          "maxLength": 50
+        },
+        "final_grade": {
+          "type": "string",
+          "maxLength": 50
+        },
+        "date": {
+          "oneOf": [
+            {
+              "const": ""
+            },
+            {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "format": "date"
+            }
+          ]
+        },
+        "members": {
+          "type": "array",
+          "maxItems": 30,
+          "items": {
+            "type": "string",
+            "maxLength": 80
+          }
+        },
+        "questions": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "question",
+              "answer"
+            ],
+            "properties": {
+              "question": {
+                "type": "array",
+                "maxItems": 100,
+                "items": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/$defs/paragraph"
+                    },
+                    {
+                      "$ref": "content-block.schema.json#/$defs/orderedList"
+                    },
+                    {
+                      "$ref": "content-block.schema.json#/$defs/unorderedList"
+                    }
+                  ]
+                }
+              },
+              "answer": {
+                "type": "array",
+                "maxItems": 100,
+                "items": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/$defs/paragraph"
+                    },
+                    {
+                      "$ref": "content-block.schema.json#/$defs/orderedList"
+                    },
+                    {
+                      "$ref": "content-block.schema.json#/$defs/unorderedList"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "writingGuidance": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "string", "maxLength": 5000},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["runs"],
+          "properties": {
+            "type": {"const": "paragraph"},
+            "runs": {
+              "type": "array",
+              "maxItems": 100,
+              "items": {"$ref": "content-block.schema.json#/$defs/run"}
+            }
+          }
+        }
+      ]
+    },
+    "paragraph": {
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 5000
+        },
+        {
+          "$ref": "content-block.schema.json#/$defs/richParagraph"
+        }
+      ]
+    },
+    "title": {
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        {
+          "$ref": "content-block.schema.json#/$defs/richParagraph"
+        }
+      ]
+    }
+  }
+}

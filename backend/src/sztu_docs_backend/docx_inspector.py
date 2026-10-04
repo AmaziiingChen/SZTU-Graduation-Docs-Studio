@@ -13,6 +13,8 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 from xml.etree import ElementTree
 
+from .template_engine import ASSESSMENT_DOCUMENT_TYPES
+
 W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 M_NS = "http://schemas.openxmlformats.org/officeDocument/2006/math"
 PKG_REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
@@ -1001,11 +1003,14 @@ def _check_process_equations(root: ElementTree.Element, data: dict[str, Any], do
 def _check_fonts(
     root: ElementTree.Element,
     document_type: str = "proposal",
+    *,
+    title_latin_runs: set[int] | None = None,
 ) -> tuple[int, tuple[str, ...]]:
     allowed_fonts = {
         "proposal": ALLOWED_FONTS,
         "midterm": MIDTERM_ALLOWED_FONTS,
         "task_book": TASK_BOOK_ALLOWED_FONTS,
+        **{kind: {"宋体", "SimSun", "黑体", "SimHei", "Times New Roman"} for kind in ASSESSMENT_DOCUMENT_TYPES},
     }[document_type]
     visible_runs = 0
     observed: set[str] = set()
@@ -1040,6 +1045,7 @@ def _check_fonts(
         if re.search(r"[A-Za-z0-9]", value) and not (
             fonts.get("ascii") == "Times New Roman"
             or fonts.get("hAnsi") == "Times New Roman"
+            or (title_latin_runs is not None and id(run) in title_latin_runs and fonts.get("ascii") in {"黑体", "SimHei"} and fonts.get("hAnsi") in {"黑体", "SimHei"})
         ):
             _raise("DOCX_FONT_MISMATCH", "Word 西文和数字未使用 Times New Roman。")
     if visible_runs == 0:
@@ -1057,15 +1063,249 @@ def _check_relationships(archive: zipfile.ZipFile) -> None:
                 _raise("DOCX_EXTERNAL_RELATIONSHIP", "Word 文件包含外部关系。", part=name)
 
 
+def _inspect_assessment_docx(document: ElementTree.Element, data: dict[str, Any], kind: str, layout: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(layout, dict) or not isinstance(layout.get("word"), dict) or not isinstance(layout.get("page"), dict):
+        _raise("DOCX_EXPECTATION_INVALID", "评审表缺少受控 Word 版式规格。")
+    expected = layout["word"]
+    body = document.find(f"{W}body")
+    tables = [] if body is None else body.findall(f"{W}tbl")
+    if len(tables) != expected.get("table_count", 1) or len(list(document.iter(f"{W}tbl"))) != len(tables):
+        _raise("DOCX_STRUCTURE_MISMATCH", "评审表主表格数量与官方规格不一致。")
+    table = tables[0]
+    rows = table.findall(f"{W}tr")
+    grid = table.find(f"{W}tblGrid")
+    widths = [_int_attr(column, "w", "table.grid") for column in ([] if grid is None else grid.findall(f"{W}gridCol"))]
+    heights = expected.get("row_heights_twips")
+    if widths != expected.get("table_grid_twips") or not isinstance(heights, list) or len(rows) != len(heights):
+        _raise("DOCX_STRUCTURE_MISMATCH", "评审表行列几何与打印规格不一致。")
+    for index, (row, height) in enumerate(zip(rows, heights)):
+        node = row.find(f"{W}trPr/{W}trHeight")
+        if node is None or _int_attr(node, "val", "row.height") != height or node.get(f"{W}hRule") != "exact":
+            _raise("DOCX_ROW_LAYOUT_MISMATCH", "评审表必须使用固定行高以保留手写空间。", row=index)
+    sections = [] if body is None else body.findall(f"{W}sectPr")
+    explicit_page_break = any(node.get(f"{W}type") == "page" for node in document.iter(f"{W}br"))
+    if len(sections) != 1 or explicit_page_break:
+        _raise("DOCX_PAGE_LAYOUT_MISMATCH", "评审表不得包含额外分页。")
+    page_size = sections[0].find(f"{W}pgSz")
+    page_margins = sections[0].find(f"{W}pgMar")
+    def twips(mm: float) -> int:
+        return round(mm * 1440 / 25.4)
+    page = layout["page"]
+    for key, expected_value in {"w": twips(page["width_mm"]), "h": twips(page["height_mm"])}.items():
+        if abs(_int_attr(page_size, key, "page.size") - expected_value) > 1:
+            _raise("DOCX_PAGE_LAYOUT_MISMATCH", "评审表纸张尺寸与打印规格不一致。")
+    for key in ("top", "bottom", "left", "right"):
+        if abs(_int_attr(page_margins, key, "page.margin") - twips(page[f"{key}_margin_mm"])) > 1:
+            _raise("DOCX_PAGE_LAYOUT_MISMATCH", "评审表页边距与打印规格不一致。")
+    text = _compact(_text(document))
+    metadata = data["metadata"]
+    identity_fields = ("title", "student_name", "student_id", "major") if kind == "defense_record" else ("title", "student_name", "student_id", "college", "major")
+    for field in identity_fields:
+        value = metadata[field]
+        value = value if isinstance(value, str) else "".join(run["text"] for run in value["runs"])
+        if _compact(value) not in text:
+            _raise("DOCX_CONTENT_MISMATCH", "评审表基本信息未完整写入。", field=field)
+    def content_fragments(value: Any):
+        if isinstance(value, str):
+            if value.strip():
+                yield value
+        elif isinstance(value, list):
+            for item in value:
+                yield from content_fragments(item)
+        elif isinstance(value, dict):
+            if "runs" in value:
+                yield "".join(run["text"] for run in value["runs"])
+            elif value.get("type") in {"ordered_list", "unordered_list"}:
+                for item in value["items"]:
+                    yield from content_fragments(item["content"])
+                    yield from content_fragments(item.get("children", []))
+            elif set(value) == {"question", "answer"}:
+                yield from content_fragments(value["question"])
+                yield from content_fragments(value["answer"])
+    body_fields = {
+        "advisor_review": ("comments", "division_of_work", "suggested_grade"),
+        "reviewer_review": ("comments", "suggested_grade"),
+        "defense_record": ("questions", "members"),
+        "grade_assessment": ("comments",),
+    }[kind]
+    if kind == "defense_record" and (data["sections"].get("editable_headings", False) or "questions" in data["sections"].get("writing_guidance", {})):
+        body_fields += ("comments",)
+    for field in body_fields:
+        for fragment in content_fragments(data["sections"][field]):
+            if _compact(fragment) and _compact(fragment) not in text:
+                _raise("DOCX_CONTENT_MISMATCH", "评审表预填内容未完整写入。", field=field)
+    _check_assessment_prompts(document, data, layout)
+    _check_assessment_body(document, data, kind, layout)
+    if kind == "grade_assessment" and data["sections"]["final_grade"].strip():
+        from decimal import Decimal, ROUND_HALF_UP
+        grade = str(Decimal(data["sections"]["final_grade"]).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+        if grade not in text:
+            _raise("DOCX_CONTENT_MISMATCH", "最终成绩未按四舍五入写入。", field="final_grade")
+    if data["sections"]["date"]:
+        from datetime import date
+        entered = date.fromisoformat(data["sections"]["date"])
+        displayed = f"{entered.year}年{entered.month}月{entered.day}日"
+        if displayed not in text:
+            _raise("DOCX_CONTENT_MISMATCH", "预填日期未完整写入。", field="date")
+    title_latin_runs: set[int] = set()
+    title_policy = layout.get("typography", {}).get("title", {})
+    if title_policy.get("latin_font_role") == "cjk_label":
+        for region in layout.get("regions", []):
+            if region.get("key") not in {"school-title", "form-title"} or region.get("latin_font_role") != "cjk_label":
+                continue
+            matches = [paragraph for paragraph in body.findall(f"{W}p") if _compact(_text(paragraph)) == _compact(region["value"])]
+            if len(matches) != 1:
+                _raise("DOCX_CONTENT_MISMATCH", "评审表官方标题段落缺失或重复。", field=region["key"])
+            for run in matches[0].iter(f"{W}r"):
+                if not _text(run).strip():
+                    continue
+                declared_fonts = run.find(f"{W}rPr/{W}rFonts")
+                if any(_attr(declared_fonts, key) not in {"黑体", "SimHei"} for key in ("ascii", "hAnsi", "cs")):
+                    _raise("DOCX_FONT_MISMATCH", "评审表标题的中西文须按原表统一使用黑体。", field=region["key"])
+                title_latin_runs.add(id(run))
+    visible_runs, fonts = _check_fonts(document, kind, title_latin_runs=title_latin_runs)
+    return {
+        "schema_version": "1.0", "check_id": "docx-deep-structure", "gate": "structure",
+        "status": "pass", "blocking": True, "message": "评审表 OOXML、基本信息、固定行高、页边距及字体检查通过。",
+        "details": {"tables": len(tables), "rows": len(rows), "grid_columns": len(widths), "visible_runs": visible_runs, "fonts": list(fonts), "visual_acceptance": False, "target_editor_verified": False},
+    }
+
+
+def _check_assessment_prompts(document: ElementTree.Element, data: dict[str, Any], layout: dict[str, Any]) -> None:
+    """Validate explicit guidance separately from fixed headings and legacy bodies."""
+    editable = data["sections"].get("editable_headings", False)
+    prompt_fields = {"prompt": "comments", "division-label": "division_of_work", "questions-prompt": "comments"}
+    guidance_fields = {"prompt": "comments", "division-label": "division_of_work", "questions-prompt": "questions"}
+    guidance = data["sections"].get("writing_guidance", {})
+    for region in layout.get("regions", []):
+        if region.get("key") not in prompt_fields:
+            continue
+        field = guidance_fields[region["key"]]
+        if field in guidance:
+            _check_assessment_guidance(document, guidance[field], region)
+            continue
+        parts = [
+            (region.get("label", ""), region.get("label_font", "heiti"), region.get("label_size_pt", region["size_pt"])),
+            (region["value"], region["font"], region["size_pt"]),
+        ]
+        suffix = region.get("suffix", {})
+        parts.append((suffix.get("text", ""), suffix.get("font", region["font"]), suffix.get("size_pt", region["size_pt"])))
+        default = "".join(value for value, _, _ in parts)
+        if editable:
+            blocks = data["sections"][prompt_fields[region["key"]]]
+            first = blocks[0] if blocks else None
+            if not isinstance(first, (str, dict)) or (isinstance(first, dict) and "runs" not in first):
+                continue
+            runs = _paragraph_runs(first)
+            if "".join(run["text"] for run in runs) != default or any(run["bold"] or run["italic"] or run["script"] != "normal" for run in runs):
+                continue
+        paragraphs = [paragraph for paragraph in document.iter(f"{W}p") if _compact(_text(paragraph)) == _compact(default)]
+        if not paragraphs:
+            _raise("DOCX_CONTENT_MISMATCH", "评审表完整默认提示未写入。", field=region["key"])
+        actual = []
+        for run in paragraphs[0].iter(f"{W}r"):
+            fonts = run.find(f"{W}rPr/{W}rFonts")
+            size = _int_attr(run.find(f"{W}rPr/{W}sz"), "val", "prompt.size")
+            actual.extend((_attr(fonts, "eastAsia"), size) for char in _text(run) if not char.isspace())
+        expected = []
+        for value, role, size in parts:
+            families = {"黑体", "SimHei"} if role.startswith("heiti") else {"宋体", "SimSun"}
+            expected.extend((families, round(size * 2)) for char in value if not char.isspace())
+        if len(actual) != len(expected) or any(font not in families or size != half_points for (font, size), (families, half_points) in zip(actual, expected)):
+            _raise("DOCX_FONT_MISMATCH", "评审表完整默认提示须保留原表字体与字号。", field=region["key"])
+
+
+def _check_assessment_guidance(document: ElementTree.Element, guidance: Any, region: dict[str, Any]) -> None:
+    policy = region.get("guidance_style")
+    if not isinstance(policy, dict) or any(not isinstance(policy.get(key), dict) for key in ("fixed_label", "text", "fixed_suffix")):
+        _raise("DOCX_EXPECTATION_INVALID", "评审表缺少固定标题与填写提示的字体规格。", field=region["key"])
+    label_style, text_style, suffix_style = policy["fixed_label"], policy["text"], policy["fixed_suffix"]
+    runs = [] if guidance is None else _paragraph_runs(guidance)
+    label = region.get("label", "")
+    suffix = region.get("suffix", {}).get("text", "")
+    value = label + "".join(run["text"] for run in runs) + suffix
+    if not value.strip():
+        return
+    paragraphs = [paragraph for paragraph in document.iter(f"{W}p") if _compact(_text(paragraph)) == _compact(value)]
+    if not paragraphs:
+        _raise("DOCX_CONTENT_MISMATCH", "评审表固定标题或填写提示未完整写入。", field=region["key"])
+    paragraph = paragraphs[0]
+    indent = paragraph.find(f"{W}pPr/{W}ind")
+    expected_indent = round(region.get("first_line_indent_em", 0) * text_style["size_pt"] * 20) if region["key"] == "questions-prompt" else round(label_style.get("first_line_indent_em", 0) * label_style["size_pt"] * 20)
+    actual_indent = 0 if _attr(indent, "firstLine") is None else _int_attr(indent, "firstLine", "guidance.indent")
+    if abs(actual_indent - expected_indent) > 1 or any(_attr(indent, key) not in {None, "0"} for key in ("firstLineChars", "hanging", "left", "start")):
+        _raise("DOCX_PARAGRAPH_LAYOUT_MISMATCH", "评审表固定标题及填写提示的缩进与规格不一致。", field=region["key"])
+    spacing = paragraph.find(f"{W}pPr/{W}spacing")
+    if "line_spacing_pt" in region and (_attr(spacing, "lineRule") != "exact" or _int_attr(spacing, "line", "guidance.line_spacing") != round(region["line_spacing_pt"] * 20)):
+        _raise("DOCX_PARAGRAPH_LAYOUT_MISMATCH", "评审表填写提示的行距与规格不一致。", field=region["key"])
+    actual = []
+    for run in paragraph.iter(f"{W}r"):
+        style = _run_style(run)
+        size = _int_attr(run.find(f"{W}rPr/{W}sz"), "val", "guidance.size")
+        actual.extend((style, size) for char in _text(run) if not char.isspace())
+    expected = []
+    def append_expected(text: str, families: set[str], size: float, *, bold: bool = False, italic: bool = False, script: str = "normal") -> None:
+        expected.extend((families, round(size * 2), bold, italic, script) for char in text if not char.isspace())
+    def font_families(style: dict[str, Any]) -> set[str]:
+        if style["font"] in {"heiti", "heitiBold"}:
+            return {"黑体", "SimHei"}
+        if style["font"] == "songti":
+            return {"宋体", "SimSun"}
+        _raise("DOCX_EXPECTATION_INVALID", "评审表字体规格包含不支持的字体。", field=region["key"])
+    append_expected(label, font_families(label_style), label_style["size_pt"], bold=label_style["bold"])
+    for run in runs:
+        append_expected(run["text"], font_families(text_style), text_style["size_pt"], bold=run["bold"], italic=run["italic"], script=run["script"])
+    append_expected(suffix, font_families(suffix_style), suffix_style["size_pt"], bold=suffix_style["bold"])
+    if len(actual) != len(expected) or any(style["fonts"].get("eastAsia") not in families or size != half_points or style["bold"] != bold or style["italic"] != italic or style["script"] != script for (style, size), (families, half_points, bold, italic, script) in zip(actual, expected)):
+        _raise("DOCX_FONT_MISMATCH", "评审表固定标题及填写提示须保留来源规定的字体、字号、字重及用户样式。", field=region["key"])
+
+
+def _check_assessment_body(document: ElementTree.Element, data: dict[str, Any], kind: str, layout: dict[str, Any]) -> None:
+    """Explicit guidance must not absorb or restyle independent body paragraphs."""
+    guidance = data["sections"].get("writing_guidance", {})
+    fields = []
+    if kind != "defense_record" and "comments" in guidance:
+        fields.append("comments")
+    if kind == "advisor_review" and "division_of_work" in guidance:
+        fields.append("division_of_work")
+    if kind == "defense_record" and "questions" in guidance:
+        fields.append("comments")
+    blocks = [(field, block) for field in fields for block in data["sections"][field]]
+    if kind == "defense_record" and "questions" in guidance:
+        blocks.extend((f"questions.{part}", block) for question in data["sections"]["questions"] for part in ("question", "answer") for block in question[part])
+    body_size = layout.get("typography", {}).get("body", {}).get("size_pt", 10.5)
+    indent_twips = round(2 * body_size * 20)
+    for field, block in blocks:
+        if not isinstance(block, (str, dict)) or (isinstance(block, dict) and "runs" not in block):
+            continue
+        runs = _paragraph_runs(block)
+        value = "".join(run["text"] for run in runs)
+        if not value.strip():
+            continue
+        matches = [paragraph for paragraph in document.iter(f"{W}p") if _compact(_text(paragraph)) == _compact(value)]
+        paragraphs = [paragraph for paragraph in matches if _int_attr(paragraph.find(f"{W}pPr/{W}ind"), "firstLine", "body.indent") == indent_twips]
+        if not paragraphs:
+            _raise("DOCX_PARAGRAPH_LAYOUT_MISMATCH", "评审表正文须独立成段并保持两字首行缩进。", field=field)
+        actual = []
+        for run in paragraphs[0].iter(f"{W}r"):
+            style = _run_style(run)
+            size = _int_attr(run.find(f"{W}rPr/{W}sz"), "val", "body.size")
+            actual.extend((style, size) for char in _text(run) if not char.isspace())
+        expected = [(run["bold"], run["italic"], run["script"]) for run in runs for char in run["text"] if not char.isspace()]
+        if len(actual) != len(expected) or any(style["fonts"].get("eastAsia") not in {"宋体", "SimSun"} or size != round(body_size * 2) or (style["bold"], style["italic"], style["script"]) != marks for (style, size), marks in zip(actual, expected)):
+            _raise("DOCX_FONT_MISMATCH", "评审表正文须保留正文样式及用户的富文本标记。", field=field)
+
+
 def inspect_docx(
     path: Path,
     proposal: dict[str, Any],
     *,
     document_type: str = "proposal",
+    layout: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Inspect a process-document DOCX and return a structure-gate CheckResult."""
 
-    if document_type not in {"proposal", "midterm", "task_book"}:
+    if document_type not in {"proposal", "midterm", "task_book"} | ASSESSMENT_DOCUMENT_TYPES:
         _raise("DOCX_EXPECTATION_INVALID", "当前文档类型没有 DOCX 深层检查器。")
 
     try:
@@ -1090,6 +1330,9 @@ def inspect_docx(
         raise
     except (OSError, zipfile.BadZipFile, KeyError) as exc:
         raise DocxInspectionError("DOCX_INVALID_ARCHIVE", "Word 文件无法作为 OOXML 打开。") from exc
+
+    if document_type in ASSESSMENT_DOCUMENT_TYPES:
+        return _inspect_assessment_docx(document, proposal, document_type, layout)
 
     if document_type == "task_book":
         body = document.find(f"{W}body")

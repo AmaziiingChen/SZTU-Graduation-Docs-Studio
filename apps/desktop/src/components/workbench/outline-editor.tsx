@@ -5,7 +5,7 @@ import { ArrowRightIcon } from "@/components/ui/arrow-right"
 import { ArrowUpIcon } from "@/components/ui/arrow-up"
 import { ArrowDownIcon } from "@/components/ui/arrow-down"
 import { DeleteIcon } from "@/components/ui/delete"
-import { AnimatedActionIcon } from "@/components/workbench/animated-action-icon"
+import { AnimatedActionIcon } from "@/components/animated-action-icon"
 import { useMemo, useState } from "react"
 
 
@@ -343,7 +343,7 @@ export function OutlineEditor({
               }}
               disabled={disabled}
             >
-              <SelectTrigger aria-label="目录类型" className="w-full sm:w-auto">
+              <SelectTrigger aria-label="目录类型" size="sm" className="w-full sm:w-auto">
                 <SelectValue placeholder="选择目录类型">
                   {numberingStyle
                     ? OUTLINE_NUMBERING_STYLE_OPTIONS.find(
@@ -376,7 +376,7 @@ export function OutlineEditor({
                 commit([...value, item])
               }}
             >
-              <span data-icon="inline-start"><AnimatedActionIcon icon={PlusIcon} /></span>
+              <AnimatedActionIcon icon={PlusIcon} data-icon="inline-start" />
               新增目录
             </Button>
           </div>

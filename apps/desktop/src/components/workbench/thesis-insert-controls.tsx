@@ -1,3 +1,11 @@
+import { Field, FieldLabel } from "@/components/ui/field"
+import { useId } from "react"
+import { AnimatedActionIcon } from "@/components/animated-action-icon"
+import { PlusIcon } from "@/components/ui/plus"
+import { FeatherIcon } from "@/components/ui/feather"
+import { DeleteIcon } from "@/components/ui/delete"
+import { LinkIcon } from "@/components/ui/link"
+import { CircleCheckIcon } from "@/components/ui/circle-check"
 import { useState } from "react"
 import type { Editor } from "@tiptap/react"
 import { Button } from "@/components/ui/button"
@@ -10,6 +18,7 @@ import { isEquation } from "@/lib/thesis-nodes"
 export function ThesisInsertControls({ editor, references, disabled, equationSelected }: {
   editor: Editor; references: ThesisReferenceOption[]; disabled: boolean; equationSelected: boolean
 }) {
+  const componentFieldId = useId()
   const [dialog, setDialog] = useState<{ kind: "equation" | "reference"; from: number; to: number; snapshot: string; id: string; editing: boolean } | null>(null)
   const [latex, setLatex] = useState("")
   const [target, setTarget] = useState("")
@@ -34,14 +43,17 @@ export function ThesisInsertControls({ editor, references, disabled, equationSel
     setDialog(null)
   }
   return <>
-    <Button size="sm" variant="ghost" disabled={disabled || editor.isActive("listItem")} onClick={() => open("equation")}>{equationSelected ? "编辑公式" : "插入公式"}</Button>
-    {equationSelected && <Button size="sm" variant="ghost" disabled={disabled} onClick={() => editor.chain().focus().deleteSelection().run()}>删除公式</Button>}
-    <Button size="sm" variant="ghost" disabled={disabled || !references.length || equationSelected} onClick={() => open("reference")}>引用文献/公式</Button>
+    <Button size="sm" variant="ghost" disabled={disabled || editor.isActive("listItem")} onClick={() => open("equation")}><AnimatedActionIcon icon={equationSelected ? FeatherIcon : PlusIcon} />{equationSelected ? "编辑公式" : "插入公式"}</Button>
+    {equationSelected && <Button size="sm" variant="ghost" disabled={disabled} onClick={() => editor.chain().focus().deleteSelection().run()}><AnimatedActionIcon icon={DeleteIcon} />删除公式</Button>}
+    <Button size="sm" variant="ghost" disabled={disabled || !references.length || equationSelected} onClick={() => open("reference")}><AnimatedActionIcon icon={LinkIcon} />引用文献/公式</Button>
     <Dialog open={dialog !== null} onOpenChange={open => { if (!open) setDialog(null) }}><DialogContent>
-      <DialogHeader><DialogTitle>{dialog?.kind === "equation" ? "公式" : "插入引用"}</DialogTitle><DialogDescription>{dialog?.kind === "equation" ? "输入 LaTeX 数学源码，例如 E=mc^{2}。编辑时显示源码，生成 PDF 预览后查看正式排版；仅支持常用数学命令。" : "文献按正文首次引用顺序编号，公式按章编号；引用始终绑定原目标。"}</DialogDescription></DialogHeader>
-      {dialog?.kind === "equation" ? <label className="grid gap-2 text-sm">公式 LaTeX 源码<Textarea value={latex} maxLength={10000} onChange={e => setLatex(e.target.value)} /></label> : <Select value={target} onValueChange={value => setTarget(value ?? "")}><SelectTrigger aria-label="引用目标"><SelectValue>{selectedReference ? `${selectedReference.label} ${selectedReference.title}` : "选择文献或公式"}</SelectValue></SelectTrigger><SelectContent>{references.map(r => <SelectItem key={`${r.kind}:${r.target}`} value={`${r.kind}:${r.target}`}>{r.label} {r.title}</SelectItem>)}</SelectContent></Select>}
+      <DialogHeader><DialogTitle>{dialog?.kind === "equation" ? "公式" : "插入引用"}</DialogTitle><DialogDescription>{dialog?.kind === "equation" ? "输入 LaTeX 公式，例如 E=mc^{2}。排版效果请在 PDF 预览中查看。" : "选择要引用的文献或公式，编号会自动更新。"}</DialogDescription></DialogHeader>
+      {dialog?.kind === "equation" ? <Field>
+                  <FieldLabel htmlFor={`${componentFieldId}-1`}>公式 LaTeX 源码</FieldLabel>
+                  <Textarea id={`${componentFieldId}-1`} value={latex} maxLength={10000} onChange={e => setLatex(e.target.value)} />
+                </Field> : <Select value={target} onValueChange={value => setTarget(value ?? "")}><SelectTrigger aria-label="引用目标"><SelectValue>{selectedReference ? `${selectedReference.label} ${selectedReference.title}` : "选择文献或公式"}</SelectValue></SelectTrigger><SelectContent>{references.map(r => <SelectItem key={`${r.kind}:${r.target}`} value={`${r.kind}:${r.target}`}>{r.label} {r.title}</SelectItem>)}</SelectContent></Select>}
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-      <DialogFooter><Button variant="outline" onClick={() => setDialog(null)}>取消</Button><Button disabled={disabled} onClick={save}>确认插入</Button></DialogFooter>
+      <DialogFooter><Button variant="outline" onClick={() => setDialog(null)}>取消</Button><Button disabled={disabled} onClick={save}><AnimatedActionIcon icon={CircleCheckIcon} />确认插入</Button></DialogFooter>
     </DialogContent></Dialog>
   </>
 }

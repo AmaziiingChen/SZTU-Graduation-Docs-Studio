@@ -1,4 +1,6 @@
-import { AnimatedActionIcon } from "@/components/workbench/animated-action-icon"
+import { Field, FieldLabel } from "@/components/ui/field"
+import { useId } from "react"
+import { AnimatedActionIcon } from "@/components/animated-action-icon"
 import { InfoIcon as InfoIconAnimated } from "@/components/ui/animateicons/info"
 import { useMemo } from "react"
 
@@ -94,6 +96,7 @@ export function GeneralTableGenerator({
 }: {
   onSaveStateChange?: (state: SaveState) => void
 } = {}) {
+  const componentFieldId = useId()
   const { value: draft, setValue: setDraft, clearDraft } = useLocalDraft({
     storageKey,
     initialValue: initialDraft,
@@ -163,36 +166,36 @@ export function GeneralTableGenerator({
             </CardHeader>
             <CardContent className="grid gap-4">
               <div className="grid gap-2 sm:grid-cols-2">
-                <label className="grid gap-2 text-sm font-medium">
-                  表题（可选）
-                  <Input value={caption} onChange={(event) => setDraft((current) => ({ ...current, caption: event.target.value }))} />
-                </label>
-                <label className="grid gap-2 text-sm font-medium">
-                  引用标签（可选）
-                  <Input
+                <Field>
+                  <FieldLabel htmlFor={`${componentFieldId}-1`}>表题（可选）</FieldLabel>
+                  <Input id={`${componentFieldId}-1`} value={caption} onChange={(event) => setDraft((current) => ({ ...current, caption: event.target.value }))} />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor={`${componentFieldId}-2`}>引用标签（可选）</FieldLabel>
+                  <Input id={`${componentFieldId}-2`}
                     value={label}
                     onChange={(event) => setDraft((current) => ({ ...current, label: event.target.value }))}
                     placeholder="例如：tab:result"
                   />
-                </label>
+                </Field>
               </div>
               <fieldset className="flex flex-wrap items-end gap-4">
                 <legend className="sr-only">表格设置</legend>
-                <label className="grid w-full gap-2 text-sm font-medium sm:w-48">
-                  表格类型
+                <Field className="w-full sm:w-48">
+                  <FieldLabel htmlFor={`${componentFieldId}-3`}>表格类型</FieldLabel>
                   <Select value={mode} onValueChange={(value) => setDraft((current) => ({ ...current, mode: value as GeneralTableMode }))}>
-                    <SelectTrigger aria-label="表格类型" className="w-full"><span>{modeLabels[mode]}</span></SelectTrigger>
+                    <SelectTrigger id={`${componentFieldId}-3`} aria-label="表格类型" className="w-full"><span>{modeLabels[mode]}</span></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="natural">普通表格</SelectItem>
                       <SelectItem value="page_width">通栏等宽表格</SelectItem>
                       <SelectItem value="long_table">跨页表格</SelectItem>
                     </SelectContent>
                   </Select>
-                </label>
-                <label className="grid w-full gap-2 text-sm font-medium sm:w-32">
-                  表头行数
+                </Field>
+                <Field className="w-full sm:w-32">
+                  <FieldLabel htmlFor={`${componentFieldId}-4`}>表头行数</FieldLabel>
                   <Select value={String(headerRows)} onValueChange={(value) => setDraft((current) => ({ ...current, headerRows: Number(value) }))}>
-                    <SelectTrigger aria-label="表头行数" className="w-full">
+                    <SelectTrigger id={`${componentFieldId}-4`} aria-label="表头行数" className="w-full">
                       <span>{headerRows === 0 ? "无表头" : `${headerRows} 行`}</span>
                     </SelectTrigger>
                     <SelectContent>
@@ -201,7 +204,7 @@ export function GeneralTableGenerator({
                       ))}
                     </SelectContent>
                   </Select>
-                </label>
+                </Field>
               </fieldset>
               <VisualTableEditor
                 value={{ source, rowCount, columnCount: draftColumnCount }}
@@ -214,11 +217,11 @@ export function GeneralTableGenerator({
                   <legend className="text-sm font-medium">各列对齐</legend>
                   <div className="grid gap-2 sm:grid-cols-2">
                     {parsed.rows[0].map((heading, index) => (
-                      <label key={index} className="flex items-center gap-2 text-sm">
-                        <span className="min-w-0 flex-1 truncate" title={heading || `第 ${index + 1} 列`}>
+                      <Field key={index} orientation="horizontal">
+                  <FieldLabel htmlFor={`${componentFieldId}-5-${index}`}><span className="min-w-0 flex-1 truncate" title={heading || `第 ${index + 1} 列`}>
                           {heading || `第 ${index + 1} 列`}
-                        </span>
-                        <Select
+                        </span></FieldLabel>
+                  <Select
                           value={normalizedAlignments[index]}
                           onValueChange={(value) => setDraft((current) => {
                             const next = Array.from(
@@ -229,7 +232,7 @@ export function GeneralTableGenerator({
                             return { ...current, alignments: next }
                           })}
                         >
-                          <SelectTrigger aria-label={`${heading || `第 ${index + 1} 列`}对齐方式`} className="w-28">
+                          <SelectTrigger id={`${componentFieldId}-5-${index}`} aria-label={`${heading || `第 ${index + 1} 列`}对齐方式`} className="w-28">
                             <span>{alignmentLabels[normalizedAlignments[index]]}</span>
                           </SelectTrigger>
                           <SelectContent>
@@ -238,7 +241,7 @@ export function GeneralTableGenerator({
                             ))}
                           </SelectContent>
                         </Select>
-                      </label>
+                </Field>
                     ))}
                   </div>
                 </fieldset>

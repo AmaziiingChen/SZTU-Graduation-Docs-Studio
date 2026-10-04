@@ -1,9 +1,11 @@
 import { readdir, readFile } from "node:fs/promises"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
+import { componentReuseIssues } from "./frontend-component-reuse.mjs"
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 const rendererRoot = path.join(repositoryRoot, "apps", "desktop", "src")
+const adminRoot = path.join(repositoryRoot, "apps", "telemetry-admin", "src")
 const themePath = path.join(rendererRoot, "index.css")
 const appearanceThemesPath = path.join(rendererRoot, "lib", "appearance-themes.ts")
 const savedStatusPath = path.join(
@@ -36,13 +38,6 @@ const threeLineTableGeneratorPath = path.join(
   "workbench",
   "three-line-table-generator.tsx",
 )
-const latexSourceCardPath = path.join(
-  rendererRoot,
-  "components",
-  "workbench",
-  "latex-source-card.tsx",
-)
-
 const requiredFontStack =
   "--font-sans: 'Geist Variable', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans SC', system-ui, sans-serif;"
 const approvedSavedStateClasses = new Set(["bg-emerald-500"])
@@ -124,6 +119,9 @@ if (!theme.includes(requiredFontStack)) {
 
 for (const filePath of await collectFiles(rendererRoot)) {
   const source = await readFile(filePath, "utf8")
+  if (filePath.endsWith(".tsx")) {
+    issues.push(...componentReuseIssues(path.relative(repositoryRoot, filePath), source))
+  }
 
   for (const match of source.matchAll(paletteClassPattern)) {
     if (!approvedPaletteClassesByFile.get(filePath)?.has(match[0])) {
@@ -192,8 +190,7 @@ for (const filePath of await collectFiles(rendererRoot)) {
   for (const match of source.matchAll(monoFontPattern)) {
     if (
       filePath !== referenceImporterPath &&
-      filePath !== threeLineTableGeneratorPath &&
-      filePath !== latexSourceCardPath
+      filePath !== threeLineTableGeneratorPath
     ) {
       report(
         issues,
@@ -203,6 +200,16 @@ for (const filePath of await collectFiles(rendererRoot)) {
         "Monospace is reserved for BibTeX source editing unless a new semantic use is documented",
       )
     }
+  }
+}
+
+for (const directory of [path.join(rendererRoot, "components", "ui"), adminRoot]) {
+  for (const filePath of await collectFiles(directory)) {
+    if (!filePath.endsWith(".tsx")) continue
+    issues.push(...componentReuseIssues(
+      path.relative(repositoryRoot, filePath),
+      await readFile(filePath, "utf8"),
+    ))
   }
 }
 

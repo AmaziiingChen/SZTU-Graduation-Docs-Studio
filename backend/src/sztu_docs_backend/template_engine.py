@@ -32,7 +32,8 @@ MIDTERM_ENGINE_DIRECTORY_NAME = "midterm-0.3-66c968c"
 TASK_BOOK_ENGINE_VERSION = "0.2+66c968c"
 TASK_BOOK_ENGINE_TEMPLATE_ID = "sztu.task-book.2026.local"
 TASK_BOOK_ENGINE_DIRECTORY_NAME = "task-book-0.2-66c968c"
-SUPPORTED_ENGINE_DOCUMENT_TYPES = frozenset({"proposal", "midterm", "task_book", "thesis"})
+ASSESSMENT_DOCUMENT_TYPES = frozenset({"advisor_review", "reviewer_review", "defense_record", "grade_assessment"})
+SUPPORTED_ENGINE_DOCUMENT_TYPES = frozenset({"proposal", "midterm", "task_book", "thesis"}) | ASSESSMENT_DOCUMENT_TYPES
 INSTALL_MANIFEST_NAME = "install-manifest.json"
 WORKSPACE_LINKS_NAME = "workspace-links.json"
 WORKSPACE_SNAPSHOTS_DIRECTORY = "workspace-snapshots"
@@ -438,6 +439,7 @@ def installed_engine_root(data_directory: Path, document_type: str = "proposal")
         "midterm": MIDTERM_ENGINE_DIRECTORY_NAME,
         "task_book": TASK_BOOK_ENGINE_DIRECTORY_NAME,
         "thesis": "thesis-workspace",
+        **{kind: f"{kind}-workspace" for kind in ASSESSMENT_DOCUMENT_TYPES},
     }[document_type]
     return data_directory / "template-engines" / directory_name
 
@@ -455,6 +457,7 @@ def resolve_engine(document_type: str = "proposal") -> EngineDescriptor:
         "midterm": "SZTU_DOCS_MIDTERM_ENGINE_DIR",
         "task_book": "SZTU_DOCS_TASK_BOOK_ENGINE_DIR",
         "thesis": "SZTU_DOCS_THESIS_ENGINE_DIR",
+        **{kind: f"SZTU_DOCS_{kind.upper()}_ENGINE_DIR" for kind in ASSESSMENT_DOCUMENT_TYPES},
     }[document_type]
     configured = os.environ.get(configured_name)
     if configured:
@@ -512,7 +515,7 @@ def resolve_engine(document_type: str = "proposal") -> EngineDescriptor:
                     validator=installed / "scripts" / "validate_cjk_render.py",
                     source="installed",
                 )
-            if document_type == "thesis":
+            if document_type == "thesis" or document_type in ASSESSMENT_DOCUMENT_TYPES:
                 return _snapshot_workspace_engine(
                     data_directory, installed, document_type,
                     source_label="installed-workspace",
@@ -542,7 +545,7 @@ def resolve_engine(document_type: str = "proposal") -> EngineDescriptor:
                 validator=selected / "scripts" / "validate_cjk_render.py",
                 source="environment",
             )
-        if document_type == "thesis":
+        if document_type == "thesis" or document_type in ASSESSMENT_DOCUMENT_TYPES:
             raise TemplateEngineError(
                 "TEMPLATE_ENGINE_UNAVAILABLE",
                 "毕业论文模板需要持久工作区，请先关联本地 Thesis 工程。",
@@ -668,6 +671,31 @@ def _workspace_source(selected: Path, document_type: str) -> WorkspaceEngineSour
             ),
         }
         files = tuple((name, selection_root / name) for name in sorted(names))
+    elif document_type in ASSESSMENT_DOCUMENT_TYPES:
+        if not selected.is_absolute() or selected.is_symlink() or not selected.is_dir():
+            raise TemplateEngineError("TEMPLATE_SOURCE_INVALID", "请选择有效的本地模板工程目录。")
+        selection_root = selected.resolve()
+        slug = document_type.replace("_", "-")
+        prefix = f"templates/{slug}"
+        engine_root = _require_plain_descendant(selection_root, selection_root / prefix)
+        validator = _require_plain_descendant(selection_root, selection_root / "scripts/validate_cjk_render.py")
+        names = {
+            *WORKSPACE_COMMON_FILE_NAMES,
+            "templates/common/python/list_layout.py",
+            "templates/common/python/assessment_forms.py",
+            "templates/common/python/assessment_word.py",
+            "templates/common/python/assessment_latex.py",
+            "templates/common/schema/writing-guidance.schema.json",
+            f"{prefix}/python/__init__.py",
+            f"{prefix}/python/model.py",
+            f"{prefix}/word/render.py",
+            f"{prefix}/word/official-template.docx",
+            f"{prefix}/latex/render.py",
+            f"{prefix}/schema/{slug}.schema.json",
+            f"{prefix}/spec/artifact.md",
+            f"{prefix}/spec/layout.json",
+        }
+        files = tuple((name, selection_root / name) for name in sorted(names))
     elif document_type == "thesis":
         if not selected.is_absolute() or selected.is_symlink() or not selected.is_dir():
             raise TemplateEngineError("TEMPLATE_SOURCE_INVALID", "请选择有效的毕业论文模板工程目录。")
@@ -735,6 +763,9 @@ def _workspace_identity(document_type: str, pack_sha256: str) -> tuple[str, str]
     elif document_type == "midterm":
         template_id = MIDTERM_ENGINE_TEMPLATE_ID
         base_version = MIDTERM_ENGINE_VERSION.split("+", 1)[0]
+    elif document_type in ASSESSMENT_DOCUMENT_TYPES:
+        template_id = f"sztu.{document_type.replace('_', '-')}.2026.local"
+        base_version = "0.1"
     elif document_type == "thesis":
         template_id = "sztu.thesis.2026.local"
         base_version = "0.1"

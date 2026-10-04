@@ -1,5 +1,5 @@
 import { ExternalLinkIcon } from "@/components/ui/external-link"
-import { AnimatedActionIcon } from "@/components/workbench/animated-action-icon"
+import { AnimatedActionIcon } from "@/components/animated-action-icon"
 import { useState } from "react"
 import { LoaderCircleIcon } from "lucide-react"
 

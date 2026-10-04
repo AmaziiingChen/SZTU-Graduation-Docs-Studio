@@ -1,9 +1,8 @@
+import { Pagination, PaginationContent, PaginationItem, PaginationNext, PaginationPrevious } from "@/components/ui/pagination"
 import { useCallback, useEffect, useState, type CSSProperties } from "react"
 import {
   ActivityIcon,
   BarChart3Icon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
   DatabaseIcon,
   FileSearchIcon,
   PackageCheckIcon,
@@ -67,7 +66,7 @@ import {
 } from "@/components/ui/table"
 import { SiteHeader } from "@/components/workbench/site-header"
 
-import { DiagnosticsDashboard } from "./diagnostics-dashboard"
+import { DiagnosticsDashboard, MetricCard } from "./diagnostics-dashboard"
 import { ReleaseManagement } from "./release-management"
 import type {
   DiagnosticDashboardData,
@@ -112,26 +111,6 @@ function formatTimestamp(value: string): string {
     dateStyle: "short",
     timeStyle: "medium",
   }).format(new Date(value))
-}
-
-function MetricCard({
-  title,
-  value,
-  description,
-}: {
-  title: string
-  value: string
-  description: string
-}) {
-  return (
-    <Card size="sm">
-      <CardHeader>
-        <CardDescription>{title}</CardDescription>
-        <CardTitle className="text-2xl tabular-nums">{value}</CardTitle>
-      </CardHeader>
-      <CardContent className="text-xs text-muted-foreground">{description}</CardContent>
-    </Card>
-  )
 }
 
 function EmptyAnalysis({ children }: { children: string }) {
@@ -247,14 +226,8 @@ function RecentEventsTable({ rangeDays, refreshKey }: { rangeDays: 7 | 30 | 90; 
           <p className="text-xs text-muted-foreground">
             第 {pageIndex + 1} 页 · 每页最多 {page?.pageSize ?? 20} 条
           </p>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={goBack} disabled={loading || pageIndex === 0}>
-              <ChevronLeftIcon />上一页
-            </Button>
-            <Button variant="outline" size="sm" onClick={goForward} disabled={loading || !page?.nextCursor}>
-              下一页<ChevronRightIcon />
-            </Button>
-          </div>
+          <Pagination className="mx-0 w-auto" aria-label="列表分页"><PaginationContent><PaginationItem><PaginationPrevious href="#" text="上一页" aria-label="上一页事件" aria-disabled={loading || pageIndex === 0} tabIndex={(loading || pageIndex === 0) ? -1 : 0} className="aria-disabled:pointer-events-none aria-disabled:opacity-50" onClick={event => { event.preventDefault(); if (!(loading || pageIndex === 0)) (goBack)() }} /></PaginationItem>
+<PaginationItem><PaginationNext href="#" text="下一页" aria-label="下一页事件" aria-disabled={loading || !page?.nextCursor} tabIndex={(loading || !page?.nextCursor) ? -1 : 0} className="aria-disabled:pointer-events-none aria-disabled:opacity-50" onClick={event => { event.preventDefault(); if (!(loading || !page?.nextCursor)) (goForward)() }} /></PaginationItem></PaginationContent></Pagination>
         </div>
       </CardContent>
     </Card>

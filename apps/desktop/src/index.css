@@ -5,6 +5,44 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* User-approved Animate UI theme wipe. Native snapshot pseudo-elements need
+   global selectors; scope them to this transition rather than normal UI motion. */
+:root[data-theme-transition]::view-transition-old(root),
+:root[data-theme-transition]::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+:root[data-theme-transition]::view-transition {
+  pointer-events: none;
+}
+
+/* A viewport mask disables descendant backdrop blur in Chromium. Keep the
+   editor's existing bottom fade on a separate, noninteractive surface instead.
+   This gradient is a functional overflow cue, not a decorative background. */
+.editor-scroll-overlay-fade::after {
+  content: "";
+  position: absolute;
+  inset-inline-start: 0;
+  inset-inline-end: calc(var(--spacing) * 2.5);
+  bottom: 0;
+  height: min(12%, calc(var(--spacing) * 10));
+  background: linear-gradient(to top, var(--background), transparent);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 150ms ease-out;
+}
+
+.editor-scroll-overlay-fade[data-overflow-y-end]::after {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .editor-scroll-overlay-fade::after {
+    transition: none;
+  }
+}
+
 @theme inline {
     --font-heading: var(--font-sans);
     --font-sans: 'Geist Variable', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans SC', system-ui, sans-serif;
@@ -275,50 +313,6 @@
   user-select: none;
 }
 
-/* The selection toolbar is a transient, anchored action surface. Keep the
-   movement small so it clarifies its origin without pulling attention away
-   from the selected text. */
-@keyframes selection-toolbar-in {
-  from {
-    opacity: 0;
-    transform: translate(-50%, var(--selection-toolbar-y)) scale(0.97);
-  }
-  to {
-    opacity: 1;
-    transform: translate(-50%, var(--selection-toolbar-y)) scale(1);
-  }
-}
-
-@keyframes selection-toolbar-out {
-  from {
-    opacity: 1;
-    transform: translate(-50%, var(--selection-toolbar-y)) scale(1);
-  }
-  to {
-    opacity: 0;
-    transform: translate(-50%, var(--selection-toolbar-y)) scale(0.99);
-  }
-}
-
-.selection-toolbar {
-  --selection-toolbar-y: 0%;
-  transform: translate(-50%, var(--selection-toolbar-y));
-  transform-origin: center;
-}
-
-.selection-toolbar[data-placement="above"] {
-  --selection-toolbar-y: -100%;
-}
-
-.selection-toolbar[data-state="open"] {
-  animation: selection-toolbar-in 250ms cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-.selection-toolbar[data-state="closing"] {
-  pointer-events: none;
-  animation: selection-toolbar-out 150ms cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
 @keyframes save-status-swap-in {
   from {
     opacity: 0;
@@ -337,17 +331,6 @@
   align-items: center;
   gap: 0.25rem;
   animation: save-status-swap-in 150ms ease-in-out both;
-}
-
-/* The external-link frame stays fixed. Only the two arrow paths move so the
-   affordance points outward without shifting the button or its visual bounds. */
-[data-slot="tool-open-arrow"] {
-  transition: transform 250ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.group\/tool-open:hover [data-slot="tool-open-arrow"],
-.group\/tool-open:focus-visible [data-slot="tool-open-arrow"] {
-  transform: translate(1.5px, -1.5px);
 }
 
 /* Functional completion feedback for the document-section navigation.
@@ -418,9 +401,7 @@
     animation: none !important;
   }
 
-  .selection-toolbar,
   [data-slot="save-status-content"],
-  [data-slot="tool-open-arrow"],
   [data-slot="section-completion-mark"][data-animate="true"]
     .section-completion-circle,
   [data-slot="section-completion-mark"][data-animate="true"]
@@ -429,26 +410,5 @@
     animation: none;
   }
 
-  [data-slot="tool-open-arrow"] {
-    transform: none !important;
-    transition: none !important;
-  }
 
-  .selection-toolbar[data-state="closing"] {
-    opacity: 0;
-  }
-}
-
-/* Requested action feedback stays on icons, leaving text, caret and scroll geometry stable. */
-@keyframes writing-welcome {
-  0%, 100% { transform: rotate(0); }
-  45% { transform: rotate(-8deg); }
-  75% { transform: rotate(4deg); }
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .empty-writing-area:is(:hover, :focus-within) .empty-writing-icon,
-  .empty-reference-action:has(button:not(:disabled):is(:hover, :focus-visible)) .empty-reference-icon {
-    animation: writing-welcome 450ms ease-out;
-  }
 }

@@ -1,12 +1,10 @@
+import { SortableContentRow } from "@/components/sortable-content-row"
+import { FieldLabel } from "@/components/ui/field"
 import { PlusIcon } from "@/components/ui/plus"
-import { GripVerticalIcon as GripVerticalIconAnimated } from "@/components/ui/grip-vertical"
-import { ArrowUpIcon } from "@/components/ui/arrow-up"
-import { ArrowDownIcon } from "@/components/ui/arrow-down"
-import { DeleteIcon } from "@/components/ui/delete"
-import { AnimatedActionIcon } from "@/components/workbench/animated-action-icon"
+import { AnimatedActionIcon } from "@/components/animated-action-icon"
 import { useState } from "react"
 import { DragDropProvider } from "@dnd-kit/react"
-import { isSortable, useSortable } from "@dnd-kit/react/sortable"
+import { isSortable } from "@dnd-kit/react/sortable"
 
 
 import { Button } from "@/components/ui/button"
@@ -46,104 +44,6 @@ function inlineBody(value: ParagraphInput): StructuredBodyValue {
 function inlineParagraph(value: StructuredBodyValue): ParagraphInput {
   const paragraph = value.find(isParagraphInput)
   return paragraph === undefined ? "" : structuredClone(paragraph)
-}
-
-type SortableScheduleRowProps = {
-  item: TaskScheduleEditorItem
-  index: number
-  selected: boolean
-  disabled: boolean
-  last: boolean
-  onSelect: () => void
-  onMove: (direction: -1 | 1) => void
-  onRemove: () => void
-}
-
-function SortableScheduleRow({
-  item,
-  index,
-  selected,
-  disabled,
-  last,
-  onSelect,
-  onMove,
-  onRemove,
-}: SortableScheduleRowProps) {
-  const { ref, handleRef, isDragging } = useSortable({
-    id: item.id,
-    index,
-    disabled,
-  })
-  const content = paragraphInputText(item.content).trim()
-
-  return (
-    <div
-      ref={ref}
-      className={`flex min-w-0 items-center gap-1 rounded-lg border p-1 ${
-        isDragging ? "opacity-50" : ""
-      }`}
-    >
-      <Button
-        ref={handleRef}
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        className="cursor-grab active:cursor-grabbing"
-        aria-label={`拖动第 ${index + 1} 项进度调整顺序`}
-        disabled={disabled}
-      >
-        <AnimatedActionIcon icon={GripVerticalIconAnimated} />
-      </Button>
-      <Button
-        type="button"
-        variant={selected ? "secondary" : "ghost"}
-        className="h-auto min-w-0 flex-1 justify-start px-3 py-2"
-        aria-label={`编辑第 ${index + 1} 项进度内容`}
-        disabled={disabled}
-        onClick={onSelect}
-      >
-        <span className="grid min-w-0 flex-1 gap-1 text-left sm:grid-cols-[4rem_12rem_minmax(0,1fr)] sm:items-center sm:gap-3">
-          <span className="font-medium">第 {index + 1} 项</span>
-          <span className="truncate text-muted-foreground">
-            {item.period.trim() || "未填写时间范围"}
-          </span>
-          <span className="truncate font-normal text-muted-foreground">
-            {content || "未填写进度内容"}
-          </span>
-        </span>
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        aria-label={`第 ${index + 1} 项进度：上移`}
-        disabled={disabled || index === 0}
-        onClick={() => onMove(-1)}
-      >
-        <AnimatedActionIcon icon={ArrowUpIcon} />
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        aria-label={`第 ${index + 1} 项进度：下移`}
-        disabled={disabled || last}
-        onClick={() => onMove(1)}
-      >
-        <AnimatedActionIcon icon={ArrowDownIcon} />
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        aria-label={`第 ${index + 1} 项进度：删除`}
-        disabled={disabled}
-        onClick={onRemove}
-      >
-        <AnimatedActionIcon icon={DeleteIcon} />
-      </Button>
-    </div>
-  )
 }
 
 export function TaskScheduleEditor({
@@ -197,12 +97,12 @@ export function TaskScheduleEditor({
               <CardTitle className="mr-1 shrink-0">
                 第 {selectedIndex + 1} 项进度
               </CardTitle>
-              <label
-                className="shrink-0 text-sm font-medium"
+              <FieldLabel
+                className="shrink-0"
                 htmlFor={`task-schedule-period-${selectedItem.id}`}
               >
                 时间范围
-              </label>
+              </FieldLabel>
               <Input
                 className="w-full sm:w-64"
                 id={`task-schedule-period-${selectedItem.id}`}
@@ -231,7 +131,7 @@ export function TaskScheduleEditor({
                   onChange([...value, item])
                 }}
               >
-                <span data-icon="inline-start"><AnimatedActionIcon icon={PlusIcon} /></span>
+                <AnimatedActionIcon icon={PlusIcon} data-icon="inline-start" />
                 新增进度
               </Button>
             </div>
@@ -271,9 +171,10 @@ export function TaskScheduleEditor({
       >
         <div className="grid gap-2" aria-label="进度安排预览">
           {value.map((item, index) => (
-            <SortableScheduleRow
+            <SortableContentRow
               key={item.id}
-              item={item}
+              id={item.id}
+              labels={{ drag: `拖动第 ${index + 1} 项进度调整顺序`, select: `编辑第 ${index + 1} 项进度内容`, up: `第 ${index + 1} 项进度：上移`, down: `第 ${index + 1} 项进度：下移`, remove: `第 ${index + 1} 项进度：删除` }}
               index={index}
               selected={item.id === selectedItem?.id}
               disabled={disabled}
@@ -281,7 +182,13 @@ export function TaskScheduleEditor({
               onSelect={() => setSelectedId(item.id)}
               onMove={(direction) => moveItem(index, direction)}
               onRemove={() => removeItem(index)}
-            />
+            >
+              <span className="grid min-w-0 flex-1 gap-1 text-left sm:grid-cols-[4rem_12rem_minmax(0,1fr)] sm:items-center sm:gap-3">
+                <span className="font-medium">第 {index + 1} 项</span>
+                <span className="truncate text-muted-foreground">{item.period.trim() || "未填写时间范围"}</span>
+                <span className="truncate font-normal text-muted-foreground">{paragraphInputText(item.content).trim() || "未填写进度内容"}</span>
+              </span>
+            </SortableContentRow>
           ))}
         </div>
       </DragDropProvider>

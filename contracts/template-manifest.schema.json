@@ -10,7 +10,7 @@
     "template_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"},
     "name": {"type": "string", "minLength": 1, "maxLength": 200},
     "school": {"type": "string", "minLength": 1, "maxLength": 200},
-    "document_type": {"const": "proposal"},
+    "document_type": {"enum": ["proposal", "midterm", "task_book", "advisor_review", "reviewer_review", "defense_record", "grade_assessment"]},
     "academic_year": {"type": "integer", "minimum": 2000, "maximum": 2200},
     "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$"},
     "contract_versions": {

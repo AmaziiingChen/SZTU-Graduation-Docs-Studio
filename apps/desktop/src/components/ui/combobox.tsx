@@ -2,7 +2,7 @@
 
 import { XIcon as XIconAnimated } from "@/components/ui/x"
 import { ChevronDownIcon as ChevronDownIconAnimated } from "@/components/ui/chevron-down"
-import { AnimatedActionIcon } from "@/components/workbench/animated-action-icon"
+import { AnimatedActionIcon } from "@/components/animated-action-icon"
 
 import * as React from "react"
 import { Combobox as ComboboxPrimitive } from "@base-ui/react"

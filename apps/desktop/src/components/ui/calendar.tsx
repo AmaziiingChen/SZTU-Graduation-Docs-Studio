@@ -3,7 +3,7 @@
 import { ChevronDownIcon as ChevronDownIconAnimated } from "@/components/ui/chevron-down"
 import { ChevronRightIcon as ChevronRightIconAnimated } from "@/components/ui/chevron-right"
 import { ChevronLeftIcon as ChevronLeftIconAnimated } from "@/components/ui/chevron-left"
-import { AnimatedActionIcon } from "@/components/workbench/animated-action-icon"
+import { AnimatedActionIcon } from "@/components/animated-action-icon"
 
 import * as React from "react"
 import {

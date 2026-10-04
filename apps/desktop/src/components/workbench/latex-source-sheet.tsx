@@ -1,4 +1,10 @@
-import { AnimatedActionIcon } from "@/components/workbench/animated-action-icon"
+import { useActionFeedback } from "@/hooks/use-action-feedback"
+import { ActionFeedbackIcon } from "@/components/workbench/action-feedback-icon"
+import { CopyIcon } from "@/components/ui/copy"
+import { DownloadIcon } from "@/components/ui/download"
+import { writeClipboardText } from "@/lib/desktop-clipboard"
+import { toast } from "sonner"
+import { AnimatedActionIcon } from "@/components/animated-action-icon"
 import { FileTextIcon } from "@/components/ui/file-text"
 
 
@@ -15,12 +21,42 @@ import { Textarea } from "@/components/ui/textarea"
 
 export function LatexSourceSheet({
   latex,
+  filename,
   packages = [],
 }: {
   latex: string
+  filename: string
   packages?: string[]
 }) {
+  const { completed, complete, reset } = useActionFeedback()
+  const copyLatex = async () => {
+    reset("copyLatex")
+    if (!latex) return
+    try {
+      await writeClipboardText(latex)
+      complete("copyLatex")
+      toast.success("LaTeX 源码已复制。")
+    } catch {
+      toast.error("无法访问剪贴板，请在“查看 LaTeX”中手动复制。")
+    }
+  }
+  const downloadLatex = () => {
+    reset("downloadLatex")
+    if (!latex) return
+    const url = URL.createObjectURL(new Blob([latex], { type: "text/plain;charset=utf-8" }))
+    try {
+      const anchor = document.createElement("a")
+      anchor.href = url
+      anchor.download = filename
+      anchor.click()
+      complete("downloadLatex")
+      toast.success("文件已准备好，已请求下载。")
+    } finally {
+      URL.revokeObjectURL(url)
+    }
+  }
   return (
+    <>
     <Sheet>
       <SheetTrigger render={<Button type="button" size="sm" variant="outline" disabled={!latex} />}>
         <AnimatedActionIcon icon={FileTextIcon} />
@@ -45,5 +81,14 @@ export function LatexSourceSheet({
         </div>
       </SheetContent>
     </Sheet>
+    <Button type="button" size="sm" variant="outline" disabled={!latex} onClick={() => void copyLatex()}>
+      <ActionFeedbackIcon token={completed.copyLatex}><AnimatedActionIcon icon={CopyIcon} /></ActionFeedbackIcon>
+      复制源码
+    </Button>
+    <Button type="button" size="sm" disabled={!latex} onClick={downloadLatex}>
+      <ActionFeedbackIcon token={completed.downloadLatex}><AnimatedActionIcon icon={DownloadIcon} /></ActionFeedbackIcon>
+      下载源码
+    </Button>
+    </>
   )
 }

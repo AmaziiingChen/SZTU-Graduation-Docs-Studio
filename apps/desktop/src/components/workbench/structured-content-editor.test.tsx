@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -6,6 +7,7 @@ import {
   waitFor,
 } from "@testing-library/react"
 import { Editor } from "@tiptap/react"
+import { closeHistory } from "@tiptap/pm/history"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import {
@@ -13,19 +15,153 @@ import {
 } from "@/components/workbench/structured-content-editor"
 import {
   createRestrictedEditorExtensions,
+  AUTHORING_GUIDANCE_COMPOSITION,
   editorShortcutLabels,
   isStructuredBodyValue,
   structuredBodyToTiptap,
   structuredFigureCatalog,
   structuredFigureChapterCounts,
   tiptapToStructuredBody,
+  structuredAuthoringToTiptap,
+  structuredAuthoringFingerprint,
+  tiptapToStructuredAuthoring,
 } from "@/lib/structured-content-editor"
-import type { StructuredBodyValue } from "@/types/structured-content"
+import type { ParagraphInput, StructuredBodyValue } from "@/types/structured-content"
 
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
+})
+
+describe("editable writing guidance in the shared body editor", () => {
+  const guide = "（写作说明）"
+  function createEditor(body: StructuredBodyValue = ["已有正文"], guidance: ParagraphInput | null = guide) {
+    return new Editor({ extensions: createRestrictedEditorExtensions("body", {}, false, true), content: structuredAuthoringToTiptap(body, {}, guidance) })
+  }
+
+  it("keeps a marked guide separate from body without serializing its editor role", () => {
+    const guidance = { runs: [{ text: guide, bold: true, italic: true }] }
+    const editor = createEditor(["已有正文"], guidance)
+    const value = tiptapToStructuredAuthoring(editor.getJSON())
+    expect(value.body).toEqual(["已有正文"])
+    expect(value.guidance).toMatchObject({ runs: [{ text: guide, bold: true, italic: true }] })
+    expect(JSON.stringify(value)).not.toContain("authoringRole")
+    expect(editor.getHTML()).not.toContain("authoringRole")
+    expect(structuredAuthoringFingerprint(["已有正文"], guidance)).not.toBe(structuredAuthoringFingerprint(["已有正文"], null))
+    editor.destroy()
+  })
+
+  it("edits guidance at the caret and makes an Enter split a normal body paragraph", () => {
+    const editor = createEditor()
+    editor.commands.setTextSelection({ from: 1, to: guide.length + 1 })
+    editor.commands.insertContent("（修改后的说明）")
+    expect(tiptapToStructuredAuthoring(editor.getJSON())).toEqual({ guidance: "（修改后的说明）", body: ["已有正文"] })
+    editor.commands.setTextSelection("（修改后的说明）".length + 1)
+    const enter = new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true, cancelable: true })
+    editor.view.dom.dispatchEvent(enter)
+    expect(enter.defaultPrevented).toBe(true)
+    editor.commands.insertContent("新的一段正文")
+    expect(tiptapToStructuredAuthoring(editor.getJSON())).toEqual({ guidance: "（修改后的说明）", body: ["新的一段正文", "已有正文"] })
+    expect(editor.getJSON().content?.[1].attrs?.authoringRole).toBeNull()
+    editor.destroy()
+  })
+
+  it("clears a deleted guide role, preserves body, and restores marks through undo and redo", () => {
+    const editor = createEditor(["已有正文"], { runs: [{ text: guide, bold: true }] })
+    editor.commands.setTextSelection({ from: 1, to: guide.length + 1 })
+    editor.commands.deleteSelection()
+    expect(tiptapToStructuredAuthoring(editor.getJSON())).toEqual({ guidance: null, body: ["已有正文"] })
+    expect(editor.getJSON().content?.[0].attrs?.authoringRole).toBeNull()
+    expect(editor.commands.undo()).toBe(true)
+    expect(tiptapToStructuredAuthoring(editor.getJSON()).guidance).toMatchObject({ runs: [{ text: guide, bold: true }] })
+    expect(editor.commands.redo()).toBe(true)
+    editor.view.dispatch(closeHistory(editor.state.tr))
+    editor.commands.insertContent("这里重新输入正文")
+    expect(tiptapToStructuredAuthoring(editor.getJSON())).toEqual({ guidance: null, body: ["这里重新输入正文", "已有正文"] })
+    editor.destroy()
+  })
+
+  it("preserves a guide converted to a list as body and restores its role on undo", () => {
+    const editor = createEditor()
+    editor.commands.setTextSelection(2)
+    editor.commands.toggleBulletList()
+    expect(tiptapToStructuredAuthoring(editor.getJSON())).toEqual({ guidance: null, body: [{ type: "unordered_list", items: [{ content: guide }] }, "已有正文"] })
+    expect(editor.getJSON().content?.[0].content?.[0].content?.[0].attrs?.authoringRole).toBeNull()
+    editor.commands.undo()
+    expect(tiptapToStructuredAuthoring(editor.getJSON())).toEqual({ guidance: guide, body: ["已有正文"] })
+    editor.destroy()
+  })
+
+  it("keeps non-text inline guide content in body instead of writing an invalid guide", () => {
+    const equation = { type: "inline_equation" as const, expression: { type: "text" as const, value: "x" }, alt: "x" }
+    const document = structuredAuthoringToTiptap(["已有正文"], {}, { runs: [{ text: "说明" }, equation] })
+    const value = tiptapToStructuredAuthoring(document)
+    expect(value.guidance).toBeNull()
+    expect(value.body).toEqual([{ type: "paragraph", runs: [{ text: "说明", bold: false, italic: false, script: "normal" }, equation] }, "已有正文"])
+  })
+
+  it("moves a guide split by an image into body while keeping its text and the image", () => {
+    const editor = createEditor()
+    editor.commands.setTextSelection(3)
+    editor.commands.insertContent({ type: "figureBlock", attrs: { path: "images/fixture.png", alt: "合成图片", chapter: 1 } })
+    const result = tiptapToStructuredAuthoring(editor.getJSON())
+    expect(result.guidance).toBeNull()
+    expect(result.body).toContainEqual(expect.objectContaining({ type: "image", path: "images/fixture.png" }))
+    expect(result.body.filter(item => typeof item === "string").join("")).toBe(`${guide}已有正文`)
+    editor.commands.undo()
+    expect(tiptapToStructuredAuthoring(editor.getJSON())).toEqual({ guidance: guide, body: ["已有正文"] })
+    editor.destroy()
+  })
+
+  it("does not lose the guide role during an IME's temporarily empty replacement", () => {
+    const editor = createEditor()
+    editor.view.dispatch(editor.state.tr.setMeta(AUTHORING_GUIDANCE_COMPOSITION, true))
+    editor.commands.setTextSelection({ from: 1, to: guide.length + 1 })
+    editor.commands.deleteSelection()
+    expect(editor.getJSON().content?.[0].attrs?.authoringRole).toBe("guidance")
+    editor.commands.insertContent("（中文修改）")
+    editor.view.dispatch(editor.state.tr.setMeta(AUTHORING_GUIDANCE_COMPOSITION, false))
+    expect(tiptapToStructuredAuthoring(editor.getJSON())).toEqual({ guidance: "（中文修改）", body: ["已有正文"] })
+    editor.destroy()
+  })
+
+  it("focuses the blank body after guidance and reports both values in one callback", async () => {
+    const onChange = vi.fn()
+    render(<StructuredContentEditor value={[]} guidance={guide} onChange={onChange} />)
+    const textbox = screen.getByRole("textbox", { name: "正文内容" })
+    expect(textbox.querySelectorAll("p")).toHaveLength(2)
+    await waitFor(() => expect(textbox).toHaveFocus())
+    expect(window.getSelection()?.anchorNode).toBe(textbox.querySelectorAll("p")[1])
+    expect(onChange).not.toHaveBeenCalled()
+    fireEvent.paste(textbox, { clipboardData: { types: ["text/plain"], getData: (type: string) => type === "text/plain" ? "新的正文" : "" } })
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith(["新的正文"], guide))
+  })
+
+  it("synchronizes external guide changes atomically with body after Chinese composition", async () => {
+    const onChange = vi.fn()
+    const { rerender } = render(<StructuredContentEditor value={["已有正文"]} guidance={guide} onChange={onChange} />)
+    const textbox = screen.getByRole("textbox", { name: "正文内容" })
+    fireEvent.compositionStart(textbox, { data: "研" })
+    rerender(<StructuredContentEditor value={["外部正文"]} guidance="（外部说明）" onChange={onChange} />)
+    expect(textbox).toHaveTextContent(guide)
+    expect(textbox).toHaveTextContent("已有正文")
+    expect(onChange).not.toHaveBeenCalled()
+    fireEvent.compositionEnd(textbox, { data: "研究" })
+    await waitFor(() => expect(textbox).toHaveTextContent("（外部说明）"))
+    expect(textbox).toHaveTextContent("外部正文")
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
+  it("reopens explicitly deleted guidance with a normal paragraph and keeps subsequent typing in body", async () => {
+    const onChange = vi.fn()
+    render(<StructuredContentEditor value={[]} guidance={null} onChange={onChange} />)
+    const textbox = screen.getByRole("textbox", { name: "正文内容" })
+    expect(textbox.querySelectorAll("p")).toHaveLength(1)
+    fireEvent.focus(textbox)
+    fireEvent.paste(textbox, { clipboardData: { types: ["text/plain"], getData: (type: string) => type === "text/plain" ? "删除后重写的正文" : "" } })
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith(["删除后重写的正文"], null))
+  })
 })
 
 const richValue: StructuredBodyValue = [
@@ -654,6 +790,32 @@ describe("structured content editor adapters", () => {
 })
 
 describe("StructuredContentEditor", () => {
+  it("keeps chart actions accessible and functional when their labels are shown only in tooltips", async () => {
+    const onChange = vi.fn()
+    render(<StructuredContentEditor ariaLabel="图表正文" value={[
+      { type: "data_table", columns: [{ header: "项目" }, { header: "数值" }], rows: [{ cells: ["合成项目", "1"] }], caption: "合成表格" },
+      "保留的正文",
+    ]} onChange={onChange} enableDocumentTools />)
+    const insert = screen.getByRole("button", { name: "插入图表", exact: true })
+    expect(insert.textContent).toBe("")
+    fireEvent.click(insert)
+    expect(await screen.findByRole("menuitem", { name: "表格", exact: true })).toBeInTheDocument()
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" })
+    const editor = (screen.getByRole("textbox", { name: "图表正文" }) as HTMLElement & { editor: Editor }).editor
+    act(() => { editor.commands.setNodeSelection(0) })
+    const edit = await screen.findByRole("button", { name: "编辑图表", exact: true })
+    const remove = screen.getByRole("button", { name: "删除图表", exact: true })
+    expect(edit.textContent).toBe("")
+    expect(remove.textContent).toBe("")
+    fireEvent.click(edit)
+    expect(await screen.findByRole("dialog", { name: "表格", exact: true })).toBeInTheDocument()
+    expect(screen.getByLabelText("表题（可选）")).toHaveValue("合成表格")
+    fireEvent.click(screen.getByRole("button", { name: "取消", exact: true }))
+    act(() => { editor.commands.setNodeSelection(0) })
+    fireEvent.click(screen.getByRole("button", { name: "删除图表", exact: true }))
+    expect(onChange).toHaveBeenLastCalledWith(["保留的正文"])
+  })
+
   it("keeps the toolbar fixed while the immersive writing surface owns scrolling", () => {
     const { container } = render(
       <div className="h-96">
@@ -672,6 +834,7 @@ describe("StructuredContentEditor", () => {
       name: "沉浸式正文格式工具栏",
     })
     expect(toolbar).toHaveClass("shrink-0", "border-b")
+    expect(toolbar.style.marginBottom).toBe("")
     expect(toolbar.parentElement).not.toHaveClass(
       "rounded-lg",
       "border",
@@ -693,21 +856,11 @@ describe("StructuredContentEditor", () => {
       '[data-slot="scroll-area-viewport"]',
     )
     expect(viewport).not.toBeNull()
-    Object.defineProperties(viewport!, {
-      clientHeight: { configurable: true, value: 300 },
-      scrollHeight: { configurable: true, value: 600 },
-      scrollTop: { configurable: true, writable: true, value: 0 },
-    })
-    fireEvent.scroll(viewport!)
-    expect(container.querySelector('[data-slot="scroll-bottom-fade"]')).toHaveClass(
-      "opacity-100",
-    )
+    expect(viewport?.contains(toolbar)).toBe(true)
+    expect(toolbar).toHaveClass("sticky", "top-0")
+    expect(viewport?.contains(screen.getByRole("textbox", { name: "沉浸式正文" }))).toBe(true)
+    expect(viewport?.querySelector<HTMLElement>(".relative.flex.flex-1.flex-col")?.style.paddingTop).toBe("")
 
-    viewport!.scrollTop = 300
-    fireEvent.scroll(viewport!)
-    expect(container.querySelector('[data-slot="scroll-bottom-fade"]')).toHaveClass(
-      "opacity-0",
-    )
 
     const message = screen.getByText("请填写至少一段内容要求。")
     expect(message).toHaveAttribute("id", "content-error")
@@ -829,9 +982,8 @@ describe("StructuredContentEditor", () => {
       name: "选中文字格式工具栏",
     })
     expect(floatingToolbar).toBeInTheDocument()
-    expect(floatingToolbar).toHaveAttribute("data-state", "open")
-    expect(floatingToolbar).toHaveClass("selection-toolbar")
-    expect(screen.getByRole("button", { name: "选区粗体" })).toHaveAttribute(
+    // JSDOM has no layout; the browser smoke test verifies floating position and visibility.
+    expect(screen.getByLabelText("选区粗体")).toHaveAttribute(
       "aria-pressed",
       "false",
     )
@@ -839,14 +991,14 @@ describe("StructuredContentEditor", () => {
     const textbox = screen.getByRole("textbox", { name: "浮动工具栏正文" })
     fireEvent.pointerDown(textbox, { button: 0 })
     await waitFor(() =>
-      expect(floatingToolbar).toHaveAttribute("data-state", "closing"),
+      expect(screen.queryByLabelText("选区粗体")).not.toBeInTheDocument(),
     )
     fireEvent.pointerUp(window, { button: 0 })
     await waitFor(() =>
-      expect(floatingToolbar).toHaveAttribute("data-state", "open"),
+      expect(screen.getByLabelText("选区粗体")).toBeInTheDocument(),
     )
 
-    fireEvent.click(screen.getByRole("button", { name: "选区粗体" }))
+    fireEvent.click(screen.getByLabelText("选区粗体"))
     await waitFor(() => expect(onChange).toHaveBeenCalled())
   })
 

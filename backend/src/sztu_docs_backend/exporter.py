@@ -26,6 +26,7 @@ from .storage.database import utc_now
 from .storage.paths import protect_private_file
 from .storage.services.common import encode_json, new_id
 from .template_engine import (
+    ASSESSMENT_DOCUMENT_TYPES,
     ENGINE_TEMPLATE_ID,
     ENGINE_VERSION,
     EngineDescriptor,
@@ -42,6 +43,10 @@ DOCUMENT_OUTPUT_LABELS = {
     "midterm": "中期检查表",
     "task_book": "任务书",
     "thesis": "毕业论文",
+    "advisor_review": "指导教师评审表",
+    "reviewer_review": "评阅人评审表",
+    "defense_record": "答辩记录表",
+    "grade_assessment": "成绩考核表",
 }
 OUTPUT_FORMAT_SUFFIXES = {
     "docx": ".docx",
@@ -75,6 +80,7 @@ FIGURE_ID_PATTERN = re.compile(r"fig-[A-Za-z0-9_-]{8,96}")
 FIGURE_REFERENCE_PATTERN = re.compile(r"\{\{fig:(fig-[A-Za-z0-9_-]{8,96})\}\}")
 FIGURE_SOURCE_KEY_PATTERN = re.compile(r"[A-Za-z0-9_:.+/-]{1,200}")
 DRAFT_PARAGRAPH_SECTION_NAMES = {
+    **{kind: {"comments", "division_of_work"} for kind in ASSESSMENT_DOCUMENT_TYPES},
     "proposal": {
         "significance_and_status",
         "research_content",
@@ -1279,7 +1285,99 @@ def validate_task_book(document: Any) -> dict[str, Any]:
     return document
 
 
+ASSESSMENT_METADATA_FIELDS = frozenset({
+    "title", "student_name", "student_id", "college", "major", "advisor", "advisor_title",
+    "reviewer", "reviewer_title", "defense_time", "defense_location", "recorder", "leader",
+})
+ASSESSMENT_SECTION_FIELDS = frozenset({
+    "comments", "division_of_work", "suggested_grade", "questions", "members", "final_grade", "date",
+})
+ASSESSMENT_GUIDANCE_FIELDS = frozenset({"comments", "division_of_work", "questions"})
+
+
+def _validate_assessment_paragraph(value: Any, path: str, maximum: int) -> None:
+    try:
+        _validate_paragraph(value, path, maximum)
+    except ExportError as exc:
+        raise ExportError(exc.code, "评审表文字格式无效，请使用非空段落和受支持的文字样式。", exc.details) from exc
+
+
+def _validate_assessment_blocks(value: Any, path: str) -> None:
+    if not isinstance(value, list) or len(value) > 100:
+        raise ExportError("DOCUMENT_NOT_READY", "评审内容必须为受支持的文本内容块。", {"field": path})
+    for index, block in enumerate(value):
+        field = f"{path}[{index}]"
+        if isinstance(block, dict) and block.get("type") in {"ordered_list", "unordered_list"}:
+            _validate_list_block(block, field, 5000, _validate_assessment_paragraph, document_name="评审表")
+        else:
+            _validate_assessment_paragraph(block, field, 5000)
+
+
+def validate_assessment(document: Any) -> dict[str, Any]:
+    """Validate fixed-page forms while leaving现场评审 fields optional."""
+    if not isinstance(document, dict) or set(document) != {"schema_version", "metadata", "sections"} or document.get("schema_version") != "0.1":
+        raise ExportError("DOCUMENT_NOT_READY", "评审表数据结构无效。")
+    metadata, sections = document.get("metadata"), document.get("sections")
+    if not isinstance(metadata, dict) or set(metadata) != ASSESSMENT_METADATA_FIELDS:
+        raise ExportError("DOCUMENT_NOT_READY", "评审表基本信息结构无效。", {"field": "metadata"})
+    if not isinstance(sections, dict) or not ASSESSMENT_SECTION_FIELDS <= set(sections) or set(sections) - ASSESSMENT_SECTION_FIELDS - {"editable_headings", "writing_guidance"}:
+        raise ExportError("DOCUMENT_NOT_READY", "评审表填写区域结构无效。", {"field": "sections"})
+    if "editable_headings" in sections and not isinstance(sections["editable_headings"], bool):
+        raise ExportError("DOCUMENT_NOT_READY", "评审表预填提示状态应为布尔值。", {"field": "sections.editable_headings"})
+    if "writing_guidance" in sections:
+        guidance = sections["writing_guidance"]
+        if not isinstance(guidance, dict) or set(guidance) - ASSESSMENT_GUIDANCE_FIELDS:
+            raise ExportError("DOCUMENT_NOT_READY", "评审表填写提示结构无效。", {"field": "sections.writing_guidance"})
+        for field, paragraph in guidance.items():
+            if paragraph is None or (isinstance(paragraph, str) and not paragraph.strip() and len(paragraph) <= 5000):
+                continue
+            if isinstance(paragraph, dict) and paragraph.get("runs") == [] and _is_empty_draft_paragraph(paragraph):
+                continue
+            _validate_assessment_paragraph(paragraph, f"sections.writing_guidance.{field}", 5000)
+    _validate_assessment_paragraph(metadata.get("title"), "metadata.title", 200)
+    required = {"student_name", "student_id", "college", "major"}
+    for field in ASSESSMENT_METADATA_FIELDS - {"title"}:
+        value = metadata[field]
+        if not isinstance(value, str) or len(value) > 240 or (field in required and not value.strip()):
+            raise ExportError("DOCUMENT_NOT_READY", "请填写姓名、学号、学院、专业和论文题目。", {"field": f"metadata.{field}"})
+    for field in ("comments", "division_of_work"):
+        _validate_assessment_blocks(sections[field], f"sections.{field}")
+    for field in ("suggested_grade", "final_grade", "date"):
+        if not isinstance(sections[field], str) or len(sections[field]) > 50:
+            raise ExportError("DOCUMENT_NOT_READY", "评审表成绩或日期格式无效。", {"field": f"sections.{field}"})
+    if sections["final_grade"].strip():
+        from decimal import Decimal, InvalidOperation
+        try:
+            score = Decimal(sections["final_grade"].strip())
+            if not score.is_finite() or score < 0 or re.fullmatch(r"\d+(?:\.\d+)?", sections["final_grade"].strip()) is None:
+                raise InvalidOperation
+        except InvalidOperation as exc:
+            raise ExportError("DOCUMENT_NOT_READY", "最终成绩应为非负的有效十进制数字。", {"field": "sections.final_grade"}) from exc
+    if sections["date"].strip():
+        try:
+            if re.fullmatch(r"\d{4}-\d{2}-\d{2}", sections["date"]) is None:
+                raise ValueError
+            date.fromisoformat(sections["date"])
+        except ValueError as exc:
+            raise ExportError("DOCUMENT_NOT_READY", "请填写有效日期。", {"field": "sections.date"}) from exc
+    members = sections["members"]
+    if not isinstance(members, list) or len(members) > 30 or any(not isinstance(member, str) or len(member) > 80 for member in members):
+        raise ExportError("DOCUMENT_NOT_READY", "答辩成员名单格式无效。", {"field": "sections.members"})
+    questions = sections["questions"]
+    if not isinstance(questions, list) or len(questions) > 50:
+        raise ExportError("DOCUMENT_NOT_READY", "答辩问答格式无效。", {"field": "sections.questions"})
+    for index, question in enumerate(questions):
+        field = f"sections.questions[{index}]"
+        if not isinstance(question, dict) or set(question) != {"question", "answer"}:
+            raise ExportError("DOCUMENT_NOT_READY", "答辩问答条目结构无效。", {"field": field})
+        for part in ("question", "answer"):
+            _validate_assessment_blocks(question[part], f"{field}.{part}")
+    return document
+
+
 def validate_document(document_type: str, document: Any) -> dict[str, Any]:
+    if document_type in ASSESSMENT_DOCUMENT_TYPES:
+        return validate_assessment(document)
     if document_type == "proposal":
         return validate_proposal(document)
     if document_type == "midterm":
@@ -1535,6 +1633,9 @@ def _is_empty_draft_paragraph(value: Any) -> bool:
         not isinstance(run, dict)
         or set(run) - {"text", "script", "italic", "bold"}
         or not isinstance(run.get("text"), str)
+        or run.get("script", "normal") not in {"normal", "sub", "super"}
+        or not isinstance(run.get("bold", False), bool)
+        or not isinstance(run.get("italic", False), bool)
         for run in runs
     ):
         return False
@@ -1558,6 +1659,18 @@ def _without_empty_draft_paragraphs(
             normalized_sections[section_name] = [
                 block for block in blocks if not _is_empty_draft_paragraph(block)
             ]
+    if document_type in ASSESSMENT_DOCUMENT_TYPES and isinstance(sections.get("questions"), list):
+        normalized_questions = [
+            {key: [block for block in value if not _is_empty_draft_paragraph(block)] if key in {"question", "answer"} and isinstance(value, list) else value for key, value in item.items()}
+            if isinstance(item, dict) else item
+            for item in sections["questions"]
+        ]
+        normalized_sections["questions"] = [
+            item for item in normalized_questions
+            if not (isinstance(item, dict) and set(item) == {"question", "answer"} and item["question"] == [] and item["answer"] == [])
+        ]
+    if document_type in ASSESSMENT_DOCUMENT_TYPES and isinstance(sections.get("members"), list):
+        normalized_sections["members"] = [member for member in sections["members"] if not (isinstance(member, str) and not member.strip())]
     normalized["sections"] = normalized_sections
     return normalized
 
@@ -1668,7 +1781,34 @@ def _render_content_without_editor_state(
     }
 
 
-def build_export_document(workspace: Any, record: dict[str, Any]) -> dict[str, Any] | None:
+def capture_export_source(
+    workspace: Any, document_id: str
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    """Read the revision and shared profile from one short SQLite snapshot.
+
+    The control sidecar may save while the render sidecar is working. Release
+    this read transaction before resolving templates or starting a renderer so
+    the preview has a consistent input without keeping a database lock for the
+    duration of rendering.
+    """
+
+    with workspace.database.transaction():
+        record = workspace.get_document(document_id)
+        profile_id = record.get("profile_id")
+        profile = (
+            workspace.get_profile(profile_id)
+            if isinstance(profile_id, str) and profile_id
+            else None
+        )
+    return record, profile
+
+
+def build_export_document(
+    workspace: Any,
+    record: dict[str, Any],
+    *,
+    profile_snapshot: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
     """Merge the linked student profile into a document's frozen export input.
 
     Process-document drafts retain their own body, while the thesis title,
@@ -1694,6 +1834,8 @@ def build_export_document(workspace: Any, record: dict[str, Any]) -> dict[str, A
         shared_fields.append("class_name")
     elif record.get("document_type") == "task_book":
         shared_fields.extend(["student_id", "class_name", "graduation_year"])
+    elif record.get("document_type") in ASSESSMENT_DOCUMENT_TYPES:
+        shared_fields.extend(["student_id", "advisor_title"])
     elif record.get("document_type") == "thesis":
         shared_fields.extend(["student_id", "advisor_title"])
     for field in shared_fields:
@@ -1702,7 +1844,11 @@ def build_export_document(workspace: Any, record: dict[str, Any]) -> dict[str, A
     thesis = content.get("thesis")
     merged_thesis = dict(thesis) if record.get("document_type") == "thesis" and isinstance(thesis, dict) else None
     if isinstance(profile_id, str) and profile_id:
-        profile = workspace.get_profile(profile_id)
+        profile = (
+            profile_snapshot
+            if profile_snapshot is not None
+            else workspace.get_profile(profile_id)
+        )
         merged_metadata.update(
             {
                 "student_name": profile["full_name"],
@@ -1728,6 +1874,9 @@ def build_export_document(workspace: Any, record: dict[str, Any]) -> dict[str, A
                     ),
                 }
             )
+        elif record.get("document_type") in ASSESSMENT_DOCUMENT_TYPES:
+            merged_metadata["student_id"] = profile["student_number"]
+            merged_metadata["advisor_title"] = profile.get("advisor_title") or ""
         elif record.get("document_type") == "thesis":
             merged_metadata["student_id"] = profile["student_number"]
             merged_metadata["advisor_title"] = profile.get("advisor_title") or ""
@@ -1784,6 +1933,8 @@ def content_check(
         "status": "pass",
         "blocking": True,
         "message": (
+            "基本信息与评审填写结构已通过检查；留白区域可打印后手写。"
+            if document_type in ASSESSMENT_DOCUMENT_TYPES else
             "开题报告必填字段和段落结构已通过严格检查。"
             if document_type == "proposal"
             else (
@@ -1979,6 +2130,8 @@ def _run(
                 )
     if process.returncode != 0:
         diagnostic = stdout + "\n" + stderr
+        if "SINGLE_PAGE_OVERFLOW" in diagnostic:
+            raise ExportError("SINGLE_PAGE_OVERFLOW", "填写内容超出这一页的固定区域，请缩短内容后重新导出。")
         if "尚不能编译" in diagnostic or "Required font" in diagnostic:
             raise ExportError("REQUIRED_FONT_MISSING", "论文模板缺少规定字体；请在本机安装字体，或在本地模板 fonts.local 中提供已授权字体文件。")
         if "公式命令不受支持" in diagnostic or "公式包含不支持" in diagnostic or "公式花括号不成对" in diagnostic:
@@ -2037,6 +2190,10 @@ def _check_pdf(
     )
     if "Page size:" not in info or "A4" not in info:
         raise ExportError("PDF_STRUCTURE_FAILED", "PDF 页面不是 A4。")
+    if document_type in ASSESSMENT_DOCUMENT_TYPES:
+        pages = re.search(r"^Pages:\s+(\d+)\s*$", info, re.MULTILINE)
+        if pages is None or int(pages.group(1)) != 1:
+            raise ExportError("SINGLE_PAGE_OVERFLOW", "评审表必须保持一页，请缩短填写内容后重新导出。")
     fonts = _run(
         ["pdffonts", str(path)],
         cwd=path.parent,
@@ -2048,6 +2205,7 @@ def _check_pdf(
         "midterm": ("FZXBSJW", "SimSun", "TimesNewRoman"),
         "task_book": ("STXingkai", "SimHei", "SimSun", "TimesNewRoman"),
         "thesis": ("SimHei", "SimSun", "TimesNewRoman"),
+        **{kind: ("SimHei", "SimSun", "TimesNewRoman") for kind in ASSESSMENT_DOCUMENT_TYPES},
     }[document_type]
     for required_font in required_fonts:
         if required_font not in fonts:
@@ -2116,7 +2274,9 @@ def _validate_export_request(
     document_id: str,
     output_directory: str,
     formats: list[str],
-) -> tuple[Path, dict[str, Any], dict[str, Any], list[str]]:
+    *,
+    source_snapshot: tuple[dict[str, Any], dict[str, Any] | None] | None = None,
+) -> tuple[Path, dict[str, Any], dict[str, Any], list[str], dict[str, Any] | None]:
     if (
         not isinstance(formats, list)
         or not formats
@@ -2139,7 +2299,7 @@ def _validate_export_request(
             "OUTPUT_DIRECTORY_UNWRITABLE",
             "所选输出文件夹不可写。",
         )
-    record = workspace.get_document(document_id)
+    record, profile = source_snapshot or capture_export_source(workspace, document_id)
     document_type = record["document_type"]
     if document_type == "thesis" and formats != ["pdf"]:
         raise ExportError("INVALID_EXPORT_FORMAT", "毕业论文当前支持 PDF 导出。")
@@ -2148,10 +2308,10 @@ def _validate_export_request(
             "DOCUMENT_NOT_READY",
             "当前文档尚未保存完整内容。",
         )
-    proposal = build_export_document(workspace, record)
+    proposal = build_export_document(workspace, record, profile_snapshot=profile)
     validate_document(document_type, proposal)
     ordered_formats = [item for item in SUPPORTED_FORMATS if item in formats]
-    return output, record, proposal, ordered_formats
+    return output, record, proposal, ordered_formats, profile
 
 
 def preflight_export(
@@ -2162,6 +2322,7 @@ def preflight_export(
     formats: list[str],
     engine: EngineDescriptor | None = None,
     preview_id: str | None = None,
+    source_snapshot: tuple[dict[str, Any], dict[str, Any] | None] | None = None,
 ) -> dict[str, Any]:
     if output_directory is None:
         if (
@@ -2171,19 +2332,20 @@ def preflight_export(
             or any(item not in SUPPORTED_FORMATS for item in formats)
         ):
             raise ExportError("INVALID_EXPORT_FORMAT", "请选择有效的导出格式。")
-        record = workspace.get_document(document_id)
+        record, profile = source_snapshot or capture_export_source(workspace, document_id)
         document_type = record["document_type"]
         if document_type == "thesis" and formats != ["pdf"]:
             raise ExportError("INVALID_EXPORT_FORMAT", "毕业论文当前支持 PDF 导出。")
         if document_type not in DOCUMENT_OUTPUT_LABELS or not isinstance(record.get("content"), dict):
             raise ExportError("DOCUMENT_NOT_READY", "当前文档尚未保存完整内容。")
-        proposal = build_export_document(workspace, record)
+        proposal = build_export_document(workspace, record, profile_snapshot=profile)
         validate_document(document_type, proposal)
         ordered_formats = [item for item in SUPPORTED_FORMATS if item in formats]
         output = None
     else:
-        output, record, proposal, ordered_formats = _validate_export_request(
-            workspace, document_id, output_directory, formats
+        output, record, proposal, ordered_formats, _profile = _validate_export_request(
+            workspace, document_id, output_directory, formats,
+            source_snapshot=source_snapshot,
         )
     descriptor = engine or resolve_engine(record["document_type"])
     validate_template_renderability(record["document_type"], proposal, descriptor)
@@ -2304,6 +2466,7 @@ def _create_job(
     record: dict[str, Any],
     descriptor: EngineDescriptor,
     overwrite_confirmed: bool,
+    profile: dict[str, Any] | None,
 ) -> str:
     export_id = new_id()
     now = utc_now()
@@ -2312,9 +2475,7 @@ def _create_job(
         "graduation_cohort": None,
         "thesis_title": None,
     }
-    profile_id = record.get("profile_id")
-    if isinstance(profile_id, str) and profile_id:
-        profile = workspace.get_profile(profile_id)
+    if profile is not None:
         profile_snapshot.update(
             {
                 "advisor_title": profile.get("advisor_title"),
@@ -2644,6 +2805,8 @@ def _cached_preview_result(
     raw_pages = manifest.get("pages")
     if pdf is None or not isinstance(raw_pages, list) or not 1 <= len(raw_pages) <= 80:
         return None
+    if descriptor.document_type in ASSESSMENT_DOCUMENT_TYPES and len(raw_pages) != 1:
+        return None
     pages: list[dict[str, Any]] = []
     for index, raw_page in enumerate(raw_pages, start=1):
         if not isinstance(raw_page, dict) or raw_page.get("page_number") != index:
@@ -2774,12 +2937,14 @@ def generate_preview(
     if canonical_request != request_id.lower():
         raise ExportError("INVALID_REQUEST_ID", "预览请求标识无效。")
 
-    source_record = workspace.get_document(document_id)
+    source_record, source_profile = capture_export_source(workspace, document_id)
     source_content = source_record.get("content")
     if not isinstance(source_content, dict):
         raise ExportError("DOCUMENT_NOT_READY", "当前文档尚未保存完整内容。")
     descriptor = resolve_engine(source_record["document_type"])
-    proposal = build_export_document(workspace, source_record)
+    proposal = build_export_document(
+        workspace, source_record, profile_snapshot=source_profile
+    )
     if not isinstance(proposal, dict):
         raise ExportError("DOCUMENT_NOT_READY", "当前文档尚未保存完整内容。")
     input_sha256 = hashlib.sha256(canonical_json(proposal)).hexdigest()
@@ -2816,9 +2981,7 @@ def generate_preview(
 
         with Workspace.create_temporary() as preview_workspace:
             profile_id = None
-            source_profile_id = source_record.get("profile_id")
-            if isinstance(source_profile_id, str) and source_profile_id:
-                source_profile = workspace.get_profile(source_profile_id)
+            if source_profile is not None:
                 preview_profile = preview_workspace.save_profile(
                     {
                         key: source_profile.get(key)
@@ -2832,6 +2995,7 @@ def generate_preview(
                             "advisor_title",
                             "graduation_cohort",
                             "thesis_title",
+                            "thesis_title_en",
                         )
                     }
                 )
@@ -3079,7 +3243,7 @@ def run_export(
     preview_id: str | None = None,
     asset_directory: Path | None = None,
 ) -> dict[str, Any]:
-    output, record, proposal, ordered_formats = _validate_export_request(
+    output, record, proposal, ordered_formats, profile = _validate_export_request(
         workspace, document_id, output_directory, formats
     )
     descriptor = engine or resolve_engine(record["document_type"])
@@ -3106,6 +3270,7 @@ def run_export(
             formats=ordered_formats,
             engine=descriptor,
             preview_id=preview_id,
+            source_snapshot=(record, profile),
         )
         if current_preflight["preflight_token"] != preflight_token:
             raise ExportError(
@@ -3143,6 +3308,7 @@ def run_export(
         record=record,
         descriptor=descriptor,
         overwrite_confirmed=False,
+        profile=profile,
     )
     placements: list[tuple[Path, Path | None]] = []
     staged_paths: list[Path] = []
@@ -3206,6 +3372,7 @@ def run_export(
                             docx_path,
                             proposal,
                             document_type=record["document_type"],
+                            layout=_template_json_object(descriptor.root / "spec/layout.json", relative_name="spec/layout.json") if record["document_type"] in ASSESSMENT_DOCUMENT_TYPES else None,
                         )
                     )
                 except DocxInspectionError as exc:

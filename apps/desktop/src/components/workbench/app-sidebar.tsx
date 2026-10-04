@@ -1,8 +1,8 @@
+import { AnimatedActionIcon } from "@/components/animated-action-icon"
 import { RocketIcon } from "@/components/ui/rocket"
 import { QrCodeIcon } from "@/components/ui/qr-code-icon"
 import { DownloadIcon } from "@/components/ui/download"
 import { PaletteIcon } from "@/components/ui/palette"
-import { useSidebarIconAnimation } from "@/hooks/use-sidebar-icon-animation"
 import * as React from "react"
 
 import maintainerWechatQr from "@/assets/maintainer-wechat-qr.jpg"
@@ -33,6 +33,7 @@ import type { DocumentRecord } from "@/types/desktop-api"
 import type { ThesisToolId } from "@/lib/thesis-tools"
 
 export function AppSidebar({
+  studentName,
   profileActive,
   toolsActive,
   appearanceActive,
@@ -43,6 +44,11 @@ export function AppSidebar({
   activeDocumentId,
   documents,
   deletedDocuments,
+  documentsHasMore,
+  deletedDocumentsHasMore,
+  documentsLoading,
+  deletedDocumentsLoading,
+  onLoadMoreDocuments,
   onSelectProfile,
   onSelectTools,
   onSelectAppearance,
@@ -58,6 +64,7 @@ export function AppSidebar({
   inspectionDisabled,
   ...props
 }: React.ComponentProps<typeof Sidebar> & {
+  studentName: string
   profileActive: boolean
   toolsActive: boolean
   appearanceActive: boolean
@@ -68,6 +75,11 @@ export function AppSidebar({
   activeDocumentId: string | null
   documents: DocumentRecord[]
   deletedDocuments: DocumentRecord[]
+  documentsHasMore?: boolean
+  deletedDocumentsHasMore?: boolean
+  documentsLoading?: boolean
+  deletedDocumentsLoading?: boolean
+  onLoadMoreDocuments?: (deleted: boolean) => Promise<void>
   onSelectProfile: () => void
   onSelectTools: () => void
   onSelectAppearance: () => void
@@ -82,7 +94,6 @@ export function AppSidebar({
   disabled: boolean
   inspectionDisabled: boolean
 }) {
-  const animation = useSidebarIconAnimation()
   const { isMobile, setOpenMobile } = useSidebar()
   const [contactOpen, setContactOpen] = React.useState(false)
   const finishNavigation = (navigate: () => void) => {
@@ -108,7 +119,7 @@ export function AppSidebar({
           <div className="flex min-w-0 flex-col items-start gap-0.5 text-left">
             <span className="text-base font-semibold">SZTU文档工作台</span>
             <span className="text-xs text-muted-foreground">
-              让毕业论文自然成章
+              让注意力回归论文本身
             </span>
           </div>
         </div>
@@ -122,6 +133,7 @@ export function AppSidebar({
         />
         <SidebarSeparator className="mx-4 w-auto opacity-60" />
         <NavDocuments
+          studentName={studentName}
           profileActive={profileActive}
           toolsActive={toolsActive}
           inspectionActive={inspectionActive}
@@ -130,6 +142,11 @@ export function AppSidebar({
           activeDocumentId={activeDocumentId}
           documents={documents}
           deletedDocuments={deletedDocuments}
+          documentsHasMore={documentsHasMore}
+          deletedDocumentsHasMore={deletedDocumentsHasMore}
+          documentsLoading={documentsLoading}
+          deletedDocumentsLoading={deletedDocumentsLoading}
+          onLoadMoreDocuments={onLoadMoreDocuments}
           disabled={disabled}
           onSelectDocument={(documentId) =>
             finishAsyncNavigation(() => onSelectDocument(documentId))
@@ -147,50 +164,46 @@ export function AppSidebar({
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
-              {...animation.row("tools", disabled)}
               tooltip="效率工具"
               isActive={toolsActive}
               disabled={disabled}
               className="pl-8"
               onClick={() => finishNavigation(onSelectTools)}
             >
-              <RocketIcon {...animation.icon("tools")} />
+              <AnimatedActionIcon icon={RocketIcon} />
               <span>效率工具</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
-              {...animation.row("appearance")}
               tooltip="主题外观"
               isActive={appearanceActive}
               className="pl-8"
               onClick={() => finishNavigation(onSelectAppearance)}
             >
-              <PaletteIcon {...animation.icon("appearance")} />
+              <AnimatedActionIcon icon={PaletteIcon} />
               <span>主题外观</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
-              {...animation.row("contact", false)}
               tooltip="联系作者"
               className="pl-8"
               onClick={() => setContactOpen(true)}
             >
-              <QrCodeIcon {...animation.icon("contact")} />
+              <AnimatedActionIcon icon={QrCodeIcon} />
               <span>联系作者</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
-              {...animation.row("history", inspectionDisabled)}
               tooltip="导出记录"
               isActive={inspectionActive}
               disabled={inspectionDisabled}
               className="pl-8"
               onClick={() => finishNavigation(onSelectInspection)}
             >
-              <DownloadIcon {...animation.icon("history")} />
+              <AnimatedActionIcon icon={DownloadIcon} />
               <span>导出记录</span>
             </SidebarMenuButton>
           </SidebarMenuItem>

@@ -42,6 +42,8 @@ import { MidtermDatePolicyService, type MidtermDatePolicyStatus } from "./midter
 
 import { developmentConfig } from "./development-config.js"
 import { privatePreviewRoot } from "./preview-path.js"
+import { CloseCoordinator } from "./close-coordinator.js"
+import { SidecarChannels } from "./sidecar-channels.js"
 
 const localDevelopment = developmentConfig(app.isPackaged)
 const moduleDirectory = path.dirname(fileURLToPath(import.meta.url))
@@ -49,13 +51,34 @@ const developmentServerUrl = localDevelopment.url
 
 let mainWindow: BrowserWindow | undefined
 let tray: Tray | undefined
-let sidecar: SidecarClient | undefined
+let sidecar: SidecarChannels | undefined
 let telemetry: TelemetryService | undefined
 let updateService: UpdateService | undefined
 let midtermDatePolicyService: MidtermDatePolicyService | undefined
 let diagnostics: DiagnosticService | undefined
 let remoteServicesStarted = false
 let shutdownStarted = false
+let quitApproved = false
+let shutdownComplete = false
+const approvedWindowClosures = new Set<number>()
+const closeCoordinator = new CloseCoordinator({
+  requestSave: (windowId, requestId) => {
+    const window = BrowserWindow.fromId(windowId)
+    if (!window || window.isDestroyed() || window.webContents.isDestroyed()) {
+      throw new Error("The editing window is no longer available.")
+    }
+    window.webContents.send("sztu:close-request", requestId)
+  },
+  onSaved: (windowId, intent) => {
+    if (intent === "quit") {
+      quitApproved = true
+      setImmediate(() => app.quit())
+    } else {
+      approvedWindowClosures.add(windowId)
+      setImmediate(() => BrowserWindow.fromId(windowId)?.close())
+    }
+  },
+})
 const approvedExportDirectories = new Set<string>()
 const activeCancellationFiles = new Map<string, string>()
 const activePreviewCancellationFiles = new Map<string, string>()
@@ -161,6 +184,16 @@ function assertResourceId(value: unknown, field = "documentId"): asserts value i
 function assertRequestId(value: unknown, field = "requestId"): asserts value is string {
   if (typeof value !== "string" || !REQUEST_ID_PATTERN.test(value)) {
     throw new IpcValidationError(`${field} 必须是 UUID。`)
+  }
+}
+
+function assertDocumentListCursor(value: unknown): void {
+  if (!isRecord(value)) throw new IpcValidationError("文档列表游标无效。")
+  assertExactKeys(value, ["updated_at", "id"])
+  assertResourceId(value.id, "cursor.id")
+  assertText(value.updated_at, "cursor.updated_at", 100)
+  if (typeof value.updated_at !== "string" || !Number.isFinite(Date.parse(value.updated_at))) {
+    throw new IpcValidationError("文档列表游标时间无效。")
   }
 }
 
@@ -416,7 +449,11 @@ function assertDocument(value: unknown): asserts value is Record<string, unknown
     value.document_type !== "proposal" &&
     value.document_type !== "task_book" &&
     value.document_type !== "midterm" &&
-    value.document_type !== "thesis"
+    value.document_type !== "thesis" &&
+    value.document_type !== "advisor_review" &&
+    value.document_type !== "reviewer_review" &&
+    value.document_type !== "defense_record" &&
+    value.document_type !== "grade_assessment"
   ) {
     throw new IpcValidationError("document.document_type 暂不支持。")
   }
@@ -600,7 +637,14 @@ function createWindow(): BrowserWindow {
   })
 
   window.once("ready-to-show", () => window.show())
+  window.on("close", (event) => {
+    if (quitApproved || approvedWindowClosures.delete(window.id)) return
+    event.preventDefault()
+    closeCoordinator.request(window.id, "window")
+  })
   window.on("closed", () => {
+    closeCoordinator.forget(window.id)
+    approvedWindowClosures.delete(window.id)
     if (mainWindow === window) mainWindow = undefined
   })
   if (app.isPackaged) {
@@ -695,6 +739,30 @@ function privacyNoticeStatus() {
 }
 
 function registerIpc(): void {
+  ipcMain.handle("sztu:close-complete", (event, input: unknown) => {
+    assertTrustedSender(event)
+    return runBridge(() => {
+      if (!isRecord(input)) throw new IpcValidationError("关闭确认必须是对象。")
+      assertExactKeys(input, ["requestId", "outcome"], ["reason"])
+      assertRequestId(input.requestId)
+      if (input.outcome !== "saved" && input.outcome !== "failed") {
+        throw new IpcValidationError("关闭确认结果必须是 saved 或 failed。")
+      }
+      if (input.reason !== undefined && input.reason !== "conflict" && input.reason !== "save_failed") {
+        throw new IpcValidationError("关闭失败原因无效。")
+      }
+      if (input.outcome === "saved" && input.reason !== undefined) {
+        throw new IpcValidationError("保存成功的关闭确认不能包含失败原因。")
+      }
+      const window = BrowserWindow.fromWebContents(event.sender)
+      const matched = window && closeCoordinator.complete(window.id, {
+        requestId: input.requestId,
+        outcome: input.outcome,
+        ...(input.reason !== undefined ? { reason: input.reason } : {}),
+      })
+      return { accepted: Boolean(matched && input.outcome === "saved") }
+    })
+  })
   ipcMain.handle("sztu:app-info", (event) => {
     assertTrustedSender(event)
     return runBridge(() => ({
@@ -819,12 +887,12 @@ function registerIpc(): void {
       if (!isRecord(input)) throw new IpcValidationError("文档完成参数必须是对象。")
       assertExactKeys(input, ["documentId", "documentType"])
       assertResourceId(input.documentId)
-      if (!["proposal", "task_book", "midterm"].includes(String(input.documentType))) {
+      if (!["proposal", "task_book", "midterm", "advisor_review", "reviewer_review", "defense_record", "grade_assessment"].includes(String(input.documentType))) {
         throw new IpcValidationError("documentType 暂不支持。")
       }
       return telemetry.recordDocumentCompletion(
         input.documentId,
-        input.documentType as "proposal" | "task_book" | "midterm",
+        input.documentType as "proposal" | "task_book" | "midterm" | "advisor_review" | "reviewer_review" | "defense_record" | "grade_assessment",
       )
     })
   })
@@ -978,6 +1046,41 @@ function registerIpc(): void {
         throw new IpcValidationError("mode 必须是 persistent 或 temporary。")
       }
       return requestSidecar("workspace.open", { mode })
+    })
+  })
+
+  ipcMain.handle("sztu:workspace-list-documents", async (event, input: unknown) => {
+    assertTrustedSender(event)
+    return runBridge(async () => {
+      if (!isRecord(input)) throw new IpcValidationError("文档列表参数必须是对象。")
+      assertExactKeys(input, ["profileId", "deleted"], ["cursor", "limit"])
+      if (input.profileId !== null) assertResourceId(input.profileId, "profileId")
+      if (typeof input.deleted !== "boolean") throw new IpcValidationError("deleted 必须是布尔值。")
+      if (input.cursor !== undefined) assertDocumentListCursor(input.cursor)
+      const limit = input.limit ?? 100
+      if (!Number.isInteger(limit) || Number(limit) < 1 || Number(limit) > 100) {
+        throw new IpcValidationError("每次可读取 1 至 100 份文档。")
+      }
+      const result = await requestSidecar<unknown>("workspace.listDocuments", {
+        profile_id: input.profileId,
+        deleted: input.deleted,
+        limit,
+        ...(input.cursor === undefined ? {} : { cursor: input.cursor }),
+      })
+      if (!isRecord(result) || !Array.isArray(result.documents) || result.documents.length > Number(limit) ||
+        result.profile_id !== input.profileId || result.deleted !== input.deleted || typeof result.has_more !== "boolean") {
+        throw new SidecarError("INVALID_SIDECAR_RESULT", "文档列表返回无效，请重新载入工作区。")
+      }
+      assertExactKeys(result, ["documents", "profile_id", "deleted", "next_cursor", "has_more"])
+      if (result.has_more) assertDocumentListCursor(result.next_cursor)
+      else if (result.next_cursor !== null) throw new SidecarError("INVALID_SIDECAR_RESULT", "文档列表游标无效。")
+      for (const document of result.documents) {
+        if (!isRecord(document)) throw new SidecarError("INVALID_SIDECAR_RESULT", "文档列表项无效。")
+        assertResourceId(document.id, "document.id")
+        assertText(document.title, "document.title", 240)
+        assertText(document.document_type, "document.document_type", 64)
+      }
+      return result
     })
   })
 
@@ -1444,10 +1547,14 @@ function registerIpc(): void {
         documentType !== "proposal" &&
         documentType !== "task_book" &&
         documentType !== "midterm" &&
-        documentType !== "thesis"
+        documentType !== "thesis" &&
+        documentType !== "advisor_review" &&
+        documentType !== "reviewer_review" &&
+        documentType !== "defense_record" &&
+        documentType !== "grade_assessment"
       ) {
         throw new IpcValidationError(
-          "documentType 必须是 proposal、task_book、midterm 或 thesis。",
+          "documentType 暂不支持。",
         )
       }
       const options: OpenDialogOptions = {
@@ -1458,7 +1565,8 @@ function registerIpc(): void {
               ? "关联包含毕业论文模板的本地工程"
             : documentType === "midterm"
               ? "关联包含中期检查模板的本地工程"
-              : "关联包含开题报告模板的本地工程",
+              : documentType === "proposal" ? "关联包含开题报告模板的本地工程"
+              : "关联包含评审表模板的本地工程",
         buttonLabel: "关联并同步",
         properties: ["openDirectory"],
       }
@@ -1521,7 +1629,11 @@ async function requestSidecar<T>(
   timeoutMs?: number,
 ): Promise<T> {
   const startedAt = Date.now()
-  sidecar ??= new SidecarClient(backendRoot(), app.getPath("userData"))
+  sidecar ??= new SidecarChannels(
+    new SidecarClient(backendRoot(), app.getPath("userData"), undefined, { role: "control", retryRequests: false }),
+    new SidecarClient(backendRoot(), app.getPath("userData"), undefined, { role: "render", retryRequests: false }),
+    app.getPath("userData"),
+  )
   try {
     const result = await sidecar.request<T>(method, params, timeoutMs)
     diagnostics?.record(method as DiagnosticOperation, "success", Date.now() - startedAt)
@@ -1575,16 +1687,25 @@ app.on("window-all-closed", () => {
 })
 
 app.on("before-quit", (event) => {
-  updateService?.stop()
-  midtermDatePolicyService?.stop()
-  sidecar?.dispose()
+  if (shutdownComplete) return
+  event.preventDefault()
+  if (!quitApproved && mainWindow && !mainWindow.isDestroyed()) {
+    closeCoordinator.request(mainWindow.id, "quit")
+    return
+  }
+  quitApproved = true
   if (shutdownStarted) return
   shutdownStarted = true
+  updateService?.stop()
+  midtermDatePolicyService?.stop()
   tray?.destroy()
   tray = undefined
-  event.preventDefault()
   void Promise.all([
+    sidecar?.shutdown() ?? Promise.resolve(),
     telemetry?.stop() ?? Promise.resolve(),
     diagnostics?.flush() ?? Promise.resolve(),
-  ]).finally(() => app.quit())
+  ]).finally(() => {
+    shutdownComplete = true
+    app.quit()
+  })
 })

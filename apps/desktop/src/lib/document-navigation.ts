@@ -18,6 +18,7 @@ const PROFILE_FIELDS: Array<{
   { fields: ["metadata.major"], selector: "#major" },
   { fields: ["metadata.class_name"], selector: "#className" },
   { fields: ["metadata.advisor"], selector: "#advisor-0" },
+  { fields: ["metadata.advisor_title"], selector: "#advisor-title-0" },
   { fields: ["metadata.graduation_year"], selector: "#graduationCohort" },
 ]
 
@@ -75,6 +76,33 @@ const DOCUMENT_SECTIONS: Record<
     },
   ],
   thesis: [],
+  advisor_review: [
+    { field: "sections.comments", sectionId: "assessment_comments", selector: '[aria-label="评审意见"]' },
+    { field: "sections.division_of_work", sectionId: "assessment_division", selector: '[aria-label="合作课题分工情况"]' },
+    { field: "sections.suggested_grade", sectionId: "assessment_suggested_grade", selector: "#assessment-suggestedGrade" },
+    { field: "sections.date", sectionId: "assessment_suggested_grade", selector: "#assessment-date" },
+  ],
+  reviewer_review: [
+    { field: "metadata.reviewer_title", sectionId: "assessment_info", selector: "#assessment-reviewerTitle" },
+    { field: "metadata.reviewer", sectionId: "assessment_info", selector: "#assessment-reviewer" },
+    { field: "sections.comments", sectionId: "assessment_comments", selector: '[aria-label="评审意见"]' },
+    { field: "sections.suggested_grade", sectionId: "assessment_suggested_grade", selector: "#assessment-suggestedGrade" },
+    { field: "sections.date", sectionId: "assessment_suggested_grade", selector: "#assessment-date" },
+  ],
+  defense_record: [
+    { field: "metadata.defense_time", sectionId: "assessment_info", selector: "#assessment-defenseTime" },
+    { field: "metadata.defense_location", sectionId: "assessment_info", selector: "#assessment-defenseLocation" },
+    { field: "metadata.recorder", sectionId: "assessment_members", selector: "#assessment-recorder" },
+    { field: "metadata.leader", sectionId: "assessment_members", selector: "#assessment-leader" },
+    { field: "sections.questions", sectionId: "assessment_questions", selector: '[aria-label="问题 1"]' },
+    { field: "sections.members", sectionId: "assessment_members", selector: '[aria-label="答辩成员 1"]' },
+    { field: "sections.date", sectionId: "assessment_members", selector: "#assessment-date" },
+  ],
+  grade_assessment: [
+    { field: "sections.comments", sectionId: "assessment_comments", selector: '[aria-label="答辩小组意见"]' },
+    { field: "sections.final_grade", sectionId: "assessment_grade", selector: "#assessment-finalGrade" },
+    { field: "sections.date", sectionId: "assessment_grade", selector: "#assessment-date" },
+  ],
   task_book: [
     {
       field: "sections.basic_content_and_requirements",
@@ -119,7 +147,7 @@ export function checkNavigationTarget(
   const field = checkField(check)
   if (!field) return null
   const profile = PROFILE_FIELDS.find(({ fields }) =>
-    fields.some((candidate) => field.startsWith(candidate)),
+    fields.some((candidate) => field === candidate || field.startsWith(`${candidate}.`) || field.startsWith(`${candidate}[`)),
   )
   if (profile) {
     return { pane: "profile", selector: profile.selector }

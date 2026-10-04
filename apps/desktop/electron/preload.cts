@@ -43,6 +43,18 @@ contextBridge.exposeInMainWorld("sztuDesktop", {
   getPrivacyNoticeStatus: () => invoke("sztu:privacy-status"),
   acceptPrivacyNotice: () => invoke("sztu:privacy-accept"),
   quitApp: () => invoke("sztu:app-quit"),
+  onCloseRequest: (callback: unknown) => {
+    if (typeof callback !== "function") {
+      throw new DesktopApiError("INVALID_CALLBACK", "关闭请求监听器必须是函数。")
+    }
+    const listener = (_event: Electron.IpcRendererEvent, requestId: unknown) => {
+      if (typeof requestId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestId)) return
+      callback(requestId)
+    }
+    ipcRenderer.on("sztu:close-request", listener)
+    return () => ipcRenderer.removeListener("sztu:close-request", listener)
+  },
+  completeCloseRequest: (input: unknown) => invoke<{ accepted: boolean }>("sztu:close-complete", input),
   recordTelemetry: (input: unknown) => invoke("sztu:telemetry-record", input),
   getAnonymousDocumentCount: () => invoke("sztu:telemetry-completion-count"),
   recordDocumentCompletion: (input: unknown) =>
@@ -74,6 +86,7 @@ contextBridge.exposeInMainWorld("sztuDesktop", {
     return () => ipcRenderer.removeListener("sztu:midterm-date-policy-status", listener)
   },
   openWorkspace: (mode: unknown) => invoke("sztu:workspace-open", mode),
+  listDocuments: (input: unknown) => invoke("sztu:workspace-list-documents", input),
   saveProfileDraft: (profile: unknown) =>
     invoke("sztu:workspace-save-profile-draft", profile),
   saveProfile: (profile: unknown) => invoke("sztu:workspace-save-profile", profile),

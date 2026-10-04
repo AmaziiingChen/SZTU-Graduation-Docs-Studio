@@ -64,22 +64,27 @@ def _without_absolute_host_paths(value: Any) -> Any:
 class Workspace:
     """High-level storage API; methods return protocol-ready dictionaries."""
 
-    def __init__(self, database: Database) -> None:
+    def __init__(self, database: Database, *, recover_interrupted: bool = True) -> None:
         self.database = database
         self.profiles = ProfileService(database)
         self.documents = DocumentService(database)
         self.settings = SettingsService(database)
         self.profile_drafts = ProfileDraftService(self.settings)
         self.exports = ExportService(database)
-        if not database.temporary:
+        if not database.temporary and recover_interrupted:
             self.exports.recover_interrupted()
 
     @classmethod
     def open_persistent(
         cls,
         data_dir: str | Path | None = None,
+        *,
+        recover_interrupted: bool = True,
     ) -> Workspace:
-        return cls(Database.open_persistent(data_dir))
+        return cls(
+            Database.open_persistent(data_dir),
+            recover_interrupted=recover_interrupted,
+        )
 
     @classmethod
     def create_temporary(cls) -> Workspace:
@@ -131,6 +136,18 @@ class Workspace:
     ) -> list[dict[str, Any]]:
         return self.documents.list_deleted(profile_id=profile_id, limit=limit)
 
+    def list_document_page(
+        self,
+        *,
+        profile_id: str | None = None,
+        deleted: bool = False,
+        cursor: Mapping[str, Any] | None = None,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        return self.documents.list_page(
+            profile_id=profile_id, deleted=deleted, cursor=cursor, limit=limit
+        )
+
     def rename_document(self, document_id: str, title: str) -> dict[str, Any]:
         return self.documents.rename(document_id, title)
 
@@ -164,6 +181,9 @@ class Workspace:
 
     def assign_profile(self, document_id: str, profile_id: str) -> dict[str, Any]:
         return self.documents.assign_profile(document_id, profile_id)
+
+    def bind_unassigned_profile(self, profile_id: str) -> int:
+        return self.documents.bind_unassigned_profile(profile_id)
 
     def save_draft(
         self,

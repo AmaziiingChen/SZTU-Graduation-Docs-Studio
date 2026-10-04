@@ -1,5 +1,5 @@
 import { FileCheckIcon } from "@/components/ui/file-check-icon"
-import { AnimatedActionIcon } from "@/components/workbench/animated-action-icon"
+import { AnimatedActionIcon } from "@/components/animated-action-icon"
 import {
   LoaderCircleIcon,
   SaveIcon,

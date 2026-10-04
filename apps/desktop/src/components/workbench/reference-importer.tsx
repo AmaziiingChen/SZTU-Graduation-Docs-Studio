@@ -1,9 +1,11 @@
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { FeatherIcon } from "@/components/ui/feather"
 import { ArrowUpIcon } from "@/components/ui/arrow-up"
 import { ArrowDownIcon } from "@/components/ui/arrow-down"
 import { PlusIcon } from "@/components/ui/plus"
+import { CircleCheckIcon } from "@/components/ui/circle-check"
 import { DeleteIcon } from "@/components/ui/delete"
-import { AnimatedActionIcon } from "@/components/workbench/animated-action-icon"
+import { AnimatedActionIcon } from "@/components/animated-action-icon"
 import { useMemo, useState, type ReactNode } from "react"
 import { BookOpenCheckIcon, TriangleAlertIcon } from "lucide-react"
 
@@ -381,24 +383,19 @@ export function ReferenceImporter({
           </div>
         </FadingScrollArea>
       ) : (
-        <div
-          data-slot="reference-empty-state"
-          className="grid min-h-64 flex-1 place-items-center p-6 text-center"
-        >
-          <div className="empty-reference-action grid max-w-sm justify-items-center gap-3">
-            <BookOpenCheckIcon aria-hidden="true" className="empty-reference-icon size-8 text-muted-foreground" />
-            <div className="grid gap-1">
-              <p className="text-sm font-medium">还没有参考文献</p>
-              <p className="text-sm text-muted-foreground">
-                可一次粘贴一条或多条 BibTeX，完成后自动生成引用格式。
-              </p>
-            </div>
+        <Empty data-slot="reference-empty-state" className="min-h-64">
+          <EmptyHeader>
+            <EmptyMedia variant="icon"><BookOpenCheckIcon aria-hidden="true" /></EmptyMedia>
+            <EmptyTitle>还没有参考文献</EmptyTitle>
+            <EmptyDescription>粘贴 BibTeX 条目后，引用格式会自动生成。</EmptyDescription>
+          </EmptyHeader>
+          <EmptyContent>
             <Button type="button" onClick={openAdd} disabled={disabled}>
               <AnimatedActionIcon icon={PlusIcon} />
               添加第一条参考文献
             </Button>
-          </div>
-        </div>
+          </EmptyContent>
+        </Empty>
       )}
       </div>
 
@@ -426,8 +423,8 @@ export function ReferenceImporter({
             </DialogTitle>
             <DialogDescription>
               {entryEditor?.mode === "edit"
-                ? "编辑一个完整的 BibTeX 条目，完成后自动更新引用格式。"
-                : "可一次粘贴一条或多条完整的 BibTeX，通过检查后会追加到列表末尾。"}
+                ? "修改 BibTeX 条目后保存。"
+                : "粘贴一条或多条 BibTeX 条目。"}
             </DialogDescription>
           </DialogHeader>
           <div
@@ -450,6 +447,17 @@ export function ReferenceImporter({
                 )
               }
             />
+            {entryEditor?.mode === "add" ? (
+              <Accordion>
+                <AccordionItem value="bibtex-help">
+                  <AccordionTrigger className="font-normal">如何获取 BibTeX</AccordionTrigger>
+                  <AccordionContent className="text-muted-foreground">
+                    <p>在文献管理器或论文数据库中找到“导出”或“引用”，选择 BibTeX 格式，再把条目复制到上方。</p>
+                    <p>条目通常以 @article 或 @book 开头；普通参考文献文字目前不能直接添加。</p>
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
+            ) : null}
             {[...entryMessages, ...nextEntryMessages].length > 0 ? (
               <Alert variant="destructive">
                 <TriangleAlertIcon />
@@ -477,6 +485,7 @@ export function ReferenceImporter({
                 setEntryEditor(null)
               }}
             >
+              <AnimatedActionIcon icon={entryEditor?.mode === "add" ? PlusIcon : CircleCheckIcon} />
               {entryEditor?.mode === "add"
                 ? `添加 ${entryCandidate.entries.length} 条参考文献`
                 : "完成"}
@@ -498,6 +507,7 @@ export function ReferenceImporter({
               取消
             </Button>
             <Button type="button" variant="destructive" onClick={removeEntry}>
+              <AnimatedActionIcon icon={DeleteIcon} />
               删除
             </Button>
           </DialogFooter>

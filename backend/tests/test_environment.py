@@ -98,6 +98,21 @@ class EnvironmentTests(unittest.TestCase):
         self.assertEqual(task_book["status"], "pass")
         self.assertTrue(task_book["details"]["live_workspace"])
 
+    def test_assessment_engines_are_registered_and_unavailable_is_per_document(self) -> None:
+        engine = SimpleNamespace(version="0.1+test", pack_sha256="a" * 64, source="linked-workspace", font_directories=())
+        with patch.object(environment_module, "resolve_engine", return_value=engine):
+            result = check_environment()
+        checks = {check["id"]: check for check in result["checks"]}
+        for kind in environment_module.ASSESSMENT_DOCUMENT_TYPES:
+            with self.subTest(kind=kind):
+                self.assertEqual(checks[f"{kind}_engine"]["status"], "pass")
+                self.assertFalse(checks[f"{kind}_engine"]["required"])
+                self.assertTrue(checks[f"{kind}_engine"]["details"]["live_workspace"])
+        with patch.object(environment_module, "resolve_engine", side_effect=environment_module.ExportError("TEMPLATE_ENGINE_UNAVAILABLE", "模板不可用")):
+            warning = environment_module._check_assessment_engine("advisor_review")
+        self.assertEqual(warning["status"], "warn")
+        self.assertFalse(warning["required"])
+
     def test_task_book_docx_font_is_a_non_global_pass_or_warning(self) -> None:
         engine = SimpleNamespace(font_directories=())
         with patch.object(

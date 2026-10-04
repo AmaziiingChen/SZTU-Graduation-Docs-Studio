@@ -1,3 +1,4 @@
+import { assessmentContent, assessmentStarterParagraphs, assessmentWritingGuidance, emptyAssessmentDraft } from "@/lib/assessment-documents"
 import { emptyThesisDraft } from "@/lib/thesis-draft"
 import { celebrateExportSuccess } from "@/lib/export-celebration"
 vi.mock("@/lib/export-celebration", () => ({ celebrateExportSuccess: vi.fn() }))
@@ -11,6 +12,8 @@ import {
   within,
 } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import type { Editor } from "@tiptap/react"
+import { toast } from "sonner"
 
 vi.mock("thinking-orbs", () => ({
   ThinkingOrb: ({ "aria-label": ariaLabel }: { "aria-label"?: string }) => (
@@ -31,6 +34,7 @@ import type {
   SztuDesktopApi,
 } from "@/types/desktop-api"
 import { completeEnvironmentOnboarding } from "@/lib/environment-onboarding"
+import { readWorkspaceRecovery, workspaceRecoveryKey } from "@/lib/workspace-recovery"
 
 import App from "./App"
 
@@ -422,6 +426,8 @@ function mockApi(): SztuDesktopApi {
       configurationRequired: false,
     }),
     quitApp: vi.fn().mockResolvedValue(null),
+    onCloseRequest: vi.fn().mockReturnValue(() => undefined),
+    completeCloseRequest: vi.fn().mockResolvedValue({ accepted: true }),
     recordTelemetry: vi.fn().mockResolvedValue(null),
     getAnonymousDocumentCount: vi.fn().mockResolvedValue(1286),
     recordDocumentCompletion: vi.fn().mockResolvedValue({
@@ -443,6 +449,7 @@ function mockApi(): SztuDesktopApi {
       documents: [documentFixture()],
       deleted_documents: [],
     }),
+    listDocuments: vi.fn().mockResolvedValue({ documents: [], profile_id: null, deleted: false, next_cursor: null, has_more: false }),
     saveProfileDraft: vi.fn().mockImplementation(async (profileDraft) => profileDraft),
     saveProfile: vi.fn().mockResolvedValue(profile),
     createDocument: vi.fn().mockResolvedValue(
@@ -586,9 +593,12 @@ function replaceRichText(element: HTMLElement, value: string) {
   fireEvent.keyDown(element, {
     key: "a",
     code: "KeyA",
-    metaKey: true,
     ctrlKey: true,
   })
+  if (!value) {
+    fireEvent.keyDown(element, { key: "Backspace", code: "Backspace" })
+    return
+  }
   fireEvent.paste(element, {
     clipboardData: {
       types: ["text/plain"],
@@ -797,7 +807,7 @@ describe("M3 workbench persistence", () => {
 
   it("keeps thesis document records and shows the pending template download", async () => {
     const api = mockApi()
-    const thesis = documentFixture({ id: "thesis-fixture", document_type: "thesis", title: "未命名毕业论文", content: null, current_revision: 0 })
+    const thesis = documentFixture({ id: "thesis-fixture", document_type: "thesis", title: "合成学生甲-毕业论文", content: null, current_revision: 0 })
     vi.mocked(api.createDocument).mockResolvedValue(thesis)
     vi.mocked(api.selectDocument).mockResolvedValue({ mode: "persistent", profile, profile_draft: null, document: thesis, documents: [documentFixture(), thesis] })
     installApi(api)
@@ -809,14 +819,14 @@ describe("M3 workbench persistence", () => {
     fireEvent.click(createButton)
     const dialog = await screen.findByRole("dialog", { name: "新建毕业论文" })
     fireEvent.click(within(dialog).getByRole("button", { name: "新建" }))
-    await waitFor(() => expect(api.createDocument).toHaveBeenCalledWith(expect.objectContaining({ document_type: "thesis", title: "未命名毕业论文" })))
+    await waitFor(() => expect(api.createDocument).toHaveBeenCalledWith(expect.objectContaining({ document_type: "thesis", title: "合成学生甲-毕业论文" })))
     expect(await screen.findByRole("heading", { name: "毕业论文" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "毕业论文" })).toHaveAttribute("aria-expanded", "true")
-    expect(screen.getByRole("button", { name: "未命名毕业论文" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "合成学生甲-毕业论文" })).toBeInTheDocument()
     const thesisSections = within(screen.getByRole("navigation", { name: "当前文档板块" })).getAllByRole("button")
     expect(thesisSections.map(button => button.firstElementChild?.textContent)).toEqual(["LaTeX 模板"])
     expect(screen.getByRole("button", { name: "下载 LaTeX 模板" })).toBeDisabled()
-    expect(screen.getByText(/论文源码工程正在整理/)).toBeInTheDocument()
+    expect(screen.getByText("LaTeX 模板暂未开放下载。")).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "预览&导出" })).not.toBeInTheDocument()
     expect(screen.queryByRole("textbox", { name: "章节正文" })).not.toBeInTheDocument()
     expect(api.saveDraft).not.toHaveBeenCalled()
@@ -829,7 +839,8 @@ describe("M3 workbench persistence", () => {
     vi.mocked(api.openWorkspace).mockResolvedValue({ mode: "persistent", profile, profile_draft: null, document: thesis, documents: [thesis] })
     installApi(api)
     renderApp()
-    expect(await screen.findByText(/此文档记录和已有草稿仍保存在本机/)).toBeInTheDocument()
+    expect(await screen.findByRole("heading", { name: "毕业论文" })).toBeInTheDocument()
+    expect(screen.getByText("LaTeX 模板暂未开放下载。")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "下载 LaTeX 模板" })).toBeDisabled()
     expect(screen.queryByRole("textbox", { name: "章节正文" })).not.toBeInTheDocument()
     expect(api.saveDraft).not.toHaveBeenCalled()
@@ -858,7 +869,7 @@ describe("M3 workbench persistence", () => {
     expect(screen.queryByRole("button", { name: "预览&导出" })).not.toBeInTheDocument()
     expect(api.generatePreview).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole("button", { name: "导出记录" }))
-    expect(await screen.findByText(/毕业论文 LaTeX 模板仍在整理/)).toBeInTheDocument()
+    expect(await screen.findByText("当前文档暂不支持预览和导出。")).toBeInTheDocument()
   })
 
   it("shows the thesis title editor without the redundant title fields", async () => {
@@ -939,7 +950,7 @@ describe("M3 workbench persistence", () => {
     expect(editorFooter).not.toBeNull()
     expect(within(editorFooter!).getByLabelText("保存状态：已保存")).toHaveClass("text-muted-foreground")
     expect(within(editorFooter!).getByRole("button", { name: /查看内容统计/ })).toBeInTheDocument()
-    expect(toolbar.querySelector('[data-slot="document-toolbar-actions"]')).toHaveClass("ml-auto")
+    expect(toolbar.querySelector('[data-slot="document-toolbar-actions"]')).toHaveClass("contents")
     expect(within(toolbar).queryByRole("button", { name: "导出" })).not.toBeInTheDocument()
     const sectionNavigation = screen.getByRole("navigation", {
       name: "当前文档板块",
@@ -1181,12 +1192,13 @@ describe("M3 workbench persistence", () => {
     expect(screen.queryByText("秋季毕业批次开题报告")).not.toBeInTheDocument()
   })
 
-  it("keeps multiple advisors paired with their titles in user-defined order", async () => {
+  it("keeps multiple advisors paired with their titles in the shared profile form", async () => {
     const api = mockApi()
     installApi(api)
     renderApp()
 
     fireEvent.click(await screen.findByRole("button", { name: "学生档案" }))
+    expect(screen.getByRole("button", { name: "删除指导教师" })).toBeDisabled()
     const firstTitle = screen.getByLabelText("指导教师职称")
     openComboboxSuggestions(firstTitle)
     for (const option of [
@@ -1211,28 +1223,49 @@ describe("M3 workbench persistence", () => {
     const secondTitle = screen.getByLabelText("第2指导教师职称")
     openComboboxSuggestions(secondTitle)
     fireEvent.click(screen.getByRole("option", { name: "实验师" }))
-    fireEvent.click(screen.getByRole("button", { name: "上移第2指导教师" }))
-
-    expect(screen.getByLabelText("指导教师")).toHaveValue("合成教师丙")
-    expect(screen.getByLabelText("指导教师职称")).toHaveValue("实验师")
-    expect(screen.getByLabelText("第2指导教师")).toHaveValue("合成教师乙")
-    expect(screen.getByLabelText("第2指导教师职称")).toHaveValue("副教授")
+    expect(screen.queryByRole("button", { name: /^(上移|下移).*指导教师$/ })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "删除指导教师" })).toBeEnabled()
+    expect(screen.getByLabelText("指导教师")).toHaveValue("合成教师乙")
+    expect(screen.getByLabelText("指导教师职称")).toHaveValue("副教授")
+    expect(screen.getByLabelText("第2指导教师")).toHaveValue("合成教师丙")
+    expect(screen.getByLabelText("第2指导教师职称")).toHaveValue("实验师")
 
     await waitFor(
       () =>
         expect(api.saveProfileDraft).toHaveBeenCalledWith(
           expect.objectContaining({
-            advisor_name: "合成教师丙、合成教师乙",
-            advisor_title: "实验师、副教授",
+            advisor_name: "合成教师乙、合成教师丙",
+            advisor_title: "副教授、实验师",
           }),
         ),
       { timeout: 2_000 },
     )
     expect(api.saveProfile).toHaveBeenCalledWith(
       expect.objectContaining({
-        advisor_name: "合成教师丙、合成教师乙",
-        advisor_title: "实验师、副教授",
+        advisor_name: "合成教师乙、合成教师丙",
+        advisor_title: "副教授、实验师",
       }),
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: "添加指导教师" }))
+    expect(screen.getByLabelText("第3指导教师")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "删除指导教师" }))
+    expect(screen.queryByLabelText("第3指导教师")).not.toBeInTheDocument()
+    expect(screen.getByLabelText("第2指导教师")).toHaveValue("合成教师丙")
+    expect(screen.getByLabelText("第2指导教师职称")).toHaveValue("实验师")
+
+    fireEvent.click(screen.getByRole("button", { name: "删除指导教师" }))
+    expect(screen.queryByLabelText("第2指导教师")).not.toBeInTheDocument()
+    expect(screen.getByLabelText("指导教师")).toHaveValue("合成教师乙")
+    expect(screen.getByLabelText("指导教师职称")).toHaveValue("副教授")
+    expect(screen.getByRole("button", { name: "删除指导教师" })).toBeDisabled()
+    fireEvent.click(screen.getByRole("button", { name: "删除指导教师" }))
+    expect(screen.getByLabelText("指导教师")).toHaveValue("合成教师乙")
+    await waitFor(() => expect(api.saveProfile).toHaveBeenLastCalledWith(
+      expect.objectContaining({ advisor_name: "合成教师乙", advisor_title: "副教授" }),
+    ), { timeout: 2_000 })
+    expect(api.saveProfileDraft).toHaveBeenLastCalledWith(
+      expect.objectContaining({ advisor_name: "合成教师乙", advisor_title: "副教授" }),
     )
   })
 
@@ -1506,18 +1539,10 @@ describe("M3 workbench persistence", () => {
     const resizeHandle = screen.getByRole("separator", {
       name: "调整预览抽屉宽度",
     })
-    expect(resizeHandle).toHaveAttribute("aria-valuemin", "384")
-    expect(resizeHandle).toHaveAttribute("aria-valuemax", "800")
-    fireEvent.pointerDown(resizeHandle, { pointerId: 1, clientX: 1000 })
-    fireEvent.pointerMove(resizeHandle, { pointerId: 1, clientX: 700 })
-    fireEvent.pointerUp(resizeHandle, { pointerId: 1, clientX: 700 })
-    expect(previewDrawer).toHaveStyle({ width: "800px", maxWidth: "800px" })
-    fireEvent.keyDown(resizeHandle, { key: "Home" })
-    expect(previewDrawer).toHaveStyle({ width: "384px" })
-    fireEvent.keyDown(resizeHandle, { key: "ArrowLeft" })
-    expect(previewDrawer).toHaveStyle({ width: "416px" })
-    fireEvent.keyDown(resizeHandle, { key: "End" })
-    expect(previewDrawer).toHaveStyle({ width: "800px" })
+    expect(resizeHandle).toHaveAttribute("data-slot", "resizable-handle")
+    expect(resizeHandle).toHaveAttribute("aria-orientation", "vertical")
+    expect(resizeHandle).toHaveAttribute("tabindex", "0")
+    // Pointer and keyboard geometry need layout; the background browser smoke test covers them.
     expect(screen.getByRole("button", { name: "导出" })).toBeEnabled()
     expect(screen.queryByRole("button", { name: "Close" })).not.toBeInTheDocument()
     const drawerHeader = previewDrawer?.querySelector<HTMLElement>(
@@ -1549,7 +1574,7 @@ describe("M3 workbench persistence", () => {
     closePreviewDrawerFromBackdrop()
     replaceRichText(
       screen.getByRole("textbox", { name: "本选题的意义及国内外发展状况" }),
-      "预览后修改的选题意义",
+      "预览后修改的选题意义\n更新后的国内外发展状况",
     )
 
     fireEvent.click(screen.getByRole("button", { name: "预览&导出" }))
@@ -1614,7 +1639,30 @@ describe("M3 workbench persistence", () => {
     expect(api.generatePreview).not.toHaveBeenCalled()
   })
 
-  it("creates an unnamed proposal when no active document exists", async () => {
+  it.each([
+    [null, "合成学生甲-开题报告"],
+    [{ ...completeProfileDraft, full_name: "合成学生乙" }, "合成学生乙-开题报告"],
+    [{ ...completeProfileDraft, full_name: "" }, "开题报告"],
+  ])("uses the current profile name for the automatically created proposal (%s)", async (profileDraft, title) => {
+    const api = mockApi()
+    vi.mocked(api.openWorkspace).mockResolvedValue({ mode: "persistent", profile, profile_draft: profileDraft, document: null, documents: [] })
+    installApi(api)
+    renderApp()
+    await waitFor(() => expect(api.createDocument).toHaveBeenCalledWith(expect.objectContaining({ document_type: "proposal", title })))
+  })
+
+  it("prefills a new filename from the current edited student name", async () => {
+    const api = mockApi()
+    installApi(api)
+    renderApp()
+    fireEvent.click(await screen.findByRole("button", { name: "学生档案", exact: true }))
+    fireEvent.change(screen.getByLabelText("学生姓名", { exact: true }), { target: { value: "合成学生丙" } })
+    fireEvent.click(screen.getByRole("button", { name: "新建开题报告" }))
+    expect(screen.getByLabelText("文件名")).toHaveValue("合成学生丙-开题报告")
+    expect(api.renameDocument).not.toHaveBeenCalled()
+  })
+
+  it("creates a proposal using its document label when no student name exists", async () => {
     const api = mockApi()
     vi.mocked(api.openWorkspace).mockResolvedValue({
       mode: "persistent",
@@ -1633,7 +1681,7 @@ describe("M3 workbench persistence", () => {
       document_type: "proposal",
       template_version: "0.1.0-dev.1",
       schema_version: "0.2",
-      title: "未命名开题报告",
+      title: "开题报告",
     })
     await waitFor(() => expect(api.saveDraft).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -2052,7 +2100,11 @@ describe("M3 workbench persistence", () => {
     firstRender.unmount()
     renderApp()
     fireEvent.click(await screen.findByRole("button", { name: "学生档案" }))
-    expect(screen.getByLabelText("指导教师职称")).toHaveValue("")
+    const restoredAdvisorTitle = screen.getByLabelText("指导教师职称")
+    expect(restoredAdvisorTitle).toHaveValue("")
+    expect(screen.queryByText("请输入指导教师职称。")).not.toBeInTheDocument()
+    fireEvent.focus(restoredAdvisorTitle)
+    fireEvent.blur(restoredAdvisorTitle)
     expect(screen.getByText("请输入指导教师职称。")).toBeInTheDocument()
   })
 
@@ -2113,6 +2165,7 @@ describe("M3 workbench persistence", () => {
     installApi(api)
     renderApp()
 
+    await screen.findByLabelText("保存状态：已保存")
     fireEvent.click(await screen.findByRole("button", { name: "预览&导出" }))
 
     expect(api.checkDocument).not.toHaveBeenCalled()
@@ -2192,6 +2245,43 @@ describe("M3 workbench persistence", () => {
     closePreviewDrawer()
     await openOperationsPanel()
     expect(screen.queryByText("/tmp/sztu-export-test/proposal.pdf")).not.toBeInTheDocument()
+  })
+
+  it.each(["preflight", "export"] as const)("marks classified PREVIEW_STALE from %s stale and regenerates on reopen", async stage => {
+    const api = mockApi()
+    const error = Object.assign(new Error("模板在预览后发生变化，请重新生成预览。"), { code: "PREVIEW_STALE" })
+    if (stage === "preflight") vi.mocked(api.preflightExport).mockRejectedValueOnce(error)
+    else vi.mocked(api.exportDocument).mockRejectedValueOnce(error)
+    installApi(api)
+    renderApp()
+    await generateCurrentPreview(api)
+    fireEvent.click(screen.getByRole("button", { name: "导出" }))
+    fireEvent.click(await screen.findByRole("menuitem", { name: "导出 PDF" }))
+    expect(await screen.findByText("预览已过期")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "导出" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "重新生成预览" })).toBeEnabled()
+    closePreviewDrawerFromBackdrop()
+    fireEvent.click(screen.getByRole("button", { name: "预览&导出" }))
+    await waitFor(() => expect(api.generatePreview).toHaveBeenCalledTimes(2))
+    expect(await screen.findByRole("button", { name: "导出" })).toBeEnabled()
+    expect(screen.queryByText("预览已过期")).not.toBeInTheDocument()
+  })
+
+  it("keeps a current preview reusable after an unrelated classified export failure", async () => {
+    const api = mockApi()
+    vi.mocked(api.preflightExport).mockRejectedValueOnce(Object.assign(new Error("导出目录不可写。"), { code: "OUTPUT_NOT_WRITABLE" }))
+    installApi(api)
+    renderApp()
+    await generateCurrentPreview(api)
+    fireEvent.click(screen.getByRole("button", { name: "导出" }))
+    fireEvent.click(await screen.findByRole("menuitem", { name: "导出 PDF" }))
+    await waitFor(() => expect(api.recordTelemetry).toHaveBeenCalledWith(expect.objectContaining({ action: "export", outcome: "failure", errorCode: "OUTPUT_NOT_WRITABLE" })))
+    expect(screen.queryByText("预览已过期")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "导出" })).toBeEnabled()
+    closePreviewDrawerFromBackdrop()
+    fireEvent.click(screen.getByRole("button", { name: "预览&导出" }))
+    expect(await screen.findByRole("img", { name: "排版预览第 1 页" })).toBeInTheDocument()
+    expect(api.generatePreview).toHaveBeenCalledTimes(1)
   })
 
   it("does not continue exporting when content changes during the export check", async () => {
@@ -2692,7 +2782,7 @@ describe("M3 workbench persistence", () => {
         document_type: "task_book",
         template_version: "0.2+66c968c",
         schema_version: "0.1",
-        title: "未命名任务书",
+        title: "合成学生甲-任务书",
         source_document_id: undefined,
       }),
     )
@@ -3177,5 +3267,768 @@ describe("environment boundary", () => {
     await openOperationsPanel()
     expect(screen.getByText("文档引擎未连接")).toBeInTheDocument()
     expect(screen.getByText("SIDECAR_EXITED")).toBeInTheDocument()
+  })
+})
+
+describe("single-page assessment forms", () => {
+  afterEach(() => {
+    cleanup()
+    vi.useRealTimers()
+    delete (window as Window & { sztuDesktop?: SztuDesktopApi }).sztuDesktop
+  })
+  it.each([
+    ["advisor_review", "指导教师评审表"],
+    ["reviewer_review", "评阅人评审表"],
+    ["defense_record", "答辩记录表"],
+    ["grade_assessment", "成绩考核表"],
+  ] as const)("previews %s with independent editable guidance and exports PDF through the shared format menu", async (type, label) => {
+    const api = mockApi()
+    const assessment = documentFixture({ document_type: type, title: `合成${label}`, schema_version: "0.1", content: null })
+    const printProfile = { ...profile, advisor_name: null, advisor_title: null, class_name: null, graduation_cohort: null }
+    vi.mocked(api.openWorkspace).mockResolvedValue({ mode: "persistent", profile: printProfile, profile_draft: null, document: assessment, documents: [assessment], deleted_documents: [] })
+    vi.mocked(api.checkEnvironment).mockResolvedValue({ ...environmentResult, checks: [...environmentResult.checks, { id: `${type}_engine`, required: false, status: "pass", message: "评审模板可用。" }] })
+    installApi(api)
+    renderApp()
+    expect(await screen.findByRole("heading", { name: label })).toBeInTheDocument()
+    expect(screen.queryByText("学生档案尚未补全")).not.toBeInTheDocument()
+    if (type === "advisor_review") {
+      fireEvent.click(screen.getByRole("button", { name: "学生档案" }))
+      expect(screen.getByText("基础信息")).toBeInTheDocument()
+      expect(screen.queryByText("请输入班级。")).not.toBeInTheDocument()
+      expect(screen.queryByText("请输入指导教师姓名。")).not.toBeInTheDocument()
+      expect(screen.queryByText("请输入指导教师职称。")).not.toBeInTheDocument()
+      const group = screen.getByRole("button", { name: label })
+      if (group.getAttribute("aria-expanded") !== "true") fireEvent.click(group)
+      fireEvent.click(screen.getByRole("button", { name: `合成${label}` }))
+    }
+    await generateCurrentPreview(api)
+    expect(api.checkDocument).toHaveBeenCalled()
+    const saved = vi.mocked(api.saveDraft).mock.calls.at(-1)?.[0].content as JsonObject
+    expect(saved.metadata).toMatchObject({ student_name: profile.full_name, student_id: profile.student_number, advisor: "", advisor_title: "", reviewer: "" })
+    expect(saved.sections).toEqual({ editable_headings: true, writing_guidance: { comments: type === "defense_record" ? null : assessmentWritingGuidance[type], division_of_work: type === "advisor_review" ? assessmentWritingGuidance.divisionOfWork : null, questions: type === "defense_record" ? assessmentWritingGuidance.defense_record : null }, comments: [], division_of_work: [], suggested_grade: "", questions: [], members: [], final_grade: "", date: "" })
+    expect(api.saveProfile).not.toHaveBeenCalled()
+    expect(screen.getAllByRole("button", { name: "导出" })).toHaveLength(1)
+    expect(screen.queryByRole("button", { name: "其他导出格式" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "导出 PDF" })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "导出" }))
+    expect(await screen.findByRole("menuitem", { name: "导出 Word" })).toBeInTheDocument()
+    expect(screen.getByRole("menuitem", { name: "导出 LaTeX 源码包" })).toBeInTheDocument()
+    expect(screen.getByRole("menuitem", { name: "同时导出 Word 和 PDF" })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("menuitem", { name: "导出 PDF" }))
+    await waitFor(() => expect(api.preflightExport).toHaveBeenCalledWith(expect.objectContaining({ formats: ["pdf"] })))
+    await waitFor(() => expect(api.exportDocument).toHaveBeenCalledWith(expect.objectContaining({ formats: ["pdf"] })))
+  })
+
+  it.each(["advisor_review", "reviewer_review", "grade_assessment"] as const)("navigates independent %s fields and saves a date selected with the existing calendar", async type => {
+    const api = mockApi()
+    const assessment = documentFixture({ document_type: type, schema_version: "0.1", content: assessmentContent({ ...emptyAssessmentDraft(), date: "2026-03-25", comments: ["已保存的意见"], divisionOfWork: ["已保存的分工"] }, { title: "合成论文", student_name: profile.full_name, student_id: profile.student_number, college: profile.college, major: profile.major, advisor: "", advisor_title: "" }) })
+    vi.mocked(api.openWorkspace).mockResolvedValue({ mode: "persistent", profile, profile_draft: null, document: assessment, documents: [assessment], deleted_documents: [] })
+    vi.mocked(api.checkEnvironment).mockResolvedValue({ ...environmentResult, checks: [...environmentResult.checks, { id: `${type}_engine`, required: false, status: "pass", message: "评审模板可用。" }] })
+    installApi(api)
+    renderApp()
+    const sectionNav = within(await screen.findByRole("navigation", { name: "当前文档板块" }))
+    if (type === "advisor_review") {
+      fireEvent.click(sectionNav.getByRole("button", { name: "分工情况" }))
+      const division = screen.getByRole("textbox", { name: "合作课题分工情况" })
+      expect(division).toHaveTextContent("已保存的分工")
+      expect(division.closest('[data-slot="immersive-writing-surface"]')).not.toBeNull()
+      expect(division.closest('[data-slot="card"]')).toBeNull()
+      expect(screen.queryByRole("textbox", { name: "评审意见" })).not.toBeInTheDocument()
+    } else expect(sectionNav.queryByRole("button", { name: "分工情况" })).not.toBeInTheDocument()
+    fireEvent.click(sectionNav.getByRole("button", { name: type === "grade_assessment" ? "小组意见" : "评审意见" }))
+    const comments = screen.getByRole("textbox", { name: type === "grade_assessment" ? "答辩小组意见" : "评审意见" })
+    expect(comments).toHaveTextContent("已保存的意见")
+    const writingSurface = comments.closest('[data-slot="immersive-writing-surface"]')
+    expect(writingSurface).not.toBeNull()
+    expect(comments.closest('[data-slot="card"]')).toBeNull()
+    expect(within(writingSurface as HTMLElement).getByRole("button", { name: "预览&导出" })).toBeInTheDocument()
+    replaceRichText(comments, "修改后的意见")
+    expect(comments).toHaveTextContent("修改后的意见")
+    expect(screen.queryByLabelText("建议成绩")).not.toBeInTheDocument()
+    expect(screen.queryByLabelText("日期")).not.toBeInTheDocument()
+    fireEvent.click(sectionNav.getByRole("button", { name: type === "grade_assessment" ? "最终成绩" : "建议成绩" }))
+    expect(screen.queryByRole("textbox", { name: "评审意见" })).not.toBeInTheDocument()
+    const date = screen.getByLabelText("日期")
+    expect(date.tagName).toBe("BUTTON")
+    expect(date).toHaveTextContent("2026年3月25日")
+    fireEvent.click(date)
+    fireEvent.click(await screen.findByRole("button", { name: /30/ }))
+    expect(date).toHaveTextContent("2026年3月30日")
+    await generateCurrentPreview(api)
+    expect(api.saveDraft).toHaveBeenCalledWith(expect.objectContaining({ content: expect.objectContaining({ sections: expect.objectContaining({ date: "2026-03-30", comments: [expect.stringContaining("修改后的意见")], division_of_work: ["已保存的分工"] }) }) }))
+  })
+
+  it.each([
+    ["advisor_review", "评审意见", "评审意见"],
+    ["advisor_review", "分工情况", "合作课题分工情况"],
+    ["reviewer_review", "评审意见", "评审意见"],
+    ["grade_assessment", "小组意见", "答辩小组意见"],
+    ["defense_record", "问答记录", "答辩记录正文"],
+  ] as const)("edits and deletes %s guidance independently of body in the shared editor", async (type, section, editorName) => {
+    const api = mockApi()
+    const assessment = documentFixture({ document_type: type, schema_version: "0.1", content: null })
+    vi.mocked(api.openWorkspace).mockResolvedValue({ mode: "persistent", profile, profile_draft: null, document: assessment, documents: [assessment], deleted_documents: [] })
+    vi.mocked(api.checkEnvironment).mockResolvedValue({ ...environmentResult, checks: [...environmentResult.checks, { id: `${type}_engine`, required: false, status: "pass", message: "评审模板可用。" }] })
+    installApi(api)
+    renderApp()
+    const nav = within(await screen.findByRole("navigation", { name: "当前文档板块" }))
+    fireEvent.click(nav.getByRole("button", { name: section }))
+    const editor = screen.getByRole("textbox", { name: editorName })
+    const starter = section === "分工情况" ? assessmentWritingGuidance.divisionOfWork : assessmentWritingGuidance[type]
+    expect(editor).toHaveTextContent(starter)
+    const paragraphs = editor.querySelectorAll("p")
+    expect(paragraphs).toHaveLength(2)
+    expect(paragraphs[1].querySelector("br")).not.toBeNull()
+    expect(editor).toHaveFocus()
+    expect(window.getSelection()?.anchorNode).toBe(paragraphs[1])
+    const bodyField = section === "分工情况" ? "division_of_work" : "comments"
+    const guideField = type === "defense_record" ? "questions" : bodyField
+    fireEvent.paste(editor, { clipboardData: { types: ["text/plain"], getData: (format: string) => format === "text/plain" ? "保留正文" : "" } })
+    const instance = (editor as HTMLElement & { editor: Editor }).editor
+    act(() => {
+      instance.commands.setTextSelection({ from: 1, to: starter.length + 1 })
+      instance.commands.insertContent("自定义写作提示")
+    })
+    expect(editor).toHaveTextContent("自定义写作提示")
+    expect(editor).toHaveTextContent("保留正文")
+    await waitFor(() => expect(api.saveDraft).toHaveBeenCalledWith(expect.objectContaining({ content: expect.objectContaining({ sections: expect.objectContaining({ writing_guidance: expect.objectContaining({ [guideField]: "自定义写作提示" }), [bodyField]: ["保留正文"] }) }) })), { timeout: 5000 })
+    act(() => {
+      instance.commands.setTextSelection({ from: 1, to: "自定义写作提示".length + 1 })
+      instance.commands.deleteSelection()
+    })
+    fireEvent.click(nav.getByRole("button", { name: "基本信息" }))
+    fireEvent.click(nav.getByRole("button", { name: section }))
+    const reopened = screen.getByRole("textbox", { name: editorName })
+    expect(reopened).not.toHaveTextContent(starter)
+    expect(reopened).not.toHaveTextContent("自定义写作提示")
+    expect(reopened).toHaveTextContent("保留正文")
+    await waitFor(() => expect(api.saveDraft).toHaveBeenCalledWith(expect.objectContaining({ content: expect.objectContaining({ sections: expect.objectContaining({ writing_guidance: expect.objectContaining({ [guideField]: null }), [bodyField]: ["保留正文"] }) }) })), { timeout: 5000 })
+    replaceRichText(reopened, "")
+    fireEvent.click(nav.getByRole("button", { name: "基本信息" }))
+    fireEvent.click(nav.getByRole("button", { name: section }))
+    const emptied = screen.getByRole("textbox", { name: editorName })
+    expect(emptied.querySelectorAll("p")).toHaveLength(1)
+    expect(emptied).not.toHaveTextContent(starter)
+    fireEvent.focus(emptied)
+    fireEvent.paste(emptied, { clipboardData: { types: ["text/plain"], getData: (format: string) => format === "text/plain" ? "删除后重写的正文" : "" } })
+    await generateCurrentPreview(api)
+    expect(api.saveDraft).toHaveBeenCalledWith(expect.objectContaining({ content: expect.objectContaining({ sections: expect.objectContaining({ editable_headings: true, writing_guidance: expect.objectContaining({ [guideField]: null }), [bodyField]: ["删除后重写的正文"] }) }) }))
+  })
+
+  it.each(["advisor_review", "reviewer_review", "defense_record", "grade_assessment"] as const)("persists the v1 to v2 %s guidance migration even when the saved draft was clean", async type => {
+    const api = mockApi()
+    const content = assessmentContent({ ...emptyAssessmentDraft(), editableHeadings: true, comments: [assessmentStarterParagraphs[type], "旧草稿正文"] }, {})
+    const sections = content.sections as JsonObject
+    delete sections.writing_guidance
+    const assessment = documentFixture({ document_type: type, schema_version: "0.1", content })
+    vi.mocked(api.openWorkspace).mockResolvedValue({ mode: "persistent", profile, profile_draft: null, document: assessment, documents: [assessment], deleted_documents: [] })
+    installApi(api)
+    renderApp()
+    await screen.findByRole("heading", { name: type === "advisor_review" ? "指导教师评审表" : type === "reviewer_review" ? "评阅人评审表" : type === "defense_record" ? "答辩记录表" : "成绩考核表" })
+    await waitFor(() => expect(api.saveDraft).toHaveBeenCalledWith(expect.objectContaining({ content: expect.objectContaining({ sections: expect.objectContaining({ comments: ["旧草稿正文"], writing_guidance: expect.objectContaining({ [type === "defense_record" ? "questions" : "comments"]: assessmentWritingGuidance[type] }) }) }) })), { timeout: 5000 })
+    expect(sections.comments).toEqual([assessmentStarterParagraphs[type], "旧草稿正文"])
+  })
+
+  it("promotes a previously saved basic profile draft before checking an assessment form", async () => {
+    const api = mockApi()
+    const assessment = documentFixture({ document_type: "advisor_review", profile_id: null, title: "合成导师评审", schema_version: "0.1", content: null })
+    const basicDraft = { ...completeProfileDraft, class_name: "", advisor_name: "", advisor_title: "", graduation_cohort: "" }
+    vi.mocked(api.openWorkspace).mockResolvedValue({ mode: "persistent", profile: null, profile_draft: basicDraft, document: assessment, documents: [assessment], deleted_documents: [] })
+    vi.mocked(api.checkEnvironment).mockResolvedValue({ ...environmentResult, checks: [...environmentResult.checks, { id: "advisor_review_engine", required: false, status: "pass", message: "导师评审模板可用。" }] })
+    vi.mocked(api.checkDocument).mockImplementation(async () => {
+      expect(api.saveProfile).toHaveBeenCalledWith(expect.objectContaining({ full_name: profile.full_name, student_number: profile.student_number, college: profile.college, major: profile.major, class_name: "", advisor_name: "", advisor_title: "" }))
+      return { checks: [contentCheck] }
+    })
+    installApi(api)
+    renderApp()
+    expect(await screen.findByRole("heading", { name: "指导教师评审表" })).toBeInTheDocument()
+    await generateCurrentPreview(api)
+    expect(api.saveProfile).toHaveBeenCalledTimes(1)
+    expect(api.saveProfileDraft).toHaveBeenCalledTimes(1)
+    expect(api.generatePreview).toHaveBeenCalled()
+  })
+
+  it("keeps defense editor placeholders in the saved draft and can still reach the printing pipeline", async () => {
+    const api = mockApi()
+    const assessment = documentFixture({ document_type: "defense_record", title: "合成答辩记录", schema_version: "0.1", content: null })
+    vi.mocked(api.openWorkspace).mockResolvedValue({ mode: "persistent", profile, profile_draft: null, document: assessment, documents: [assessment], deleted_documents: [] })
+    vi.mocked(api.checkEnvironment).mockResolvedValue({ ...environmentResult, checks: [...environmentResult.checks, { id: "defense_record_engine", required: false, status: "pass", message: "答辩记录模板可用。" }] })
+    installApi(api)
+    renderApp()
+    fireEvent.click(await screen.findByRole("button", { name: /问答记录/ }))
+    fireEvent.click(screen.getByRole("button", { name: "添加问答" }))
+    fireEvent.click(screen.getByRole("button", { name: /答辩人员/ }))
+    fireEvent.click(screen.getByRole("button", { name: "添加答辩成员" }))
+    await generateCurrentPreview(api)
+    const saved = vi.mocked(api.saveDraft).mock.calls.at(-1)?.[0].content as JsonObject
+    expect(saved.sections).toMatchObject({ members: [""], questions: [{ question: [], answer: [] }] })
+    expect(api.checkDocument).toHaveBeenCalled()
+    expect(api.generatePreview).toHaveBeenCalled()
+  })
+})
+
+describe("workspace lifecycle", () => {
+  afterEach(() => {
+    cleanup()
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+    delete (window as Window & { sztuDesktop?: SztuDesktopApi }).sztuDesktop
+  })
+
+  function deferred<T>() {
+    let resolve!: (value: T) => void
+    const promise = new Promise<T>(complete => { resolve = complete })
+    return { promise, resolve }
+  }
+
+  const saved = (revision: number): SaveDraftResult => ({
+    document_id: "document-fixture", revision, save_reason: "manual", saved_at: "2026-10-03T00:00:00Z",
+  })
+  const conflict = () => Object.assign(new Error("synthetic conflict"), { code: "REVISION_CONFLICT" })
+  const requestClose = (api: SztuDesktopApi, id = "synthetic-close") => vi.mocked(api.onCloseRequest).mock.calls[0][0](id)
+  const forceEditorCallback = (body: HTMLElement, text: string) => (body as HTMLElement & { editor: Editor }).editor.commands.insertContent(text)
+  const workspaceSnapshot = () => {
+    const first = documentFixture({ title: "虚构文档 A" })
+    const second = documentFixture({ id: "document-b", title: "虚构文档 B" })
+    const third = documentFixture({ id: "document-c", title: "虚构文档 C" })
+    return { mode: "persistent" as const, profile, profile_draft: null, document: first, documents: [first, second, third], deleted_documents: [] as DocumentRecord[] }
+  }
+  async function mountBody(api: SztuDesktopApi) {
+    installApi(api)
+    const mounted = renderApp()
+    const body = await screen.findByLabelText("本选题的意义及国内外发展状况")
+    await screen.findByLabelText("保存状态：已保存")
+    return { body, mounted }
+  }
+
+  it("locks edits and reentrant selection through save and selection IPC", async () => {
+    const api = mockApi()
+    const snapshot = workspaceSnapshot()
+    const saving = deferred<SaveDraftResult>()
+    const selecting = deferred<typeof snapshot>()
+    vi.mocked(api.openWorkspace).mockResolvedValue(snapshot)
+    vi.mocked(api.saveDraft).mockReturnValue(saving.promise)
+    vi.mocked(api.selectDocument).mockReturnValue(selecting.promise)
+    const { body } = await mountBody(api)
+    vi.useFakeTimers()
+    replaceRichText(body, "切换前已输入的正文")
+    const selectB = screen.getByRole("button", { name: "虚构文档 B" })
+    const selectC = screen.getByRole("button", { name: "虚构文档 C" })
+    await act(async () => {
+      fireEvent.click(selectB)
+      fireEvent.click(selectC)
+      forceEditorCallback(body, "同一事件循环中的延迟回调")
+    })
+    expect(body).toHaveAttribute("contenteditable", "false")
+    expect(api.saveDraft).toHaveBeenCalledTimes(1)
+    expect(api.saveDraft).toHaveBeenCalledWith(expect.objectContaining({ content: expect.objectContaining({ sections: expect.objectContaining({ significance_and_status: ["切换前已输入的正文"] }) }) }))
+    expect(api.selectDocument).not.toHaveBeenCalled()
+    await act(async () => { saving.resolve(saved(3)); await saving.promise })
+    expect(api.selectDocument).toHaveBeenCalledTimes(1)
+    expect(api.selectDocument).toHaveBeenCalledWith("document-b")
+    expect(selectC).toBeDisabled()
+    await act(async () => {
+      forceEditorCallback(body, "IPC 等待期间的延迟回调")
+      selecting.resolve({ ...snapshot, document: snapshot.documents[1] })
+      await selecting.promise
+      await vi.advanceTimersByTimeAsync(1000)
+    })
+    expect(api.saveDraft).toHaveBeenCalledTimes(1)
+    expect(api.saveProfileDraft).not.toHaveBeenCalled()
+    expect(screen.getByLabelText("本选题的意义及国内外发展状况")).toHaveAttribute("contenteditable", "true")
+  })
+
+  it.each(["create", "rename", "delete", "restore"] as const)("locks callbacks while the %s workspace transaction is pending", async operation => {
+    const api = mockApi()
+    const snapshot = workspaceSnapshot()
+    snapshot.deleted_documents = [documentFixture({ id: "deleted-fixture", title: "虚构回收文档", soft_deleted_at: "2026-10-01T00:00:00Z" })]
+    const pending = deferred<void>()
+    vi.mocked(api.openWorkspace).mockResolvedValue(snapshot)
+    if (operation === "create") vi.mocked(api.createDocument).mockImplementation(async () => { await pending.promise; return snapshot.document })
+    if (operation === "rename") vi.mocked(api.renameDocument).mockImplementation(async () => { await pending.promise; return snapshot })
+    if (operation === "delete") vi.mocked(api.deleteDocument).mockImplementation(async () => { await pending.promise; return snapshot })
+    if (operation === "restore") vi.mocked(api.restoreDocument).mockImplementation(async () => { await pending.promise; return snapshot })
+    const { body } = await mountBody(api)
+    if (operation === "create") {
+      fireEvent.click(screen.getByRole("button", { name: "新建开题报告" }))
+      fireEvent.click(within(await screen.findByRole("dialog", { name: "新建开题报告" })).getByRole("button", { name: "新建" }))
+    } else if (operation === "restore") {
+      fireEvent.click(screen.getByRole("button", { name: "回收站（1 个文档）" }))
+      fireEvent.click(screen.getByRole("button", { name: "管理回收站文档 虚构回收文档" }))
+      fireEvent.click(await screen.findByRole("menuitem", { name: "恢复" }))
+    } else {
+      fireEvent.click(screen.getByRole("button", { name: "管理文档 虚构文档 A" }))
+      fireEvent.click(await screen.findByRole("menuitem", { name: operation === "rename" ? "重命名" : "移到回收站" }))
+      const dialog = await screen.findByRole("dialog")
+      fireEvent.click(within(dialog).getByRole("button", { name: operation === "rename" ? "保存" : "移到回收站" }))
+    }
+    await waitFor(() => expect(body).toHaveAttribute("contenteditable", "false"))
+    act(() => { forceEditorCallback(body, "事务中不应生效的回调") })
+    await act(async () => { pending.resolve(); await pending.promise })
+    expect(api.saveDraft).not.toHaveBeenCalled()
+    expect(api.saveProfileDraft).not.toHaveBeenCalled()
+  })
+
+  it("keeps the current document and explains a failed selection", async () => {
+    const api = mockApi()
+    vi.mocked(api.openWorkspace).mockResolvedValue(workspaceSnapshot())
+    vi.mocked(api.selectDocument).mockRejectedValue(new Error("虚构的读取失败"))
+    const { body } = await mountBody(api)
+    fireEvent.click(screen.getByRole("button", { name: "虚构文档 B" }))
+    expect(await screen.findByText("虚构的读取失败")).toBeInTheDocument()
+    expect(body).toHaveAttribute("contenteditable", "true")
+    expect(body).toHaveTextContent("第一段")
+  })
+
+  it("flushes before the document debounce and keeps editing locked until main closes", async () => {
+    const api = mockApi()
+    const { body } = await mountBody(api)
+    vi.useFakeTimers()
+    replaceRichText(body, "关闭前最后输入的正文")
+    expect(api.saveDraft).not.toHaveBeenCalled()
+    await act(async () => { requestClose(api) })
+    expect(api.saveDraft).toHaveBeenCalledWith(expect.objectContaining({ reason: "manual", content: expect.objectContaining({ sections: expect.objectContaining({ significance_and_status: ["关闭前最后输入的正文"] }) }) }))
+    expect(api.completeCloseRequest).toHaveBeenCalledWith({ requestId: "synthetic-close", outcome: "saved" })
+    expect(body).toHaveAttribute("contenteditable", "false")
+    expect(api.saveProfileDraft).not.toHaveBeenCalled()
+  })
+
+  it("waits for the in-flight save and flushes the newer draft using its new revision", async () => {
+    const api = mockApi()
+    const pending = deferred<SaveDraftResult>()
+    vi.mocked(api.saveDraft).mockReturnValueOnce(pending.promise).mockResolvedValue(saved(4))
+    const { body } = await mountBody(api)
+    vi.useFakeTimers()
+    replaceRichText(body, "第一份保存中的正文")
+    await act(async () => { await vi.advanceTimersByTimeAsync(700) })
+    replaceRichText(body, "保存过程中继续输入的第二份正文")
+    await act(async () => { requestClose(api) })
+    expect(api.saveDraft).toHaveBeenCalledTimes(1)
+    expect(api.completeCloseRequest).not.toHaveBeenCalled()
+    await act(async () => { pending.resolve(saved(3)); await pending.promise })
+    expect(api.saveDraft).toHaveBeenCalledTimes(2)
+    expect(api.saveDraft).toHaveBeenLastCalledWith(expect.objectContaining({ expectedRevision: 3, reason: "manual", content: expect.objectContaining({ sections: expect.objectContaining({ significance_and_status: ["保存过程中继续输入的第二份正文"] }) }) }))
+    expect(api.completeCloseRequest).toHaveBeenCalledWith({ requestId: "synthetic-close", outcome: "saved" })
+    expect(api.saveProfileDraft).not.toHaveBeenCalled()
+  })
+
+  it("autosaves newer edits after an earlier save outlasts their debounce", async () => {
+    const api = mockApi()
+    const pending = deferred<SaveDraftResult>()
+    vi.mocked(api.saveDraft).mockReturnValueOnce(pending.promise).mockResolvedValue(saved(4))
+    const { body } = await mountBody(api)
+    vi.useFakeTimers()
+    replaceRichText(body, "仍在保存的正文")
+    await act(async () => { await vi.advanceTimersByTimeAsync(700) })
+    replaceRichText(body, "继续编辑后停止输入的最新正文")
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
+    expect(api.saveDraft).toHaveBeenCalledTimes(1)
+    await act(async () => { pending.resolve(saved(3)); await pending.promise })
+    expect(api.saveDraft).toHaveBeenCalledTimes(2)
+    expect(api.saveDraft).toHaveBeenLastCalledWith(expect.objectContaining({ expectedRevision: 3, content: expect.objectContaining({ sections: expect.objectContaining({ significance_and_status: ["继续编辑后停止输入的最新正文"] }) }) }))
+    expect(screen.getByLabelText("保存状态：已保存")).toBeInTheDocument()
+  })
+
+  it("reports failed close saving and keeps the current draft available for retry", async () => {
+    const api = mockApi()
+    vi.mocked(api.saveDraft).mockRejectedValueOnce(new Error("虚构保存失败"))
+    vi.mocked(api.completeCloseRequest).mockResolvedValue({ accepted: false })
+    const { body } = await mountBody(api)
+    vi.useFakeTimers()
+    replaceRichText(body, "失败也必须保留的正文")
+    await act(async () => { requestClose(api) })
+    expect(api.completeCloseRequest).toHaveBeenCalledWith({ requestId: "synthetic-close", outcome: "failed", reason: "save_failed" })
+    expect(body).toHaveAttribute("contenteditable", "true")
+    expect(body).toHaveTextContent("失败也必须保留的正文")
+    expect(screen.getByRole("button", { name: "重试保存" })).toBeEnabled()
+  })
+
+  it("unlocks when main no longer accepts a late close completion", async () => {
+    const api = mockApi()
+    vi.mocked(api.completeCloseRequest).mockResolvedValue({ accepted: false })
+    const { body } = await mountBody(api)
+    await act(async () => { requestClose(api) })
+    expect(api.completeCloseRequest).toHaveBeenCalledWith({ requestId: "synthetic-close", outcome: "saved" })
+    expect(body).toHaveAttribute("contenteditable", "true")
+  })
+
+  it("flushes a mounted layout-tool draft before its debounce when closing", async () => {
+    const api = mockApi()
+    await mountBody(api)
+    fireEvent.click(screen.getByRole("button", { name: "排版工具" }))
+    fireEvent.click(screen.getByRole("button", { name: "三线表生成器" }))
+    const caption = await screen.findByLabelText("表题（可选）")
+    vi.useFakeTimers()
+    fireEvent.change(caption, { target: { value: "关闭前的虚构表题" } })
+    const key = "sztu-docs.thesis-tools.three-line-table.v1"
+    expect(window.localStorage.getItem(key)).toBeNull()
+    await act(async () => { requestClose(api) })
+    expect(JSON.parse(window.localStorage.getItem(key) ?? "{}").value.caption).toBe("关闭前的虚构表题")
+    expect(api.completeCloseRequest).toHaveBeenCalledWith({ requestId: "synthetic-close", outcome: "saved" })
+    expect(api.saveDraft).not.toHaveBeenCalled()
+  })
+
+  it("preserves a conflicted draft across reload and remount, then clears it only after a successful restored save", async () => {
+    const api = mockApi()
+    vi.mocked(api.saveDraft).mockRejectedValueOnce(conflict())
+    const { body, mounted } = await mountBody(api)
+    vi.useFakeTimers()
+    replaceRichText(body, "冲突后需要恢复的本地正文")
+    await act(async () => { await vi.advanceTimersByTimeAsync(700) })
+    const fresh = documentFixture({ current_revision: 9, content: { ...draftContent, sections: { ...draftContent.sections, significance_and_status: ["已经存入数据库的版本"] } } })
+    vi.mocked(api.openWorkspace).mockResolvedValue({ mode: "persistent", profile, profile_draft: null, document: fresh, documents: [fresh], deleted_documents: [] })
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "重新载入" })) })
+    expect(screen.getByLabelText("本选题的意义及国内外发展状况")).toHaveTextContent("已经存入数据库的版本")
+    expect(readWorkspaceRecovery(fresh.id, "proposal")?.content.sections).toMatchObject({ significance_and_status: ["冲突后需要恢复的本地正文"] })
+    mounted.unmount()
+    vi.useRealTimers()
+    renderApp()
+    expect(await screen.findByRole("button", { name: "恢复保留草稿" })).toBeEnabled()
+    vi.useFakeTimers()
+    const restoring = deferred<SaveDraftResult>()
+    vi.mocked(api.saveDraft).mockReturnValueOnce(restoring.promise)
+    fireEvent.click(screen.getByRole("button", { name: "恢复保留草稿" }))
+    await act(async () => { await vi.advanceTimersByTimeAsync(700) })
+    expect(api.saveDraft).toHaveBeenLastCalledWith(expect.objectContaining({ expectedRevision: 9, content: expect.objectContaining({ sections: expect.objectContaining({ significance_and_status: ["冲突后需要恢复的本地正文"] }) }) }))
+    expect(window.localStorage.getItem(workspaceRecoveryKey(fresh.id))).not.toBeNull()
+    expect(api.saveProfileDraft).not.toHaveBeenCalled()
+    await act(async () => { restoring.resolve(saved(10)); await restoring.promise })
+    expect(window.localStorage.getItem(workspaceRecoveryKey(fresh.id))).toBeNull()
+    expect(screen.queryByText("已保留重新载入前的草稿")).not.toBeInTheDocument()
+  })
+
+  it("does not reload or discard the conflict draft when recovery storage fails", async () => {
+    const api = mockApi()
+    vi.mocked(api.saveDraft).mockRejectedValue(conflict())
+    const { body } = await mountBody(api)
+    vi.useFakeTimers()
+    replaceRichText(body, "存储失败也必须保留的正文")
+    await act(async () => { await vi.advanceTimersByTimeAsync(700) })
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new DOMException("Full", "QuotaExceededError") })
+    const notify = vi.spyOn(toast, "error")
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "重新载入" })) })
+    expect(api.openWorkspace).toHaveBeenCalledTimes(1)
+    expect(body).toHaveTextContent("存储失败也必须保留的正文")
+    expect(body).toHaveAttribute("contenteditable", "true")
+    expect(notify).toHaveBeenCalledWith("无法在本机保留当前草稿，已取消重新载入。请先复制需要保留的内容。")
+  })
+
+  it("allows explicitly keeping the reloaded version and removing its recovery copy", async () => {
+    const api = mockApi()
+    vi.mocked(api.saveDraft).mockRejectedValueOnce(conflict())
+    const { body } = await mountBody(api)
+    vi.useFakeTimers()
+    replaceRichText(body, "用户选择不恢复的内容")
+    await act(async () => { await vi.advanceTimersByTimeAsync(700) })
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "重新载入" })) })
+    expect(window.localStorage.getItem(workspaceRecoveryKey("document-fixture"))).not.toBeNull()
+    fireEvent.click(screen.getByRole("button", { name: "使用当前版本并移除副本" }))
+    expect(window.localStorage.getItem(workspaceRecoveryKey("document-fixture"))).toBeNull()
+    expect(screen.getByLabelText("本选题的意义及国内外发展状况")).toHaveTextContent("第一段")
+    expect(screen.queryByRole("button", { name: "恢复保留草稿" })).not.toBeInTheDocument()
+    expect(api.saveDraft).toHaveBeenCalledTimes(1)
+  })
+
+  it("lets an initially failed workspace load be retried", async () => {
+    const api = mockApi()
+    vi.mocked(api.openWorkspace).mockRejectedValueOnce(new Error("SYNTHETIC_OPEN_FAILURE"))
+    installApi(api)
+    renderApp()
+    const retry = await screen.findByRole("button", { name: "重新载入" })
+    expect(retry).toBeEnabled()
+    fireEvent.click(retry)
+    await screen.findByLabelText("保存状态：已保存")
+    expect(screen.queryByText("工作区载入失败")).not.toBeInTheDocument()
+    expect(api.openWorkspace).toHaveBeenCalledTimes(2)
+    expect(screen.getByLabelText("本选题的意义及国内外发展状况")).toHaveAttribute("contenteditable", "true")
+  })
+
+  it("keeps the recovery copy when conflict reload fails and can retry that reload", async () => {
+    const api = mockApi()
+    vi.mocked(api.saveDraft).mockRejectedValueOnce(conflict())
+    const { body } = await mountBody(api)
+    vi.useFakeTimers()
+    replaceRichText(body, "重载失败后仍需保留的正文")
+    await act(async () => { await vi.advanceTimersByTimeAsync(700) })
+    vi.mocked(api.openWorkspace).mockRejectedValueOnce(new Error("SYNTHETIC_RELOAD_FAILURE"))
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "重新载入" })) })
+    expect(screen.getByText("工作区载入失败")).toBeInTheDocument()
+    const retained = window.localStorage.getItem(workspaceRecoveryKey("document-fixture"))
+    expect(retained).toContain("重载失败后仍需保留的正文")
+    const retry = screen.getByRole("button", { name: "重新载入" })
+    expect(retry).toBeEnabled()
+    await act(async () => { fireEvent.click(retry) })
+    expect(screen.queryByText("工作区载入失败")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "恢复保留草稿" })).toBeEnabled()
+    expect(window.localStorage.getItem(workspaceRecoveryKey("document-fixture"))).toBe(retained)
+    expect(api.openWorkspace).toHaveBeenCalledTimes(3)
+  })
+
+  it("paginates document lists with the returned cursor and ignores duplicate records", async () => {
+    const api = mockApi()
+    const snapshot = workspaceSnapshot()
+    const cursor = { updated_at: "2026-09-01T00:00:00Z", id: "cursor-1" }
+    const nextCursor = { updated_at: "2026-08-01T00:00:00Z", id: "cursor-2" }
+    vi.mocked(api.openWorkspace).mockResolvedValue({ ...snapshot, documents_page: { profile_id: profile.id, next_cursor: cursor, has_more: true } })
+    vi.mocked(api.listDocuments)
+      .mockResolvedValueOnce({ profile_id: profile.id, deleted: false, documents: [snapshot.documents[0], documentFixture({ id: "page-2", title: "第二页文档" })], next_cursor: nextCursor, has_more: true })
+      .mockResolvedValueOnce({ profile_id: profile.id, deleted: false, documents: [documentFixture({ id: "page-3", title: "最后一页文档" })], next_cursor: null, has_more: false })
+    await mountBody(api)
+    fireEvent.click(screen.getByRole("button", { name: "加载更多文档" }))
+    expect(await screen.findByRole("button", { name: "第二页文档" })).toBeInTheDocument()
+    expect(screen.getAllByRole("button", { name: "虚构文档 A" })).toHaveLength(1)
+    expect(api.listDocuments).toHaveBeenNthCalledWith(1, { profileId: profile.id, deleted: false, cursor, limit: 100 })
+    fireEvent.click(screen.getByRole("button", { name: "加载更多文档" }))
+    expect(await screen.findByRole("button", { name: "最后一页文档" })).toBeInTheDocument()
+    expect(api.listDocuments).toHaveBeenNthCalledWith(2, { profileId: profile.id, deleted: false, cursor: nextCursor, limit: 100 })
+    expect(screen.queryByRole("button", { name: "加载更多文档" })).not.toBeInTheDocument()
+  })
+
+  it("loads the recycle bin independently from active documents", async () => {
+    const api = mockApi()
+    const snapshot = workspaceSnapshot()
+    const cursor = { updated_at: "2026-09-01T00:00:00Z", id: "trash-cursor" }
+    vi.mocked(api.openWorkspace).mockResolvedValue({ ...snapshot, deleted_documents_page: { profile_id: profile.id, next_cursor: cursor, has_more: true } })
+    vi.mocked(api.listDocuments).mockResolvedValue({ profile_id: profile.id, deleted: true, documents: [documentFixture({ id: "trash-2", title: "更早删除的文档", deleted_at: "2026-09-01T00:00:00Z" })], next_cursor: null, has_more: false })
+    await mountBody(api)
+    fireEvent.click(screen.getByRole("button", { name: "回收站（已载入 0 个文档，还有更多）" }))
+    fireEvent.click(screen.getByRole("button", { name: "加载更多回收站文档" }))
+    expect(await screen.findByText("更早删除的文档")).toBeInTheDocument()
+    expect(api.listDocuments).toHaveBeenCalledWith({ profileId: profile.id, deleted: true, cursor, limit: 100 })
+    expect(screen.getByRole("button", { name: "回收站（1 个文档）" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "虚构文档 A" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "加载更多回收站文档" })).not.toBeInTheDocument()
+  })
+
+  it("ignores an old page response after changing the workspace and locks duplicate requests", async () => {
+    const api = mockApi()
+    const snapshot = workspaceSnapshot()
+    const paging = deferred<Awaited<ReturnType<SztuDesktopApi["listDocuments"]>>>()
+    vi.mocked(api.openWorkspace).mockResolvedValue({ ...snapshot, documents_page: { profile_id: profile.id, next_cursor: { updated_at: "2026-09-01T00:00:00Z", id: "cursor" }, has_more: true } })
+    vi.mocked(api.listDocuments).mockReturnValue(paging.promise)
+    vi.mocked(api.selectDocument).mockResolvedValue({ ...snapshot, document: snapshot.documents[1] })
+    await mountBody(api)
+    const more = screen.getByRole("button", { name: "加载更多文档" })
+    await act(async () => { fireEvent.click(more); fireEvent.click(more) })
+    expect(api.listDocuments).toHaveBeenCalledTimes(1)
+    expect(more).toBeDisabled()
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "虚构文档 B" })) })
+    await act(async () => { paging.resolve({ profile_id: profile.id, deleted: false, documents: [documentFixture({ id: "old-page", title: "过期分页记录" })], next_cursor: null, has_more: false }); await paging.promise })
+    expect(screen.queryByRole("button", { name: "过期分页记录" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "加载更多文档" })).not.toBeInTheDocument()
+  })
+
+  it("keeps a failed page cursor available for retry", async () => {
+    const api = mockApi()
+    const snapshot = workspaceSnapshot()
+    const cursor = { updated_at: "2026-09-01T00:00:00Z", id: "retry-page" }
+    vi.mocked(api.openWorkspace).mockResolvedValue({ ...snapshot, documents_page: { profile_id: null, next_cursor: cursor, has_more: true } })
+    vi.mocked(api.listDocuments).mockRejectedValueOnce(new Error("SYNTHETIC_PAGE_FAILURE"))
+    const notify = vi.spyOn(toast, "error")
+    await mountBody(api)
+    fireEvent.click(screen.getByRole("button", { name: "加载更多文档" }))
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("SYNTHETIC_PAGE_FAILURE"))
+    expect(screen.getByRole("button", { name: "加载更多文档" })).toBeEnabled()
+    fireEvent.click(screen.getByRole("button", { name: "加载更多文档" }))
+    await waitFor(() => expect(api.listDocuments).toHaveBeenCalledTimes(2))
+    expect(vi.mocked(api.listDocuments).mock.calls[1][0].cursor).toEqual(cursor)
+  })
+
+  it("keeps the current filename out of the toolbar after selecting a document", async () => {
+    const api = mockApi()
+    const snapshot = workspaceSnapshot()
+    vi.mocked(api.openWorkspace).mockResolvedValue(snapshot)
+    vi.mocked(api.selectDocument).mockResolvedValue({ ...snapshot, document: snapshot.documents[1] })
+    await mountBody(api)
+    expect(screen.queryByLabelText("当前文件：虚构文档 A")).not.toBeInTheDocument()
+    expect(within(screen.getByRole("toolbar", { name: /格式工具栏/ })).queryByText("虚构文档 A")).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "虚构文档 B" }))
+    await waitFor(() => expect(api.selectDocument).toHaveBeenCalled())
+    expect(screen.queryByLabelText("当前文件：虚构文档 B")).not.toBeInTheDocument()
+    expect(within(screen.getByRole("toolbar", { name: /格式工具栏/ })).queryByText("虚构文档 B")).not.toBeInTheDocument()
+    expect(screen.queryByLabelText("当前文件：虚构文档 A")).not.toBeInTheDocument()
+  })
+
+  it("reopens concrete environment repair instructions after postponing setup", async () => {
+    const api = mockApi()
+    vi.mocked(api.checkEnvironment).mockResolvedValue({ ...environmentResult, ready: false, checks: [{ id: "xelatex", required: true, status: "fail", message: "缺少虚构测试 XeLaTeX" }] })
+    await mountBody(api)
+    await openOperationsPanel()
+    fireEvent.click(screen.getByRole("button", { name: "查看环境修复指引" }))
+    const guide = await screen.findByRole("dialog", { name: "准备本机文档环境" })
+    expect(within(guide).getByText("缺少虚构测试 XeLaTeX")).toBeInTheDocument()
+    fireEvent.click(within(guide).getByRole("button", { name: "打开 TeX 安装页面" }))
+    expect(api.openToolLink).toHaveBeenCalledWith("mactex")
+    fireEvent.click(within(guide).getByRole("button", { name: "返回工作台" }))
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "准备本机文档环境" })).not.toBeInTheDocument())
+  })
+
+  it("can leave a reopened environment guide when the environment check fails", async () => {
+    const api = mockApi()
+    vi.mocked(api.checkEnvironment).mockRejectedValue(new Error("SYNTHETIC_ENGINE_FAILURE"))
+    await mountBody(api)
+    await openOperationsPanel()
+    fireEvent.click(screen.getByRole("button", { name: "查看环境修复指引" }))
+    const guide = await screen.findByRole("dialog", { name: "准备本机文档环境" })
+    expect(within(guide).getByText("SYNTHETIC_ENGINE_FAILURE")).toBeInTheDocument()
+    fireEvent.click(within(guide).getByRole("button", { name: "返回工作台" }))
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "准备本机文档环境" })).not.toBeInTheDocument())
+    expect(api.quitApp).not.toHaveBeenCalled()
+  })
+
+  it("shows profile errors after blur or a preview attempt instead of on first visit", async () => {
+    const api = mockApi()
+    vi.mocked(api.openWorkspace).mockResolvedValue({ mode: "persistent", profile: null, profile_draft: emptyProfileDraft, document: documentFixture(), documents: [documentFixture()], deleted_documents: [] })
+    await mountBody(api)
+    fireEvent.click(screen.getByRole("button", { name: "学生档案" }))
+    const studentName = await screen.findByLabelText("学生姓名")
+    const studentId = screen.getByLabelText("学号")
+    expect(studentName).toHaveAttribute("aria-invalid", "false")
+    expect(studentId).toHaveAttribute("aria-invalid", "false")
+    expect(screen.getByLabelText("中文题目")).toHaveAttribute("aria-invalid", "false")
+    expect(screen.queryByText("请先补全学生档案")).not.toBeInTheDocument()
+    fireEvent.focus(studentName)
+    fireEvent.blur(studentName)
+    expect(screen.getByText("请输入学生姓名。")).toBeInTheDocument()
+    expect(studentId).toHaveAttribute("aria-invalid", "false")
+    fireEvent.click(screen.getByRole("button", { name: "合成开题报告" }))
+    fireEvent.click(await screen.findByRole("button", { name: "预览&导出" }))
+    expect(await screen.findByText("请先补全学生档案")).toBeInTheDocument()
+    expect(screen.getByLabelText("学号")).toHaveAttribute("aria-invalid", "true")
+    expect(screen.getByLabelText("中文题目")).toHaveAttribute("aria-invalid", "true")
+  })
+})
+
+describe("student-number academic autofill", () => {
+  afterEach(() => {
+    cleanup()
+    vi.useRealTimers()
+    delete (window as Window & { sztuDesktop?: SztuDesktopApi }).sztuDesktop
+  })
+
+  async function mountProfile(api: SztuDesktopApi) {
+    installApi(api)
+    const mounted = renderApp()
+    await screen.findByLabelText("保存状态：已保存")
+    fireEvent.click(screen.getByRole("button", { name: "学生档案" }))
+    await screen.findByLabelText("学号")
+    return mounted
+  }
+
+  it.each([
+    ["202300202999", "2027届", "人工智能学院", "计算机科学与技术"],
+    ["202200101999", "2026届", "中德智能制造学院", "机械设计制造及其自动化"],
+  ])("fills and saves only the shared academic fields for synthetic number %s", async (studentNumber, cohort, college, major) => {
+    const api = mockApi()
+    await mountProfile(api)
+    vi.useFakeTimers()
+    fireEvent.change(screen.getByLabelText("学号"), { target: { value: studentNumber } })
+    expect(screen.getByLabelText("毕业届别")).toHaveValue(cohort)
+    expect(screen.getByLabelText("学院")).toHaveValue(college)
+    expect(screen.getByLabelText("专业")).toHaveValue(major)
+    expect(screen.getByLabelText("班级")).toHaveValue("")
+    expect(screen.getByLabelText("学生姓名")).toHaveValue(profile.full_name)
+    expect(screen.getByLabelText("指导教师")).toHaveValue(profile.advisor_name)
+    await act(async () => { await vi.advanceTimersByTimeAsync(700) })
+    expect(api.saveProfileDraft).toHaveBeenCalledTimes(1)
+    expect(api.saveProfileDraft).toHaveBeenCalledWith({
+      ...completeProfileDraft,
+      student_number: studentNumber,
+      graduation_cohort: cohort,
+      college,
+      major,
+      class_name: "",
+    })
+    expect(api.saveProfile).not.toHaveBeenCalled()
+    expect(api.saveDraft).not.toHaveBeenCalled()
+  })
+
+  it("keeps existing academic fields for incomplete or unknown synthetic numbers", async () => {
+    const api = mockApi()
+    const activeDocument = documentFixture()
+    vi.mocked(api.openWorkspace).mockResolvedValue({ mode: "persistent", profile, profile_draft: { ...completeProfileDraft, graduation_cohort: "2031届" }, document: activeDocument, documents: [activeDocument], deleted_documents: [] })
+    await mountProfile(api)
+    vi.useFakeTimers()
+    for (const studentNumber of ["20230020999", "invalid999"]) {
+      fireEvent.change(screen.getByLabelText("学号"), { target: { value: studentNumber } })
+      expect(screen.getByLabelText("毕业届别")).toHaveValue("2031届")
+      expect(screen.getByLabelText("学院")).toHaveValue(profile.college)
+      expect(screen.getByLabelText("专业")).toHaveValue(profile.major)
+      expect(screen.getByLabelText("班级")).toHaveValue(profile.class_name)
+    }
+    fireEvent.change(screen.getByLabelText("学号"), { target: { value: "202399999999" } })
+    expect(screen.getByLabelText("毕业届别")).toHaveValue("2027届")
+    expect(screen.getByLabelText("学院")).toHaveValue(profile.college)
+    expect(screen.getByLabelText("专业")).toHaveValue(profile.major)
+    expect(screen.getByLabelText("班级")).toHaveValue(profile.class_name)
+  })
+
+  it("preserves manual academic corrections through later saves and workspace reload", async () => {
+    const api = mockApi()
+    const activeDocument = documentFixture()
+    let persistedProfileDraft: StudentProfileDraft = { ...completeProfileDraft }
+    vi.mocked(api.openWorkspace).mockImplementation(async () => ({ mode: "persistent", profile, profile_draft: persistedProfileDraft, document: activeDocument, documents: [activeDocument], deleted_documents: [] }))
+    vi.mocked(api.saveProfileDraft).mockImplementation(async (next) => {
+      persistedProfileDraft = { ...next }
+      return persistedProfileDraft
+    })
+    const firstRender = await mountProfile(api)
+    vi.useFakeTimers()
+    fireEvent.change(screen.getByLabelText("学号"), { target: { value: "202300202999" } })
+    expect(screen.getByLabelText("学院")).toHaveValue("人工智能学院")
+    fireEvent.change(screen.getByLabelText("毕业届别"), { target: { value: "2031届" } })
+    fireEvent.change(screen.getByLabelText("学院"), { target: { value: "人工修正学院" } })
+    fireEvent.change(screen.getByLabelText("专业"), { target: { value: "人工修正专业" } })
+    fireEvent.change(screen.getByLabelText("班级"), { target: { value: "人工修正班级" } })
+    await act(async () => { await vi.advanceTimersByTimeAsync(700) })
+    fireEvent.change(screen.getByLabelText("指导教师职称"), { target: { value: "教授" } })
+    await act(async () => { await vi.advanceTimersByTimeAsync(700) })
+    expect(api.saveProfileDraft).toHaveBeenLastCalledWith(expect.objectContaining({ student_number: "202300202999", graduation_cohort: "2031届", college: "人工修正学院", major: "人工修正专业", class_name: "人工修正班级" }))
+    expect(api.saveProfile).toHaveBeenLastCalledWith(expect.objectContaining({ student_number: "202300202999", graduation_cohort: "2031届", college: "人工修正学院", major: "人工修正专业", class_name: "人工修正班级" }))
+    expect(api.saveDraft).not.toHaveBeenCalled()
+    vi.useRealTimers()
+    firstRender.unmount()
+    await mountProfile(api)
+    expect(screen.getByLabelText("学号")).toHaveValue("202300202999")
+    expect(screen.getByLabelText("毕业届别")).toHaveValue("2031届")
+    expect(screen.getByLabelText("学院")).toHaveValue("人工修正学院")
+    expect(screen.getByLabelText("专业")).toHaveValue("人工修正专业")
+    expect(screen.getByLabelText("班级")).toHaveValue("人工修正班级")
+  })
+
+  it.each([
+    ["中德智能制造学院", "机械设计制造及其自动化", "机械1班", "", ""],
+    ["大数据与互联网学院", "计算机科学与技术", "计算机1班", "计算机科学与技术", "计算机1班"],
+  ])("keeps only a compatible previous major when synthetic number identifies a college but no major (%s)", async (college, major, className, expectedMajor, expectedClass) => {
+    const api = mockApi()
+    const academicProfile = { ...profile, college, major, class_name: className }
+    const activeDocument = documentFixture()
+    vi.mocked(api.openWorkspace).mockResolvedValue({ mode: "persistent", profile: academicProfile, profile_draft: null, document: activeDocument, documents: [activeDocument], deleted_documents: [] })
+    await mountProfile(api)
+    vi.useFakeTimers()
+    fireEvent.change(screen.getByLabelText("学号"), { target: { value: "202300209999" } })
+    expect(screen.getByLabelText("学院")).toHaveValue("人工智能学院")
+    expect(screen.getByLabelText("专业")).toHaveValue(expectedMajor)
+    expect(screen.getByLabelText("班级")).toHaveValue(expectedClass)
+  })
+
+  it("retains a compatible class and persists an incompatible class as empty without reviving the old profile value", async () => {
+    const api = mockApi()
+    const academicProfile = { ...profile, college: "大数据与互联网学院", major: "计算机科学与技术", class_name: "计算机1班" }
+    const assessment = documentFixture({ document_type: "advisor_review", schema_version: "0.1", content: assessmentContent(emptyAssessmentDraft(), { title: "合成论文", student_name: profile.full_name, student_id: profile.student_number, college: academicProfile.college, major: academicProfile.major, advisor: profile.advisor_name ?? "", advisor_title: profile.advisor_title ?? "" }) })
+    vi.mocked(api.openWorkspace).mockResolvedValue({ mode: "persistent", profile: academicProfile, profile_draft: null, document: assessment, documents: [assessment], deleted_documents: [] })
+    await mountProfile(api)
+    vi.useFakeTimers()
+    fireEvent.change(screen.getByLabelText("学号"), { target: { value: "202300202999" } })
+    expect(screen.getByLabelText("学院")).toHaveValue("人工智能学院")
+    expect(screen.getByLabelText("班级")).toHaveValue("计算机1班")
+    await act(async () => { await vi.advanceTimersByTimeAsync(700) })
+    expect(api.saveProfile).toHaveBeenLastCalledWith(expect.objectContaining({ student_number: "202300202999", college: "人工智能学院", major: "计算机科学与技术", class_name: "计算机1班" }))
+    fireEvent.change(screen.getByLabelText("学号"), { target: { value: "202200101999" } })
+    expect(screen.getByLabelText("班级")).toHaveValue("")
+    await act(async () => { await vi.advanceTimersByTimeAsync(700) })
+    expect(api.saveProfileDraft).toHaveBeenLastCalledWith(expect.objectContaining({ student_number: "202200101999", college: "中德智能制造学院", major: "机械设计制造及其自动化", class_name: "" }))
+    expect(api.saveProfile).toHaveBeenLastCalledWith(expect.objectContaining({ student_number: "202200101999", college: "中德智能制造学院", major: "机械设计制造及其自动化", class_name: "" }))
+    expect(api.saveDraft).not.toHaveBeenCalled()
   })
 })

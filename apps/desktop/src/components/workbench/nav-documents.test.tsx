@@ -33,13 +33,19 @@ function documentRecord(
 }
 
 function renderNavigation({
+  studentName = "合成学生甲",
   documents = [documentRecord("proposal-a", "开题报告第一版")],
   deletedDocuments = [],
   disabled = false,
+  documentsHasMore = false,
+  deletedDocumentsHasMore = false,
 }: {
+  studentName?: string
   documents?: DocumentRecord[]
   deletedDocuments?: DocumentRecord[]
   disabled?: boolean
+  documentsHasMore?: boolean
+  deletedDocumentsHasMore?: boolean
 } = {}) {
   const callbacks = {
     onSelectDocument: vi.fn().mockResolvedValue(undefined),
@@ -49,33 +55,81 @@ function renderNavigation({
     onDeleteDocument: vi.fn().mockResolvedValue(undefined),
     onRestoreDocument: vi.fn().mockResolvedValue(undefined),
     onPurgeDocument: vi.fn().mockResolvedValue(undefined),
+    onLoadMoreDocuments: vi.fn().mockResolvedValue(undefined),
   }
-  render(
+  const navigation = (nextDocuments = documents) => (
     <TooltipProvider>
       <SidebarProvider>
         <Sidebar>
           <SidebarContent>
             <NavDocuments
+              studentName={studentName}
               profileActive={false}
               toolsActive={false}
               inspectionActive={false}
               thesisToolsActive={false}
               activeThesisTool="three_line_table"
-              activeDocumentId={documents[0]?.id ?? null}
-              documents={documents}
+              activeDocumentId={nextDocuments[0]?.id ?? null}
+              documents={nextDocuments}
               deletedDocuments={deletedDocuments}
+              documentsHasMore={documentsHasMore}
+              deletedDocumentsHasMore={deletedDocumentsHasMore}
               disabled={disabled}
               {...callbacks}
             />
           </SidebarContent>
         </Sidebar>
       </SidebarProvider>
-    </TooltipProvider>,
+    </TooltipProvider>
   )
-  return callbacks
+  const view = render(navigation())
+  return { ...callbacks, rerenderDocuments: (nextDocuments: DocumentRecord[]) => view.rerender(navigation(nextDocuments)) }
 }
 
 describe("NavDocuments file tree", () => {
+  it.each([
+    ["task_book", "任务书", "任务书"],
+    ["proposal", "开题报告", "开题报告"],
+    ["midterm", "中期检查", "中期检查表"],
+    ["thesis", "毕业论文", "毕业论文"],
+    ["advisor_review", "指导教师评审表", "指导教师评审表"],
+    ["reviewer_review", "评阅人评审表", "评阅人评审表"],
+    ["defense_record", "答辩记录表", "答辩记录表"],
+    ["grade_assessment", "成绩考核表", "成绩考核表"],
+  ])("defaults a new %s file to the current student name and document label", async (type, label, filenameLabel) => {
+    const callbacks = renderNavigation({ studentName: "  合成学生乙  " })
+    fireEvent.click(screen.getByRole("button", { name: `新建${label}` }))
+    expect(screen.getByLabelText("文件名")).toHaveValue(`合成学生乙-${filenameLabel}`)
+    fireEvent.click(screen.getByRole("button", { name: "新建", exact: true }))
+    await waitFor(() => expect(callbacks.onCreateDocument).toHaveBeenCalledWith({
+      type, title: `合成学生乙-${filenameLabel}`, sourceDocumentId: undefined,
+    }))
+  })
+
+  it("uses the document label when the student name is still empty", () => {
+    renderNavigation({ studentName: "  " })
+    fireEvent.click(screen.getByRole("button", { name: "新建任务书" }))
+    expect(screen.getByLabelText("文件名")).toHaveValue("任务书")
+  })
+
+  it("offers separate continuation actions for documents and the recycle bin", () => {
+    const callbacks = renderNavigation({ documentsHasMore: true, deletedDocumentsHasMore: true })
+    fireEvent.click(screen.getByRole("button", { name: "加载更多文档", exact: true }))
+    expect(callbacks.onLoadMoreDocuments).toHaveBeenCalledWith(false)
+    fireEvent.click(screen.getByRole("button", { name: /回收站（已载入/ }))
+    fireEvent.click(screen.getByRole("button", { name: "加载更多回收站文档", exact: true }))
+    expect(callbacks.onLoadMoreDocuments).toHaveBeenCalledWith(true)
+  })
+
+  it("reveals the active document after an asynchronous workspace restore", () => {
+    const navigation = renderNavigation({ documents: [] })
+    const assessment = documentRecord("assessment-restored", "考核表第二稿", "grade_assessment")
+    navigation.rerenderDocuments([assessment])
+
+    expect(screen.getByRole("button", { name: "成绩考核表", exact: true })).toHaveAttribute("aria-expanded", "true")
+    expect(screen.getByRole("button", { name: "考核表第二稿", exact: true })).toBeVisible()
+  })
+
   it("keeps the document action aligned and reserves text space without overlap", () => {
     const longTitle = "未命名开题报告—材料与方法补充修订版"
     renderNavigation({ documents: [documentRecord("proposal-long", longTitle)] })
@@ -91,13 +145,13 @@ describe("NavDocuments file tree", () => {
       "pr-8",
       "text-left",
     )
-    expect(fileButton.querySelector("span")).toHaveClass(
+    expect(screen.getByText(longTitle)).toHaveClass(
       "min-w-0",
       "flex-1",
       "truncate",
       "text-left",
     )
-    expect(action).toHaveClass("right-1")
+    expect(action).toHaveAttribute("data-sidebar", "menu-action")
   })
 
   it("opens layout tools independently from the thesis creation action", () => {
@@ -136,6 +190,7 @@ describe("NavDocuments file tree", () => {
     const callbacks = renderNavigation()
     fireEvent.click(screen.getByRole("button", { name: "新建开题报告" }))
     expect(screen.getByRole("dialog", { name: "新建开题报告" })).toBeInTheDocument()
+    expect(screen.getByLabelText("文件名")).toHaveValue("合成学生甲-开题报告")
 
     fireEvent.change(screen.getByLabelText("文件名"), {
       target: { value: "开题报告第二版" },

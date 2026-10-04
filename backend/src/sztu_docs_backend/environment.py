@@ -14,11 +14,13 @@ from typing import Any
 
 from .exporter import (
     TASK_BOOK_CHECKBOX_FONT_FILENAMES,
+    DOCUMENT_OUTPUT_LABELS,
     ExportError,
     _find_task_book_checkbox_font,
     resolve_engine,
 )
 from .template_catalog import discover_trusted_template_packs
+from .template_engine import ASSESSMENT_DOCUMENT_TYPES
 
 
 CORE_DOCUMENT_FONT_GROUPS = {
@@ -199,7 +201,7 @@ def _font_search_roots() -> list[Path]:
         configured_font = os.environ.get(environment_name)
         if configured_font:
             roots.append(Path(configured_font).expanduser().parent)
-    for document_type in ("proposal", "task_book", "midterm", "thesis"):
+    for document_type in ("proposal", "task_book", "midterm", "thesis", "advisor_review", "reviewer_review", "defense_record", "grade_assessment"):
         try:
             descriptor = resolve_engine(document_type)
         except ExportError:
@@ -525,6 +527,22 @@ def _check_thesis_engine() -> dict[str, Any]:
     }
 
 
+def _check_assessment_engine(document_type: str) -> dict[str, Any]:
+    try:
+        engine = resolve_engine(document_type)
+    except ExportError as exc:
+        return {
+            "id": f"{document_type}_engine", "required": False, "status": "warn",
+            "message": exc.message, "details": {"code": exc.code},
+        }
+    live_workspace = engine.source in {"development-workspace", "environment-workspace", "linked-workspace"}
+    return {
+        "id": f"{document_type}_engine", "required": False, "status": "pass",
+        "message": f"{DOCUMENT_OUTPUT_LABELS[document_type]}模板已同步为本地快照，可导出一页 PDF、Word 和 LaTeX 源码。",
+        "details": {"version": engine.version, "pack_sha256": engine.pack_sha256, "source": engine.source, "live_workspace": live_workspace},
+    }
+
+
 def _check_task_book_docx_font() -> dict[str, Any]:
     try:
         engine = resolve_engine("task_book")
@@ -651,6 +669,7 @@ def check_environment() -> dict[str, Any]:
         _check_midterm_engine(),
         _check_task_book_engine(),
         _check_thesis_engine(),
+        *(_check_assessment_engine(kind) for kind in sorted(ASSESSMENT_DOCUMENT_TYPES)),
         _check_task_book_docx_font(),
     ]
     ready = not any(

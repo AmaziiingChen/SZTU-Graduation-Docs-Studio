@@ -1,6 +1,6 @@
+import { Empty, EmptyDescription } from "@/components/ui/empty"
 import { DownloadIcon as DownloadIconAnimated } from "@/components/ui/download"
-import { CopyIcon as CopyIconAnimated } from "@/components/ui/copy"
-import { AnimatedActionIcon } from "@/components/workbench/animated-action-icon"
+import { AnimatedActionIcon } from "@/components/animated-action-icon"
 import { useActionFeedback } from "@/hooks/use-action-feedback"
 import { ActionFeedbackIcon } from "@/components/workbench/action-feedback-icon"
 import { ImageIcon } from "@/components/ui/image-icon"
@@ -23,7 +23,6 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { LatexSourceSheet } from "@/components/workbench/latex-source-sheet"
-import { writeClipboardText } from "@/lib/desktop-clipboard"
 import {
   copyTablePreviewPng,
   downloadTablePreviewPng,
@@ -93,32 +92,6 @@ export function TablePreviewCard({
 
   const { completed, complete, reset } = useActionFeedback()
 
-  const copyLatex = async () => {
-    reset("copyLatex")
-    if (!latex) return
-    try {
-      await writeClipboardText(latex)
-      complete("copyLatex")
-      toast.success("LaTeX 源码已复制。")
-    } catch {
-      toast.error("无法访问剪贴板，请在“查看 LaTeX”中手动复制。")
-    }
-  }
-
-  const downloadLatex = () => {
-    reset("downloadLatex")
-    if (!latex) return
-    const blob = new Blob([latex], { type: "text/plain;charset=utf-8" })
-    const url = URL.createObjectURL(blob)
-    const anchor = document.createElement("a")
-    anchor.href = url
-    anchor.download = filename
-    anchor.click()
-    complete("downloadLatex")
-    toast.success("文件已准备好，已请求下载。")
-    URL.revokeObjectURL(url)
-  }
-
   return (
     <Card>
       <CardHeader className="gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -135,15 +108,7 @@ export function TablePreviewCard({
             <ActionFeedbackIcon token={completed.downloadPng}><AnimatedActionIcon icon={DownloadIconAnimated} /></ActionFeedbackIcon>
             下载 PNG
           </Button>
-          <LatexSourceSheet latex={latex} packages={packages} />
-          <Button type="button" size="sm" variant="outline" disabled={!latex} onClick={() => void copyLatex()}>
-            <ActionFeedbackIcon token={completed.copyLatex}><AnimatedActionIcon icon={CopyIconAnimated} /></ActionFeedbackIcon>
-            复制源码
-          </Button>
-          <Button type="button" size="sm" disabled={!latex} onClick={downloadLatex}>
-            <ActionFeedbackIcon token={completed.downloadLatex}><AnimatedActionIcon icon={DownloadIconAnimated} /></ActionFeedbackIcon>
-            下载源码
-          </Button>
+          <LatexSourceSheet latex={latex} filename={filename} packages={packages} />
         </div>
       </CardHeader>
       <CardContent>
@@ -197,9 +162,7 @@ export function TablePreviewCard({
             </Table>
           </div>
         ) : (
-          <div className="flex min-h-48 items-center justify-center rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-            {emptyText}
-          </div>
+          <Empty className="min-h-48 border"><EmptyDescription>{emptyText}</EmptyDescription></Empty>
         )}
       </CardContent>
     </Card>

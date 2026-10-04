@@ -14,7 +14,8 @@
       "oneOf": [
         {"$ref": "proposal.schema.json"},
         {"$ref": "midterm.schema.json"},
-        {"$ref": "task-book.schema.json"}
+        {"$ref": "task-book.schema.json"},
+        {"$ref": "assessment-form.schema.json"}
       ]
     },
     "template": {

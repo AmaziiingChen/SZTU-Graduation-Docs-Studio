@@ -308,6 +308,7 @@ export class UpdateService {
   private checking = false
   private downloadedPath: string | undefined
   private downloadedVersion: string | undefined
+  private downloadedSha256: string | undefined
   private downloadedAt: string | undefined
   private currentControl: ReleaseControl | undefined
   private readonly listeners = new Set<(status: UpdateStatus) => void>()
@@ -373,12 +374,24 @@ export class UpdateService {
       ...(this.currentControl ? { control: this.currentControl } : {}),
     })
     try {
-      const response = await this.fetchWithTimeout(this.options.manifestUrl, 10_000)
-      if (!response.ok) throw new Error("Manifest request failed.")
-      const declaredLength = Number(response.headers.get("content-length") ?? "0")
-      if (declaredLength > MAX_MANIFEST_BYTES) throw new Error("Manifest is too large.")
-      const bytes = Buffer.from(await response.arrayBuffer())
-      if (bytes.length > MAX_MANIFEST_BYTES) throw new Error("Manifest is too large.")
+      const bytes = await this.fetchWithTimeout(this.options.manifestUrl, 10_000, async (response, signal) => {
+        if (!response.ok || !response.body) throw new Error("Manifest request failed.")
+        const declaredLength = Number(response.headers.get("content-length") ?? "0")
+        if (declaredLength > MAX_MANIFEST_BYTES) throw new Error("Manifest is too large.")
+        const chunks: Uint8Array[] = []
+        let size = 0
+        const reader = response.body.getReader()
+        try {
+          while (true) {
+            const chunk = await this.readChunk(reader, signal)
+            if (chunk.done) break
+            size += chunk.value.byteLength
+            if (size > MAX_MANIFEST_BYTES) throw new Error("Manifest is too large.")
+            chunks.push(chunk.value)
+          }
+          return Buffer.concat(chunks, size)
+        } finally { void reader.cancel().catch(() => undefined); reader.releaseLock() }
+      })
       let manifest: UpdateManifestPayload
       try {
         manifest = parseAndVerifyManifest(
@@ -405,7 +418,8 @@ export class UpdateService {
         }
       }
       this.currentControl = control
-      if (compareSemver(manifest.version, this.options.currentVersion) <= 0) {
+      if (compareSemver(manifest.version, this.options.currentVersion) <= 0 ||
+          (manifest.schema_version === "2.0" && manifest.artifacts.length === 0)) {
         this.setStatus({
           state: "up_to_date",
           checkedAt: (this.options.now?.() ?? new Date()).toISOString(),
@@ -421,6 +435,7 @@ export class UpdateService {
       if (!artifact) throw new Error("No update artifact for this platform.")
       if (
         this.downloadedVersion === manifest.version &&
+        this.downloadedSha256 === artifact.sha256 &&
         this.downloadedPath &&
         this.downloadedAt &&
         (await this.downloadedArtifactAvailable(artifact))
@@ -449,6 +464,7 @@ export class UpdateService {
         ...(control ? { control } : {}),
       })
       this.downloadedVersion = manifest.version
+      this.downloadedSha256 = artifact.sha256
       this.downloadedAt =
         this.status.state === "downloaded" ? this.status.downloadedAt : undefined
       await this.options.onOutcome?.("downloaded", manifest.version)
@@ -467,73 +483,103 @@ export class UpdateService {
     for (const listener of this.listeners) listener(status)
   }
 
-  private async fetchWithTimeout(url: string, timeoutMs: number): Promise<Response> {
+  private async fetchWithTimeout<T>(
+    url: string,
+    timeoutMs: number,
+    consume: (response: Response, signal: AbortSignal) => Promise<T>,
+  ): Promise<T> {
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), timeoutMs)
+    let responseBody: ReadableStream<Uint8Array> | null = null
+    let rejectDeadline!: (error: Error) => void
+    const deadline = new Promise<never>((_resolve, reject) => { rejectDeadline = reject })
+    const timeout = setTimeout(() => {
+      controller.abort()
+      if (responseBody && !responseBody.locked) void responseBody.cancel().catch(() => undefined)
+      rejectDeadline(new Error("Update request timed out."))
+    }, timeoutMs)
     timeout.unref()
     try {
-      return await (this.options.fetchImpl ?? fetch)(url, {
+      const operation = (this.options.fetchImpl ?? fetch)(url, {
         method: "GET",
         credentials: "omit",
         redirect: "error",
         signal: controller.signal,
+      }).then((response) => {
+        responseBody = response.body
+        if (controller.signal.aborted) {
+          void response.body?.cancel().catch(() => undefined)
+          throw new Error("Update request timed out.")
+        }
+        return consume(response, controller.signal)
       })
+      return await Promise.race([operation, deadline])
     } finally {
       clearTimeout(timeout)
     }
+  }
+
+  private readChunk(reader: ReadableStreamDefaultReader<Uint8Array>, signal: AbortSignal): Promise<ReadableStreamReadResult<Uint8Array>> {
+    if (signal.aborted) return Promise.reject(new Error("Update request timed out."))
+    return new Promise((resolve, reject) => {
+      const aborted = () => {
+        reject(new Error("Update request timed out."))
+        void reader.cancel().catch(() => undefined)
+      }
+      signal.addEventListener("abort", aborted, { once: true })
+      reader.read().then(resolve, reject).finally(() => signal.removeEventListener("abort", aborted))
+    })
   }
 
   private async downloadArtifact(
     version: string,
     artifact: UpdateArtifact,
   ): Promise<string> {
-    const response = await this.fetchWithTimeout(artifact.url, 60_000)
-    if (!response.ok || !response.body) throw new Error("Update download failed.")
-    const directory = path.join(this.options.userDataPath, "updates")
-    await mkdir(directory, { recursive: true, mode: 0o700 })
-    const extension = path.extname(new URL(artifact.url).pathname).toLowerCase()
-    const safeExtension = [".dmg", ".zip", ".exe", ".msi", ".gz"].includes(extension)
-      ? extension
-      : ".update"
-    const target = path.join(
-      directory,
-      `sztu-docs-${version}-${artifact.platform}-${artifact.arch}${safeExtension}`,
-    )
-    const temporary = `${target}.${randomUUID()}.tmp`
-    const handle = await open(temporary, "wx", 0o600)
-    const hash = createHash("sha256")
-    let size = 0
-    try {
+    return this.fetchWithTimeout(artifact.url, 60_000, async (response, signal) => {
+      if (!response.ok || !response.body) throw new Error("Update download failed.")
+      const directory = path.join(this.options.userDataPath, "updates")
+      await mkdir(directory, { recursive: true, mode: 0o700 })
+      if (signal.aborted) throw new Error("Update request timed out.")
+      const extension = path.extname(new URL(artifact.url).pathname).toLowerCase()
+      const safeExtension = [".dmg", ".zip", ".exe", ".msi", ".gz"].includes(extension)
+        ? extension
+        : ".update"
+      const target = path.join(directory, `sztu-docs-${version}-${artifact.platform}-${artifact.arch}${safeExtension}`)
+      const temporary = `${target}.${randomUUID()}.tmp`
+      const handle = await open(temporary, "wx", 0o600)
+      const hash = createHash("sha256")
+      let size = 0, committed = false
       const reader = response.body.getReader()
-      while (true) {
-        const chunk = await reader.read()
-        if (chunk.done) break
-        size += chunk.value.byteLength
-        if (size > artifact.size_bytes || size > MAX_ARTIFACT_BYTES) {
-          throw new Error("Update artifact exceeded the signed size.")
+      try {
+        while (true) {
+          const chunk = await this.readChunk(reader, signal)
+          if (chunk.done) break
+          size += chunk.value.byteLength
+          if (size > artifact.size_bytes || size > MAX_ARTIFACT_BYTES) {
+            throw new Error("Update artifact exceeded the signed size.")
+          }
+          hash.update(chunk.value)
+          await handle.write(chunk.value)
         }
-        hash.update(chunk.value)
-        await handle.write(chunk.value)
+        await handle.close()
+        if (size !== artifact.size_bytes || hash.digest("hex") !== artifact.sha256) {
+          throw new Error("Update artifact integrity verification failed.")
+        }
+        if (signal.aborted) throw new Error("Update request timed out.")
+        // Replace the existing cache only after complete signature-bound verification.
+        await rename(temporary, target)
+        committed = true
+        const descriptor = await stat(target)
+        if (!descriptor.isFile() || descriptor.size !== artifact.size_bytes) {
+          throw new Error("Downloaded update file is invalid.")
+        }
+        return target
+      } finally {
+        void reader.cancel().catch(() => undefined)
+        reader.releaseLock()
+        await handle.close().catch(() => undefined)
+        if (!committed) await unlink(temporary).catch(() => undefined)
       }
-    } catch (error) {
-      await handle.close()
-      await unlink(temporary).catch(() => undefined)
-      throw error
-    }
-    await handle.close()
-    if (size !== artifact.size_bytes || hash.digest("hex") !== artifact.sha256) {
-      await unlink(temporary).catch(() => undefined)
-      throw new Error("Update artifact integrity verification failed.")
-    }
-    await unlink(target).catch((error: NodeJS.ErrnoException) => {
-      if (error.code !== "ENOENT") throw error
     })
-    await rename(temporary, target)
-    const descriptor = await stat(target)
-    if (!descriptor.isFile() || descriptor.size !== artifact.size_bytes) {
-      throw new Error("Downloaded update file is invalid.")
-    }
-    return target
   }
 
   private async downloadedArtifactAvailable(
@@ -541,8 +587,19 @@ export class UpdateService {
   ): Promise<boolean> {
     if (!this.downloadedPath) return false
     try {
-      const descriptor = await stat(this.downloadedPath)
-      return descriptor.isFile() && descriptor.size === artifact.size_bytes
+      const handle = await open(this.downloadedPath, "r")
+      try {
+        const descriptor = await handle.stat()
+        if (!descriptor.isFile() || descriptor.size !== artifact.size_bytes) return false
+        const hash = createHash("sha256")
+        const buffer = Buffer.alloc(64 * 1024)
+        while (true) {
+          const { bytesRead } = await handle.read(buffer, 0, buffer.length, null)
+          if (!bytesRead) break
+          hash.update(buffer.subarray(0, bytesRead))
+        }
+        return hash.digest("hex") === artifact.sha256
+      } finally { await handle.close() }
     } catch {
       return false
     }

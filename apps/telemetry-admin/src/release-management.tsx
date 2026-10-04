@@ -1,3 +1,5 @@
+import { Field, FieldLabel } from "@/components/ui/field"
+import { useId } from "react"
 import { useCallback, useEffect, useState } from "react"
 import { KeyRoundIcon, LoaderCircleIcon, PackageCheckIcon, PlusIcon, ShieldCheckIcon, Trash2Icon } from "lucide-react"
 
@@ -23,6 +25,7 @@ type ApiResponse<T> =
   | { status: "error"; message: string }
 
 export function ReleaseManagement() {
+  const releaseFieldId = useId()
   const [status, setStatus] = useState<ReleaseStatus | null>(null)
   const [busy, setBusy] = useState<"key" | "manifest" | "date-policy" | "publishing-date-policy" | null>(null)
   const [message, setMessage] = useState<string | null>(null)
@@ -183,7 +186,7 @@ export function ReleaseManagement() {
             初始化发布密钥
           </Button>
           {status?.publicKeyPem ? (
-            <Textarea aria-label="更新公钥" readOnly value={status.publicKeyPem} className="min-h-28 font-mono text-xs" />
+            <Field><FieldLabel htmlFor={`${releaseFieldId}-1`}>更新公钥</FieldLabel><Textarea id={`${releaseFieldId}-1`} aria-label="更新公钥" readOnly value={status.publicKeyPem} className="min-h-28 font-mono text-xs" /></Field>
           ) : null}
         </CardContent>
       </Card>
@@ -194,44 +197,44 @@ export function ReleaseManagement() {
           <CardDescription>只发公告时可不填安装包；此页面生成清单但不会自动公开文件</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-5">
-          <Input aria-label="版本号" value={version} onChange={(event) => setVersion(event.target.value)} placeholder="0.2.0" />
+          <Field><FieldLabel htmlFor={`${releaseFieldId}-2`}>版本号</FieldLabel><Input id={`${releaseFieldId}-2`} aria-label="版本号" value={version} onChange={(event) => setVersion(event.target.value)} placeholder="0.2.0" /></Field>
           <div className="grid gap-3">
             {artifacts.map((artifact, index) => (
-              <div key={index} className="grid gap-3 rounded-lg border p-3 lg:grid-cols-[8rem_8rem_1fr_1fr_auto]">
-                <Select value={artifact.platform} onValueChange={(value) => setArtifacts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, platform: value as typeof artifact.platform } : item))}>
-                  <SelectTrigger aria-label={`安装包 ${index + 1} 平台`}><span>{artifact.platform === "darwin" ? "macOS" : artifact.platform === "win32" ? "Windows" : "Linux"}</span></SelectTrigger>
+              <div key={index} className="grid items-end gap-3 rounded-lg border p-3 lg:grid-cols-[8rem_8rem_1fr_1fr_auto]">
+                <Field><FieldLabel htmlFor={`${releaseFieldId}-3-${index}`}>{`安装包 ${index + 1} 平台`}</FieldLabel><Select value={artifact.platform} onValueChange={(value) => setArtifacts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, platform: value as typeof artifact.platform } : item))}>
+                  <SelectTrigger id={`${releaseFieldId}-3-${index}`} aria-label={`安装包 ${index + 1} 平台`}><span>{artifact.platform === "darwin" ? "macOS" : artifact.platform === "win32" ? "Windows" : "Linux"}</span></SelectTrigger>
                   <SelectContent><SelectItem value="darwin">macOS</SelectItem><SelectItem value="win32">Windows</SelectItem><SelectItem value="linux">Linux</SelectItem></SelectContent>
-                </Select>
-                <Select value={artifact.arch} onValueChange={(value) => setArtifacts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, arch: value as typeof artifact.arch } : item))}>
-                  <SelectTrigger aria-label={`安装包 ${index + 1} 架构`}><span>{artifact.arch}</span></SelectTrigger>
+                </Select></Field>
+                <Field><FieldLabel htmlFor={`${releaseFieldId}-4-${index}`}>{`安装包 ${index + 1} 架构`}</FieldLabel><Select value={artifact.arch} onValueChange={(value) => setArtifacts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, arch: value as typeof artifact.arch } : item))}>
+                  <SelectTrigger id={`${releaseFieldId}-4-${index}`} aria-label={`安装包 ${index + 1} 架构`}><span>{artifact.arch}</span></SelectTrigger>
                   <SelectContent><SelectItem value="arm64">arm64</SelectItem><SelectItem value="x64">x64</SelectItem></SelectContent>
-                </Select>
-                <Input aria-label={`安装包 ${index + 1} 本机路径`} value={artifact.filePath} onChange={(event) => setArtifacts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, filePath: event.target.value } : item))} placeholder="本机绝对路径" />
-                <Input aria-label={`安装包 ${index + 1} 下载地址`} value={artifact.url} onChange={(event) => setArtifacts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, url: event.target.value } : item))} placeholder="HTTPS 下载地址" />
+                </Select></Field>
+                <Field><FieldLabel htmlFor={`${releaseFieldId}-5-${index}`}>{`安装包 ${index + 1} 本机路径`}</FieldLabel><Input id={`${releaseFieldId}-5-${index}`} aria-label={`安装包 ${index + 1} 本机路径`} value={artifact.filePath} onChange={(event) => setArtifacts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, filePath: event.target.value } : item))} placeholder="本机绝对路径" /></Field>
+                <Field><FieldLabel htmlFor={`${releaseFieldId}-6-${index}`}>{`安装包 ${index + 1} 下载地址`}</FieldLabel><Input id={`${releaseFieldId}-6-${index}`} aria-label={`安装包 ${index + 1} 下载地址`} value={artifact.url} onChange={(event) => setArtifacts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, url: event.target.value } : item))} placeholder="HTTPS 下载地址" /></Field>
                 <Button variant="ghost" size="icon" aria-label={`删除安装包 ${index + 1}`} onClick={() => setArtifacts((current) => current.filter((_, itemIndex) => itemIndex !== index))}><Trash2Icon /></Button>
               </div>
             ))}
             <Button variant="outline" className="w-fit" disabled={artifacts.length >= 6} onClick={() => setArtifacts((current) => [...current, { platform: "darwin", arch: "arm64", filePath: "", url: "" }])}><PlusIcon />添加安装包</Button>
           </div>
           <div className="grid gap-3 md:grid-cols-3">
-            <Select value={updatePolicy} onValueChange={(value) => setUpdatePolicy(value as typeof updatePolicy)}>
-              <SelectTrigger aria-label="更新策略"><span>{updatePolicy === "optional" ? "可选更新" : updatePolicy === "recommended" ? "建议更新" : "必须更新"}</span></SelectTrigger>
+            <Field><FieldLabel htmlFor={`${releaseFieldId}-7`}>更新策略</FieldLabel><Select value={updatePolicy} onValueChange={(value) => setUpdatePolicy(value as typeof updatePolicy)}>
+              <SelectTrigger id={`${releaseFieldId}-7`} aria-label="更新策略"><span>{updatePolicy === "optional" ? "可选更新" : updatePolicy === "recommended" ? "建议更新" : "必须更新"}</span></SelectTrigger>
               <SelectContent><SelectItem value="optional">可选更新</SelectItem><SelectItem value="recommended">建议更新</SelectItem><SelectItem value="required">必须更新</SelectItem></SelectContent>
-            </Select>
-            <Input aria-label="最低可用版本" value={minimumVersion} onChange={(event) => setMinimumVersion(event.target.value)} placeholder="最低可用版本，可留空" />
-            <Select value={serviceStatus} onValueChange={(value) => setServiceStatus(value as typeof serviceStatus)}>
-              <SelectTrigger aria-label="服务状态"><span>{serviceStatus === "normal" ? "正常" : serviceStatus === "maintenance" ? "维护" : "停止服务"}</span></SelectTrigger>
+            </Select></Field>
+            <Field><FieldLabel htmlFor={`${releaseFieldId}-8`}>最低可用版本</FieldLabel><Input id={`${releaseFieldId}-8`} aria-label="最低可用版本" value={minimumVersion} onChange={(event) => setMinimumVersion(event.target.value)} placeholder="最低可用版本，可留空" /></Field>
+            <Field><FieldLabel htmlFor={`${releaseFieldId}-9`}>服务状态</FieldLabel><Select value={serviceStatus} onValueChange={(value) => setServiceStatus(value as typeof serviceStatus)}>
+              <SelectTrigger id={`${releaseFieldId}-9`} aria-label="服务状态"><span>{serviceStatus === "normal" ? "正常" : serviceStatus === "maintenance" ? "维护" : "停止服务"}</span></SelectTrigger>
               <SelectContent><SelectItem value="normal">正常</SelectItem><SelectItem value="maintenance">维护</SelectItem><SelectItem value="retired">停止服务</SelectItem></SelectContent>
-            </Select>
+            </Select></Field>
           </div>
-          <Input aria-label="使用说明地址" value={helpUrl} onChange={(event) => setHelpUrl(event.target.value)} placeholder="使用说明 HTTPS 地址，可留空" />
+          <Field><FieldLabel htmlFor={`${releaseFieldId}-10`}>使用说明地址</FieldLabel><Input id={`${releaseFieldId}-10`} aria-label="使用说明地址" value={helpUrl} onChange={(event) => setHelpUrl(event.target.value)} placeholder="使用说明 HTTPS 地址，可留空" /></Field>
           <div className="grid gap-3 md:grid-cols-[12rem_1fr]">
-            <Select value={announcementSeverity} onValueChange={(value) => setAnnouncementSeverity(value as typeof announcementSeverity)}>
-              <SelectTrigger aria-label="公告级别"><span>{announcementSeverity === "none" ? "不发布公告" : announcementSeverity}</span></SelectTrigger>
+            <Field><FieldLabel htmlFor={`${releaseFieldId}-11`}>公告级别</FieldLabel><Select value={announcementSeverity} onValueChange={(value) => setAnnouncementSeverity(value as typeof announcementSeverity)}>
+              <SelectTrigger id={`${releaseFieldId}-11`} aria-label="公告级别"><span>{announcementSeverity === "none" ? "不发布公告" : announcementSeverity}</span></SelectTrigger>
               <SelectContent><SelectItem value="none">不发布公告</SelectItem><SelectItem value="info">普通公告</SelectItem><SelectItem value="important">重要公告</SelectItem><SelectItem value="critical">不可关闭公告</SelectItem></SelectContent>
-            </Select>
-            <Input aria-label="公告标题" disabled={announcementSeverity === "none"} value={announcementTitle} onChange={(event) => setAnnouncementTitle(event.target.value)} placeholder="公告标题" />
-            <Textarea className="md:col-span-2" aria-label="公告正文" disabled={announcementSeverity === "none"} value={announcementBody} onChange={(event) => setAnnouncementBody(event.target.value)} placeholder="公告正文" />
+            </Select></Field>
+            <Field><FieldLabel htmlFor={`${releaseFieldId}-12`}>公告标题</FieldLabel><Input id={`${releaseFieldId}-12`} aria-label="公告标题" disabled={announcementSeverity === "none"} value={announcementTitle} onChange={(event) => setAnnouncementTitle(event.target.value)} placeholder="公告标题" /></Field>
+            <Field className="md:col-span-2"><FieldLabel htmlFor={`${releaseFieldId}-13`}>公告正文</FieldLabel><Textarea id={`${releaseFieldId}-13`}  aria-label="公告正文" disabled={announcementSeverity === "none"} value={announcementBody} onChange={(event) => setAnnouncementBody(event.target.value)} placeholder="公告正文" /></Field>
           </div>
           <Button className="w-fit" disabled={busy !== null || !status?.keyReady} onClick={() => void createManifest()}>
             {busy === "manifest" ? <LoaderCircleIcon className="animate-spin" /> : <PackageCheckIcon />}
@@ -248,9 +251,9 @@ export function ReleaseManagement() {
         <CardContent className="grid gap-4">
           {dateRules.map((rule, index) => (
             <div key={index} className="grid gap-3 rounded-lg border p-3 lg:grid-cols-[1fr_12rem_12rem_auto]">
-              <Input aria-label={`规则 ${index + 1} 学院`} value={rule.college} onChange={(event) => setDateRules((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, college: event.target.value } : item))} placeholder="学院全称" />
-              <Input aria-label={`规则 ${index + 1} 开始日期`} type="date" value={rule.start_date} onChange={(event) => setDateRules((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, start_date: event.target.value } : item))} />
-              <Input aria-label={`规则 ${index + 1} 结束日期`} type="date" value={rule.end_date} onChange={(event) => setDateRules((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, end_date: event.target.value } : item))} />
+              <Field><FieldLabel htmlFor={`${releaseFieldId}-14-${index}`}>{`规则 ${index + 1} 学院`}</FieldLabel><Input id={`${releaseFieldId}-14-${index}`} aria-label={`规则 ${index + 1} 学院`} value={rule.college} onChange={(event) => setDateRules((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, college: event.target.value } : item))} placeholder="学院全称" /></Field>
+              <Field><FieldLabel htmlFor={`${releaseFieldId}-15-${index}`}>{`规则 ${index + 1} 开始日期`}</FieldLabel><Input id={`${releaseFieldId}-15-${index}`} aria-label={`规则 ${index + 1} 开始日期`} type="date" value={rule.start_date} onChange={(event) => setDateRules((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, start_date: event.target.value } : item))} /></Field>
+              <Field><FieldLabel htmlFor={`${releaseFieldId}-16-${index}`}>{`规则 ${index + 1} 结束日期`}</FieldLabel><Input id={`${releaseFieldId}-16-${index}`} aria-label={`规则 ${index + 1} 结束日期`} type="date" value={rule.end_date} onChange={(event) => setDateRules((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, end_date: event.target.value } : item))} /></Field>
               <Button variant="ghost" size="icon" aria-label={`删除规则 ${index + 1}`} onClick={() => setDateRules((current) => current.filter((_, itemIndex) => itemIndex !== index))}><Trash2Icon /></Button>
             </div>
           ))}

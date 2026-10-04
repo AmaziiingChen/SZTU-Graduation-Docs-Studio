@@ -1,3 +1,12 @@
+import { Empty, EmptyDescription } from "@/components/ui/empty"
+import { Field, FieldLabel } from "@/components/ui/field"
+import { useId } from "react"
+import { AnimatedActionIcon } from "@/components/animated-action-icon"
+import { ImageIcon } from "@/components/ui/image-icon"
+import { ArrowLeftIcon } from "@/components/ui/arrow-left"
+import { ArrowRightIcon } from "@/components/ui/arrow-right"
+import { DeleteIcon } from "@/components/ui/delete"
+import { CircleCheckIcon } from "@/components/ui/circle-check"
 import { useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -19,6 +28,7 @@ export function BodyToolDialog({ value, chapters, onCancel, onSave }: {
   onCancel: () => void
   onSave: (value: StructuredToolBlock) => void
 }) {
+  const componentFieldId = useId()
   const [draft, setDraft] = useState(value)
   const [caption, setCaption] = useState(text(value.caption))
   const [table, setTable] = useState<EditableTableValue>(() => value.type === "data_table" ? {
@@ -69,27 +79,39 @@ export function BodyToolDialog({ value, chapters, onCancel, onSave }: {
   }
   return <Dialog open onOpenChange={open => { if (!open && !busy) onCancel() }}>
     <DialogContent className="flex max-h-[90vh] flex-col overflow-hidden sm:max-w-4xl">
-      <DialogHeader className="shrink-0"><DialogTitle>{title}</DialogTitle><DialogDescription>确认后插入正文；点击已插入的内容可以重新编辑。取消不会更改正文。</DialogDescription></DialogHeader>
+      <DialogHeader className="shrink-0"><DialogTitle>{title}</DialogTitle><DialogDescription>填写后插入正文，也可以选中已有图表再编辑。</DialogDescription></DialogHeader>
       <div className="min-h-0 overflow-y-auto"><fieldset disabled={busy} className="grid min-w-0 gap-4">
-        <label className="grid gap-2 text-sm font-medium">{group ? "总图题" : "表题（可选）"}<Input value={caption} maxLength={500} onChange={event => setCaption(event.target.value)} /></label>
+        <Field>
+                  <FieldLabel htmlFor={`${componentFieldId}-1`}>{group ? "总图题" : "表题（可选）"}</FieldLabel>
+                  <Input id={`${componentFieldId}-1`} value={caption} maxLength={500} onChange={event => setCaption(event.target.value)} />
+                </Field>
         {group ? <>
-          <div className="flex flex-wrap items-end gap-3">
-            <label className="grid gap-2 text-sm">所属章节<Select value={String(group.chapter ?? 1)} onValueChange={chapter => setDraft({ ...group, chapter: Number(chapter) })}><SelectTrigger><SelectValue>{chapters.find(item => item.value === group.chapter)?.label ?? `第 ${group.chapter ?? 1} 章`}</SelectValue></SelectTrigger><SelectContent>{chapters.map(chapter => <SelectItem key={chapter.value} value={String(chapter.value)}>{chapter.label}</SelectItem>)}</SelectContent></Select></label>
-            <label className="grid gap-2 text-sm">每行张数<Select value={String(group.columns ?? 2)} onValueChange={columns => setDraft({ ...group, columns: Number(columns) })}><SelectTrigger><SelectValue>{group.columns ?? 2} 张</SelectValue></SelectTrigger><SelectContent>{[1, 2, 3, 4].map(count => <SelectItem key={count} value={String(count)}>{count} 张</SelectItem>)}</SelectContent></Select></label>
-            <Button variant="outline" disabled={busy || group.items.length >= 4} onClick={() => void addImages()}>{busy ? "正在导入…" : "添加图片"}</Button><span className="text-sm text-muted-foreground">{group.items.length}/4 张</span>
+          <div className="grid items-end gap-3 sm:grid-cols-2">
+            <Field>
+                  <FieldLabel htmlFor={`${componentFieldId}-2`}>所属章节</FieldLabel>
+                  <Select value={String(group.chapter ?? 1)} onValueChange={chapter => setDraft({ ...group, chapter: Number(chapter) })}><SelectTrigger id={`${componentFieldId}-2`}><SelectValue>{chapters.find(item => item.value === group.chapter)?.label ?? `第 ${group.chapter ?? 1} 章`}</SelectValue></SelectTrigger><SelectContent>{chapters.map(chapter => <SelectItem key={chapter.value} value={String(chapter.value)}>{chapter.label}</SelectItem>)}</SelectContent></Select>
+                </Field>
+            <Field>
+                  <FieldLabel htmlFor={`${componentFieldId}-3`}>每行张数</FieldLabel>
+                  <Select value={String(group.columns ?? 2)} onValueChange={columns => setDraft({ ...group, columns: Number(columns) })}><SelectTrigger id={`${componentFieldId}-3`}><SelectValue>{group.columns ?? 2} 张</SelectValue></SelectTrigger><SelectContent>{[1, 2, 3, 4].map(count => <SelectItem key={count} value={String(count)}>{count} 张</SelectItem>)}</SelectContent></Select>
+                </Field>
+            <Button variant="outline" disabled={busy || group.items.length >= 4} onClick={() => void addImages()}><AnimatedActionIcon icon={ImageIcon} />{busy ? "正在导入…" : "添加图片"}</Button><span className="text-sm text-muted-foreground">{group.items.length}/4 张</span>
           </div>
           <div className={`grid gap-4 ${["", "grid-cols-1", "grid-cols-2", "grid-cols-3", "grid-cols-4"][group.columns ?? 2]}`}>
             {group.items.map((item, index) => <div key={`${item.path}-${index}`} className="grid content-start gap-2 rounded-lg border p-3">
               <img className="h-40 w-full object-contain" src={managedFigurePreviewUrl(item.path)} alt={item.alt} onError={event => void recoverManagedImagePreview(event.currentTarget)} />
-              <label className="grid gap-1 text-sm">子图 ({String.fromCharCode(97 + index)}) 说明<Input value={text(item.caption)} maxLength={500} onChange={event => setDraft({ ...group, items: group.items.map((entry, i) => i === index ? { ...entry, caption: event.target.value || undefined } : entry) })} /></label>
-              <div className="flex flex-wrap gap-1"><Button size="sm" variant="ghost" disabled={index === 0 || busy} onClick={() => move(index, -1)}>前移</Button><Button size="sm" variant="ghost" disabled={index === group.items.length - 1 || busy} onClick={() => move(index, 1)}>后移</Button><Button size="sm" variant="ghost" disabled={busy} onClick={() => setDraft({ ...group, items: group.items.filter((_, i) => i !== index) })}>移除</Button></div>
+              <Field>
+                  <FieldLabel htmlFor={`${componentFieldId}-4-${index}`}>子图 ({String.fromCharCode(97 + index)}) 说明</FieldLabel>
+                  <Input id={`${componentFieldId}-4-${index}`} value={text(item.caption)} maxLength={500} onChange={event => setDraft({ ...group, items: group.items.map((entry, i) => i === index ? { ...entry, caption: event.target.value || undefined } : entry) })} />
+                </Field>
+              <div className="flex flex-wrap gap-1"><Button size="sm" variant="ghost" disabled={index === 0 || busy} onClick={() => move(index, -1)}><AnimatedActionIcon icon={ArrowLeftIcon} />前移</Button><Button size="sm" variant="ghost" disabled={index === group.items.length - 1 || busy} onClick={() => move(index, 1)}><AnimatedActionIcon icon={ArrowRightIcon} />后移</Button><Button size="sm" variant="ghost" disabled={busy} onClick={() => setDraft({ ...group, items: group.items.filter((_, i) => i !== index) })}><AnimatedActionIcon icon={DeleteIcon} />移除</Button></div>
             </div>)}
           </div>
-          {!group.items.length ? <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">添加 2–4 张图片，可一次选择多张。图片会按上方布局作为一个整体插入。</p> : null}
-        </> : <><p className="text-sm text-muted-foreground">第一行作为表头。可直接粘贴 Excel 数据，最多 8 列、40 行数据。</p><VisualTableEditor value={table} onChange={setTable} exampleData="项目\t结果\n样本 A\t10\n样本 B\t12" /></>}
+          {!group.items.length ? <Empty className="border"><EmptyDescription>选择 2–4 张图片，可一次选择多张。</EmptyDescription></Empty> : null}
+        </> : <><p className="text-xs text-muted-foreground">可粘贴 Excel 数据；第一行为表头，最多 8 列、40 行数据。</p><VisualTableEditor value={table} onChange={setTable} exampleData="项目\t结果\n样本 A\t10\n样本 B\t12" /></>}
         {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
       </fieldset></div>
-      <DialogFooter className="shrink-0"><Button variant="outline" disabled={busy} onClick={onCancel}>取消</Button><Button disabled={busy} onClick={save}>确认{title}</Button></DialogFooter>
+      <DialogFooter className="shrink-0"><Button variant="outline" disabled={busy} onClick={onCancel}>取消</Button><Button disabled={busy} onClick={save}><AnimatedActionIcon icon={CircleCheckIcon} />确认{title}</Button></DialogFooter>
     </DialogContent>
   </Dialog>
 }

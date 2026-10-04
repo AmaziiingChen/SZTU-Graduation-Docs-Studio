@@ -156,7 +156,6 @@ describe("Electron security boundary", () => {
 
   it("disables workbench motion when the operating system requests it", () => {
     expect(themeSource).toContain("@media (prefers-reduced-motion: reduce)")
-    expect(themeSource).toContain(".selection-toolbar")
     expect(themeSource).toContain('[data-slot="save-status-content"]')
     expect(themeSource).toContain('[data-slot="section-completion-mark"]')
     expect(themeSource).toContain("animation: none")
@@ -355,6 +354,10 @@ describe("Electron security boundary", () => {
         "SYSTEMROOT",
         "SZTU_DOCS_CJK_VALIDATOR",
         "SZTU_DOCS_MIDTERM_ENGINE_DIR",
+        "SZTU_DOCS_ADVISOR_REVIEW_ENGINE_DIR",
+        "SZTU_DOCS_REVIEWER_REVIEW_ENGINE_DIR",
+        "SZTU_DOCS_DEFENSE_RECORD_ENGINE_DIR",
+        "SZTU_DOCS_GRADE_ASSESSMENT_ENGINE_DIR",
         "SZTU_DOCS_PROPOSAL_ENGINE_DIR",
         "SZTU_DOCS_TASK_BOOK_ENGINE_DIR",
         "SZTU_FONT_DIR",

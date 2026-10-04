@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto"
-import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises"
+import { chmod, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises"
 import path from "node:path"
 
 export const TELEMETRY_NOTICE_VERSION = "1.1"
@@ -10,11 +10,17 @@ const MAX_BATCH_LENGTH = 100
 const MAX_BATCH_BYTES = 256 * 1024
 const MAX_COMPLETED_DOCUMENTS = 10_000
 
+type TelemetryDocumentType = "proposal" | "task_book" | "midterm" | "advisor_review" | "reviewer_review" | "defense_record" | "grade_assessment"
+
 export type TelemetryView =
   | "profile"
   | "proposal"
   | "task_book"
   | "midterm"
+  | "advisor_review"
+  | "reviewer_review"
+  | "defense_record"
+  | "grade_assessment"
   | "inspection"
 
 export type TelemetryUsageEventInput =
@@ -22,7 +28,7 @@ export type TelemetryUsageEventInput =
   | {
       name: "document_action"
       action: "check" | "preview" | "template_sync" | "export" | "qa_record"
-      documentType: "proposal" | "task_book" | "midterm"
+      documentType: TelemetryDocumentType
       outcome: "success" | "failure" | "cancelled"
       errorCode?: string
       formatCount?: number
@@ -79,6 +85,10 @@ const TELEMETRY_VIEWS = new Set<TelemetryView>([
   "proposal",
   "task_book",
   "midterm",
+  "advisor_review",
+  "reviewer_review",
+  "defense_record",
+  "grade_assessment",
   "inspection",
 ])
 const TELEMETRY_ACTIONS = new Set([
@@ -88,7 +98,7 @@ const TELEMETRY_ACTIONS = new Set([
   "export",
   "qa_record",
 ])
-const DOCUMENT_TYPES = new Set(["proposal", "task_book", "midterm"])
+const DOCUMENT_TYPES = new Set(["proposal", "task_book", "midterm", "advisor_review", "reviewer_review", "defense_record", "grade_assessment"])
 const OUTCOMES = new Set(["success", "failure", "cancelled"])
 const STABLE_ERROR_CODE = /^[A-Z][A-Z0-9_]{0,63}$/
 const UUID_PATTERN =
@@ -171,7 +181,7 @@ export function parseTelemetryUsageEvent(value: unknown): TelemetryUsageEventInp
         | "template_sync"
         | "export"
         | "qa_record",
-      documentType: value.documentType as "proposal" | "task_book" | "midterm",
+      documentType: value.documentType as TelemetryDocumentType,
       outcome: value.outcome as "success" | "failure" | "cancelled",
       ...(value.errorCode === undefined ? {} : { errorCode: value.errorCode as string }),
       ...(value.formatCount === undefined ? {} : { formatCount: value.formatCount as number }),
@@ -244,6 +254,7 @@ export class TelemetryService {
   private readonly sessionStartedAt: number
   private timer: NodeJS.Timeout | undefined
   private started = false
+  private persistence: Promise<void> = Promise.resolve()
 
   constructor(
     private readonly options: {
@@ -326,7 +337,7 @@ export class TelemetryService {
   async stop(): Promise<void> {
     if (this.timer) clearInterval(this.timer)
     this.timer = undefined
-    if (!this.started) return
+    if (!this.started) { await this.persistence; return }
     this.started = false
     await this.record("app_stopped", {
       uptime_bucket: uptimeBucket(this.now().getTime() - this.sessionStartedAt),
@@ -350,7 +361,7 @@ export class TelemetryService {
 
   async recordDocumentCompletion(
     documentId: string,
-    documentType: "proposal" | "task_book" | "midterm",
+    documentType: TelemetryDocumentType,
   ): Promise<DocumentCompletionResult> {
     if (!DOCUMENT_ID_PATTERN.test(documentId) || !DOCUMENT_TYPES.has(documentType)) {
       throw new Error("Document completion input is invalid.")
@@ -565,13 +576,24 @@ export class TelemetryService {
   }
 
   private async atomicWrite(target: string, value: unknown): Promise<void> {
-    const temporary = `${target}.${randomUUID()}.tmp`
-    await writeFile(temporary, `${JSON.stringify(value)}\n`, {
-      encoding: "utf8",
-      mode: 0o600,
-      flag: "wx",
+    const snapshot = `${JSON.stringify(value)}\n`
+    const write = this.persistence.then(async () => {
+      const temporary = `${target}.${randomUUID()}.tmp`
+      try {
+        await writeFile(temporary, snapshot, {
+          encoding: "utf8",
+          mode: 0o600,
+          flag: "wx",
+        })
+        await rename(temporary, target)
+        await chmod(target, 0o600)
+      } catch (error) {
+        await unlink(temporary).catch(() => undefined)
+        throw error
+      }
     })
-    await rename(temporary, target)
-    await chmod(target, 0o600)
+    // A failed write is reported to its caller and does not poison later writes.
+    this.persistence = write.catch(() => undefined)
+    await write
   }
 }

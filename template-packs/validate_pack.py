@@ -17,7 +17,7 @@ from typing import Any, Iterable
 
 SUPPORTED_MANIFEST = (1, 0)
 SUPPORTED_APP_CONTRACT = (1, 0)
-SUPPORTED_DOCUMENT_CONTRACTS = {"proposal": (0, 2)}
+SUPPORTED_DOCUMENT_CONTRACTS = {"proposal": (0, 2), **{kind: (0, 1) for kind in ("midterm", "task_book", "advisor_review", "reviewer_review", "defense_record", "grade_assessment")}}
 SHA256_RE = re.compile(r"^[a-f0-9]{64}$")
 SEMVER_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$")
 
@@ -122,8 +122,8 @@ def _validate_manifest_shape(manifest: dict[str, Any]) -> None:
         _compatible(manifest["manifest_version"], SUPPORTED_MANIFEST, "manifest_version")
     if not isinstance(manifest["template_id"], str) or not re.fullmatch(r"[a-z0-9][a-z0-9._-]{2,127}", manifest["template_id"]):
         _fail("MANIFEST_INVALID", "template_id 格式无效")
-    if manifest["document_type"] != "proposal":
-        _fail("CONTRACT_VERSION_UNSUPPORTED", "当前开发模板只支持 proposal")
+    if manifest["document_type"] not in SUPPORTED_DOCUMENT_CONTRACTS:
+        _fail("CONTRACT_VERSION_UNSUPPORTED", "当前文档类型没有受支持的数据合同")
     if not isinstance(manifest["academic_year"], int) or not 2000 <= manifest["academic_year"] <= 2200:
         _fail("MANIFEST_INVALID", "academic_year 无效")
     if not isinstance(manifest["version"], str) or not SEMVER_RE.fullmatch(manifest["version"]):
@@ -132,7 +132,7 @@ def _validate_manifest_shape(manifest: dict[str, Any]) -> None:
     if not isinstance(contracts, dict) or set(contracts) != {"app_contract", "document_schema"}:
         _fail("MANIFEST_INVALID", "contract_versions 字段无效")
     _compatible(contracts["app_contract"], SUPPORTED_APP_CONTRACT, "app_contract")
-    _compatible(contracts["document_schema"], SUPPORTED_DOCUMENT_CONTRACTS["proposal"], "document_schema")
+    _compatible(contracts["document_schema"], SUPPORTED_DOCUMENT_CONTRACTS[manifest["document_type"]], "document_schema")
     renderers = manifest["renderers"]
     if not isinstance(renderers, list) or not renderers or len(renderers) != len(set(renderers)) or not set(renderers) <= {"latex", "docx"}:
         _fail("MANIFEST_INVALID", "renderers 必须是无重复的 latex/docx 列表")

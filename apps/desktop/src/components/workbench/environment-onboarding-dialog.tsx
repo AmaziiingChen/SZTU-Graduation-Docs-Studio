@@ -1,6 +1,6 @@
 import { ExternalLinkIcon as ExternalLinkIconAnimated } from "@/components/ui/external-link"
 import { RefreshCWIcon as RefreshCwIconAnimated } from "@/components/ui/refresh-cw"
-import { AnimatedActionIcon } from "@/components/workbench/animated-action-icon"
+import { AnimatedActionIcon } from "@/components/animated-action-icon"
 import { CircleAlertIcon, LoaderCircleIcon, TriangleAlertIcon } from "lucide-react"
 
 import {
@@ -136,6 +136,7 @@ function platformName(system: string): string {
 
 export function EnvironmentOnboardingDialog({
   open,
+  revisiting = false,
   environment,
   onRefresh,
   onComplete,
@@ -143,6 +144,7 @@ export function EnvironmentOnboardingDialog({
   onOpenGuide,
 }: {
   open: boolean
+  revisiting?: boolean
   environment: EnvironmentOnboardingState
   onRefresh: () => void
   onComplete: () => void
@@ -159,15 +161,15 @@ export function EnvironmentOnboardingDialog({
     : 0
 
   return (
-    <Dialog open={open} onOpenChange={() => undefined}>
+    <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen && revisiting) onComplete() }}>
       <DialogContent
-        showCloseButton={false}
+        showCloseButton={revisiting}
         className="max-h-[calc(100dvh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden sm:max-w-2xl"
       >
         <DialogHeader>
           <DialogTitle>准备本机文档环境</DialogTitle>
           <DialogDescription>
-            首次使用会检查字体、TeX、PDF 工具和 Word/WPS；不会读取或上传你的文档内容。
+            检查字体、TeX、PDF 工具和 Word/WPS，查看缺失项目及安装方法。
           </DialogDescription>
         </DialogHeader>
 
@@ -289,26 +291,21 @@ export function EnvironmentOnboardingDialog({
         </div>
 
         <DialogFooter>
-          {environment.status === "error" ? (
-            <>
-              <Button variant="outline" onClick={onQuit}>
-                退出应用
-              </Button>
-              <Button onClick={onRefresh}>
-                <AnimatedActionIcon icon={RefreshCwIconAnimated} />
-                重新检查
-              </Button>
-            </>
-          ) : environment.status === "ready" ? (
-            <>
-              <Button variant="outline" onClick={onRefresh}>
-                <AnimatedActionIcon icon={RefreshCwIconAnimated} />
-                重新检查
-              </Button>
-              <Button onClick={onComplete}>
-                {environment.result.ready ? "进入工作台" : "稍后配置"}
-              </Button>
-            </>
+          {environment.status === "error" && !revisiting ? (
+            <Button variant="outline" onClick={onQuit}>
+              退出应用
+            </Button>
+          ) : null}
+          {environment.status !== "loading" ? (
+            <Button variant="outline" onClick={onRefresh}>
+              <AnimatedActionIcon icon={RefreshCwIconAnimated} />
+              重新检查
+            </Button>
+          ) : null}
+          {revisiting || environment.status === "ready" ? (
+            <Button onClick={onComplete}>
+              {revisiting ? "返回工作台" : environment.status === "ready" && environment.result.ready ? "进入工作台" : "稍后配置"}
+            </Button>
           ) : null}
         </DialogFooter>
       </DialogContent>

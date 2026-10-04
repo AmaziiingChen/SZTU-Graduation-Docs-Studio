@@ -1,6 +1,15 @@
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
+import { FormField as Field } from "@/components/workbench/form-field"
+import { TEACHER_TITLE_OPTIONS } from "@/lib/teacher-title-options"
+import { inferStudentNumberAcademics } from "@/lib/student-number-academics"
+import { AssessmentDocumentEditor } from "@/components/workbench/assessment-document-editor"
+import { assessmentDocumentRegistry, assessmentContent, assessmentGradeError, emptyAssessmentDraft, isAssessmentDocumentType, readAssessmentDraft, type AssessmentDraft } from "@/lib/assessment-documents"
+import { defaultDocumentTitle, documentTypeLabels } from "@/lib/document-names"
 import { emptyThesisDraft, readThesisDraft, type ThesisDraft } from "@/lib/thesis-draft"
 import { celebrateExportSuccess } from "@/lib/export-celebration"
 import { useEditableSelection } from "@/hooks/use-editable-selection"
+import { flushLocalDrafts } from "@/lib/use-local-draft"
+import { readWorkspaceRecovery, writeWorkspaceRecovery, removeWorkspaceRecovery, type WorkspaceRecovery } from "@/lib/workspace-recovery"
 import { SaveIcon as SaveIconAnimated } from "@/components/ui/animateicons/save"
 import { EllipsisIcon } from "@/components/ui/animateicons/ellipsis"
 import { DownloadIcon } from "@/components/ui/download"
@@ -9,22 +18,21 @@ import { FileTextIcon as FileTextIconAnimated } from "@/components/ui/file-text"
 import { RefreshCWIcon as RefreshCwIconAnimated } from "@/components/ui/refresh-cw"
 import { useActionFeedback } from "@/hooks/use-action-feedback"
 import { ActionFeedbackIcon } from "@/components/workbench/action-feedback-icon"
-import { ArrowUpIcon } from "@/components/ui/arrow-up"
-import { ArrowDownIcon } from "@/components/ui/arrow-down"
+import { CircleCheckIcon } from "@/components/ui/circle-check"
+import { LinkIcon } from "@/components/ui/link"
 import { PlusIcon } from "@/components/ui/plus"
 import { DeleteIcon } from "@/components/ui/delete"
-import { AnimatedActionIcon } from "@/components/workbench/animated-action-icon"
+import { AnimatedActionIcon } from "@/components/animated-action-icon"
 import {
+  Fragment,
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
-  type KeyboardEvent as ReactKeyboardEvent,
-  type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react"
-import { ChevronDownIcon, LoaderCircleIcon, PackageCheckIcon, TriangleAlertIcon, UserRoundIcon } from "lucide-react"
+import { ChevronDownIcon, LoaderCircleIcon, PackageCheckIcon, SaveIcon, TriangleAlertIcon, UserRoundIcon } from "lucide-react"
 import { ThinkingOrb } from "thinking-orbs"
 
 import { AppSidebar } from "@/components/workbench/app-sidebar"
@@ -77,14 +85,6 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import {
-  Combobox,
-  ComboboxContent,
-  ComboboxEmpty,
-  ComboboxInput,
-  ComboboxItem,
-  ComboboxList,
-} from "@/components/ui/combobox"
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -99,15 +99,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import {
   Sheet,
   SheetContent,
@@ -181,6 +173,7 @@ import { toast } from "sonner"
 
 import type {
   DocumentRecord,
+  DocumentListPageState,
   DocumentType,
   EnvironmentCheck,
   EnvironmentResult,
@@ -208,6 +201,7 @@ import type {
 } from "@/types/structured-content"
 
 type Draft = {
+  assessment: AssessmentDraft
   thesis: ThesisDraft
   title: StructuredBodyValue
   englishTitle: string
@@ -255,10 +249,14 @@ type StructuredDraftField =
   | "taskBasicContent"
   | "taskRequiredMaterials"
 
+type StructuredAssessmentField = "assessmentComments" | "assessmentDivisionOfWork"
+type StructuredEditorField = StructuredDraftField | StructuredAssessmentField
+
 type TextDraftField = Exclude<
   keyof Draft,
   | StructuredDraftField
   | "thesis"
+  | "assessment"
   | "directory"
   | "taskSchedule"
   | "references"
@@ -311,7 +309,7 @@ type ActivePane = "profile" | "document" | "inspection" | "tools" | "appearance"
 
 type DocumentViewState = {
   scrollTop: number
-  selections: Partial<Record<StructuredDraftField, EditorSelectionSnapshot>>
+  selections: Partial<Record<StructuredEditorField, EditorSelectionSnapshot>>
 }
 
 class DocumentViewStateStore {
@@ -361,6 +359,7 @@ async function loadEnvironmentState(): Promise<EnvironmentState> {
 }
 
 const emptyDraft: Draft = {
+  assessment: emptyAssessmentDraft(),
   thesis: emptyThesisDraft(),
   title: [],
   englishTitle: "",
@@ -442,7 +441,6 @@ const GRADUATION_COHORT_MAX_LENGTH = 20
 const THESIS_TITLE_MAX_LENGTH = 80
 const PREVIEW_DRAWER_DEFAULT_WIDTH = 512
 const PREVIEW_DRAWER_MIN_WIDTH = 384
-const PREVIEW_DRAWER_KEYBOARD_STEP = 32
 const PREVIEW_ACCEPTANCE_BOUNDARY_TOAST_ID = "preview-acceptance-boundary"
 
 function showPreviewAcceptanceBoundary(): void {
@@ -953,15 +951,8 @@ function taskTopicIsComplete(draft: Draft): boolean {
 }
 
 function documentTypeFromRecord(value: string | undefined): DocumentType {
-  if (value === "task_book" || value === "midterm" || value === "thesis") return value
+  if (value === "task_book" || value === "midterm" || value === "thesis" || isAssessmentDocumentType(value)) return value
   return "proposal"
-}
-
-const documentTypeLabels: Record<DocumentType, string> = {
-  proposal: "开题报告",
-  task_book: "任务书",
-  midterm: "中期检查表",
-  thesis: "毕业论文",
 }
 
 const defaultDocumentSections: Record<DocumentType, string> = {
@@ -969,6 +960,10 @@ const defaultDocumentSections: Record<DocumentType, string> = {
   task_book: "task_basic",
   midterm: "document_info",
   thesis: "thesis_template",
+  advisor_review: "assessment_info",
+  reviewer_review: "assessment_info",
+  defense_record: "assessment_info",
+  grade_assessment: "assessment_info",
 }
 
 function completionState(
@@ -984,6 +979,16 @@ function documentSectionOptions(
   documentType: DocumentType,
   midtermDateRule?: MidtermDateRule,
  ): DocumentSectionOption[] {
+  if (isAssessmentDocumentType(documentType)) {
+    const options: DocumentSectionOption[] = [{ id: "assessment_info", label: "基本信息", description: "" }]
+    if (documentType === "defense_record") options.push({ id: "assessment_questions", label: "问答记录", description: "" })
+    else options.push({ id: "assessment_comments", label: documentType === "grade_assessment" ? "小组意见" : "评审意见", description: "" })
+    if (documentType === "advisor_review") options.push({ id: "assessment_division", label: "分工情况", description: "" })
+    if (documentType === "advisor_review" || documentType === "reviewer_review") options.push({ id: "assessment_suggested_grade", label: "建议成绩", description: "" })
+    if (documentType === "defense_record") options.push({ id: "assessment_members", label: "答辩人员", description: "" })
+    if (documentType === "grade_assessment") options.push({ id: "assessment_grade", label: "最终成绩", description: "", ...(assessmentGradeError(draft.assessment.finalGrade) ? { state: "error" as const } : {}) })
+    return options
+  }
   if (documentType === "thesis") return [
     { id: "thesis_template", label: "LaTeX 模板", description: "下载毕业论文源码工程" },
   ]
@@ -1145,6 +1150,7 @@ function documentSectionOptions(
 }
 
 function draftIsExportReady(draft: Draft, documentType: DocumentType, midtermDateRule?: MidtermDateRule): boolean {
+  if (isAssessmentDocumentType(documentType)) return assessmentProfileIsComplete(draft) && !!structuredBodyPlainText(draft.title).trim() && structuredBodyPlainText(draft.title).length <= THESIS_TITLE_MAX_LENGTH && (documentType !== "grade_assessment" || !assessmentGradeError(draft.assessment.finalGrade))
   if (documentType === "thesis") return profileIsComplete(draft) &&
     !!structuredBodyPlainText(draft.title).trim() && structuredBodyPlainText(draft.title).length <= THESIS_TITLE_MAX_LENGTH &&
     !!draft.englishTitle.trim() && /^\d{4}-\d{2}-\d{2}$/.test(draft.thesis.submissionDate) && !!draft.thesis.keywordsCn.trim() &&
@@ -1206,6 +1212,7 @@ function draftIsExportReady(draft: Draft, documentType: DocumentType, midtermDat
 }
 
 function draftToContent(draft: Draft, documentType: DocumentType): JsonObject {
+  if (isAssessmentDocumentType(documentType)) return assessmentContent(draft.assessment, { title: inlineParagraphFromBody(draft.title) as unknown as JsonObject, student_name: draft.studentName, student_id: draft.studentId, college: draft.college, major: draft.major, advisor: draft.advisor, advisor_title: draft.advisorTitle })
   if (documentType === "thesis") return { metadata: { title: inlineParagraphFromBody(draft.title) }, thesis: { ...structuredClone(draft.thesis), englishTitle: draft.englishTitle } } as unknown as JsonObject
   if (documentType === "task_book") {
     const references = referenceState(
@@ -1326,6 +1333,7 @@ function draftFromRecords(
     ...emptyDraft,
     ...fallback,
     ...legacyContent,
+    assessment: readAssessmentDraft(metadata, sections, isAssessmentDocumentType(document.document_type) ? document.document_type : undefined),
     thesis,
     title: sharedThesisTitleValue(
       profileDraft,
@@ -1384,6 +1392,7 @@ function draftFromRecords(
       profileDraft,
       "advisor_title",
       profile?.advisor_title ||
+        textValue(metadata.advisor_title) ||
         legacyContent.advisorTitle ||
         fallback?.advisorTitle ||
         "",
@@ -1550,6 +1559,10 @@ function currentRevision(document: DocumentRecord): number {
   return document.current_revision
 }
 
+function assessmentProfileIsComplete(draft: Draft): boolean {
+  return [draft.studentName, draft.studentId, draft.college, draft.major].every(value => value.trim().length > 0)
+}
+
 function profileIsComplete(draft: Draft): boolean {
   const requiredFieldsComplete = [
     draft.studentName,
@@ -1578,9 +1591,7 @@ function profileFromDraft(
     student_number: draft.studentId.trim(),
     college: draft.college.trim(),
     major: draft.major.trim(),
-    class_name:
-      normalizeAcademicClassLabel(draft.className) ||
-      normalizeAcademicClassLabel(current?.class_name ?? ""),
+    class_name: normalizeAcademicClassLabel(draft.className),
     advisor_name: advisorEntriesFromDraft(draft)
       .map((entry) => entry.name.trim())
       .join(ADVISOR_SEPARATOR),
@@ -1628,102 +1639,11 @@ function isValidDraftDate(value: string): boolean {
   return parseDocumentDate(value) !== undefined
 }
 
-function Field({
+function StructuredBodyField<TField extends string>({
   id,
   label,
   value,
-  onChange,
-  placeholder,
-  maxLength,
-  error,
-  disabled,
-  suggestions,
-}: {
-  id: TextDraftField
-  label: string
-  value: string
-  onChange: (field: TextDraftField, value: string) => void
-  placeholder?: string
-  maxLength?: number
-  error?: string
-  disabled?: boolean
-  suggestions?: readonly string[]
-}) {
-  const uniqueSuggestions = suggestions
-    ? Array.from(new Set(suggestions))
-    : []
-  const emitValue = (nextValue: string) => {
-    const boundedValue =
-      typeof maxLength === "number" ? nextValue.slice(0, maxLength) : nextValue
-    if (value === boundedValue) return
-    onChange(id, boundedValue)
-  }
-  return (
-    <div className="grid gap-2">
-      <label className="text-sm font-medium" htmlFor={id}>
-        {label}
-      </label>
-      {uniqueSuggestions.length > 0 ? (
-        <Combobox
-          items={uniqueSuggestions}
-          filter={null}
-          inputValue={value}
-          value={uniqueSuggestions.includes(value) ? value : null}
-          onInputValueChange={(nextValue, eventDetails) => {
-            if (eventDetails.reason === "input-change") {
-              emitValue(nextValue)
-            }
-          }}
-          onValueChange={(nextValue) => {
-            if (nextValue !== null) emitValue(nextValue)
-          }}
-        >
-          <ComboboxInput
-            id={id}
-            aria-invalid={Boolean(error)}
-            aria-describedby={error ? `${id}-error` : undefined}
-            placeholder={placeholder}
-            disabled={disabled}
-            maxLength={maxLength}
-          />
-          <ComboboxContent>
-            <ComboboxEmpty>
-              无匹配项，可直接输入自定义内容
-            </ComboboxEmpty>
-            <ComboboxList>
-              {(suggestion: string) => (
-                <ComboboxItem key={suggestion} value={suggestion}>
-                  {suggestion}
-                </ComboboxItem>
-              )}
-            </ComboboxList>
-          </ComboboxContent>
-        </Combobox>
-      ) : (
-        <Input
-          id={id}
-          aria-invalid={Boolean(error)}
-          aria-describedby={error ? `${id}-error` : undefined}
-          value={value}
-          placeholder={placeholder}
-          disabled={disabled}
-          maxLength={maxLength}
-          onChange={(event) => emitValue(event.target.value)}
-        />
-      )}
-      {error ? (
-        <p className="text-xs text-destructive" id={`${id}-error`}>
-          {error}
-        </p>
-      ) : null}
-    </div>
-  )
-}
-
-function StructuredBodyField({
-  id,
-  label,
-  value,
+  guidance,
   onChange,
   description,
   error,
@@ -1742,10 +1662,11 @@ function StructuredBodyField({
   toolbarActions,
   footerStatus,
 }: {
-  id: StructuredDraftField
+  id: TField
   label: string
   value: StructuredBodyValue
-  onChange: (field: StructuredDraftField, value: StructuredBodyValue) => void
+  guidance?: ParagraphInput | null
+  onChange: (field: TField, value: StructuredBodyValue, guidance?: ParagraphInput | null) => void
   description: string
   error?: string
   disabled?: boolean
@@ -1780,7 +1701,8 @@ function StructuredBodyField({
         <StructuredContentEditor
           key={`${id}-${mode}`}
           value={value}
-          onChange={(nextValue) => onChange(id, nextValue)}
+          guidance={guidance}
+          onChange={(nextValue, nextGuidance) => onChange(id, nextValue, nextGuidance)}
           disabled={disabled}
           ariaLabel={label}
           ariaDescribedBy={describedBy}
@@ -1833,75 +1755,6 @@ function StructuredBodyField({
   )
 }
 
-function SelectField({
-  id,
-  label,
-  value,
-  options,
-  placeholder,
-  error,
-  disabled,
-  onChange,
-}: {
-  id: TextDraftField
-  label: string
-  value: string
-  options: readonly { value: string; label: string }[]
-  placeholder: string
-  error?: string
-  disabled?: boolean
-  onChange: (field: TextDraftField, value: string) => void
-}) {
-  return (
-    <div className="grid gap-2">
-      <label className="text-sm font-medium" htmlFor={id}>
-        {label}
-      </label>
-      <Select
-        value={value || null}
-        onValueChange={(nextValue) => {
-          if (nextValue !== null) onChange(id, nextValue)
-        }}
-        disabled={disabled}
-      >
-        <SelectTrigger
-          id={id}
-          className="w-full"
-          aria-invalid={Boolean(error)}
-          aria-describedby={error ? `${id}-error` : undefined}
-        >
-          <SelectValue placeholder={placeholder}>
-            {options.find((option) => option.value === value)?.label}
-          </SelectValue>
-        </SelectTrigger>
-        <SelectContent>
-          {options.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {option.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      {error ? (
-        <p className="text-xs text-destructive" id={`${id}-error`}>
-          {error}
-        </p>
-      ) : null}
-    </div>
-  )
-}
-
-const ADVISOR_TITLE_OPTIONS = [
-  "教授",
-  "副教授",
-  "助理教授",
-  "特聘教授",
-  "讲师",
-  "高级工程师",
-  "副研究员",
-  "专职副研究员",
-  "实验师",
-] as const
 const ADVISOR_SEPARATOR = "、"
 
 type AdvisorEntry = {
@@ -1968,12 +1821,16 @@ function findCollegeOption(value: string): AcademicCollegeOption | undefined {
 }
 
 function StudentProfileEditor({
+  assessmentMode,
+  validationRequested,
   draft,
   onChange,
   onStructuredBodyChange,
   disabled,
   workspace,
 }: {
+  assessmentMode: boolean
+  validationRequested: boolean
   draft: Draft
   onChange: (field: TextDraftField, value: string) => void
   onStructuredBodyChange: (
@@ -1983,7 +1840,10 @@ function StudentProfileEditor({
   disabled: boolean
   workspace: WorkspaceLoadState
 }) {
-  const complete = profileIsComplete(draft)
+  const [touched, setTouched] = useState<Record<string, boolean>>({})
+  const visibleError = (field: string, error: string | undefined) =>
+    validationRequested || touched[field] ? error : undefined
+  const complete = assessmentMode ? assessmentProfileIsComplete(draft) : profileIsComplete(draft)
   const selectedCollege = findCollegeOption(draft.college)
   const selectedMajor = selectedCollege?.majors.find(
     (option) => option.major === draft.major.trim(),
@@ -1992,11 +1852,11 @@ function StudentProfileEditor({
   const majorSuggestions = selectedCollege?.majors.map((option) => option.major) ?? []
   const classSuggestions = selectedMajor?.classes ?? []
   const advisorEntries = advisorEntriesFromDraft(draft)
-  const titleError = !structuredBodyPlainText(draft.title).trim()
+  const titleError = visibleError("title", !structuredBodyPlainText(draft.title).trim()
     ? "请输入中文论文题目。"
     : structuredBodyPlainText(draft.title).length > THESIS_TITLE_MAX_LENGTH
       ? `论文题目最多 ${THESIS_TITLE_MAX_LENGTH} 个字符。`
-      : undefined
+      : undefined)
 
   const commitAdvisorEntries = (entries: AdvisorEntry[]) => {
     onChange("advisor", advisorFieldValue(entries, "name"))
@@ -2019,22 +1879,9 @@ function StudentProfileEditor({
     commitAdvisorEntries([...advisorEntries, { name: "", title: "" }])
   }
 
-  const removeAdvisorEntry = (index: number) => {
-    if (advisorEntries.length === 1) return
-    commitAdvisorEntries(
-      advisorEntries.filter((_, entryIndex) => entryIndex !== index),
-    )
-  }
-
-  const moveAdvisorEntry = (index: number, offset: -1 | 1) => {
-    const targetIndex = index + offset
-    if (targetIndex < 0 || targetIndex >= advisorEntries.length) return
-    const nextEntries = [...advisorEntries]
-    ;[nextEntries[index], nextEntries[targetIndex]] = [
-      nextEntries[targetIndex],
-      nextEntries[index],
-    ]
-    commitAdvisorEntries(nextEntries)
+  const removeLastAdvisorEntry = () => {
+    if (advisorEntries.length <= 1) return
+    commitAdvisorEntries(advisorEntries.slice(0, -1))
   }
 
   const changeCollege = (_field: TextDraftField, value: string) => {
@@ -2075,25 +1922,27 @@ function StudentProfileEditor({
 
   return (
     <ScrollArea className="h-full">
-      <div className="mx-auto grid max-w-4xl gap-6 p-6">
-        <p className="text-sm text-muted-foreground">
-          基础信息和论文题目只在这里维护一次，开题报告、任务书、中期检查和毕业论文统一读取。
-        </p>
-
+      <div
+        className="mx-auto grid max-w-4xl gap-6 p-6"
+        onBlurCapture={(event) => {
+          const field = event.target.closest<HTMLElement>("[data-profile-field]")?.dataset.profileField ?? event.target.id
+          if (field) setTouched((current) => current[field] ? current : { ...current, [field]: true })
+        }}
+      >
         {workspace.status === "loading" ? (
           <Alert>
             <LoaderCircleIcon className="animate-spin" />
             <AlertTitle>正在载入学生档案</AlertTitle>
-            <AlertDescription>正在恢复本机保存的共用基础信息。</AlertDescription>
+            <AlertDescription>正在恢复本机保存的基础信息。</AlertDescription>
           </Alert>
         ) : null}
 
-        {!complete && workspace.status === "ready" ? (
+        {validationRequested && !complete && workspace.status === "ready" ? (
           <Alert>
             <TriangleAlertIcon />
             <AlertTitle>请先补全学生档案</AlertTitle>
             <AlertDescription>
-              姓名、学号、毕业届别、学院、专业、班级、指导教师和职称完整后，过程文档才能检查和导出。
+              {assessmentMode ? "当前评审表需要姓名、学号、学院、专业和论文题目。" : "开题报告、任务书和中期检查需要完整的学生档案，包括毕业届别、班级、指导教师和职称；评审表只需要姓名、学号、学院、专业和论文题目。"}
             </AlertDescription>
           </Alert>
         ) : null}
@@ -2103,7 +1952,7 @@ function StudentProfileEditor({
             <CardTitle>论文题目</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-4">
-            <div className="grid gap-2">
+            <div className="grid gap-2" data-profile-field="title">
               <StructuredContentEditor
                 value={draft.title}
                 onChange={(value) => onStructuredBodyChange("title", value)}
@@ -2125,14 +1974,14 @@ function StudentProfileEditor({
 
         <Card>
           <CardHeader>
-            <CardTitle>共用基础信息</CardTitle>
+            <CardTitle>基础信息</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-2">
             <Field
               id="studentName"
               label="学生姓名"
               value={draft.studentName}
-              error={!draft.studentName.trim() ? "请输入学生姓名。" : undefined}
+              error={visibleError("studentName", !draft.studentName.trim() ? "请输入学生姓名。" : undefined)}
               onChange={onChange}
               disabled={disabled}
             />
@@ -2140,7 +1989,7 @@ function StudentProfileEditor({
               id="studentId"
               label="学号"
               value={draft.studentId}
-              error={!draft.studentId.trim() ? "请输入学号。" : undefined}
+              error={visibleError("studentId", !draft.studentId.trim() ? "请输入学号。" : undefined)}
               onChange={onChange}
               disabled={disabled}
             />
@@ -2151,14 +2000,14 @@ function StudentProfileEditor({
               placeholder="例如：2026届"
               suggestions={GRADUATION_COHORT_OPTIONS}
               maxLength={GRADUATION_COHORT_MAX_LENGTH}
-              error={
+              error={visibleError("graduationCohort",
                 !draft.graduationCohort.trim()
-                  ? "请输入毕业届别。"
+                  ? assessmentMode ? undefined : "请输入毕业届别。"
                   : draft.graduationCohort.length >
                       GRADUATION_COHORT_MAX_LENGTH
                     ? "毕业届别最多 20 个字符。"
                     : undefined
-              }
+              )}
               onChange={onChange}
               disabled={disabled}
             />
@@ -2167,7 +2016,7 @@ function StudentProfileEditor({
               label="学院"
               value={draft.college}
               suggestions={collegeSuggestions}
-              error={!draft.college.trim() ? "请输入学院。" : undefined}
+              error={visibleError("college", !draft.college.trim() ? "请输入学院。" : undefined)}
               onChange={changeCollege}
               disabled={disabled}
             />
@@ -2176,7 +2025,7 @@ function StudentProfileEditor({
               label="专业"
               value={draft.major}
               suggestions={majorSuggestions}
-              error={!draft.major.trim() ? "请输入专业。" : undefined}
+              error={visibleError("major", !draft.major.trim() ? "请输入专业。" : undefined)}
               onChange={changeMajor}
               disabled={disabled}
             />
@@ -2185,135 +2034,53 @@ function StudentProfileEditor({
               label="班级"
               value={draft.className}
               suggestions={classSuggestions}
-              error={!draft.className.trim() ? "请输入班级。" : undefined}
+              error={visibleError("className", !assessmentMode && !draft.className.trim() ? "请输入班级。" : undefined)}
               onChange={onChange}
               disabled={disabled}
             />
-            <div className="grid gap-3 md:col-span-2">
-              <p className="text-sm font-medium">指导教师</p>
-              {advisorEntries.map((entry, index) => {
-                const nameLabel = index === 0 ? "指导教师" : `第${index + 1}指导教师`
-                const titleLabel =
-                  index === 0 ? "指导教师职称" : `第${index + 1}指导教师职称`
-                const titleId = `advisor-title-${index}`
-                return (
-                  <div
-                    className="grid gap-3 rounded-lg border p-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end"
-                    key={index}
-                  >
-                    <div className="grid gap-2">
-                      <label className="text-sm font-medium" htmlFor={`advisor-${index}`}>
-                        {nameLabel}
-                      </label>
-                      <Input
-                        id={`advisor-${index}`}
-                        value={entry.name}
-                        placeholder="只填写姓名，不填写职称"
-                        disabled={disabled}
-                        maxLength={30}
-                        aria-invalid={!entry.name.trim()}
-                        onChange={(event) =>
-                          updateAdvisorEntry(index, "name", event.target.value)
-                        }
-                      />
-                      {!entry.name.trim() ? (
-                        <p className="text-xs text-destructive">请输入指导教师姓名。</p>
-                      ) : null}
-                    </div>
-                    <div className="grid gap-2">
-                      <label className="text-sm font-medium" htmlFor={titleId}>
-                        {titleLabel}
-                      </label>
-                      <Combobox
-                        items={[...ADVISOR_TITLE_OPTIONS]}
-                        filter={null}
-                        inputValue={entry.title}
-                        value={
-                          ADVISOR_TITLE_OPTIONS.includes(
-                            entry.title as (typeof ADVISOR_TITLE_OPTIONS)[number],
-                          )
-                            ? entry.title
-                            : null
-                        }
-                        onInputValueChange={(nextValue, eventDetails) => {
-                          if (eventDetails.reason === "input-change") {
-                            updateAdvisorEntry(index, "title", nextValue)
-                          }
-                        }}
-                        onValueChange={(nextValue) => {
-                          if (nextValue !== null) {
-                            updateAdvisorEntry(index, "title", nextValue)
-                          }
-                        }}
-                      >
-                        <ComboboxInput
-                          id={titleId}
-                          placeholder="选择或输入职称"
-                          disabled={disabled}
-                          maxLength={30}
-                          aria-invalid={!entry.title.trim()}
-                        />
-                        <ComboboxContent>
-                          <ComboboxEmpty>
-                            无匹配项，可直接输入自定义内容
-                          </ComboboxEmpty>
-                          <ComboboxList>
-                            {(suggestion: string) => (
-                              <ComboboxItem key={suggestion} value={suggestion}>
-                                {suggestion}
-                              </ComboboxItem>
-                            )}
-                          </ComboboxList>
-                        </ComboboxContent>
-                      </Combobox>
-                      {!entry.title.trim() ? (
-                        <p className="text-xs text-destructive">请输入指导教师职称。</p>
-                      ) : null}
-                    </div>
-                    <div className="flex gap-1">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon-sm"
-                        aria-label={`上移${nameLabel}`}
-                        disabled={disabled || index === 0}
-                        onClick={() => moveAdvisorEntry(index, -1)}
-                      >
-                        <AnimatedActionIcon icon={ArrowUpIcon} />
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon-sm"
-                        aria-label={`下移${nameLabel}`}
-                        disabled={disabled || index === advisorEntries.length - 1}
-                        onClick={() => moveAdvisorEntry(index, 1)}
-                      >
-                        <AnimatedActionIcon icon={ArrowDownIcon} />
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon-sm"
-                        aria-label={`删除${nameLabel}`}
-                        disabled={disabled || advisorEntries.length === 1}
-                        onClick={() => removeAdvisorEntry(index)}
-                      >
-                        <AnimatedActionIcon icon={DeleteIcon} />
-                      </Button>
-                    </div>
-                  </div>
-                )
-              })}
+            {advisorEntries.map((entry, index) => (
+              <Fragment key={index}>
+                <Field
+                  id={`advisor-${index}`}
+                  label={index === 0 ? "指导教师" : `第${index + 1}指导教师`}
+                  value={entry.name}
+                  placeholder="只填写姓名，不填写职称"
+                  maxLength={30}
+                  error={visibleError(`advisor-${index}`, !assessmentMode && !entry.name.trim() ? "请输入指导教师姓名。" : undefined)}
+                  onChange={(_field, nextValue) => updateAdvisorEntry(index, "name", nextValue)}
+                  disabled={disabled}
+                />
+                <Field
+                  id={`advisor-title-${index}`}
+                  label={index === 0 ? "指导教师职称" : `第${index + 1}指导教师职称`}
+                  value={entry.title}
+                  placeholder="选择或输入职称"
+                  suggestions={TEACHER_TITLE_OPTIONS}
+                  maxLength={30}
+                  error={visibleError(`advisor-title-${index}`, !assessmentMode && !entry.title.trim() ? "请输入指导教师职称。" : undefined)}
+                  onChange={(_field, nextValue) => updateAdvisorEntry(index, "title", nextValue)}
+                  disabled={disabled}
+                />
+              </Fragment>
+            ))}
+            <div className="flex flex-wrap gap-2 md:col-span-2">
               <Button
                 type="button"
                 variant="outline"
-                className="w-fit"
                 disabled={disabled}
                 onClick={addAdvisorEntry}
               >
                 <AnimatedActionIcon icon={PlusIcon} />
                 添加指导教师
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={disabled || advisorEntries.length <= 1}
+                onClick={removeLastAdvisorEntry}
+              >
+                <AnimatedActionIcon icon={DeleteIcon} />
+                删除指导教师
               </Button>
             </div>
           </CardContent>
@@ -2344,11 +2111,17 @@ function DocumentEditor({
   onDirectoryChange,
   onDirectoryNumberingStyleChange,
   onTaskScheduleChange,
+  onAssessmentChange,
   disabled,
   workspace,
   saveState,
   onRetryLoad,
+  retryLoadDisabled,
   onRetrySave,
+  recoveryAvailable,
+  recoveryRestored,
+  onRestoreRecovery,
+  onDismissRecovery,
   toolbarActions,
 }: {
   documentId: string
@@ -2368,18 +2141,28 @@ function DocumentEditor({
   onDirectoryChange: (value: OutlineEditorItem[]) => void
   onDirectoryNumberingStyleChange: (value: OutlineNumberingStyle) => void
   onTaskScheduleChange: (value: TaskScheduleEditorItem[]) => void
+  onAssessmentChange: (value: AssessmentDraft) => void
   disabled: boolean
   workspace: WorkspaceLoadState
   saveState: SaveState
   onRetryLoad: () => void
+  retryLoadDisabled: boolean
   onRetrySave: () => void
+  recoveryAvailable: boolean
+  recoveryRestored: boolean
+  onRestoreRecovery: () => void
+  onDismissRecovery: () => void
   toolbarActions?: ReactNode
 }) {
+  const isAssessment = isAssessmentDocumentType(documentType)
   const isMidterm = documentType === "midterm"
   const isTaskBook = documentType === "task_book"
   const isThesis = documentType === "thesis"
   const scrollRootRef = useRef<HTMLDivElement>(null)
-  const immersiveSection = isTaskBook
+  const isAssessmentBodySection = isAssessment && ["assessment_comments", "assessment_division"].includes(activeSection)
+  const immersiveSection = isAssessment
+    ? isAssessmentBodySection
+    : isTaskBook
     ? [
         "task_basic",
         "task_materials",
@@ -2425,7 +2208,7 @@ function DocumentEditor({
   ])
 
   const rememberSelection = (
-    field: StructuredDraftField,
+    field: StructuredEditorField,
     selection: EditorSelectionSnapshot,
   ) => {
     onViewStateChange((current) => ({
@@ -2433,7 +2216,7 @@ function DocumentEditor({
       selections: { ...current.selections, [field]: selection },
     }))
   }
-  const editorLocationProps = (field: StructuredDraftField) => ({
+  const editorLocationProps = (field: StructuredEditorField) => ({
     selectionSnapshot: viewState.selections[field],
     onSelectionChange: (selection: EditorSelectionSnapshot) =>
       rememberSelection(field, selection),
@@ -2457,7 +2240,7 @@ function DocumentEditor({
   )
   Object.assign(figureLabels, structuredProcessEquationLabels(...figureBodies))
   const DocumentScrollContainer = immersiveSection ? "div" : ScrollArea
-  const hasRichTextToolbar = [
+  const hasRichTextToolbar = isAssessmentBodySection || [
     "task_basic", "task_materials", "midterm_research", "midterm_progress",
     "proposal_significance", "proposal_research", "proposal_methods", "proposal_steps",
   ].includes(activeSection)
@@ -2482,12 +2265,12 @@ function DocumentEditor({
         )}
       >
 
-        {!isThesis && !profileIsComplete(draft) && workspace.status === "ready" ? (
+        {!isThesis && !(isAssessment ? assessmentProfileIsComplete(draft) : profileIsComplete(draft)) && workspace.status === "ready" ? (
           <Alert>
             <UserRoundIcon />
             <AlertTitle>学生档案尚未补全</AlertTitle>
             <AlertDescription>
-              请先在左侧“学生档案”填写共用基础信息，完成后再检查或导出当前文档。
+              请先在左侧“学生档案”填写基础信息，完成后再检查或导出当前文档。
             </AlertDescription>
           </Alert>
         ) : null}
@@ -2498,7 +2281,7 @@ function DocumentEditor({
             <UserRoundIcon />
             <AlertTitle>论文题目尚未填写</AlertTitle>
             <AlertDescription>
-              请先在左侧“学生档案”的论文题目区域填写共用题目。
+              请先在“学生档案”填写论文题目。
             </AlertDescription>
           </Alert>
         ) : null}
@@ -2520,7 +2303,7 @@ function DocumentEditor({
             <AlertTitle>工作区载入失败</AlertTitle>
             <AlertDescription className="grid gap-3">
               <span>{workspace.message}</span>
-              <Button variant="outline" size="sm" onClick={onRetryLoad}>
+              <Button variant="outline" size="sm" disabled={retryLoadDisabled} onClick={onRetryLoad}>
                 <AnimatedActionIcon icon={RefreshCwIconAnimated} />
                 重新载入
               </Button>
@@ -2542,13 +2325,31 @@ function DocumentEditor({
           </Alert>
         ) : null}
 
+        {recoveryAvailable ? (
+          <Alert>
+            <SaveIcon />
+            <AlertTitle>已保留重新载入前的草稿</AlertTitle>
+            <AlertDescription className="grid gap-3">
+              <span>{recoveryRestored ? "保留的草稿已恢复，成功保存后会移除副本。" : "可以恢复保留的内容，或使用当前版本并移除副本。"}</span>
+              {!recoveryRestored ? <div className="flex flex-wrap gap-2">
+                <Button variant="outline" size="sm" disabled={disabled || saveState === "saving" || saveState === "conflict"} onClick={onRestoreRecovery}>
+                  恢复保留草稿
+                </Button>
+                <Button variant="outline" size="sm" disabled={disabled || saveState === "saving" || saveState === "conflict"} onClick={onDismissRecovery}>
+                  使用当前版本并移除副本
+                </Button>
+              </div> : null}
+            </AlertDescription>
+          </Alert>
+        ) : null}
+
         {saveState === "conflict" ? (
           <Alert variant="destructive">
             <TriangleAlertIcon />
             <AlertTitle>修订冲突</AlertTitle>
             <AlertDescription className="grid gap-3">
-              <span>另一份更新已先保存。请重新载入工作区，再决定如何处理当前内容。</span>
-              <Button variant="outline" size="sm" onClick={onRetryLoad}>
+              <span>已有更新版本。重新载入前会保留当前草稿，载入后可以恢复。</span>
+              <Button variant="outline" size="sm" disabled={retryLoadDisabled} onClick={onRetryLoad}>
                 <AnimatedActionIcon icon={RefreshCwIconAnimated} />
                 重新载入
               </Button>
@@ -2556,33 +2357,30 @@ function DocumentEditor({
           </Alert>
         ) : null}
 
+        {isAssessmentDocumentType(documentType) && !isAssessmentBodySection ? <AssessmentDocumentEditor type={documentType} activeSection={activeSection} value={draft.assessment} onChange={onAssessmentChange} disabled={disabled} sharedInformation={[{ label: "论文题目", value: structuredBodyPlainText(draft.title) }, { label: "姓名", value: draft.studentName }, { label: "学号", value: draft.studentId }, { label: "学院", value: draft.college }, { label: "专业", value: draft.major }, ...(documentType === "advisor_review" ? [{ label: "指导教师", value: draft.advisor }, { label: "指导教师职称", value: draft.advisorTitle }] : [])]} /> : null}
+
         {isThesis && activeSection === "thesis_template" ? (
           <Card className="border-0 shadow-none ring-0">
             <CardHeader>
-              <CardTitle>毕业论文 LaTeX 模板</CardTitle>
-              <CardDescription>论文源码工程正在整理，确认内容后将在这里提供下载。</CardDescription>
+              <CardTitle className="sr-only">毕业论文 LaTeX 模板</CardTitle>
+              <CardDescription>LaTeX 模板暂未开放下载。</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4">
               <Button type="button" disabled className="w-fit">
                 <AnimatedActionIcon icon={DownloadIcon} />
                 下载 LaTeX 模板
               </Button>
-              <p className="text-xs text-muted-foreground">
-                此文档记录和已有草稿仍保存在本机；当前暂停论文正文编辑与预览导出。
-              </p>
             </CardContent>
           </Card>
         ) : null}
 
         {activeSection === "document_info" && isMidterm ? (
         <Card className="border-0 shadow-none ring-0">
-          <CardHeader>
-            <CardTitle>检查日期</CardTitle>
-          </CardHeader>
           <CardContent>
             <DocumentDateField
               id="checkDate"
               label="检查日期"
+              orientation="horizontal"
               value={draft.checkDate}
               allowedRange={midtermDateRule}
               placeholder="选择检查日期"
@@ -2604,12 +2402,13 @@ function DocumentEditor({
             <TriangleAlertIcon />
             <AlertTitle>毕业届别缺少年份</AlertTitle>
             <AlertDescription>
-              任务书必须从学生档案的毕业届别提取四位年份，例如“2026届”。请先修改学生档案；本页不重复填写。
+              请在“学生档案”填写含四位年份的毕业届别，例如“2026届”。
             </AlertDescription>
           </Alert>
         ) : null}
 
-        {!isThesis && activeSection !== "document_info" ? (
+        {isAssessmentDocumentType(documentType) && isAssessmentBodySection && !assessmentDocumentRegistry[documentType].lowerEditingEnabled ? <Alert><AlertTitle>评审内容当前仅供查看</AlertTitle></Alert> : null}
+        {!isThesis && activeSection !== "document_info" && (!isAssessment || isAssessmentBodySection) ? (
         <EditorSurface
           className={cn(
             immersiveSection ? "min-h-0 flex-1" : "border-0 shadow-none ring-0",
@@ -2628,7 +2427,24 @@ function DocumentEditor({
               immersiveSection ? "h-full min-h-0" : "grid gap-6",
             )}
           >
-            {isTaskBook ? (
+            {isAssessmentDocumentType(documentType) && isAssessmentBodySection ? (
+              <StructuredBodyField
+                id={activeSection === "assessment_division" ? "assessmentDivisionOfWork" : "assessmentComments"}
+                {...editorLocationProps(activeSection === "assessment_division" ? "assessmentDivisionOfWork" : "assessmentComments")}
+                label={activeSection === "assessment_division" ? "合作课题分工情况" : documentType === "grade_assessment" ? "答辩小组意见" : "评审意见"}
+                description=""
+                value={activeSection === "assessment_division" ? draft.assessment.divisionOfWork : draft.assessment.comments}
+                guidance={activeSection === "assessment_division" ? draft.assessment.writingGuidance.divisionOfWork : draft.assessment.writingGuidance.comments}
+                onChange={(_, value, guidance) => {
+                  const field = activeSection === "assessment_division" ? "divisionOfWork" : "comments"
+                  onAssessmentChange({ ...draft.assessment, [field]: value, writingGuidance: { ...draft.assessment.writingGuidance, [field]: guidance ?? null } })
+                }}
+                disabled={disabled || !assessmentDocumentRegistry[documentType].lowerEditingEnabled}
+                toolbarActions={toolbarActions}
+                footerStatus={documentFooterStatus}
+                fillHeight
+              />
+            ) : isTaskBook ? (
               <>
                 {activeSection === "task_basic" ? (
                   <StructuredBodyField
@@ -2712,7 +2528,8 @@ function DocumentEditor({
                   data-slot="task-topic-form"
                   className="grid w-full max-w-xl gap-4"
                 >
-                  <SelectField
+                  <Field
+                    orientation="horizontal"
                     id="taskNature"
                     label="选题性质"
                     value={draft.taskNature}
@@ -2722,7 +2539,8 @@ function DocumentEditor({
                     onChange={onChange}
                     disabled={disabled}
                   />
-                  <SelectField
+                  <Field
+                    orientation="horizontal"
                     id="taskSourceType"
                     label="课题来源"
                     value={draft.taskSourceType}
@@ -2734,7 +2552,8 @@ function DocumentEditor({
                   />
                   {draft.taskSourceType === "research_project" ? (
                     <>
-                      <SelectField
+                      <Field
+                        orientation="horizontal"
                         id="taskResearchLevel"
                         label="科研项目级别"
                         value={draft.taskResearchLevel}
@@ -2749,6 +2568,7 @@ function DocumentEditor({
                         disabled={disabled}
                       />
                       <Field
+                        orientation="horizontal"
                         id="taskProjectNumber"
                         label="项目编号"
                         value={draft.taskProjectNumber}
@@ -2765,6 +2585,7 @@ function DocumentEditor({
                       {draft.taskResearchLevel === "other" ? (
                         <div>
                           <Field
+                            orientation="horizontal"
                             id="taskOtherResearchLevel"
                             label="其他项目级别"
                             value={draft.taskOtherResearchLevel}
@@ -2783,7 +2604,8 @@ function DocumentEditor({
                     </>
                   ) : null}
                   {draft.taskSourceType === "self_proposed" ? (
-                    <SelectField
+                    <Field
+                      orientation="horizontal"
                       id="taskSelfProposedBy"
                       label="自拟人"
                       value={draft.taskSelfProposedBy}
@@ -3014,6 +2836,7 @@ function activeTemplateCheck(
 ): EnvironmentCheck | undefined {
   if (environment.status !== "ready") return undefined
   const checkId =
+    isAssessmentDocumentType(documentType) ? `${documentType}_engine` :
     documentType === "thesis"
       ? "thesis_engine"
       : documentType === "task_book"
@@ -3031,6 +2854,7 @@ function PaginatedPreviewPanel({
   disabled,
   blockedMessage,
   onGenerate,
+  onOpenEnvironmentGuide,
 }: {
   activePane: ActivePane
   documentType: DocumentType
@@ -3038,6 +2862,7 @@ function PaginatedPreviewPanel({
   disabled: boolean
   blockedMessage?: string
   onGenerate: () => void
+  onOpenEnvironmentGuide?: () => void
 }) {
   return (
     <ScrollArea className="h-full">
@@ -3046,7 +2871,14 @@ function PaginatedPreviewPanel({
           <Alert variant="destructive">
             <TriangleAlertIcon />
             <AlertTitle>暂时无法生成预览</AlertTitle>
-            <AlertDescription>{blockedMessage}</AlertDescription>
+            <AlertDescription className="grid gap-3">
+              <span>{blockedMessage}</span>
+              {onOpenEnvironmentGuide ? (
+                <Button variant="outline" className="w-fit" onClick={onOpenEnvironmentGuide}>
+                  查看环境修复指引
+                </Button>
+              ) : null}
+            </AlertDescription>
           </Alert>
         ) : null}
 
@@ -3178,6 +3010,7 @@ function InspectionPanel({
   templateCheck,
   thesisTemplatePending,
   onRefresh,
+  onOpenEnvironmentGuide,
   onInstallTemplate,
   templateInstalling,
   exportState,
@@ -3191,6 +3024,7 @@ function InspectionPanel({
   templateCheck: EnvironmentCheck | undefined
   thesisTemplatePending: boolean
   onRefresh: () => void
+  onOpenEnvironmentGuide: () => void
   onInstallTemplate: () => void
   templateInstalling: boolean
   exportState: ExportState
@@ -3217,11 +3051,11 @@ function InspectionPanel({
                   {environment.status === "loading"
                     ? "正在检查运行环境。"
                     : environment.status === "error"
-                      ? "文档引擎未连接，可创建故障诊断包协助排查。"
+                      ? "文档引擎未连接，请查看环境检查结果。"
                       : !environment.result.ready
-                        ? "运行环境异常，可创建故障诊断包协助排查。"
+                        ? "运行环境需要修复，请查看缺失项目和安装指引。"
                         : thesisTemplatePending
-                          ? "毕业论文 LaTeX 模板仍在整理，当前文档暂停预览和导出。"
+                          ? "当前文档暂不支持预览和导出。"
                         : templateNeedsRepair
                           ? "当前文档模板需要重新关联。"
                           : "运行环境正常，可以继续检查、预览和导出。"}
@@ -3259,9 +3093,14 @@ function InspectionPanel({
                     <TriangleAlertIcon />
                     <AlertTitle className="text-sm font-medium">运行环境需要修复</AlertTitle>
                     <AlertDescription className="text-xs">
-                      请创建故障诊断包，并将文件发送给支持人员。
+                      查看缺失项目和安装指引，配置后重新检查。
                     </AlertDescription>
                   </Alert>
+                ) : null}
+                {environment.status === "error" || (environment.status === "ready" && !environment.result.ready) ? (
+                  <Button variant="outline" className="w-fit" onClick={onOpenEnvironmentGuide}>
+                    查看环境修复指引
+                  </Button>
                 ) : null}
                 {templateCheck && templateCheck.status !== "pass" ? (
                   <div className="flex flex-wrap items-center justify-between gap-3">
@@ -3327,7 +3166,6 @@ function InspectionPanel({
             <div className="flex items-start justify-between gap-3">
               <div className="grid gap-1">
                 <CardTitle className="text-sm font-medium">导出历史</CardTitle>
-                <CardDescription className="text-xs">查看本地产物状态并管理历史记录。</CardDescription>
               </div>
               <Button
                 variant="ghost"
@@ -3481,7 +3319,7 @@ function InspectionPanel({
                   if (deleted) setDeleteTarget(null)
                 }}
               >
-                {deletingExportId ? <LoaderCircleIcon className="animate-spin" /> : null}
+                {deletingExportId ? <LoaderCircleIcon className="animate-spin" /> : <AnimatedActionIcon icon={DeleteIcon} />}
                 删除记录
               </Button>
             </DialogFooter>
@@ -3498,10 +3336,12 @@ export default function App() {
   const exportFeedback = useActionFeedback()
   const isMobile = useIsMobile()
   const [draft, setDraft] = useState(emptyDraft)
+  const draftRef = useRef(draft)
   const [activeSections, setActiveSections] = useState<Record<DocumentType, string>>(
     defaultDocumentSections,
   )
   const [activePane, setActivePane] = useState<ActivePane>("document")
+  const [profileValidationRequested, setProfileValidationRequested] = useState(false)
   const [activeThesisTool, setActiveThesisTool] = useState<ThesisToolId>("three_line_table")
   const [thesisToolSaveStates, setThesisToolSaveStates] = useState<Record<ThesisToolId, SaveState>>({
     three_line_table: "saved",
@@ -3516,14 +3356,33 @@ export default function App() {
     },
     [],
   )
-  const [profile, setProfile] = useState<StudentProfile | null>(null)
+  const profileRef = useRef<StudentProfile | null>(null)
   const [document, setDocument] = useState<DocumentRecord | null>(null)
+  const documentRef = useRef<DocumentRecord | null>(null)
   const [documents, setDocuments] = useState<DocumentRecord[]>([])
   const [deletedDocuments, setDeletedDocuments] = useState<DocumentRecord[]>([])
-  const [revision, setRevision] = useState(0)
+  const [documentPages, setDocumentPages] = useState<{
+    active: DocumentListPageState | null
+    deleted: DocumentListPageState | null
+  }>({ active: null, deleted: null })
+  const documentPagesRef = useRef(documentPages)
+  const documentListGeneration = useRef(0)
+  const [documentListsLoading, setDocumentListsLoading] = useState({ active: false, deleted: false })
+  const documentListsLoadingRef = useRef({ active: false, deleted: false })
+  const revisionRef = useRef(0)
+  const [documentTransitioning, setDocumentTransitioning] = useState(false)
+  const documentTransitioningRef = useRef(false)
+  const documentTransitionPromise = useRef<Promise<void> | null>(null)
+  const [closing, setClosing] = useState(false)
+  const closingRef = useRef(false)
+  const closeSavePromise = useRef<Promise<boolean> | null>(null)
+  const [recovery, setRecovery] = useState<WorkspaceRecovery | null>(null)
+  const [recoveryRestored, setRecoveryRestored] = useState(false)
+  const appliedRecovery = useRef<WorkspaceRecovery | null>(null)
   const [workspace, setWorkspace] = useState<WorkspaceLoadState>({
     status: "loading",
   })
+  const workspaceReadyRef = useRef(false)
   const [saveState, setRenderedSaveState] = useState<SaveState>("loading")
   const saveStateRef = useRef<SaveState>("loading")
   const setSaveState = useCallback((next: SaveState) => {
@@ -3544,11 +3403,7 @@ export default function App() {
       getPreviewDrawerMaxWidth(),
     ),
   )
-  const previewDrawerDragRef = useRef<{
-    pointerId: number
-    startX: number
-    startWidth: number
-  } | null>(null)
+  const [previewPanelInitialWidth, setPreviewPanelInitialWidth] = useState(PREVIEW_DRAWER_DEFAULT_WIDTH)
   const [exportState, setExportState] = useState<ExportState>({ status: "idle" })
   const [history, setHistory] = useState<ExportHistoryState>({
     status: "loading",
@@ -3564,6 +3419,7 @@ export default function App() {
   )
   const [environmentOnboardingCompleted, setEnvironmentOnboardingCompleted] =
     useState(environmentOnboardingIsComplete)
+  const [environmentGuideOpen, setEnvironmentGuideOpen] = useState(false)
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({
     state: "unconfigured",
   })
@@ -3594,63 +3450,11 @@ export default function App() {
     window.addEventListener("resize", syncPreviewDrawerBounds)
     return () => window.removeEventListener("resize", syncPreviewDrawerBounds)
   }, [])
-  const startPreviewDrawerResize = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
-      if (isMobile) return
-      previewDrawerDragRef.current = {
-        pointerId: event.pointerId,
-        startX: event.clientX,
-        startWidth: previewDrawerWidth,
-      }
-      event.currentTarget.setPointerCapture?.(event.pointerId)
-      event.preventDefault()
-    },
-    [isMobile, previewDrawerWidth],
-  )
-  const continuePreviewDrawerResize = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
-      const drag = previewDrawerDragRef.current
-      if (!drag || drag.pointerId !== event.pointerId) return
-      setPreviewDrawerWidth(
-        clampPreviewDrawerWidth(
-          drag.startWidth + drag.startX - event.clientX,
-          previewDrawerMaxWidth,
-        ),
-      )
-    },
-    [previewDrawerMaxWidth],
-  )
-  const stopPreviewDrawerResize = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
-      const drag = previewDrawerDragRef.current
-      if (!drag || drag.pointerId !== event.pointerId) return
-      previewDrawerDragRef.current = null
-      if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
-        event.currentTarget.releasePointerCapture(event.pointerId)
-      }
-    },
-    [],
-  )
-  const resizePreviewDrawerWithKeyboard = useCallback(
-    (event: ReactKeyboardEvent<HTMLDivElement>) => {
-      let nextWidth: number | undefined
-      if (event.key === "ArrowLeft") {
-        nextWidth = previewDrawerWidth + PREVIEW_DRAWER_KEYBOARD_STEP
-      } else if (event.key === "ArrowRight") {
-        nextWidth = previewDrawerWidth - PREVIEW_DRAWER_KEYBOARD_STEP
-      } else if (event.key === "Home") {
-        nextWidth = PREVIEW_DRAWER_MIN_WIDTH
-      } else if (event.key === "End") {
-        nextWidth = previewDrawerMaxWidth
-      }
-      if (nextWidth === undefined) return
-      event.preventDefault()
-      setPreviewDrawerWidth(
-        clampPreviewDrawerWidth(nextWidth, previewDrawerMaxWidth),
-      )
-    },
-    [previewDrawerMaxWidth, previewDrawerWidth],
-  )
+  const handlePreviewPanelResize = useCallback(({ inPixels }: { inPixels: number }) => {
+    if (!isMobile && inPixels > 0) {
+      setPreviewDrawerWidth(clampPreviewDrawerWidth(Math.round(inPixels), previewDrawerMaxWidth))
+    }
+  }, [isMobile, previewDrawerMaxWidth])
   const activeDocumentType = documentTypeFromRecord(document?.document_type)
   const midtermDateRule = midtermDateRuleForCollege(midtermDatePolicyStatus.rules, draft.college)
   const sections = documentSectionOptions(draft, activeDocumentType, midtermDateRule)
@@ -3660,6 +3464,7 @@ export default function App() {
   const editVersion = useRef(0)
   const autosaveVersions = useRef(createAutosaveVersionState())
   const saving = useRef(false)
+  const savingPromise = useRef<Promise<boolean> | null>(null)
   const documentViewStates = useMemo(() => new DocumentViewStateStore(), [])
   const pendingCheckTarget = useRef<CheckNavigationTarget | null>(null)
   const previewCheckTarget = useRef<CheckNavigationTarget | null>(null)
@@ -3766,6 +3571,9 @@ export default function App() {
       const api = getDesktopApi()
       if (!api) throw new Error("请在 Electron 桌面应用中运行工作台。")
 
+      documentListGeneration.current += 1
+      documentListsLoadingRef.current = { active: false, deleted: false }
+      setDocumentListsLoading({ active: false, deleted: false })
       let activeDocument = snapshot.document
       const createdProposal = !activeDocument
       if (!activeDocument) {
@@ -3775,8 +3583,11 @@ export default function App() {
           document_type: "proposal",
           template_version: "0.1.0-dev.1",
           schema_version: "0.2",
-          title:
-            structuredBodyPlainText(initial.title).trim() || "未命名开题报告",
+          title: defaultDocumentTitle("proposal", profileDraftValue(
+            snapshot.profile_draft,
+            "full_name",
+            snapshot.profile?.full_name || initial.studentName,
+          )),
         })
       }
 
@@ -3785,6 +3596,7 @@ export default function App() {
         (createdProposal || prefillNewProposal) &&
         resolvedDocument.document_type === "proposal" &&
         resolvedDocument.content === null
+      const shouldPrefillAssessment = isAssessmentDocumentType(resolvedDocument.document_type) && !Object.hasOwn(recordValue(recordValue(resolvedDocument.content).sections), "writing_guidance")
       const shouldPrefillMidterm =
         resolvedDocument.document_type === "midterm" && resolvedDocument.content === null
       const shouldMigrateMidterm =
@@ -3801,7 +3613,10 @@ export default function App() {
         resolvedDocument,
         draftFallback,
       )
-      setProfile(snapshot.profile)
+      profileRef.current = snapshot.profile
+      documentRef.current = resolvedDocument
+      activeDocumentIdRef.current = resolvedDocument.id
+      draftRef.current = resolvedDraft
       setDocument(resolvedDocument)
       setDocuments(
         snapshot.documents?.some((item) => item.id === resolvedDocument.id)
@@ -3809,27 +3624,93 @@ export default function App() {
           : [...(snapshot.documents ?? []), resolvedDocument],
       )
       setDeletedDocuments(snapshot.deleted_documents ?? [])
-      setRevision(currentRevision(resolvedDocument))
+      const nextPages = {
+        active: snapshot.documents_page ?? null,
+        deleted: snapshot.deleted_documents_page ?? null,
+      }
+      documentPagesRef.current = nextPages
+      setDocumentPages(nextPages)
+      setProfileValidationRequested(false)
+      revisionRef.current = currentRevision(resolvedDocument)
       setDraft(resolvedDraft)
       setPreviewState({ status: "idle" })
       setExportState({ status: "idle" })
       setHistory({ status: "loading", jobs: [] })
+      appliedRecovery.current = null
+      setRecoveryRestored(false)
+      setRecovery(readWorkspaceRecovery(resolvedDocument.id, documentTypeFromRecord(resolvedDocument.document_type)))
       editVersion.current = 0
       const initialFingerprints = autosaveFingerprintsForDraft(
         resolvedDraft,
         documentTypeFromRecord(resolvedDocument.document_type),
       )
+      // A profile draft may have been saved while an older document's additional
+      // required fields were empty. Assessment printing needs the basic profile
+      // persisted and linked, even when the draft itself is already saved.
+      const shouldPromoteAssessmentProfile = isAssessmentDocumentType(resolvedDocument.document_type) &&
+        assessmentProfileIsComplete(resolvedDraft) && (
+          !snapshot.profile || initialFingerprints.profile !== autosaveFingerprint(profileDraftFromDraft(
+            draftFromRecords(snapshot.profile, null, resolvedDocument),
+          ))
+        )
       autosaveVersions.current = createAutosaveVersionState({
-        profileDirty: Boolean(fallback),
-        documentDirty: Boolean(fallback) || shouldPrefillProposal || shouldPrefillMidterm || shouldMigrateMidterm,
-        profileFingerprint: initialFingerprints.profile,
-        documentFingerprint: shouldPrefillProposal || shouldPrefillMidterm || shouldMigrateMidterm ? undefined : initialFingerprints.document,
+        profileDirty: Boolean(fallback) || shouldPromoteAssessmentProfile,
+        documentDirty: Boolean(fallback) || shouldPrefillProposal || shouldPrefillMidterm || shouldMigrateMidterm || shouldPrefillAssessment,
+        profileFingerprint: shouldPromoteAssessmentProfile ? undefined : initialFingerprints.profile,
+        documentFingerprint: shouldPrefillProposal || shouldPrefillMidterm || shouldMigrateMidterm || shouldPrefillAssessment ? undefined : initialFingerprints.document,
       })
-      setSaveState(fallback || shouldPrefillProposal || shouldPrefillMidterm || shouldMigrateMidterm ? "dirty" : "saved")
+      setSaveState(fallback || shouldPrefillProposal || shouldPrefillMidterm || shouldMigrateMidterm || shouldPrefillAssessment || shouldPromoteAssessmentProfile ? "dirty" : "saved")
+      workspaceReadyRef.current = true
       setWorkspace({ status: "ready" })
     },
     [setSaveState],
   )
+
+  const loadMoreDocuments = useCallback(async (deleted: boolean) => {
+    const api = getDesktopApi()
+    const key = deleted ? "deleted" : "active"
+    const page = documentPagesRef.current[key]
+    if (!api || !page?.has_more || !page.next_cursor ||
+        documentListsLoadingRef.current[key] || documentTransitioningRef.current || closingRef.current) return
+    const generation = documentListGeneration.current
+    documentListsLoadingRef.current[key] = true
+    setDocumentListsLoading((current) => ({ ...current, [key]: true }))
+    try {
+      const result = await api.listDocuments({
+        profileId: page.profile_id,
+        deleted,
+        cursor: page.next_cursor,
+        limit: 100,
+      })
+      if (generation !== documentListGeneration.current) return
+      const merge = (current: DocumentRecord[]) => {
+        const seen = new Set(current.map((item) => item.id))
+        return [...current, ...result.documents.filter((item) => {
+          if (seen.has(item.id)) return false
+          seen.add(item.id)
+          return true
+        })]
+      }
+      if (deleted) setDeletedDocuments(merge)
+      else setDocuments(merge)
+      const nextPages = { ...documentPagesRef.current, [key]: {
+        profile_id: result.profile_id,
+        next_cursor: result.next_cursor,
+        has_more: result.has_more,
+      } }
+      documentPagesRef.current = nextPages
+      setDocumentPages(nextPages)
+    } catch (error) {
+      if (generation === documentListGeneration.current) {
+        toast.error(error instanceof Error ? error.message : "文档列表载入失败，请重试。")
+      }
+    } finally {
+      if (generation === documentListGeneration.current) {
+        documentListsLoadingRef.current[key] = false
+        setDocumentListsLoading((current) => ({ ...current, [key]: false }))
+      }
+    }
+  }, [])
 
   const openWorkspace = useCallback(
     async (nextMode: WorkspaceMode, fallback?: Draft) => {
@@ -3843,6 +3724,7 @@ export default function App() {
         return false
       }
 
+      workspaceReadyRef.current = false
       setWorkspace({ status: "loading" })
       setSaveState("loading")
       try {
@@ -3938,16 +3820,17 @@ export default function App() {
   }, [activeDocumentId, activePane, refreshHistory])
 
   const saveNow = useCallback(
-    async (reason: "auto" | "manual" = "auto") => {
+    (reason: "auto" | "manual" = "auto"): Promise<boolean> => {
       const api = getDesktopApi()
-      if (!api || !document || workspace.status !== "ready" || saving.current) {
-        return false
+      const activeDocument = documentRef.current
+      if (!api || !activeDocument || !workspaceReadyRef.current || saving.current) {
+        return Promise.resolve(false)
       }
 
       const versionAtStart = editVersion.current
-      const draftAtStart = draft
-      const documentAtStart = document
-      const expectedRevision = revision
+      const draftAtStart = draftRef.current
+      const documentAtStart = activeDocument
+      const expectedRevision = revisionRef.current
       const fingerprints = autosaveFingerprintsForDraft(
         draftAtStart,
         documentTypeFromRecord(documentAtStart.document_type),
@@ -3960,247 +3843,344 @@ export default function App() {
       saving.current = true
       setSaveState("saving")
 
-      try {
-        if (savePlan.profile !== null) {
-          await api.saveProfileDraft(profileDraftFromDraft(draftAtStart))
-          let savedProfile = profile
-          if (profileIsComplete(draftAtStart)) {
-            savedProfile = await api.saveProfile(
-              profileFromDraft(draftAtStart, profile),
+      const task = (async () => {
+        try {
+          if (savePlan.profile !== null) {
+            await api.saveProfileDraft(profileDraftFromDraft(draftAtStart))
+            let savedProfile = profileRef.current
+            if (isAssessmentDocumentType(documentAtStart.document_type) ? assessmentProfileIsComplete(draftAtStart) : profileIsComplete(draftAtStart)) {
+              savedProfile = await api.saveProfile(
+                profileFromDraft(draftAtStart, profileRef.current),
+              )
+            }
+            autosaveVersions.current = acknowledgeAutosave(
+              autosaveVersions.current,
+              "profile",
+              savePlan.profile,
+              fingerprints.profile,
             )
+            profileRef.current = savedProfile
           }
-          autosaveVersions.current = acknowledgeAutosave(
-            autosaveVersions.current,
-            "profile",
-            savePlan.profile,
-            fingerprints.profile,
-          )
-          setProfile(savedProfile)
-        }
 
-        if (savePlan.document !== null) {
-          const result = await api.saveDraft({
-            documentId: documentAtStart.id,
-            content: draftToContent(
-              draftAtStart,
-              documentTypeFromRecord(documentAtStart.document_type),
-            ),
-            expectedRevision,
-            reason,
-          })
-          autosaveVersions.current = acknowledgeAutosave(
-            autosaveVersions.current,
-            "document",
-            savePlan.document,
-            fingerprints.document,
-          )
-          setRevision(result.revision)
-          setDocument((current) =>
-            current
-              ? {
-                  ...current,
-                  content: draftToContent(
-                    draftAtStart,
-                    documentTypeFromRecord(documentAtStart.document_type),
-                  ),
-                  current_revision: result.revision,
-                  saved_at: result.saved_at,
-                }
-              : current,
-          )
+          if (savePlan.document !== null) {
+            const result = await api.saveDraft({
+              documentId: documentAtStart.id,
+              content: draftToContent(
+                draftAtStart,
+                documentTypeFromRecord(documentAtStart.document_type),
+              ),
+              expectedRevision,
+              reason,
+            })
+            autosaveVersions.current = acknowledgeAutosave(
+              autosaveVersions.current,
+              "document",
+              savePlan.document,
+              fingerprints.document,
+            )
+            revisionRef.current = result.revision
+            const savedDocument = {
+              ...documentAtStart,
+              content: draftToContent(draftAtStart, documentTypeFromRecord(documentAtStart.document_type)),
+              current_revision: result.revision,
+              saved_at: result.saved_at,
+            }
+            documentRef.current = savedDocument
+            setDocument(savedDocument)
+          }
+          const savedCurrentRevision = editVersion.current === versionAtStart
+          setSaveState(savedCurrentRevision ? "saved" : "dirty")
+          const recovered = appliedRecovery.current
+          if (savedCurrentRevision && recovered?.documentId === documentAtStart.id && removeWorkspaceRecovery(recovered)) {
+            appliedRecovery.current = null
+            setRecoveryRestored(false)
+            setRecovery(null)
+          }
+          return savedCurrentRevision
+        } catch (error) {
+          setSaveState(errorHasCode(error, "REVISION_CONFLICT") ? "conflict" : "error")
+          return false
+        } finally {
+          saving.current = false
         }
-        const savedCurrentRevision = editVersion.current === versionAtStart
-        setSaveState(savedCurrentRevision ? "saved" : "dirty")
-        return savedCurrentRevision
-      } catch (error) {
-        setSaveState(errorHasCode(error, "REVISION_CONFLICT") ? "conflict" : "error")
-        return false
-      } finally {
-        saving.current = false
-      }
+      })()
+      savingPromise.current = task
+      void task.then(() => {
+        if (savingPromise.current === task) savingPromise.current = null
+      })
+      return task
     },
-    [document, draft, profile, revision, setSaveState, workspace.status],
+    [setSaveState],
   )
 
+  const flushPendingChanges = useCallback(async () => {
+    const inFlight = savingPromise.current
+    if (inFlight) {
+      await inFlight
+      if (saveStateRef.current === "error" || saveStateRef.current === "conflict") return false
+    }
+    if (saveStateRef.current === "conflict") return false
+    if (saveStateRef.current === "dirty" || saveStateRef.current === "error") {
+      return saveNow("manual")
+    }
+    return saveStateRef.current === "saved" ||
+      (documentRef.current === null && editVersion.current === 0)
+  }, [saveNow])
+
+  const runWorkspaceTransition = async (operation: () => Promise<void>) => {
+    if (documentTransitioningRef.current || closingRef.current) return
+    // Lock synchronously before awaiting either the current save or workspace IPC.
+    documentTransitioningRef.current = true
+    setDocumentTransitioning(true)
+    const task = Promise.resolve().then(operation)
+    documentTransitionPromise.current = task
+    try {
+      await task
+    } finally {
+      documentTransitioningRef.current = false
+      setDocumentTransitioning(false)
+      if (documentTransitionPromise.current === task) documentTransitionPromise.current = null
+    }
+  }
+
   const prepareForDocumentChange = async () => {
-    const api = getDesktopApi()
-    if (
-      !api ||
-      workspace.status !== "ready" ||
-      saveState === "saving" ||
-      exportState.status === "exporting"
-    ) {
-      return false
-    }
-    if (saveState === "dirty" || saveState === "error") {
-      const saved = await saveNow("manual")
-      if (!saved) return false
-    }
-    return saveState !== "conflict"
+    if (!getDesktopApi() || workspace.status !== "ready" || exportState.status === "exporting") return false
+    return flushPendingChanges()
   }
 
   const selectDocumentFile = async (documentId: string) => {
+    if (documentTransitioningRef.current || closingRef.current) return
     if (documentId === activeDocumentId) {
       setActivePane("document")
       return
     }
-    const api = getDesktopApi()
-    if (!api || !(await prepareForDocumentChange())) {
-      throw new Error("当前内容尚未保存，暂时无法切换文档。")
+    try {
+      await runWorkspaceTransition(async () => {
+        const api = getDesktopApi()
+        if (!api || !(await prepareForDocumentChange())) {
+          throw new Error("当前内容尚未保存，暂时无法切换文档。")
+        }
+        const snapshot = await api.selectDocument(documentId)
+        await applyWorkspace(snapshot)
+        setActivePane("document")
+      })
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "文档切换失败，请重试。")
     }
-    const snapshot = await api.selectDocument(documentId)
-    await applyWorkspace(snapshot)
-    setActivePane("document")
   }
 
   const createDocumentFile = async (request: CreateDocumentRequest) => {
-    const api = getDesktopApi()
-    if (!api || !(await prepareForDocumentChange())) {
-      throw new Error("当前内容尚未保存，暂时无法新建文档。")
-    }
-    const created = await api.createDocument({
-      profile_id: profile?.id ?? null,
-      document_type: request.type,
-      template_version:
-        request.type === "thesis" ? "0.1.0-authoring" :
-        request.type === "task_book"
-          ? "0.2+66c968c"
-          : request.type === "midterm"
-            ? "0.3+66c968c"
-            : "0.1.0-dev.1",
-      schema_version: request.type === "proposal" ? "0.2" : "0.1",
-      title: request.title,
-      source_document_id: request.sourceDocumentId,
+    await runWorkspaceTransition(async () => {
+      const api = getDesktopApi()
+      if (!api || !(await prepareForDocumentChange())) {
+        throw new Error("当前内容尚未保存，暂时无法新建文档。")
+      }
+      const created = await api.createDocument({
+        profile_id: profileRef.current?.id ?? null,
+        document_type: request.type,
+        template_version:
+          request.type === "thesis" ? "0.1.0-authoring" :
+          request.type === "task_book"
+            ? "0.2+66c968c"
+            : request.type === "midterm"
+              ? "0.3+66c968c"
+              : "0.1.0-dev.1",
+        schema_version: request.type === "proposal" ? "0.2" : "0.1",
+        title: request.title,
+        source_document_id: request.sourceDocumentId,
+      })
+      const snapshot = await api.selectDocument(created.id)
+      await applyWorkspace(snapshot, undefined, request.type === "proposal" && !request.sourceDocumentId)
+      setActivePane("document")
     })
-    const snapshot = await api.selectDocument(created.id)
-    await applyWorkspace(
-      snapshot,
-      undefined,
-      request.type === "proposal" && !request.sourceDocumentId,
-    )
-    setActivePane("document")
   }
 
   const runDocumentMutation = async (
     operation: (api: NonNullable<ReturnType<typeof getDesktopApi>>) => Promise<WorkspaceSnapshot>,
   ) => {
-    const api = getDesktopApi()
-    if (!api || !(await prepareForDocumentChange())) {
-      throw new Error("当前内容尚未保存，暂时无法执行此操作。")
+    await runWorkspaceTransition(async () => {
+      const api = getDesktopApi()
+      if (!api || !(await prepareForDocumentChange())) {
+        throw new Error("当前内容尚未保存，暂时无法执行此操作。")
+      }
+      const snapshot = await operation(api)
+      await applyWorkspace(snapshot)
+    })
+  }
+
+  const reloadWorkspace = async () => {
+    try {
+      await runWorkspaceTransition(async () => {
+        const current = documentRef.current
+        if (current && saveStateRef.current === "conflict") {
+          const retained: WorkspaceRecovery = {
+            version: 1,
+            documentId: current.id,
+            documentType: documentTypeFromRecord(current.document_type),
+            capturedAt: new Date().toISOString(),
+            content: draftToContent(draftRef.current, documentTypeFromRecord(current.document_type)),
+            profileDraft: profileDraftFromDraft(draftRef.current),
+          }
+          writeWorkspaceRecovery(retained)
+          setRecovery(retained)
+        }
+        await openWorkspace("persistent")
+      })
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "无法保留当前草稿，已取消重新载入。")
     }
-    const snapshot = await operation(api)
-    await applyWorkspace(snapshot)
+  }
+
+  const restoreRecovery = () => {
+    const current = documentRef.current
+    if (!current || !recovery || recovery.documentId !== current.id ||
+      documentTransitioningRef.current || closingRef.current || saving.current || saveStateRef.current === "conflict") return
+    const restored = draftFromRecords(profileRef.current, recovery.profileDraft, { ...current, content: recovery.content })
+    const fingerprints = autosaveFingerprintsForDraft(restored, documentTypeFromRecord(current.document_type))
+    draftRef.current = restored
+    setDraft(restored)
+    editVersion.current += 1
+    for (const scope of ["profile", "document"] as const) {
+      if (fingerprints[scope] !== autosaveVersions.current[scope].persistedFingerprint) {
+        autosaveVersions.current = markAutosaveEdited(autosaveVersions.current, scope)
+      }
+    }
+    appliedRecovery.current = recovery
+    setRecoveryRestored(true)
+    setPreviewState(currentPreview => currentPreview.status === "ready" ? { ...currentPreview, stale: true } : currentPreview)
+    setSaveState("dirty")
+  }
+
+  const dismissRecovery = () => {
+    if (!recovery || appliedRecovery.current || documentTransitioningRef.current || closingRef.current) return
+    if (removeWorkspaceRecovery(recovery)) setRecovery(null)
+    else toast.error("无法移除保留副本，请稍后再试。")
   }
 
   useEffect(() => {
+    const api = getDesktopApi()
+    if (!api?.onCloseRequest) return
+    return api.onCloseRequest((requestId) => {
+      if (!closeSavePromise.current) {
+        closingRef.current = true
+        setClosing(true)
+        closeSavePromise.current = (async () => {
+          await documentTransitionPromise.current?.catch(() => undefined)
+          const documentSaved = await flushPendingChanges()
+          const toolsSaved = flushLocalDrafts()
+          return toolsSaved && documentSaved
+        })()
+      }
+      const pending = closeSavePromise.current
+      void pending.then(async (saved) => {
+        if (closeSavePromise.current === pending) closeSavePromise.current = null
+        const conflict = saveStateRef.current === "conflict"
+        if (!saved) toast.error(conflict
+          ? "草稿存在修订冲突，请处理后再关闭窗口。"
+          : "草稿尚未保存，窗口已保留，请重试保存后再关闭。")
+        const completion = await api.completeCloseRequest({
+          requestId,
+          outcome: saved ? "saved" : "failed",
+          ...(saved ? {} : { reason: conflict ? "conflict" as const : "save_failed" as const }),
+        })
+        if (!saved || !completion.accepted) {
+          closingRef.current = false
+          setClosing(false)
+        }
+      }).catch(() => {
+        closeSavePromise.current = null
+        closingRef.current = false
+        setClosing(false)
+        toast.error("无法确认关闭状态，窗口中的内容仍保留。")
+      })
+    })
+  }, [flushPendingChanges])
+
+  useEffect(() => {
     if (saveState !== "dirty" || workspace.status !== "ready") return
+    let cancelled = false
     const timeout = window.setTimeout(() => {
-      void saveNow("auto")
+      void (async () => {
+        await savingPromise.current
+        if (!cancelled && saveStateRef.current === "dirty") await saveNow("auto")
+      })()
     }, 700)
-    return () => window.clearTimeout(timeout)
-  }, [draft, revision, saveNow, saveState, workspace.status])
+    return () => {
+      cancelled = true
+      window.clearTimeout(timeout)
+    }
+  }, [draft, saveNow, saveState, workspace.status])
+
+  const commitDraftEdit = (update: (current: Draft) => Draft, scope: "profile" | "document") => {
+    if (documentTransitioningRef.current || closingRef.current) return
+    const next = update(draftRef.current)
+    draftRef.current = next
+    setDraft(next)
+    setPreviewState(current => current.status === "ready" ? { ...current, stale: true } : current)
+    editVersion.current += 1
+    autosaveVersions.current = markAutosaveEdited(autosaveVersions.current, scope)
+    setSaveState("dirty")
+  }
 
   const updateDraft = (field: TextDraftField, value: string) => {
-    setDraft((current) => {
+    commitDraftEdit((current) => {
       const next = { ...current, [field]: value }
-      if (field === "referencesBibtex") {
-        const references = cachedReferencesFromBibtex(
-          value,
-          PROPOSAL_REFERENCE_RULES,
+      if (field === "studentId" && value !== current.studentId) {
+        const inferred = inferStudentNumberAcademics(value)
+        if (!inferred) return next
+        const college = inferred.college ?? current.college
+        const collegeOption = findCollegeOption(college)
+        const major = inferred.major ?? (
+          inferred.college && !collegeOption?.majors.some(option => option.major === current.major.trim())
+            ? ""
+            : current.major
         )
+        const academicPathChanged = college.trim() !== current.college.trim() || major.trim() !== current.major.trim()
+        const classFitsNewPath = collegeOption?.majors
+          .find(option => option.major === major.trim())
+          ?.classes.includes(normalizeAcademicClassLabel(current.className))
+        return {
+          ...next,
+          graduationCohort: inferred.graduationCohort,
+          college,
+          major,
+          className: academicPathChanged && !classFitsNewPath ? "" : current.className,
+        }
+      }
+      if (field === "referencesBibtex") {
+        const references = cachedReferencesFromBibtex(value, PROPOSAL_REFERENCE_RULES)
         return references === null ? next : { ...next, references }
       }
       if (field === "taskReferencesBibtex") {
-        const taskReferences = cachedReferencesFromBibtex(
-          value,
-          TASK_BOOK_REFERENCE_RULES,
-        )
+        const taskReferences = cachedReferencesFromBibtex(value, TASK_BOOK_REFERENCE_RULES)
         return taskReferences === null ? next : { ...next, taskReferences }
       }
       return next
-    })
-    setPreviewState((current) =>
-      current.status === "ready" ? { ...current, stale: true } : current,
-    )
-    editVersion.current += 1
-    if (PROFILE_FIELDS.has(field)) {
-      autosaveVersions.current = markAutosaveEdited(
-        autosaveVersions.current,
-        "profile",
-      )
-    } else {
-      autosaveVersions.current = markAutosaveEdited(
-        autosaveVersions.current,
-        "document",
-      )
-    }
-    setSaveState("dirty")
+    }, PROFILE_FIELDS.has(field) ? "profile" : "document")
   }
 
-  const updateStructuredBody = (
-    field: StructuredDraftField,
-    value: StructuredBodyValue,
-  ) => {
-    setDraft((current) => ({ ...current, [field]: value }))
-    setPreviewState((current) =>
-      current.status === "ready" ? { ...current, stale: true } : current,
-    )
-    editVersion.current += 1
-    if (field === "title") {
-      autosaveVersions.current = markAutosaveEdited(
-        autosaveVersions.current,
-        "profile",
-      )
-    } else {
-      autosaveVersions.current = markAutosaveEdited(
-        autosaveVersions.current,
-        "document",
-      )
-    }
-    setSaveState("dirty")
+  const updateStructuredBody = (field: StructuredDraftField, value: StructuredBodyValue) => {
+    commitDraftEdit(current => ({ ...current, [field]: value }), field === "title" ? "profile" : "document")
   }
 
   const updateDirectory = (value: OutlineEditorItem[]) => {
-    setDraft((current) => ({ ...current, directory: value }))
-    setPreviewState((current) =>
-      current.status === "ready" ? { ...current, stale: true } : current,
-    )
-    editVersion.current += 1
-    autosaveVersions.current = markAutosaveEdited(
-      autosaveVersions.current,
-      "document",
-    )
-    setSaveState("dirty")
+    commitDraftEdit(current => ({ ...current, directory: value }), "document")
   }
 
   const updateDirectoryNumberingStyle = (value: OutlineNumberingStyle) => {
-    setDraft((current) => ({
+    commitDraftEdit(current => ({
       ...current,
       directoryNumberingStyle: value,
       directory: numberOutlineItems(current.directory, value),
-    }))
-    setPreviewState((current) =>
-      current.status === "ready" ? { ...current, stale: true } : current,
-    )
-    editVersion.current += 1
-    autosaveVersions.current = markAutosaveEdited(
-      autosaveVersions.current,
-      "document",
-    )
-    setSaveState("dirty")
+    }), "document")
+  }
+
+  const updateAssessment = (value: AssessmentDraft) => {
+    commitDraftEdit(current => ({ ...current, assessment: value }), "document")
   }
 
   const updateTaskSchedule = (value: TaskScheduleEditorItem[]) => {
-    setDraft((current) => ({ ...current, taskSchedule: value }))
-    setPreviewState((current) =>
-      current.status === "ready" ? { ...current, stale: true } : current,
-    )
-    editVersion.current += 1
-    autosaveVersions.current = markAutosaveEdited(
-      autosaveVersions.current,
-      "document",
-    )
-    setSaveState("dirty")
+    commitDraftEdit(current => ({ ...current, taskSchedule: value }), "document")
   }
 
   const checkContent = async (): Promise<boolean> => {
@@ -4209,6 +4189,7 @@ export default function App() {
     if (!api || !document || workspace.status !== "ready") return false
     const documentIdAtStart = document.id
     const versionAtStart = editVersion.current
+    setProfileValidationRequested(true)
     if (saveStateRef.current === "conflict") {
       recordTelemetry({
         name: "document_action",
@@ -4226,9 +4207,10 @@ export default function App() {
     ) {
       return false
     }
-    if (!profileIsComplete(draft)) {
-      const message =
-        "请先打开左侧“学生档案”，补全姓名、学号、毕业届别、学院、专业、班级、指导教师和职称。"
+    if (!(isAssessmentDocumentType(activeDocumentType) ? assessmentProfileIsComplete(draft) : profileIsComplete(draft))) {
+      const message = isAssessmentDocumentType(activeDocumentType)
+        ? "请先打开左侧“学生档案”，补全姓名、学号、学院和专业。"
+        : "请先打开左侧“学生档案”，补全姓名、学号、毕业届别、学院、专业、班级、指导教师和职称。"
       setActivePane("profile")
       recordTelemetry({
         name: "document_action",
@@ -4243,7 +4225,7 @@ export default function App() {
     const thesisTitle = structuredBodyPlainText(draft.title).trim()
     if (!thesisTitle || thesisTitle.length > THESIS_TITLE_MAX_LENGTH) {
       const message = !thesisTitle
-        ? "请先打开左侧“学生档案”，填写共用论文题目。"
+        ? "请先打开左侧“学生档案”，填写论文题目。"
         : `学生档案中的论文题目最多 ${THESIS_TITLE_MAX_LENGTH} 个字符。`
       navigateToCheck({ pane: "profile", selector: '[aria-label="中文题目"]' })
       recordTelemetry({
@@ -4566,6 +4548,11 @@ export default function App() {
       celebrateExportSuccess()
       await refreshHistory()
     } catch (error) {
+      if (telemetryErrorCode(error) === "PREVIEW_STALE") {
+        setPreviewState(current => current.status === "ready" &&
+          current.result.document_id === pending.documentId && current.result.preview_id === pending.previewId
+          ? { ...current, stale: true } : current)
+      }
       const cancelled = errorHasCode(error, "EXPORT_CANCELLED")
       const message = cancelled
         ? "导出已取消，未完成的临时产物已清理。"
@@ -4674,6 +4661,11 @@ export default function App() {
         toast.error("内容已经变化，请重新生成排版预览后再导出。")
         return
       }
+      if (telemetryErrorCode(error) === "PREVIEW_STALE") {
+        setPreviewState(current => current.status === "ready" &&
+          current.result.document_id === documentIdAtStart && current.result.preview_id === previewAtStart.preview_id
+          ? { ...current, stale: true } : current)
+      }
       const message = error instanceof Error ? error.message : "导出预检失败。"
       setExportState({ status: "error", message })
       recordTelemetry({
@@ -4753,7 +4745,7 @@ export default function App() {
     }
   }
 
-  const workspaceDisabled = workspace.status !== "ready"
+  const workspaceDisabled = workspace.status !== "ready" || documentTransitioning || closing
   const templateCheck = activeDocumentType === "thesis"
     ? undefined
     : activeTemplateCheck(environment, activeDocumentType)
@@ -4796,7 +4788,7 @@ export default function App() {
     !previewReady ||
     exportState.status === "exporting"
   const exportDisabledReason = activeDocumentType === "thesis"
-    ? "毕业论文 LaTeX 模板仍在整理，暂不能预览或导出"
+    ? "当前文档暂不支持预览和导出"
     : !environmentReady
     ? environmentFailure?.message ?? "请先修复本机文档环境"
     : !templateReady
@@ -4814,6 +4806,7 @@ export default function App() {
   const openPreviewAndExport = () => {
     if (activeDocumentType === "thesis") return
     previewCheckTarget.current = null
+    setPreviewPanelInitialWidth(previewDrawerWidth)
     setPreviewOpen(true)
     if (previewReady) {
       showPreviewAcceptanceBoundary()
@@ -4838,6 +4831,7 @@ export default function App() {
   const finishEnvironmentOnboarding = () => {
     completeEnvironmentOnboarding()
     setEnvironmentOnboardingCompleted(true)
+    setEnvironmentGuideOpen(false)
   }
 
   const releaseControl = "control" in updateStatus ? updateStatus.control : undefined
@@ -4860,30 +4854,29 @@ export default function App() {
         (releaseAnnouncement && releaseAnnouncement.id !== dismissedAnnouncementId)),
   )
 
-  const documentActions = (
-    <>
-      {activeDocumentType !== "thesis" ? (
-        <Button
-          size={isMobile ? "icon" : "default"}
-          aria-label="预览&导出"
-          title="预览&导出"
-          onClick={openPreviewAndExport}
-          disabled={previewTriggerDisabled}
-        >
-          {previewBusy ? (
-            <ThinkingOrb state="solving" size={20} aria-label="正在生成预览" />
-          ) : (
-            <AnimatedActionIcon icon={FileTextIconAnimated} />
-          )}
-          {isMobile ? null : <span>预览&导出</span>}
-        </Button>
-      ) : null}
-    </>
-  )
+  const documentActions = activeDocumentType !== "thesis" ? (
+    <Button
+      size={isMobile ? "icon" : "default"}
+      aria-label="预览&导出"
+      title="预览&导出"
+      className="ml-auto"
+      onClick={openPreviewAndExport}
+      disabled={previewTriggerDisabled}
+    >
+      {previewBusy ? (
+        <ThinkingOrb state="solving" size={20} aria-label="正在生成预览" />
+      ) : (
+        <AnimatedActionIcon icon={FileTextIconAnimated} />
+      )}
+      {isMobile ? null : <span>预览&导出</span>}
+    </Button>
+  ) : null
 
   const editor =
     activePane === "profile" ? (
       <StudentProfileEditor
+        assessmentMode={isAssessmentDocumentType(activeDocumentType)}
+        validationRequested={profileValidationRequested}
         draft={draft}
         onChange={updateDraft}
         onStructuredBodyChange={updateStructuredBody}
@@ -4904,11 +4897,17 @@ export default function App() {
         onDirectoryChange={updateDirectory}
         onDirectoryNumberingStyleChange={updateDirectoryNumberingStyle}
         onTaskScheduleChange={updateTaskSchedule}
+        onAssessmentChange={updateAssessment}
         disabled={workspaceDisabled}
         workspace={workspace}
         saveState={saveState}
-        onRetryLoad={() => void openWorkspace("persistent")}
+        onRetryLoad={() => void reloadWorkspace()}
+        retryLoadDisabled={documentTransitioning || closing}
         onRetrySave={() => void saveNow("manual")}
+        recoveryAvailable={recovery !== null && recovery.documentId === document?.id}
+        recoveryRestored={recoveryRestored}
+        onRestoreRecovery={restoreRecovery}
+        onDismissRecovery={dismissRecovery}
         toolbarActions={documentActions}
       />
     )
@@ -4919,6 +4918,7 @@ export default function App() {
       templateCheck={templateCheck}
       thesisTemplatePending={activeDocumentType === "thesis"}
       onRefresh={refreshEnvironment}
+      onOpenEnvironmentGuide={() => setEnvironmentGuideOpen(true)}
       onInstallTemplate={() => void installTemplate()}
       templateInstalling={templateInstalling}
       exportState={exportState}
@@ -4952,7 +4952,9 @@ export default function App() {
       animationContextKey="thesis-tools"
       showSidebarToggle
       showCompletion={false}
-      onSectionChange={(toolId) => setActiveThesisTool(toolId as ThesisToolId)}
+      onSectionChange={(toolId) => {
+        if (!closingRef.current) setActiveThesisTool(toolId as ThesisToolId)
+      }}
     />
   )
 
@@ -4974,6 +4976,9 @@ export default function App() {
         previewGenerationDisabled
       }
       onGenerate={() => void generatePreview()}
+      onOpenEnvironmentGuide={environment.status === "error" || environmentFailure
+        ? () => setEnvironmentGuideOpen(true)
+        : undefined}
     />
   )
 
@@ -4989,7 +4994,7 @@ export default function App() {
       <AppearanceSettings />
     ) : activePane === "thesis_tools" ? (
       <div className="flex h-full min-h-0 flex-col">
-        <div className="min-h-0 flex-1">
+        <div className="min-h-0 flex-1" inert={closing}>
           <ThesisToolsWorkbench
             activeTool={activeThesisTool}
             onSaveStateChange={handleThesisToolSaveStateChange}
@@ -5012,6 +5017,7 @@ export default function App() {
       }
     >
       <AppSidebar
+        studentName={draft.studentName}
         variant="inset"
         profileActive={activePane === "profile"}
         toolsActive={activePane === "tools"}
@@ -5023,6 +5029,11 @@ export default function App() {
         activeDocumentId={activePane === "document" ? activeDocumentId ?? null : null}
         documents={documents}
         deletedDocuments={deletedDocuments}
+        documentsHasMore={documentPages.active?.has_more}
+        deletedDocumentsHasMore={documentPages.deleted?.has_more}
+        documentsLoading={documentListsLoading.active}
+        deletedDocumentsLoading={documentListsLoading.deleted}
+        onLoadMoreDocuments={loadMoreDocuments}
         onSelectProfile={() => setActivePane("profile")}
         onSelectTools={() => setActivePane("tools")}
         onSelectAppearance={() => setActivePane("appearance")}
@@ -5048,7 +5059,7 @@ export default function App() {
         disabled={workspaceDisabled || exportState.status === "exporting"}
         inspectionDisabled={workspaceDisabled}
       />
-      <SidebarInset className="min-h-0 overflow-hidden">
+      <SidebarInset className="min-h-0 overflow-hidden md:peer-data-[variant=inset]:shadow-none">
         {activePane !== "document" ? <SiteHeader
           title={
             activePane === "profile"
@@ -5109,26 +5120,26 @@ export default function App() {
                 }
           }
         >
-          {!isMobile ? (
-            <div
-              role="separator"
-              aria-label="调整预览抽屉宽度"
-              aria-orientation="vertical"
-              aria-valuemin={PREVIEW_DRAWER_MIN_WIDTH}
-              aria-valuemax={previewDrawerMaxWidth}
-              aria-valuenow={Math.round(previewDrawerWidth)}
-              aria-valuetext={`${Math.round(previewDrawerWidth)} 像素`}
-              tabIndex={0}
-              onPointerDown={startPreviewDrawerResize}
-              onPointerMove={continuePreviewDrawerResize}
-              onPointerUp={stopPreviewDrawerResize}
-              onPointerCancel={stopPreviewDrawerResize}
-              onKeyDown={resizePreviewDrawerWithKeyboard}
-              className="group absolute inset-y-0 left-0 z-10 flex w-2 -translate-x-1/2 touch-none cursor-col-resize items-center justify-center focus-visible:outline-none"
+          {/* A transparent spacer lets the standard PanelGroup resize the Sheet's outer edge.
+              Only the preview and handle receive pointer events; backdrop dismissal stays native. */}
+          <ResizablePanelGroup
+            key={isMobile ? "mobile-preview" : "desktop-preview"}
+            className="pointer-events-none absolute inset-y-0 right-0"
+            style={{ width: isMobile ? "100%" : previewDrawerMaxWidth + 1 }}
+          >
+            {!isMobile ? <>
+              <ResizablePanel id="preview-spacer" aria-hidden minSize={0} defaultSize={previewDrawerMaxWidth - clampPreviewDrawerWidth(previewPanelInitialWidth, previewDrawerMaxWidth)} />
+              <ResizableHandle withHandle className="pointer-events-auto" aria-label="调整预览抽屉宽度" aria-valuetext={`${previewDrawerWidth} 像素`} />
+            </> : null}
+            <ResizablePanel
+              id="preview-content"
+              defaultSize={isMobile ? "100%" : clampPreviewDrawerWidth(previewPanelInitialWidth, previewDrawerMaxWidth)}
+              minSize={isMobile ? 0 : PREVIEW_DRAWER_MIN_WIDTH}
+              maxSize={isMobile ? "100%" : previewDrawerMaxWidth}
+              groupResizeBehavior={isMobile ? "preserve-relative-size" : "preserve-pixel-size"}
+              onResize={handlePreviewPanelResize}
+              className="pointer-events-auto flex min-h-0 flex-col"
             >
-              <span className="h-10 w-px bg-border group-hover:bg-foreground group-focus-visible:bg-ring" />
-            </div>
-          ) : null}
           <SheetHeader className="flex-row items-center justify-between gap-3 border-b">
             <SheetTitle>预览&导出</SheetTitle>
             <DropdownMenu>
@@ -5174,6 +5185,8 @@ export default function App() {
             </DropdownMenu>
           </SheetHeader>
           <div className="min-h-0 flex-1">{previewPanel}</div>
+            </ResizablePanel>
+          </ResizablePanelGroup>
         </SheetContent>
       </Sheet>
       <Dialog
@@ -5241,7 +5254,7 @@ export default function App() {
               >
                 {privacySubmitting ? (
                   <LoaderCircleIcon className="animate-spin" />
-                ) : null}
+                ) : <AnimatedActionIcon icon={CircleCheckIcon} />}
                 同意并继续
               </Button>
             ) : null}
@@ -5251,8 +5264,9 @@ export default function App() {
       <EnvironmentOnboardingDialog
         open={
           privacyNotice.status === "accepted" &&
-          !environmentOnboardingCompleted
+          (!environmentOnboardingCompleted || environmentGuideOpen)
         }
+        revisiting={environmentOnboardingCompleted}
         environment={environment}
         onRefresh={() => void refreshEnvironment()}
         onComplete={finishEnvironmentOnboarding}
@@ -5288,6 +5302,7 @@ export default function App() {
             </Button>
             {releaseControl?.helpUrl ? (
               <Button variant="outline" onClick={() => void openReleaseHelp()}>
+                <AnimatedActionIcon icon={LinkIcon} />
                 查看说明
               </Button>
             ) : null}
@@ -5327,6 +5342,7 @@ export default function App() {
           <DialogFooter>
             {releaseControl?.helpUrl ? (
               <Button variant="outline" onClick={() => void openReleaseHelp()}>
+                <AnimatedActionIcon icon={LinkIcon} />
                 查看说明
               </Button>
             ) : null}
@@ -5340,6 +5356,7 @@ export default function App() {
                 }
               }}
             >
+              <AnimatedActionIcon icon={CircleCheckIcon} />
               我知道了
             </Button>
           </DialogFooter>
@@ -5363,7 +5380,7 @@ export default function App() {
             <DialogTitle>新版本已下载并校验</DialogTitle>
             <DialogDescription>
               {updateStatus.state === "downloaded"
-                ? `版本 ${updateStatus.version} 已通过签名、大小和 SHA-256 校验。当前阶段不会自动覆盖正在运行的应用。`
+                ? `版本 ${updateStatus.version} 已下载并校验，可以打开更新文件进行安装。`
                 : null}
             </DialogDescription>
           </DialogHeader>

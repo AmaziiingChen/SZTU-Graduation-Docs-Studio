@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import re
 import sqlite3
 from collections.abc import Mapping
+from datetime import datetime
 from typing import Any
 
 from ..database import Database, utc_now
@@ -11,6 +13,8 @@ from ..errors import NotFoundError, RevisionConflictError, ValidationError
 from .common import decode_json, encode_json, new_id, require_text
 
 SAVE_REASONS = frozenset({"auto", "manual", "import"})
+DOCUMENT_CURSOR_TIME = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$")
+DOCUMENT_CURSOR_ID = re.compile(r"^[0-9a-f]{32}$")
 
 
 class DocumentService:
@@ -189,6 +193,78 @@ class DocumentService:
             item["is_temporary"] = bool(item["is_temporary"])
         return result
 
+    def list_page(
+        self,
+        *,
+        profile_id: str | None = None,
+        deleted: bool = False,
+        cursor: Mapping[str, Any] | None = None,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        """Return bounded metadata using an updated_at/id keyset cursor.
+
+        Mutations can move a document before an existing cursor. The caller
+        resets pagination after workspace changes and merges loaded items by
+        id; this avoids treating a mutable list as a frozen database snapshot.
+        """
+
+        if profile_id is not None and (
+            not isinstance(profile_id, str) or not profile_id or len(profile_id) > 128
+        ):
+            raise ValidationError("profile_id", "must_be_text")
+        if not isinstance(deleted, bool):
+            raise ValidationError("deleted", "must_be_boolean")
+        if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 100:
+            raise ValidationError("limit", "must_be_between_1_and_100")
+        if cursor is not None:
+            if (
+                not isinstance(cursor, Mapping)
+                or set(cursor) != {"updated_at", "id"}
+                or not isinstance(cursor.get("updated_at"), str)
+                or DOCUMENT_CURSOR_TIME.fullmatch(cursor["updated_at"]) is None
+                or not isinstance(cursor.get("id"), str)
+                or DOCUMENT_CURSOR_ID.fullmatch(cursor["id"]) is None
+            ):
+                raise ValidationError("cursor", "invalid_cursor")
+            try:
+                datetime.fromisoformat(cursor["updated_at"].replace("Z", "+00:00"))
+            except ValueError as exc:
+                raise ValidationError("cursor", "invalid_cursor") from exc
+
+        where = ["soft_deleted_at IS NOT NULL" if deleted else "soft_deleted_at IS NULL"]
+        parameters: list[Any] = []
+        if profile_id is not None:
+            where.append("profile_id = ?")
+            parameters.append(profile_id)
+        if cursor is not None:
+            where.append("(updated_at < ? OR (updated_at = ? AND id > ?))")
+            parameters.extend([cursor["updated_at"], cursor["updated_at"], cursor["id"]])
+        parameters.append(limit + 1)
+        rows = self.database.connection.execute(
+            f"""
+            SELECT id, profile_id, document_type, template_version, schema_version,
+                   title, status, is_temporary, current_revision, created_at, updated_at,
+                   soft_deleted_at
+            FROM documents
+            WHERE {' AND '.join(where)}
+            ORDER BY updated_at DESC, id ASC
+            LIMIT ?
+            """,
+            parameters,
+        ).fetchall()
+        has_more = len(rows) > limit
+        documents = [dict(row) for row in rows[:limit]]
+        for item in documents:
+            item["is_temporary"] = bool(item["is_temporary"])
+        last = documents[-1] if has_more else None
+        return {
+            "documents": documents,
+            "profile_id": profile_id,
+            "deleted": deleted,
+            "next_cursor": {"updated_at": last["updated_at"], "id": last["id"]} if last else None,
+            "has_more": has_more,
+        }
+
     def rename(self, document_id: str, title: str) -> dict[str, Any]:
         if not isinstance(document_id, str) or not document_id:
             raise ValidationError("document_id", "must_be_text")
@@ -278,6 +354,27 @@ class DocumentService:
                     (profile_id, now, document_id),
                 )
         return self.get(document_id)
+
+    def bind_unassigned_profile(self, profile_id: str) -> int:
+        """Bind all live pre-profile drafts without a bounded list round trip."""
+
+        if not isinstance(profile_id, str) or not profile_id:
+            raise ValidationError("profile_id", "must_be_text")
+        with self.database.transaction(immediate=True) as connection:
+            profile = connection.execute(
+                "SELECT 1 FROM student_profiles WHERE id = ? AND soft_deleted_at IS NULL",
+                (profile_id,),
+            ).fetchone()
+            if profile is None:
+                raise NotFoundError("student_profile", profile_id)
+            cursor = connection.execute(
+                """
+                UPDATE documents SET profile_id = ?, updated_at = ?
+                WHERE profile_id IS NULL AND soft_deleted_at IS NULL
+                """,
+                (profile_id, utc_now()),
+            )
+        return cursor.rowcount
 
     def save_draft(
         self,

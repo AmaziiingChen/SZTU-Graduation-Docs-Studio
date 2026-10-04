@@ -1,5 +1,5 @@
+import { AnimatedActionIcon } from "@/components/animated-action-icon"
 import { IdCardIcon } from "@/components/ui/id-card"
-import { useSidebarIconAnimation } from "@/hooks/use-sidebar-icon-animation"
 
 import {
   SidebarGroup,
@@ -18,21 +18,19 @@ export function NavMain({
   disabled: boolean
   onSelectProfile: () => void
 }) {
-  const animation = useSidebarIconAnimation()
   return (
     <SidebarGroup>
       <SidebarGroupContent className="flex flex-col gap-2">
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
-              {...animation.row("profile", disabled)}
               tooltip="学生档案"
               className="pl-8"
               isActive={profileActive}
               disabled={disabled}
               onClick={onSelectProfile}
             >
-              <IdCardIcon {...animation.icon("profile")} />
+              <AnimatedActionIcon icon={IdCardIcon} />
               <span>学生档案</span>
             </SidebarMenuButton>
           </SidebarMenuItem>

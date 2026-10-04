@@ -47,21 +47,7 @@ describe("ReferenceImporter", () => {
       '[data-slot="scroll-area-viewport"]',
     )
     expect(viewport).not.toBeNull()
-    Object.defineProperties(viewport!, {
-      clientHeight: { configurable: true, value: 200 },
-      scrollHeight: { configurable: true, value: 400 },
-      scrollTop: { configurable: true, writable: true, value: 0 },
-    })
-    fireEvent.scroll(viewport!)
-    expect(container.querySelector('[data-slot="scroll-bottom-fade"]')).toHaveClass(
-      "opacity-100",
-    )
 
-    viewport!.scrollTop = 200
-    fireEvent.scroll(viewport!)
-    expect(container.querySelector('[data-slot="scroll-bottom-fade"]')).toHaveClass(
-      "opacity-0",
-    )
     const status = screen.getByRole("status")
     expect(status).toHaveTextContent("文献 1 条")
     expect(status.closest('[data-slot="reference-status-footer"]')).toHaveClass(

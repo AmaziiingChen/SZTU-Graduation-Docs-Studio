@@ -1,3 +1,4 @@
+import { Field, FieldLabel } from "@/components/ui/field"
 import { ThesisInsertControls } from "@/components/workbench/thesis-insert-controls"
 import { hasUnescapedMathDelimiter } from "@/lib/process-math-source"
 import { recoverManagedImagePreview } from "@/lib/managed-image-preview"
@@ -21,19 +22,23 @@ import { RedoIcon } from "@/components/ui/redo"
 import { LinkIcon as LinkIconAnimated } from "@/components/ui/link"
 import { ItalicIcon as ItalicIconAnimated } from "@/components/ui/italic"
 import { BoldIcon as BoldIconAnimated } from "@/components/ui/bold"
-import { AnimatedActionIcon } from "@/components/workbench/animated-action-icon"
+import { AnimatedActionIcon } from "@/components/animated-action-icon"
 import { useActionFeedback } from "@/hooks/use-action-feedback"
-import { FileTextIcon } from "lucide-react"
+import { FileTextIcon } from "@/components/ui/file-text"
 import { useReducedMotion } from "motion/react"
 import {
+  useCallback,
   useEffect,
+  useMemo,
   useLayoutEffect,
   useRef,
   useState,
   type ComponentProps,
+  type CSSProperties,
   type ReactNode,
 } from "react"
-import { createPortal } from "react-dom"
+import { BubbleMenu, type BubbleMenuProps } from "@tiptap/react/menus"
+import { Card } from "@/components/ui/card"
 import {
   EditorContent,
   useEditor,
@@ -84,34 +89,27 @@ import {
 } from "@/components/ui/tooltip"
 import {
   MAX_STRUCTURED_LIST_DEPTH,
+  AUTHORING_GUIDANCE_COMPOSITION,
   createRestrictedEditorExtensions,
   editorShortcutLabels,
   listDepthAtSelection,
   structuredBodyFingerprint,
   structuredBodyToTiptap,
   tiptapToStructuredBody,
+  structuredAuthoringFingerprint,
+  structuredAuthoringToTiptap,
+  tiptapToStructuredAuthoring,
   type FigureNumberingContext,
   type StructuredEditorMode,
   type StructuredFigureCatalogItem,
 } from "@/lib/structured-content-editor"
 import { cn } from "@/lib/utils"
-import type { StructuredBodyValue } from "@/types/structured-content"
+import type { ParagraphInput, StructuredBodyValue } from "@/types/structured-content"
 import type { ImageAssetImportResult, SztuDesktopApi } from "@/types/desktop-api"
 
 type StoredExternalValue = {
   document: JSONContent
   fingerprint: string
-}
-
-type SelectionToolbarPosition = {
-  left: number
-  top: number
-  placement: "above" | "below"
-}
-
-type SelectionToolbarPresentation = {
-  position: SelectionToolbarPosition
-  state: "open" | "closing"
 }
 
 function replaceExternalContent(editor: Editor, document: JSONContent) {
@@ -208,7 +206,9 @@ type FigureFormValue = {
 
 export type StructuredContentEditorProps = {
   value: StructuredBodyValue
-  onChange: (value: StructuredBodyValue) => void
+  /** Undefined keeps the existing ordinary editor; null means a deliberately removed guide. */
+  guidance?: ParagraphInput | null
+  onChange: (value: StructuredBodyValue, guidance?: ParagraphInput | null) => void
   disabled?: boolean
   placeholder?: string
   ariaLabel?: string
@@ -322,27 +322,27 @@ function FigureDialog({
             className="max-h-48 w-full rounded-md border object-contain"
             onError={(event) => void recoverManagedImagePreview(event.currentTarget)}
           />
-          <div className="grid gap-1.5">
-            <label className="text-sm font-medium" htmlFor="figure-caption">题注</label>
+          <Field>
+            <FieldLabel  htmlFor="figure-caption">题注</FieldLabel>
             <Input
               id="figure-caption"
               value={draft.caption}
               onChange={(event) => setDraft({ ...draft, caption: event.target.value })}
               placeholder="输入图片标题"
             />
-          </div>
-          <div className="grid gap-1.5">
-            <label className="text-sm font-medium" htmlFor="figure-alt">图片内容说明（可选）</label>
+          </Field>
+          <Field>
+            <FieldLabel  htmlFor="figure-alt">图片内容说明（可选）</FieldLabel>
             <Input
               id="figure-alt"
               value={draft.alt}
               onChange={(event) => setDraft({ ...draft, alt: event.target.value })}
               placeholder="留空时自动使用题注"
             />
-          </div>
+          </Field>
           <div className="grid grid-cols-2 gap-3">
-            <div className="grid gap-1.5">
-              <label className="text-sm font-medium" htmlFor="figure-chapter">所属章</label>
+            <Field>
+              <FieldLabel  htmlFor="figure-chapter">所属章</FieldLabel>
               <Select
                 value={String(draft.chapter)}
                 onValueChange={(value) => {
@@ -360,9 +360,9 @@ function FigureDialog({
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-            <div className="grid gap-1.5">
-              <label className="text-sm font-medium" htmlFor="figure-width">宽度（毫米）</label>
+            </Field>
+            <Field>
+              <FieldLabel  htmlFor="figure-width">宽度（毫米）</FieldLabel>
               <Input
                 id="figure-width"
                 type="number"
@@ -371,17 +371,17 @@ function FigureDialog({
                 value={draft.widthMm}
                 onChange={(event) => setDraft({ ...draft, widthMm: Number(event.target.value) })}
               />
-            </div>
+            </Field>
           </div>
-          <div className="grid gap-1.5">
-            <label className="text-sm font-medium" htmlFor="figure-source">来源文献键（可选）</label>
+          <Field>
+            <FieldLabel  htmlFor="figure-source">来源文献键（可选）</FieldLabel>
             <Input
               id="figure-source"
               value={draft.sourceCitationKey}
               onChange={(event) => setDraft({ ...draft, sourceCitationKey: event.target.value })}
               placeholder="例如：zhang2025"
             />
-          </div>
+          </Field>
         </div>
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onCancel}>取消</Button>
@@ -491,6 +491,7 @@ function currentEditorShortcutLabels() {
 
 export function StructuredContentEditor({
   value,
+  guidance,
   onChange,
   disabled = false,
   placeholder = "输入正文内容",
@@ -520,11 +521,10 @@ export function StructuredContentEditor({
 }: StructuredContentEditorProps) {
   const historyFeedback = useActionFeedback()
   const reducedMotion = useReducedMotion()
-  const toolbarRef = useRef<HTMLDivElement>(null)
-  const [toolbarHeight, setToolbarHeight] = useState(0)
   const onChangeRef = useRef(onChange)
   const onSelectionChangeRef = useRef(onSelectionChange)
-  const initialNewParagraphFocusRef = useRef(startOnNewParagraph)
+  const [guidanceMode] = useState(guidance !== undefined)
+  const initialNewParagraphFocusRef = useRef(startOnNewParagraph || (guidanceMode && guidance != null && value.length === 0))
   const initialSelectionSnapshotRef = useRef(selectionSnapshot)
   const restoredSelectionRef = useRef("")
   const composingRef = useRef(false)
@@ -533,33 +533,88 @@ export function StructuredContentEditor({
   const pendingExternalRef = useRef<StoredExternalValue | null>(null)
   const compositionTimerRef = useRef<number | null>(null)
   const pointerSelectingRef = useRef(false)
-  const selectionToolbarCloseTimerRef = useRef<number | null>(null)
   const [formattingMarksVisible, setFormattingMarksVisible] = useState(false)
-  const [selectionToolbarPresentation, setSelectionToolbarPresentation] =
-    useState<SelectionToolbarPresentation | null>(null)
-  const overlapToolbar = fillHeight && !contentHeader
-  useLayoutEffect(() => {
-    if (!overlapToolbar || !toolbarRef.current) return
-    const toolbar = toolbarRef.current
-    const updateHeight = () => setToolbarHeight(toolbar.offsetHeight)
-    updateHeight()
-    if (typeof ResizeObserver === "undefined") return
-    const observer = new ResizeObserver(updateHeight)
-    observer.observe(toolbar)
-    return () => observer.disconnect()
-  }, [overlapToolbar])
+  const [menuScrollTarget, setMenuScrollTarget] = useState<HTMLElement | null>(null)
+  const formatToolbarRef = useRef<HTMLDivElement | null>(null)
+  const [toolbarHeight, setToolbarHeight] = useState(0)
+  const selectionMenuRef = useRef<HTMLDivElement | null>(null)
+  const selectionMenuParentRef = useRef<HTMLElement | null>(null)
+  const selectionMenuAnimationRef = useRef<Animation | null>(null)
+  const animateSelectionMenu = useCallback((open: boolean) => {
+    const element = selectionMenuRef.current
+    const surface = element?.firstElementChild
+    if (!element || !(surface instanceof HTMLElement)) return
+    const previous = selectionMenuAnimationRef.current
+    const from = previous ? { opacity: getComputedStyle(surface).opacity, transform: getComputedStyle(surface).transform } : undefined
+    previous?.cancel()
+    selectionMenuAnimationRef.current = null
+    element.dataset.state = open ? "open" : "closed"
+    element.setAttribute("aria-hidden", String(!open))
+    element.inert = !open
+    if (open) selectionMenuParentRef.current = element.parentElement
+    if (reducedMotion || typeof surface.animate !== "function") return
+    if (!open) {
+      // Tiptap removes the menu before onHide. Keep the same inert element only
+      // for its exit frames; positioning and selection remain owned by BubbleMenu.
+      const parent = selectionMenuParentRef.current
+      if (!parent?.isConnected) return
+      parent.appendChild(element)
+      element.style.visibility = "visible"
+      element.style.opacity = "1"
+    }
+    const hidden = { opacity: 0, transform: "translateY(4px) scale(0.98)" }
+    const visible = { opacity: 1, transform: "translateY(0) scale(1)" }
+    const animation = surface.animate([from ?? (open ? hidden : visible), open ? visible : hidden], {
+      duration: open ? 180 : 140,
+      easing: open ? "cubic-bezier(0.22, 1, 0.36, 1)" : "ease-in",
+      fill: "both",
+    })
+    selectionMenuAnimationRef.current = animation
+    animation.onfinish = () => {
+      if (selectionMenuAnimationRef.current !== animation) return
+      if (!open) element.remove()
+      animation.cancel()
+      selectionMenuAnimationRef.current = null
+    }
+  }, [reducedMotion])
+  const destroySelectionMenu = useCallback(() => {
+    selectionMenuAnimationRef.current?.cancel()
+    selectionMenuAnimationRef.current = null
+    selectionMenuRef.current?.remove()
+    selectionMenuParentRef.current = null
+  }, [])
+  const selectionMenuOptions = useMemo(() => ({
+    strategy: "fixed" as const,
+    placement: "top" as const,
+    offset: 8,
+    flip: { padding: { top: fillHeight ? toolbarHeight + 8 : 8, right: 8, bottom: 8, left: 8 }, boundary: menuScrollTarget ?? ("clippingAncestors" as const) },
+    shift: { padding: { top: fillHeight ? toolbarHeight + 8 : 8, right: 8, bottom: 8, left: 8 }, boundary: menuScrollTarget ?? ("clippingAncestors" as const) },
+    hide: true,
+    scrollTarget: menuScrollTarget ?? window,
+    onShow: () => animateSelectionMenu(true),
+    onHide: () => animateSelectionMenu(false),
+    onDestroy: destroySelectionMenu,
+  }), [menuScrollTarget, animateSelectionMenu, destroySelectionMenu, fillHeight, toolbarHeight])
+  const shouldShowSelectionMenu = useCallback<NonNullable<BubbleMenuProps["shouldShow"]>>(
+    ({ editor, view, state, element, from, to }) =>
+      !pointerSelectingRef.current && editor.isEditable &&
+      state.selection instanceof TextSelection && !state.selection.empty &&
+      Boolean(state.doc.textBetween(from, to).length) &&
+      (view.hasFocus() || element.contains(document.activeElement)),
+    [],
+  )
   const effectiveFigureChapters = figureChapters.length
     ? figureChapters
     : [{ value: 1, label: "第 1 章" }]
   const [initialFigureNumbering] = useState(() => ({ ...figureNumbering }))
   const [initialContent] = useState(() => {
-    const document = structuredBodyToTiptap(value, initialFigureNumbering)
-    if (startOnNewParagraph) document.content?.push({ type: "paragraph" })
+    const document = structuredAuthoringToTiptap(value, initialFigureNumbering, guidanceMode ? guidance : undefined)
+    if (startOnNewParagraph && !guidanceMode) document.content?.push({ type: "paragraph" })
     return document
   })
   const [toolDraft, setToolDraft] = useState<{ block: StructuredToolBlock; from: number; to: number; editing: boolean; document: string } | null>(null)
   const [figureDraft, setFigureDraft] = useState<FigureFormValue | null>(null)
-  const [extensions] = useState(() => createRestrictedEditorExtensions(mode, initialFigureNumbering, enableProcessEquations))
+  const [extensions] = useState(() => createRestrictedEditorExtensions(mode, initialFigureNumbering, enableProcessEquations, guidanceMode))
   const editorClass =
     mode === "inline"
       ? "min-h-12 whitespace-pre-wrap break-words px-3 py-3 text-sm leading-6 outline-none [&_p]:min-h-6"
@@ -589,13 +644,14 @@ export function StructuredContentEditor({
         },
       },
       onUpdate: ({ editor: updatedEditor }) => {
-        const nextValue = tiptapToStructuredBody(updatedEditor.getJSON())
-        const fingerprint = JSON.stringify(nextValue)
+        const nextValue = guidanceMode ? tiptapToStructuredAuthoring(updatedEditor.getJSON()) : { body: tiptapToStructuredBody(updatedEditor.getJSON()) }
+        const fingerprint = JSON.stringify(guidanceMode ? nextValue : nextValue.body)
         if (composingRef.current || updatedEditor.view.composing) {
           compositionFingerprintsRef.current.add(fingerprint)
           return
         }
-        onChangeRef.current(nextValue)
+        if (guidanceMode) onChangeRef.current(nextValue.body, "guidance" in nextValue ? nextValue.guidance : null)
+        else onChangeRef.current(nextValue.body)
       },
       onSelectionUpdate: ({ editor: updatedEditor }) => {
         const { anchor, head } = updatedEditor.state.selection
@@ -613,7 +669,7 @@ export function StructuredContentEditor({
     ? "公式尚未完成或写法不受支持：行内用 $...$，行间单独一段用 $$...$$。"
     : undefined
 
-  const externalFingerprint = structuredBodyFingerprint(value)
+  const externalFingerprint = guidanceMode ? structuredAuthoringFingerprint(value, guidance ?? null) : structuredBodyFingerprint(value)
 
   useEffect(() => {
     onChangeRef.current = onChange
@@ -666,115 +722,60 @@ export function StructuredContentEditor({
 
   useEffect(() => {
     editor.setEditable(!disabled, false)
+    if (disabled) editor.commands.setMeta("selection-formatting", "hide")
   }, [disabled, editor])
 
+  useLayoutEffect(() => {
+    const toolbar = formatToolbarRef.current
+    if (!fillHeight || !toolbar || typeof ResizeObserver === "undefined") return
+    // The toolbar can wrap at narrow widths. Its measured height reserves the
+    // scrollbar track and caret/selection clearance, not an opaque spacer.
+    const observer = new ResizeObserver(() => setToolbarHeight(toolbar.getBoundingClientRect().height))
+    observer.observe(toolbar)
+    return () => observer.disconnect()
+  }, [editor, fillHeight])
+
+  useLayoutEffect(() => {
+    setMenuScrollTarget(editor.view.dom.closest<HTMLElement>('[data-slot="scroll-area-viewport"]'))
+  }, [editor, fillHeight])
+
   useEffect(() => {
-    const clearSelectionToolbarCloseTimer = () => {
-      if (selectionToolbarCloseTimerRef.current !== null) {
-        window.clearTimeout(selectionToolbarCloseTimerRef.current)
-        selectionToolbarCloseTimerRef.current = null
-      }
-    }
-
-    const showSelectionToolbar = (position: SelectionToolbarPosition) => {
-      clearSelectionToolbarCloseTimer()
-      setSelectionToolbarPresentation({ position, state: "open" })
-    }
-
-    const hideSelectionToolbar = () => {
-      clearSelectionToolbarCloseTimer()
-      setSelectionToolbarPresentation((current) =>
-        current ? { ...current, state: "closing" } : null,
-      )
-      selectionToolbarCloseTimerRef.current = window.setTimeout(() => {
-        selectionToolbarCloseTimerRef.current = null
-        setSelectionToolbarPresentation(null)
-      }, 150)
-    }
-
-    const updateSelectionToolbar = () => {
-      const selection = editor.state.selection
-      if (
-        disabled ||
-        pointerSelectingRef.current ||
-        selection.empty ||
-        !editor.isFocused
-      ) {
-        hideSelectionToolbar()
-        return
-      }
-
-      try {
-        const start = editor.view.coordsAtPos(selection.from)
-        const end = editor.view.coordsAtPos(selection.to)
-        const editorRect = editor.view.dom.getBoundingClientRect()
-        const selectionTop = Math.min(start.top, end.top)
-        const selectionBottom = Math.max(start.bottom, end.bottom)
-        const menuHeight = 40
-        const canPlaceAbove =
-          selectionTop - menuHeight - 8 >= Math.max(8, editorRect.top)
-        const canPlaceBelow =
-          selectionBottom + menuHeight + 8 <= window.innerHeight - 8
-        const placement = canPlaceAbove || !canPlaceBelow ? "above" : "below"
-        showSelectionToolbar({
-          left: Math.max(
-            16,
-            Math.min(window.innerWidth - 16, (start.left + end.right) / 2),
-          ),
-          top:
-            placement === "above"
-              ? Math.max(8, selectionTop - 8)
-              : selectionBottom + 8,
-          placement,
-        })
-      } catch {
-        const editorRect = editor.view.dom.getBoundingClientRect()
-        showSelectionToolbar({
-          left: editorRect.left + editorRect.width / 2,
-          top: Math.max(8, editorRect.top),
-          placement: "below",
-        })
-      }
-    }
-
+    let frame: number | undefined
     const handlePointerDown = (event: PointerEvent) => {
       if (event.button !== 0) return
       pointerSelectingRef.current = true
-      hideSelectionToolbar()
+      editor.commands.setMeta("selection-formatting", "hide")
     }
-
     const finishPointerSelection = () => {
       if (!pointerSelectingRef.current) return
       pointerSelectingRef.current = false
-      window.requestAnimationFrame(updateSelectionToolbar)
+      frame = window.requestAnimationFrame(() => {
+        if (editor.isDestroyed || !editor.isEditable || !editor.isFocused) return
+        const { selection, doc } = editor.state
+        if (!(selection instanceof TextSelection) || selection.empty || !doc.textBetween(selection.from, selection.to).length) return
+        // Tiptap owns placement, visibility, scrolling and viewport collision handling.
+        editor.commands.setMeta("selection-formatting", "show")
+        editor.commands.setMeta("selection-formatting", "updatePosition")
+      })
     }
-
-    editor.on("selectionUpdate", updateSelectionToolbar)
-    editor.on("focus", updateSelectionToolbar)
-    editor.on("blur", hideSelectionToolbar)
     editor.view.dom.addEventListener("pointerdown", handlePointerDown)
     window.addEventListener("pointerup", finishPointerSelection)
     window.addEventListener("pointercancel", finishPointerSelection)
-    window.addEventListener("resize", updateSelectionToolbar)
-    window.addEventListener("scroll", updateSelectionToolbar, true)
     return () => {
-      editor.off("selectionUpdate", updateSelectionToolbar)
-      editor.off("focus", updateSelectionToolbar)
-      editor.off("blur", hideSelectionToolbar)
       editor.view.dom.removeEventListener("pointerdown", handlePointerDown)
       window.removeEventListener("pointerup", finishPointerSelection)
       window.removeEventListener("pointercancel", finishPointerSelection)
-      window.removeEventListener("resize", updateSelectionToolbar)
-      window.removeEventListener("scroll", updateSelectionToolbar, true)
+      if (frame !== undefined) window.cancelAnimationFrame(frame)
       pointerSelectingRef.current = false
-      clearSelectionToolbarCloseTimer()
     }
-  }, [disabled, editor])
+  }, [editor])
 
   useEffect(() => {
     editor.setOptions({
       editorProps: {
         ...editor.options.editorProps,
+        scrollThreshold: fillHeight ? { top: toolbarHeight + 8, right: 0, bottom: 0, left: 0 } : 0,
+        scrollMargin: fillHeight ? { top: toolbarHeight + 12, right: 5, bottom: 5, left: 5 } : 5,
         attributes: {
           ...editor.options.editorProps.attributes,
           "aria-label": ariaLabel,
@@ -784,11 +785,11 @@ export function StructuredContentEditor({
         },
       },
     })
-  }, [ariaDescribedBy, ariaInvalid, ariaLabel, disabled, editor])
+  }, [ariaDescribedBy, ariaInvalid, ariaLabel, disabled, editor, fillHeight, toolbarHeight])
 
   useEffect(() => {
     const currentFingerprint = JSON.stringify(
-      tiptapToStructuredBody(editor.getJSON()),
+      guidanceMode ? tiptapToStructuredAuthoring(editor.getJSON()) : tiptapToStructuredBody(editor.getJSON()),
     )
     if (currentFingerprint === externalFingerprint) {
       pendingExternalRef.current = null
@@ -796,7 +797,7 @@ export function StructuredContentEditor({
     }
 
     const external: StoredExternalValue = {
-      document: structuredBodyToTiptap(value, initialFigureNumbering),
+      document: structuredAuthoringToTiptap(value, initialFigureNumbering, guidanceMode ? guidance : undefined),
       fingerprint: externalFingerprint,
     }
     if (composingRef.current || editor.view.composing) {
@@ -811,7 +812,7 @@ export function StructuredContentEditor({
 
     pendingExternalRef.current = null
     replaceExternalContent(editor, external.document)
-  }, [editor, externalFingerprint, initialFigureNumbering, value])
+  }, [editor, externalFingerprint, guidance, guidanceMode, initialFigureNumbering, value])
 
   useEffect(
     () => () => {
@@ -956,6 +957,254 @@ export function StructuredContentEditor({
     setFigureDraft(null)
   }
 
+  const formatToolbar = (
+    <div
+      ref={formatToolbarRef}
+      data-slot="editor-format-toolbar"
+      role="toolbar"
+      aria-label={`${ariaLabel}格式工具栏`}
+      className={cn("z-10 flex shrink-0 flex-wrap items-center gap-1 border-b bg-background supports-backdrop-filter:bg-background/70 supports-backdrop-filter:backdrop-blur-md px-1.5", fillHeight ? "sticky top-0" : "relative rounded-t-lg", thesisReferences || toolbarActions ? "min-h-(--header-height) py-1" : "h-(--header-height)")}
+    >
+      <ToggleGroup
+        multiple
+        size="sm"
+        value={formattingValues}
+        disabled={disabled}
+        onValueChange={changeFormatting}
+      >
+        <ToolbarToggle
+          value="bold"
+          label="粗体"
+          shortcut={shortcuts.bold}
+          disabled={disabled}
+        >
+          <AnimatedActionIcon icon={BoldIconAnimated} />
+        </ToolbarToggle>
+        <ToolbarToggle
+          value="italic"
+          label="斜体"
+          shortcut={shortcuts.italic}
+          disabled={disabled}
+        >
+          <AnimatedActionIcon icon={ItalicIconAnimated} />
+        </ToolbarToggle>
+        <ToolbarToggle
+          value="subscript"
+          label="下标"
+          shortcut={shortcuts.subscript}
+          disabled={disabled}
+        >
+          <SubscriptIcon />
+        </ToolbarToggle>
+        <ToolbarToggle
+          value="superscript"
+          label="上标"
+          shortcut={shortcuts.superscript}
+          disabled={disabled}
+        >
+          <SuperscriptIcon />
+        </ToolbarToggle>
+      </ToggleGroup>
+
+      {mode === "body" ? (
+        <>
+          <Separator
+            orientation="vertical"
+            className="mx-1 h-5 data-vertical:self-center"
+          />
+
+          <ToggleGroup
+            size="sm"
+            value={listValues}
+            disabled={disabled}
+            onValueChange={changeList}
+          >
+            <ToolbarToggle value="orderedList" label="有序列表" disabled={disabled}>
+              <AnimatedActionIcon icon={ListOrderedIconAnimated} />
+            </ToolbarToggle>
+            <ToolbarToggle value="bulletList" label="无序列表" disabled={disabled}>
+              <AnimatedActionIcon icon={AnimatedListIcon} />
+            </ToolbarToggle>
+          </ToggleGroup>
+
+          <ToolbarButton
+            label="减少缩进"
+            shortcut={shortcuts.outdent}
+            unavailableReason={
+              disabled
+                ? "当前为只读状态"
+                : toolbarState.canOutdent
+                  ? undefined
+                  : toolbarState.listDepth === 0
+                    ? "请先将光标放入列表"
+                    : "当前已是一级列表"
+            }
+            variant="ghost"
+            disabled={disabled || !toolbarState.canOutdent}
+            onClick={() => editor.chain().focus().liftListItem("listItem").run()}
+          >
+            <AnimatedActionIcon icon={IndentDecreaseIconAnimated} />
+          </ToolbarButton>
+          <ToolbarButton
+            label="增加缩进"
+            shortcut={shortcuts.indent}
+            unavailableReason={
+              disabled
+                ? "当前为只读状态"
+                : toolbarState.canIndent
+                  ? undefined
+                  : toolbarState.listDepth === 0
+                    ? "请先将光标放入列表"
+                    : toolbarState.listDepth >= MAX_STRUCTURED_LIST_DEPTH
+                      ? `最多支持 ${MAX_STRUCTURED_LIST_DEPTH} 级列表`
+                      : "需要先有上一条同级列表项"
+            }
+            variant="ghost"
+            disabled={disabled || !toolbarState.canIndent}
+            onClick={() => editor.chain().focus().sinkListItem("listItem").run()}
+          >
+            <AnimatedActionIcon icon={IndentIncreaseIconAnimated} />
+          </ToolbarButton>
+        </>
+      ) : null}
+
+      {thesisReferences && <ThesisInsertControls editor={editor} references={thesisReferences} disabled={disabled} equationSelected={toolbarState.equationSelected} />}
+      {mode === "body" && enableDocumentTools ? <>
+        <DropdownMenu>
+          <Tooltip>
+            <TooltipTrigger render={<span className="inline-flex" />}>
+              <DropdownMenuTrigger render={<Button type="button" size="icon-sm" variant="ghost" aria-label="插入图表" disabled={disabled || toolbarState.listDepth > 0} />}>
+                <AnimatedActionIcon icon={PlusIcon} />
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent>插入图表{toolbarState.listDepth > 0 ? "：请先将光标移出列表" : ""}</TooltipContent>
+          </Tooltip>
+          <DropdownMenuContent align="start">
+            <DropdownMenuItem onClick={() => void importFigure()}><AnimatedActionIcon icon={ImageIcon} />单张图片</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => openTool("three_line")}><AnimatedActionIcon icon={AlignJustifyIcon} />三线表</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => openTool("grid")}><AnimatedActionIcon icon={TableGridIcon} />表格</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => openTool("figure_group")}><AnimatedActionIcon icon={LayoutGridIcon} />多图排版</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        {toolbarState.selectedTool ? <>
+          <ToolbarButton label="编辑图表" variant="ghost" disabled={disabled} onClick={() => openTool()}><AnimatedActionIcon icon={FeatherIcon} /></ToolbarButton>
+          <ToolbarButton label="删除图表" variant="ghost" disabled={disabled} onClick={() => editor.chain().focus().deleteSelection().run()}><AnimatedActionIcon icon={DeleteIcon} /></ToolbarButton>
+        </> : null}
+      </> : null}
+
+      {mode === "body" && enableFigures ? (
+        <>
+          <Separator orientation="vertical" className="mx-1 h-5 data-vertical:self-center" />
+          {!enableDocumentTools || toolbarState.selectedFigure ? <ToolbarButton
+            label={toolbarState.selectedFigure ? "编辑图片" : "插入图片"}
+            variant="ghost"
+            disabled={disabled}
+            onClick={() => void importFigure()}
+          >
+            <AnimatedActionIcon icon={toolbarState.selectedFigure ? FeatherIcon : PlusIcon} />
+          </ToolbarButton> : null}
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  type="button"
+                  size="icon-sm"
+                  variant="ghost"
+                  aria-label="引用图片"
+                  disabled={disabled || toolbarState.figures.length === 0}
+                />
+              }
+            >
+              <AnimatedActionIcon icon={LinkIconAnimated} />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              {toolbarState.figures.map((figure) => (
+                <DropdownMenuItem
+                  key={figure.id}
+                  onClick={() => editor.chain().focus().insertContent([
+                    {
+                      type: "figureReference",
+                      attrs: { figureId: figure.id, label: figure.label },
+                    },
+                    { type: "text", text: " " },
+                  ]).run()}
+                >
+                  {figure.label}{figure.caption ? ` ${figure.caption}` : ""}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </>
+      ) : null}
+
+      {mode !== "inline" ? (
+        <>
+          <Separator
+            orientation="vertical"
+            className="mx-1 h-5 data-vertical:self-center"
+          />
+          <ToolbarButton
+            label="显示格式标记"
+            aria-pressed={formattingMarksVisible}
+            variant={formattingMarksVisible ? "secondary" : "ghost"}
+            disabled={disabled}
+            onClick={() => setFormattingMarksVisible((visible) => !visible)}
+          >
+            <AnimatedActionIcon icon={PilcrowIconAnimated} />
+          </ToolbarButton>
+        </>
+      ) : null}
+
+      <Separator
+        orientation="vertical"
+        className="mx-1 h-5 data-vertical:self-center"
+      />
+
+      <ToolbarButton
+        label="撤销"
+        shortcut={shortcuts.undo}
+        unavailableReason={
+          disabled
+            ? "当前为只读状态"
+            : toolbarState.canUndo
+              ? undefined
+              : "暂无可撤销的操作"
+        }
+        variant="ghost"
+        disabled={disabled || !toolbarState.canUndo}
+        onClick={() => {
+          if (editor.chain().focus().undo().run()) historyFeedback.complete("undo")
+        }}
+      >
+        <AnimatedActionIcon key={historyFeedback.completed.undo || 0} icon={UndoIcon} playOnMount={Boolean(historyFeedback.completed.undo)} />
+      </ToolbarButton>
+      <ToolbarButton
+        label="重做"
+        shortcut={shortcuts.redo}
+        unavailableReason={
+          disabled
+            ? "当前为只读状态"
+            : toolbarState.canRedo
+              ? undefined
+              : "暂无可重做的操作"
+        }
+        variant="ghost"
+        disabled={disabled || !toolbarState.canRedo}
+        onClick={() => {
+          if (editor.chain().focus().redo().run()) historyFeedback.complete("redo")
+        }}
+      >
+        <AnimatedActionIcon key={historyFeedback.completed.redo || 0} icon={RedoIcon} playOnMount={Boolean(historyFeedback.completed.redo)} />
+      </ToolbarButton>
+
+      {toolbarActions ? (
+        <div data-slot="document-toolbar-actions" className="contents">
+          {toolbarActions}
+        </div>
+      ) : null}
+    </div>
+  )
+
   return (
     <TooltipProvider>
       <div
@@ -973,8 +1222,9 @@ export function StructuredContentEditor({
         onCompositionStartCapture={() => {
           composingRef.current = true
           pendingExternalRef.current = null
+          if (guidanceMode) editor.view.dispatch(editor.state.tr.setMeta(AUTHORING_GUIDANCE_COMPOSITION, true))
           compositionBaselineRef.current = JSON.stringify(
-            tiptapToStructuredBody(editor.getJSON()),
+            guidanceMode ? tiptapToStructuredAuthoring(editor.getJSON()) : tiptapToStructuredBody(editor.getJSON()),
           )
           compositionFingerprintsRef.current = new Set([
             compositionBaselineRef.current,
@@ -986,13 +1236,15 @@ export function StructuredContentEditor({
           }
           compositionTimerRef.current = window.setTimeout(() => {
             compositionTimerRef.current = null
-            composingRef.current = false
             const pending = pendingExternalRef.current
             pendingExternalRef.current = null
             if (editor.isDestroyed) return
-
-            const currentValue = tiptapToStructuredBody(editor.getJSON())
-            const currentFingerprint = JSON.stringify(currentValue)
+            // Normalize an emptied guide only after the IME has committed. Keep
+            // callbacks suspended while that normalization joins the edit.
+            if (guidanceMode) editor.view.dispatch(editor.state.tr.setMeta(AUTHORING_GUIDANCE_COMPOSITION, false))
+            composingRef.current = false
+            const currentValue = guidanceMode ? tiptapToStructuredAuthoring(editor.getJSON()) : { body: tiptapToStructuredBody(editor.getJSON()) }
+            const currentFingerprint = JSON.stringify(guidanceMode ? currentValue : currentValue.body)
             if (
               pending &&
               pending.fingerprint !== currentFingerprint &&
@@ -1002,314 +1254,64 @@ export function StructuredContentEditor({
               replaceExternalContent(editor, pending.document)
               return
             }
-            onChangeRef.current(currentValue)
+            if (guidanceMode) onChangeRef.current(currentValue.body, "guidance" in currentValue ? currentValue.guidance : null)
+            else onChangeRef.current(currentValue.body)
           }, 0)
         }}
       >
-        <div
-          ref={toolbarRef}
+        {!fillHeight && formatToolbar}
+
+        <BubbleMenu
+          ref={selectionMenuRef}
+          editor={editor}
+          pluginKey="selection-formatting"
+          appendTo={() => editor.view.dom.closest<HTMLElement>('[role="dialog"]') ?? document.body}
+          updateDelay={0}
+          resizeDelay={0}
+          options={selectionMenuOptions}
+          shouldShow={shouldShowSelectionMenu}
+          className="z-50"
           role="toolbar"
-          aria-label={`${ariaLabel}格式工具栏`}
-          className={cn("relative z-10 flex shrink-0 flex-wrap items-center gap-1 border-b bg-background/70 px-1.5 backdrop-blur-md", !fillHeight && "rounded-t-lg", thesisReferences || toolbarActions ? "min-h-(--header-height) py-1" : "h-(--header-height)")}
-          style={{ marginBottom: overlapToolbar ? -toolbarHeight : undefined }}
+          aria-label="选中文字格式工具栏"
+          onMouseDown={event => event.preventDefault()}
         >
-          <ToggleGroup
-            multiple
-            size="sm"
-            value={formattingValues}
-            disabled={disabled}
-            onValueChange={changeFormatting}
-          >
-            <ToolbarToggle
-              value="bold"
-              label="粗体"
-              shortcut={shortcuts.bold}
-              disabled={disabled}
-            >
-              <AnimatedActionIcon icon={BoldIconAnimated} />
-            </ToolbarToggle>
-            <ToolbarToggle
-              value="italic"
-              label="斜体"
-              shortcut={shortcuts.italic}
-              disabled={disabled}
-            >
-              <AnimatedActionIcon icon={ItalicIconAnimated} />
-            </ToolbarToggle>
-            <ToolbarToggle
-              value="subscript"
-              label="下标"
-              shortcut={shortcuts.subscript}
-              disabled={disabled}
-            >
-              <SubscriptIcon />
-            </ToolbarToggle>
-            <ToolbarToggle
-              value="superscript"
-              label="上标"
-              shortcut={shortcuts.superscript}
-              disabled={disabled}
-            >
-              <SuperscriptIcon />
-            </ToolbarToggle>
-          </ToggleGroup>
-
-          {mode === "body" ? (
-            <>
-              <Separator
-                orientation="vertical"
-                className="mx-1 h-5 data-vertical:self-center"
-              />
-
-              <ToggleGroup
-                size="sm"
-                value={listValues}
-                disabled={disabled}
-                onValueChange={changeList}
-              >
-                <ToolbarToggle value="orderedList" label="有序列表" disabled={disabled}>
-                  <AnimatedActionIcon icon={ListOrderedIconAnimated} />
-                </ToolbarToggle>
-                <ToolbarToggle value="bulletList" label="无序列表" disabled={disabled}>
-                  <AnimatedActionIcon icon={AnimatedListIcon} />
-                </ToolbarToggle>
-              </ToggleGroup>
-
-              <ToolbarButton
-                label="减少缩进"
-                shortcut={shortcuts.outdent}
-                unavailableReason={
-                  disabled
-                    ? "当前为只读状态"
-                    : toolbarState.canOutdent
-                      ? undefined
-                      : toolbarState.listDepth === 0
-                        ? "请先将光标放入列表"
-                        : "当前已是一级列表"
-                }
-                variant="ghost"
-                disabled={disabled || !toolbarState.canOutdent}
-                onClick={() => editor.chain().focus().liftListItem("listItem").run()}
-              >
-                <AnimatedActionIcon icon={IndentDecreaseIconAnimated} />
-              </ToolbarButton>
-              <ToolbarButton
-                label="增加缩进"
-                shortcut={shortcuts.indent}
-                unavailableReason={
-                  disabled
-                    ? "当前为只读状态"
-                    : toolbarState.canIndent
-                      ? undefined
-                      : toolbarState.listDepth === 0
-                        ? "请先将光标放入列表"
-                        : toolbarState.listDepth >= MAX_STRUCTURED_LIST_DEPTH
-                          ? `最多支持 ${MAX_STRUCTURED_LIST_DEPTH} 级列表`
-                          : "需要先有上一条同级列表项"
-                }
-                variant="ghost"
-                disabled={disabled || !toolbarState.canIndent}
-                onClick={() => editor.chain().focus().sinkListItem("listItem").run()}
-              >
-                <AnimatedActionIcon icon={IndentIncreaseIconAnimated} />
-              </ToolbarButton>
-            </>
-          ) : null}
-
-          {thesisReferences && <ThesisInsertControls editor={editor} references={thesisReferences} disabled={disabled} equationSelected={toolbarState.equationSelected} />}
-          {mode === "body" && enableDocumentTools ? <>
-            <DropdownMenu>
-              <DropdownMenuTrigger render={<Button type="button" size="sm" variant="ghost" disabled={disabled || toolbarState.listDepth > 0} />}><AnimatedActionIcon icon={PlusIcon} />插入图表</DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
-                <DropdownMenuItem onClick={() => void importFigure()}><AnimatedActionIcon icon={ImageIcon} />单张图片</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => openTool("three_line")}><AnimatedActionIcon icon={AlignJustifyIcon} />三线表</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => openTool("grid")}><AnimatedActionIcon icon={TableGridIcon} />表格</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => openTool("figure_group")}><AnimatedActionIcon icon={LayoutGridIcon} />多图排版</DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            {toolbarState.selectedTool ? <>
-              <Button type="button" size="sm" variant="ghost" disabled={disabled} onClick={() => openTool()}><AnimatedActionIcon icon={FeatherIcon} />编辑图表</Button>
-              <Button type="button" size="sm" variant="ghost" disabled={disabled} onClick={() => editor.chain().focus().deleteSelection().run()}><AnimatedActionIcon icon={DeleteIcon} />删除图表</Button>
-            </> : null}
-          </> : null}
-
-          {mode === "body" && enableFigures ? (
-            <>
-              <Separator orientation="vertical" className="mx-1 h-5 data-vertical:self-center" />
-              {!enableDocumentTools || toolbarState.selectedFigure ? <ToolbarButton
-                label={toolbarState.selectedFigure ? "编辑图片" : "插入图片"}
-                variant="ghost"
-                disabled={disabled}
-                onClick={() => void importFigure()}
-              >
-                <AnimatedActionIcon icon={toolbarState.selectedFigure ? FeatherIcon : PlusIcon} />
-              </ToolbarButton> : null}
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  render={
-                    <Button
-                      type="button"
-                      size="icon-sm"
-                      variant="ghost"
-                      aria-label="引用图片"
-                      disabled={disabled || toolbarState.figures.length === 0}
-                    />
-                  }
-                >
-                  <AnimatedActionIcon icon={LinkIconAnimated} />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                  {toolbarState.figures.map((figure) => (
-                    <DropdownMenuItem
-                      key={figure.id}
-                      onClick={() => editor.chain().focus().insertContent([
-                        {
-                          type: "figureReference",
-                          attrs: { figureId: figure.id, label: figure.label },
-                        },
-                        { type: "text", text: " " },
-                      ]).run()}
-                    >
-                      {figure.label}{figure.caption ? ` ${figure.caption}` : ""}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </>
-          ) : null}
-
-          {mode !== "inline" ? (
-            <>
-              <Separator
-                orientation="vertical"
-                className="mx-1 h-5 data-vertical:self-center"
-              />
-              <ToolbarButton
-                label="显示格式标记"
-                aria-pressed={formattingMarksVisible}
-                variant={formattingMarksVisible ? "secondary" : "ghost"}
-                disabled={disabled}
-                onClick={() => setFormattingMarksVisible((visible) => !visible)}
-              >
-                <AnimatedActionIcon icon={PilcrowIconAnimated} />
-              </ToolbarButton>
-            </>
-          ) : null}
-
-          <Separator
-            orientation="vertical"
-            className="mx-1 h-5 data-vertical:self-center"
-          />
-
-          <ToolbarButton
-            label="撤销"
-            shortcut={shortcuts.undo}
-            unavailableReason={
-              disabled
-                ? "当前为只读状态"
-                : toolbarState.canUndo
-                  ? undefined
-                  : "暂无可撤销的操作"
-            }
-            variant="ghost"
-            disabled={disabled || !toolbarState.canUndo}
-            onClick={() => {
-              if (editor.chain().focus().undo().run()) historyFeedback.complete("undo")
-            }}
-          >
-            <AnimatedActionIcon key={historyFeedback.completed.undo || 0} icon={UndoIcon} playOnMount={Boolean(historyFeedback.completed.undo)} />
-          </ToolbarButton>
-          <ToolbarButton
-            label="重做"
-            shortcut={shortcuts.redo}
-            unavailableReason={
-              disabled
-                ? "当前为只读状态"
-                : toolbarState.canRedo
-                  ? undefined
-                  : "暂无可重做的操作"
-            }
-            variant="ghost"
-            disabled={disabled || !toolbarState.canRedo}
-            onClick={() => {
-              if (editor.chain().focus().redo().run()) historyFeedback.complete("redo")
-            }}
-          >
-            <AnimatedActionIcon key={historyFeedback.completed.redo || 0} icon={RedoIcon} playOnMount={Boolean(historyFeedback.completed.redo)} />
-          </ToolbarButton>
-
-          {toolbarActions ? (
-            <div data-slot="document-toolbar-actions" className="ml-auto flex shrink-0 items-center gap-2 px-2">
-              {toolbarActions}
-            </div>
-          ) : null}
-        </div>
-
-        {selectionToolbarPresentation
-          ? createPortal(
-              <div
-                role="toolbar"
-                aria-label="选中文字格式工具栏"
-                data-state={selectionToolbarPresentation.state}
-                data-placement={selectionToolbarPresentation.position.placement}
-                className="selection-toolbar fixed z-50 flex items-center gap-1 rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
-                style={{
-                  left: selectionToolbarPresentation.position.left,
-                  top: selectionToolbarPresentation.position.top,
-                }}
-                onMouseDown={(event) => event.preventDefault()}
-              >
-                {[
-                  { format: "bold", label: "选区粗体", active: toolbarState.bold, icon: <AnimatedActionIcon icon={BoldIconAnimated} /> },
-                  { format: "italic", label: "选区斜体", active: toolbarState.italic, icon: <AnimatedActionIcon icon={ItalicIconAnimated} /> },
-                  { format: "subscript", label: "选区下标", active: toolbarState.subscript, icon: <SubscriptIcon /> },
-                  { format: "superscript", label: "选区上标", active: toolbarState.superscript, icon: <SuperscriptIcon /> },
-                ].map((item) => (
-                  <Button
-                    key={item.format}
-                    type="button"
-                    size="icon-sm"
-                    variant={item.active ? "secondary" : "ghost"}
-                    aria-label={item.label}
-                    aria-pressed={item.active}
-                    onClick={() =>
-                      toggleFormatting(
-                        item.format as "bold" | "italic" | "subscript" | "superscript",
-                      )
-                    }
-                  >
-                    {item.icon}
-                  </Button>
-                ))}
-              </div>,
-              document.body,
-            )
-          : null}
+          <Card className="p-1">
+            <ToggleGroup multiple size="sm" spacing={0} value={formattingValues} disabled={disabled} onValueChange={changeFormatting}>
+              <ToolbarToggle value="bold" label="选区粗体"><AnimatedActionIcon icon={BoldIconAnimated} /></ToolbarToggle>
+              <ToolbarToggle value="italic" label="选区斜体"><AnimatedActionIcon icon={ItalicIconAnimated} /></ToolbarToggle>
+              <ToolbarToggle value="subscript" label="选区下标"><SubscriptIcon /></ToolbarToggle>
+              <ToolbarToggle value="superscript" label="选区上标"><SuperscriptIcon /></ToolbarToggle>
+            </ToggleGroup>
+          </Card>
+        </BubbleMenu>
 
         {fillHeight ? (
           <>
-            {contentHeader}
             <FadingScrollArea
+              fadeMode="overlay"
               wrapperClassName="min-h-0 flex-1"
+              style={{ "--editor-toolbar-height": toolbarHeight ? `${toolbarHeight}px` : "var(--header-height)" } as CSSProperties}
+              // Sticky toolbar shares the scroll viewport so text actually passes
+              // behind its blur. The official scrollbar track starts below it.
               // Flex sizing makes the actual contenteditable fill the viewport,
               // so blank-space clicks and the cursor stay native to the editor.
-              className="h-full min-h-0 flex-1 [&_[data-slot=scroll-area-viewport]]:flex [&_[data-slot=scroll-area-viewport]]:flex-col"
+              className="h-full min-h-0 flex-1 [&_[data-slot=scroll-area-viewport]]:flex [&_[data-slot=scroll-area-viewport]]:flex-col [&_[data-slot=scroll-area-viewport]]:scroll-pt-(--editor-toolbar-height) [&_[data-slot=scroll-area-scrollbar][data-orientation=vertical]]:top-(--editor-toolbar-height)! [&_[data-slot=scroll-area-scrollbar][data-orientation=vertical]]:h-auto!"
             >
-              <div
-                className="empty-writing-area relative flex flex-1 flex-col"
-                style={{ paddingTop: overlapToolbar ? toolbarHeight : undefined }}
-              >
-                {toolbarState.empty ? (
-                  <span
-                    aria-hidden="true"
-                    className="pointer-events-none absolute left-3 inline-flex items-center gap-2 text-sm text-muted-foreground"
-                    style={{ top: overlapToolbar ? toolbarHeight + 12 : 12 }}
-                  >
-                    <FileTextIcon className="empty-writing-icon size-4" />
-                    {placeholder}
-                  </span>
-                ) : null}
-                <EditorContent className="flex flex-1 flex-col" editor={editor} />
+              <div className="relative flex flex-1 flex-col">
+                {formatToolbar}
+                {contentHeader}
+                <div className="relative flex flex-1 flex-col">
+                  {toolbarState.empty ? (
+                    <span
+                      aria-hidden="true"
+                      className="pointer-events-none absolute top-3 left-3 inline-flex items-center gap-2 text-sm text-muted-foreground"
+                    >
+                      <AnimatedActionIcon icon={FileTextIcon} interactionTarget={editor.view.dom} disabled={disabled} />
+                      {placeholder}
+                    </span>
+                  ) : null}
+                  <EditorContent className="flex flex-1 flex-col" editor={editor} />
+                </div>
               </div>
             </FadingScrollArea>
             {contentFooter}
@@ -1344,13 +1346,13 @@ export function StructuredContentEditor({
             </div>
           </>
         ) : (
-          <div className="empty-writing-area relative">
+          <div className="relative">
             {toolbarState.empty ? (
               <span
                 aria-hidden="true"
                 className="pointer-events-none absolute top-3 left-3 inline-flex items-center gap-2 text-sm text-muted-foreground"
               >
-                <FileTextIcon className="empty-writing-icon size-4" />
+                <AnimatedActionIcon icon={FileTextIcon} interactionTarget={editor.view.dom} disabled={disabled} />
                     {placeholder}
               </span>
             ) : null}

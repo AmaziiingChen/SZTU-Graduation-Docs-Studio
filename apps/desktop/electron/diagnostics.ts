@@ -19,6 +19,7 @@ export const DIAGNOSTIC_OPERATIONS = [
   "system.version",
   "environment.check",
   "workspace.open",
+  "workspace.listDocuments",
   "workspace.saveProfileDraft",
   "workspace.saveProfile",
   "workspace.createDocument",
@@ -147,6 +148,10 @@ const KNOWN_ENVIRONMENT_CHECKS = new Set([
   "proposal_engine",
   "midterm_engine",
   "task_book_engine",
+  "advisor_review_engine",
+  "reviewer_review_engine",
+  "defense_record_engine",
+  "grade_assessment_engine",
 ])
 const OPERATIONS = new Set<string>(DIAGNOSTIC_OPERATIONS)
 const OUTCOMES = new Set<DiagnosticOutcome>(["success", "failure", "cancelled"])

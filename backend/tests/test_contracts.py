@@ -60,6 +60,7 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(
             {path.name for path in paths},
             {
+                "assessment-form.schema.json",
                 "check-result.schema.json",
                 "content-block.schema.json",
                 "document-draft.schema.json",
@@ -309,7 +310,7 @@ class ContractTests(unittest.TestCase):
         self.assertNotIn("required", incomplete["properties"]["sections"])
         self.assertEqual(
             draft["properties"]["document_type"]["enum"],
-            ["proposal", "midterm", "task_book"],
+            ["proposal", "midterm", "task_book", "advisor_review", "reviewer_review", "defense_record", "grade_assessment"],
         )
         self.assertIn("incompleteTaskBook", draft["$defs"])
         self.assertNotIn("required", draft["$defs"]["incompleteTaskBook"])
@@ -372,6 +373,7 @@ class ContractTests(unittest.TestCase):
                 {"$ref": "proposal.schema.json"},
                 {"$ref": "midterm.schema.json"},
                 {"$ref": "task-book.schema.json"},
+                {"$ref": "assessment-form.schema.json"},
             ],
         )
         strict = load_json(CONTRACTS / "proposal.schema.json")
@@ -444,7 +446,7 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(params["required"], ["source_directory", "document_type"])
         self.assertEqual(
             params["properties"]["document_type"]["enum"],
-            ["proposal", "midterm", "task_book"],
+            ["proposal", "midterm", "task_book", "advisor_review", "reviewer_review", "defense_record", "grade_assessment"],
         )
         self.assertEqual(
             operation["result"]["properties"]["status"]["enum"],

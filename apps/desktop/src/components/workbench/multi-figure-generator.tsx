@@ -1,16 +1,12 @@
+import { SortableContentRow } from "@/components/sortable-content-row"
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty"
+import { Field, FieldLabel } from "@/components/ui/field"
+import { useId } from "react"
 import { InfoIcon as InfoIconAnimated } from "@/components/ui/animateicons/info"
-import { DownloadIcon as DownloadIconAnimated } from "@/components/ui/download"
-import { GripVerticalIcon as GripVerticalIconAnimated } from "@/components/ui/grip-vertical"
-import { CopyIcon as CopyIconAnimated } from "@/components/ui/copy"
-import { useActionFeedback } from "@/hooks/use-action-feedback"
-import { ActionFeedbackIcon } from "@/components/workbench/action-feedback-icon"
-import { ArrowUpIcon } from "@/components/ui/arrow-up"
-import { ArrowDownIcon } from "@/components/ui/arrow-down"
-import { DeleteIcon } from "@/components/ui/delete"
-import { AnimatedActionIcon } from "@/components/workbench/animated-action-icon"
+import { AnimatedActionIcon } from "@/components/animated-action-icon"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { DragDropProvider } from "@dnd-kit/react"
-import { isSortable, useSortable } from "@dnd-kit/react/sortable"
+import { isSortable } from "@dnd-kit/react/sortable"
 import { ImagesIcon } from "lucide-react"
 import { toast } from "sonner"
 
@@ -24,7 +20,6 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { LatexSourceSheet } from "@/components/workbench/latex-source-sheet"
 import type { SaveState } from "@/components/workbench/save-status-badge"
 import { ToolDraftActions } from "@/components/workbench/tool-draft-actions"
-import { writeClipboardText } from "@/lib/desktop-clipboard"
 import { generateMultiFigureLatex, validateFigureFilenames } from "@/lib/multi-figure"
 import {
   clearMultiFigureSessionImages,
@@ -33,7 +28,6 @@ import {
   type SessionFigureItem,
 } from "@/lib/multi-figure-session"
 import { useLocalDraft } from "@/lib/use-local-draft"
-import { cn } from "@/lib/utils"
 
 type MultiFigureDraft = {
   columns: number
@@ -87,76 +81,12 @@ function moveItem(items: SessionFigureItem[], from: number, to: number): Session
   return next
 }
 
-type SortableFigureRowProps = {
-  item: SessionFigureItem
-  index: number
-  selected: boolean
-  last: boolean
-  onSelect: () => void
-  onMove: (direction: -1 | 1) => void
-  onRemove: () => void
-}
-
-function SortableFigureRow({
-  item,
-  index,
-  selected,
-  last,
-  onSelect,
-  onMove,
-  onRemove,
-}: SortableFigureRowProps) {
-  const { ref, handleRef, isDragging } = useSortable({
-    id: item.id,
-    index,
-  })
-
-  return (
-    <div
-      ref={ref}
-      className={cn(
-        "grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-1 rounded-lg border p-1",
-        selected && "border-foreground",
-        isDragging && "opacity-50",
-      )}
-    >
-      <Button
-        ref={handleRef}
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        className="cursor-grab touch-none active:cursor-grabbing"
-        aria-label={`拖动图片 ${index + 1} 调整顺序`}
-      >
-        <AnimatedActionIcon icon={GripVerticalIconAnimated} />
-      </Button>
-      <button
-        type="button"
-        className="grid min-w-0 grid-cols-[3rem_minmax(0,1fr)] items-center gap-3 rounded-md px-1 py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        aria-label={`选择图片 ${index + 1} 进行编辑`}
-        aria-pressed={selected}
-        onClick={onSelect}
-      >
-        <img src={item.previewUrl} alt="" aria-hidden="true" className="size-12 rounded-md border object-cover" />
-        <span className="min-w-0">
-          <span className="block text-sm font-medium">图片 {index + 1}</span>
-          <span className="block truncate text-xs text-muted-foreground" title={item.file.name}>{item.file.name}</span>
-        </span>
-      </button>
-      <div className="flex items-center gap-1">
-        <Button type="button" variant="ghost" size="icon-sm" aria-label={`上移图片 ${index + 1}`} disabled={index === 0} onClick={() => onMove(-1)}><AnimatedActionIcon icon={ArrowUpIcon} /></Button>
-        <Button type="button" variant="ghost" size="icon-sm" aria-label={`下移图片 ${index + 1}`} disabled={last} onClick={() => onMove(1)}><AnimatedActionIcon icon={ArrowDownIcon} /></Button>
-        <Button type="button" variant="ghost" size="icon-sm" aria-label={`删除图片 ${index + 1}`} onClick={onRemove}><AnimatedActionIcon icon={DeleteIcon} /></Button>
-      </div>
-    </div>
-  )
-}
-
 export function MultiFigureGenerator({
   onSaveStateChange,
 }: {
   onSaveStateChange?: (state: SaveState) => void
 } = {}) {
+  const componentFieldId = useId()
   const { value: draft, setValue: setDraft, clearDraft } = useLocalDraft({
     storageKey,
     initialValue: initialDraft,
@@ -242,32 +172,6 @@ export function MultiFigureGenerator({
   )
   const packages = images.length > 1 ? ["graphicx", "subcaption"] : ["graphicx"]
 
-  const { completed, complete, reset } = useActionFeedback()
-
-  const copyLatex = async () => {
-    reset("copyLatex")
-    if (!latex) return
-    try {
-      await writeClipboardText(latex)
-      complete("copyLatex")
-      toast.success("LaTeX 源码已复制。")
-    } catch {
-      toast.error("源码复制失败，请在“查看 LaTeX”中手动复制。")
-    }
-  }
-
-  const downloadLatex = () => {
-    reset("downloadLatex")
-    if (!latex) return
-    const url = URL.createObjectURL(new Blob([latex], { type: "text/plain;charset=utf-8" }))
-    const anchor = document.createElement("a")
-    anchor.href = url
-    anchor.download = "multi-figure.tex"
-    anchor.click()
-    complete("downloadLatex")
-    toast.success("文件已准备好，已请求下载。")
-    URL.revokeObjectURL(url)
-  }
 
   return (
     <ScrollArea className="h-full">
@@ -302,25 +206,25 @@ export function MultiFigureGenerator({
                 </Alert>
               ) : null}
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <label className="grid gap-2 text-sm font-medium">
-                  每行图片数
+                <Field>
+                  <FieldLabel htmlFor={`${componentFieldId}-1`}>每行图片数</FieldLabel>
                   <Select value={String(columns)} onValueChange={(value) => setDraft((current) => ({ ...current, columns: Number(value) }))}>
-                    <SelectTrigger aria-label="每行图片数"><span>{columns} 张</span></SelectTrigger>
+                    <SelectTrigger id={`${componentFieldId}-1`} aria-label="每行图片数"><span>{columns} 张</span></SelectTrigger>
                     <SelectContent>{[1, 2, 3, 4].map((count) => <SelectItem key={count} value={String(count)}>{count} 张</SelectItem>)}</SelectContent>
                   </Select>
-                </label>
-                <label className="grid gap-2 text-sm font-medium">
-                  图片目录
-                  <Input value={pathPrefix} onChange={(event) => setDraft((current) => ({ ...current, pathPrefix: event.target.value }))} placeholder="figures" />
-                </label>
-                <label className="grid gap-2 text-sm font-medium">
-                  整组图题（可选）
-                  <Input value={caption} onChange={(event) => setDraft((current) => ({ ...current, caption: event.target.value }))} />
-                </label>
-                <label className="grid gap-2 text-sm font-medium">
-                  引用标签（可选）
-                  <Input value={label} onChange={(event) => setDraft((current) => ({ ...current, label: event.target.value }))} placeholder="fig:experiment" />
-                </label>
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor={`${componentFieldId}-2`}>图片目录</FieldLabel>
+                  <Input id={`${componentFieldId}-2`} value={pathPrefix} onChange={(event) => setDraft((current) => ({ ...current, pathPrefix: event.target.value }))} placeholder="figures" />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor={`${componentFieldId}-3`}>整组图题（可选）</FieldLabel>
+                  <Input id={`${componentFieldId}-3`} value={caption} onChange={(event) => setDraft((current) => ({ ...current, caption: event.target.value }))} />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor={`${componentFieldId}-4`}>引用标签（可选）</FieldLabel>
+                  <Input id={`${componentFieldId}-4`} value={label} onChange={(event) => setDraft((current) => ({ ...current, label: event.target.value }))} placeholder="fig:experiment" />
+                </Field>
               </div>
 
               {images.length > 0 ? (
@@ -337,26 +241,33 @@ export function MultiFigureGenerator({
                   >
                     <div className="grid gap-2" aria-label="图片顺序">
                       {images.map((item, index) => (
-                        <SortableFigureRow
+                        <SortableContentRow
                           key={item.id}
-                          item={item}
+                          id={item.id}
+                          labels={{ drag: `拖动图片 ${index + 1} 调整顺序`, select: `选择图片 ${index + 1} 进行编辑`, up: `上移图片 ${index + 1}`, down: `下移图片 ${index + 1}`, remove: `删除图片 ${index + 1}` }}
                           index={index}
                           selected={selectedImage?.id === item.id}
                           last={index === images.length - 1}
                           onSelect={() => setSelectedImageId(item.id)}
                           onMove={(direction) => applyImages(moveItem(images, index, index + direction))}
                           onRemove={() => removeImage(item.id)}
-                        />
+                        >
+                          <img src={item.previewUrl} alt="" aria-hidden="true" className="size-12 rounded-md border object-cover" />
+                          <span className="min-w-0">
+                            <span className="block text-sm font-medium">图片 {index + 1}</span>
+                            <span className="block truncate text-xs text-muted-foreground" title={item.file.name}>{item.file.name}</span>
+                          </span>
+                        </SortableContentRow>
                       ))}
                     </div>
                   </DragDropProvider>
                   {selectedImage ? (
                     <div className="grid content-start gap-3 rounded-lg border p-4">
                       <img src={selectedImage.previewUrl} alt={`当前编辑图片 ${selectedIndex + 1}`} className="aspect-4/3 w-full rounded-md border object-contain" />
-                      <label className="grid gap-2 text-sm font-medium">
-                        图片 {selectedIndex + 1} 子标题（可选）
-                        <Input value={selectedImage.caption} aria-label={`图片 ${selectedIndex + 1} 子标题`} onChange={(event) => applyImages(images.map((image) => image.id === selectedImage.id ? { ...image, caption: event.target.value } : image))} />
-                      </label>
+                      <Field>
+                  <FieldLabel htmlFor={`${componentFieldId}-5`}>图片 {selectedIndex + 1} 子标题（可选）</FieldLabel>
+                  <Input id={`${componentFieldId}-5`} value={selectedImage.caption} aria-label={`图片 ${selectedIndex + 1} 子标题`} onChange={(event) => applyImages(images.map((image) => image.id === selectedImage.id ? { ...image, caption: event.target.value } : image))} />
+                </Field>
                     </div>
                   ) : null}
                 </div>
@@ -374,9 +285,7 @@ export function MultiFigureGenerator({
             <CardHeader className="gap-4 sm:flex-row sm:items-start sm:justify-between">
               <CardTitle>排版预览</CardTitle>
               <div className="flex shrink-0 flex-wrap gap-2">
-                <LatexSourceSheet latex={latex} packages={packages} />
-                <Button type="button" size="sm" variant="outline" disabled={!latex} onClick={() => void copyLatex()}><ActionFeedbackIcon token={completed.copyLatex}><AnimatedActionIcon icon={CopyIconAnimated} /></ActionFeedbackIcon>复制源码</Button>
-                <Button type="button" size="sm" disabled={!latex} onClick={downloadLatex}><ActionFeedbackIcon token={completed.downloadLatex}><AnimatedActionIcon icon={DownloadIconAnimated} /></ActionFeedbackIcon>下载源码</Button>
+                <LatexSourceSheet latex={latex} filename="multi-figure.tex" packages={packages} />
               </div>
             </CardHeader>
             <CardContent>
@@ -395,10 +304,7 @@ export function MultiFigureGenerator({
                   {caption.trim() ? <figcaption className="mt-4 text-center text-sm font-medium">{caption.trim()}</figcaption> : null}
                 </figure>
               ) : (
-                <div className="flex min-h-72 flex-col items-center justify-center gap-3 rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-                  <ImagesIcon className="size-8" />
-                  选择图片后在这里预览组合效果。
-                </div>
+                <Empty className="min-h-72 border"><EmptyHeader><EmptyMedia variant="icon"><ImagesIcon /></EmptyMedia><EmptyDescription>选择图片后在这里预览组合效果。</EmptyDescription></EmptyHeader></Empty>
               )}
             </CardContent>
           </Card>

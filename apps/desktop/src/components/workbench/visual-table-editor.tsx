@@ -1,6 +1,9 @@
+import { Card } from "@/components/ui/card"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { PlusIcon } from "@/components/ui/plus"
 import { DeleteIcon } from "@/components/ui/delete"
-import { AnimatedActionIcon } from "@/components/workbench/animated-action-icon"
+import { AnimatedActionIcon } from "@/components/animated-action-icon"
 import { useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react"
 import { Grid3X3Icon, SheetIcon } from "lucide-react"
 
@@ -239,10 +242,12 @@ export function VisualTableEditor({
                   const column = (index % pickerColumns) + PICKER_MIN_COLUMNS
                   const selected = row <= hoveredSize.rows && column <= hoveredSize.columns
                   return (
-                    <button
+                    <Button
+                      variant={selected ? "default" : "outline"}
+                      size="icon-xs"
                       key={`${row}-${column}`}
                       type="button"
-                      className={`size-5 rounded-sm border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${selected ? "border-primary bg-primary" : "bg-background hover:bg-muted"}`}
+                      aria-pressed={selected}
                       aria-label={`创建 ${row} 行 ${column} 列表格`}
                       onPointerEnter={() => setHoveredSize({ rows: row, columns: column })}
                       onFocus={() => setHoveredSize({ rows: row, columns: column })}
@@ -284,64 +289,53 @@ export function VisualTableEditor({
       </div>
 
       {rows.length > 0 ? (
-        <div className="overflow-hidden rounded-lg border" role="grid" aria-label="表格内容编辑区">
-          <div className="overflow-x-auto">
-            <div
-              className="grid w-full"
-              style={{ gridTemplateColumns: `2.5rem repeat(${rows[0].length}, minmax(6rem, 1fr))` }}
-            >
-              <div className="sticky left-0 z-20 border-b border-r bg-muted" aria-hidden="true" />
-              {rows[0].map((_, columnIndex) => (
-                <div
-                  key={`column-${columnIndex}`}
-                  className={`flex h-8 items-center justify-center border-b border-r text-xs font-medium text-muted-foreground last:border-r-0 ${selectedCell?.column === columnIndex ? "bg-accent text-accent-foreground" : "bg-muted"}`}
-                  role="columnheader"
-                >
-                  {columnName(columnIndex)}
-                </div>
+        <Card className="py-0">
+          <Table role="grid" aria-label="表格内容编辑区">
+            <TableHeader>
+              <TableRow>
+                <TableHead className="sticky left-0 z-10 bg-muted" aria-label="行号" />
+                {rows[0].map((_, columnIndex) => (
+                  <TableHead key={columnIndex} scope="col" className="text-center" data-state={selectedCell?.column === columnIndex ? "selected" : undefined}>
+                    {columnName(columnIndex)}
+                  </TableHead>
+                ))}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((row, rowIndex) => (
+                <TableRow key={rowIndex} data-state={selectedCell?.row === rowIndex ? "selected" : undefined}>
+                  <TableHead scope="row" className="sticky left-0 z-10 bg-muted text-center">{rowIndex + 1}</TableHead>
+                  {row.map((cell, columnIndex) => (
+                    <TableCell key={columnIndex} role="gridcell">
+                      <Input
+                        ref={(element) => {
+                          const key = `${rowIndex}-${columnIndex}`
+                          if (element) cellRefs.current.set(key, element)
+                          else cellRefs.current.delete(key)
+                        }}
+                        value={cell}
+                        aria-label={`${columnName(columnIndex)}${rowIndex + 1}`}
+                        className={rowIndex < headerRows ? "min-w-24 font-medium" : "min-w-24"}
+                        onFocus={() => setSelectedCell({ row: rowIndex, column: columnIndex })}
+                        onChange={(event) => updateCell(rowIndex, columnIndex, event.target.value)}
+                        onPaste={(event) => handleCellPaste(event, rowIndex, columnIndex)}
+                        onKeyDown={(event) => handleCellKeyDown(event, rowIndex, columnIndex)}
+                      />
+                    </TableCell>
+                  ))}
+                </TableRow>
               ))}
-              {rows.flatMap((row, rowIndex) => [
-                <div
-                  key={`row-${rowIndex}`}
-                  className={`sticky left-0 z-10 flex h-10 items-center justify-center border-b border-r text-xs font-medium text-muted-foreground ${selectedCell?.row === rowIndex ? "bg-accent text-accent-foreground" : "bg-muted"}`}
-                  role="rowheader"
-                >
-                  {rowIndex + 1}
-                </div>,
-                ...row.map((cell, columnIndex) => (
-                  <div
-                    key={`cell-${rowIndex}-${columnIndex}`}
-                    role="gridcell"
-                    className={`border-b border-r last:border-r-0 ${rowIndex < headerRows ? "bg-muted/40" : "bg-background"}`}
-                  >
-                    <Input
-                      ref={(element) => {
-                        const key = `${rowIndex}-${columnIndex}`
-                        if (element) cellRefs.current.set(key, element)
-                        else cellRefs.current.delete(key)
-                      }}
-                      value={cell}
-                      aria-label={`${columnName(columnIndex)}${rowIndex + 1}`}
-                      className="h-10 rounded-none border-0 px-3 shadow-none focus-visible:z-10 focus-visible:ring-2"
-                      onFocus={() => setSelectedCell({ row: rowIndex, column: columnIndex })}
-                      onChange={(event) => updateCell(rowIndex, columnIndex, event.target.value)}
-                      onPaste={(event) => handleCellPaste(event, rowIndex, columnIndex)}
-                      onKeyDown={(event) => handleCellKeyDown(event, rowIndex, columnIndex)}
-                    />
-                  </div>
-                )),
-              ])}
-            </div>
-          </div>
-        </div>
+            </TableBody>
+          </Table>
+        </Card>
       ) : (
-        <div className="flex min-h-48 flex-col items-center justify-center gap-3 rounded-lg border border-dashed p-6 text-center">
-          <Grid3X3Icon className="size-8 text-muted-foreground" />
-          <div className="space-y-1">
-            <p className="text-sm font-medium">先选择表格的行数和列数</p>
-            <p className="text-xs text-muted-foreground">也可以直接粘贴从 Excel 或 WPS 复制的整块数据。</p>
-          </div>
-        </div>
+        <Empty className="min-h-48 border">
+          <EmptyHeader>
+            <EmptyMedia variant="icon"><Grid3X3Icon /></EmptyMedia>
+            <EmptyTitle>先选择表格的行数和列数</EmptyTitle>
+            <EmptyDescription>也可以直接粘贴从 Excel 或 WPS 复制的整块数据。</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       )}
 
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">

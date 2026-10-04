@@ -1,3 +1,5 @@
+import { Field, FieldLabel } from "@/components/ui/field"
+import { useId } from "react"
 import { useState, type ReactNode } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -5,7 +7,7 @@ import { DocumentDateField, parseDocumentDate } from "@/components/workbench/doc
 import { ReferenceImporter } from "@/components/workbench/reference-importer"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import { StructuredContentEditor } from "@/components/workbench/structured-content-editor"
-import { AnimatedActionIcon } from "@/components/workbench/animated-action-icon"
+import { AnimatedActionIcon } from "@/components/animated-action-icon"
 import { PlusIcon } from "@/components/ui/plus"
 import { DeleteIcon } from "@/components/ui/delete"
 import { ArrowUpIcon } from "@/components/ui/arrow-up"
@@ -18,6 +20,7 @@ import { thesisReferences, normalizeThesisFigures, thesisFigureContext, chapterE
 export function ThesisDocumentEditor({ value, onChange, activeSection, disabled = false }: {
   value: ThesisDraft; onChange: (value: ThesisDraft) => void; activeSection: string; disabled?: boolean
 }) {
+  const componentFieldId = useId()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const index = Math.max(0, value.chapters.findIndex(c => c.id === selectedId))
@@ -40,11 +43,17 @@ export function ThesisDocumentEditor({ value, onChange, activeSection, disabled 
   return <>
     {writingSection ? <div className="flex h-full min-h-0 flex-col">
       {activeSection === "thesis_abstract_cn" && body("abstractCn", "摘要",
-        <label className="flex shrink-0 items-center gap-2 border-t px-3 py-2 text-sm font-medium">关键词<Input className="min-w-0 flex-1" value={value.keywordsCn} disabled={disabled} placeholder="使用分号分隔关键词" onChange={e => update({ keywordsCn: e.target.value })} /></label>)}
+        <Field orientation="horizontal" className="shrink-0 border-t px-3 py-2">
+                  <FieldLabel htmlFor={`${componentFieldId}-1`}>关键词</FieldLabel>
+                  <Input id={`${componentFieldId}-1`} className="min-w-0 flex-1" value={value.keywordsCn} disabled={disabled} placeholder="使用分号分隔关键词" onChange={e => update({ keywordsCn: e.target.value })} />
+                </Field>)}
       {activeSection === "thesis_abstract_en" && body("abstractEn", "Abstract",
-        <label className="flex shrink-0 items-center gap-2 border-t px-3 py-2 text-sm font-medium">Key words<Input className="min-w-0 flex-1" value={value.keywordsEn} disabled={disabled} placeholder="使用分号分隔关键词" onChange={e => update({ keywordsEn: e.target.value })} /></label>)}
+        <Field orientation="horizontal" className="shrink-0 border-t px-3 py-2">
+                  <FieldLabel htmlFor={`${componentFieldId}-2`}>Key words</FieldLabel>
+                  <Input id={`${componentFieldId}-2`} className="min-w-0 flex-1" value={value.keywordsEn} disabled={disabled} placeholder="使用分号分隔关键词" onChange={e => update({ keywordsEn: e.target.value })} />
+                </Field>)}
       {activeSection === "thesis_chapters" && (value.chapters.length === 0 ? <div className="flex h-full flex-col">
-        <div className="flex h-(--header-height) shrink-0 items-center justify-between border-b px-3"><h2 className="text-sm font-medium">章节正文</h2><Button variant="outline" disabled={disabled} onClick={() => add()}><AnimatedActionIcon icon={PlusIcon} />添加章</Button></div>
+        <div className="flex h-(--header-height) shrink-0 items-center justify-between border-b px-3"><h2 className="sr-only">章节正文</h2><Button variant="outline" disabled={disabled} onClick={() => add()}><AnimatedActionIcon icon={PlusIcon} />添加章</Button></div>
       </div> : <StructuredContentEditor
         key={`${chapter.id}-${figures.chapters[0].value}`}
         value={chapter.body}
@@ -87,10 +96,10 @@ export function ThesisDocumentEditor({ value, onChange, activeSection, disabled 
       {activeSection === "thesis_appendix" && body("appendix", "附录")}
       {activeSection === "thesis_references" && <ReferenceImporter referenceOrder={references.citationOrder} source={value.referencesBibtex} legacyReferences={[]} maximumEntries={200} maximumReferenceLength={2000} disabled={disabled} onChange={source => update({ referencesBibtex: source })} />}
     </div> : <>
-      {activeSection === "thesis_cover" && <section className="grid gap-4"><h2 className="text-sm font-medium">封面</h2><DocumentDateField id="thesis-submission-date" label="封面提交日期" labelVisible placeholder="选择提交日期" value={value.submissionDate} minYear={2000} maxYear={2100} error={value.submissionDate && !parseDocumentDate(value.submissionDate, 2000, 2100) ? "日期无效，请选择 2000—2100 年内的提交日期。" : undefined} disabled={disabled} onChange={submissionDate => update({ submissionDate })} /></section>}
-      {activeSection === "thesis_declaration" && <section className="flex items-center gap-3"><h2 className="text-sm font-medium">诚信声明</h2><Badge variant="secondary">模板生成</Badge></section>}
-      {activeSection === "thesis_directory" && <section className="flex items-center gap-3"><h2 className="text-sm font-medium">目录</h2><Badge variant="secondary">自动生成</Badge></section>}
+      {activeSection === "thesis_cover" && <section className="grid gap-4"><h2 className="sr-only">封面</h2><DocumentDateField id="thesis-submission-date" label="封面提交日期" orientation="horizontal" placeholder="选择提交日期" value={value.submissionDate} minYear={2000} maxYear={2100} error={value.submissionDate && !parseDocumentDate(value.submissionDate, 2000, 2100) ? "日期无效，请选择 2000—2100 年内的提交日期。" : undefined} disabled={disabled} onChange={submissionDate => update({ submissionDate })} /></section>}
+      {activeSection === "thesis_declaration" && <section className="flex items-center gap-3"><h2 className="sr-only">诚信声明</h2><Badge variant="secondary">模板生成</Badge></section>}
+      {activeSection === "thesis_directory" && <section className="flex items-center gap-3"><h2 className="sr-only">目录</h2><Badge variant="secondary">自动生成</Badge></section>}
     </>}
-    <Dialog open={deleteId !== null} onOpenChange={open => { if (!open) setDeleteId(null) }}><DialogContent><DialogHeader><DialogTitle>删除章节？</DialogTitle><DialogDescription>此章节及其所有下级章节的正文都会删除。此操作无法撤销；取消会保留全部内容。</DialogDescription></DialogHeader><DialogFooter><Button variant="outline" onClick={() => setDeleteId(null)}>取消</Button><Button variant="destructive" disabled={disabled} onClick={() => { const at = value.chapters.findIndex(c => c.id === deleteId); if (at >= 0) update({ chapters: [...value.chapters.slice(0, at), ...value.chapters.slice(chapterEnd(value.chapters, at))] }); setDeleteId(null); setSelectedId(null) }}>确认删除</Button></DialogFooter></DialogContent></Dialog>
+    <Dialog open={deleteId !== null} onOpenChange={open => { if (!open) setDeleteId(null) }}><DialogContent><DialogHeader><DialogTitle>删除章节？</DialogTitle><DialogDescription>此章节及下级章节的正文都会删除，此操作无法撤销。</DialogDescription></DialogHeader><DialogFooter><Button variant="outline" onClick={() => setDeleteId(null)}>取消</Button><Button variant="destructive" disabled={disabled} onClick={() => { const at = value.chapters.findIndex(c => c.id === deleteId); if (at >= 0) update({ chapters: [...value.chapters.slice(0, at), ...value.chapters.slice(chapterEnd(value.chapters, at))] }); setDeleteId(null); setSelectedId(null) }}><AnimatedActionIcon icon={DeleteIcon} />确认删除</Button></DialogFooter></DialogContent></Dialog>
   </>
 }

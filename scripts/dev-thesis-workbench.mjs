@@ -16,6 +16,10 @@ const env = {
   SZTU_DOCS_TASK_BOOK_ENGINE_DIR: template,
   SZTU_DOCS_MIDTERM_ENGINE_DIR: template,
   SZTU_DOCS_THESIS_ENGINE_DIR: template,
+  SZTU_DOCS_ADVISOR_REVIEW_ENGINE_DIR: template,
+  SZTU_DOCS_REVIEWER_REVIEW_ENGINE_DIR: template,
+  SZTU_DOCS_DEFENSE_RECORD_ENGINE_DIR: template,
+  SZTU_DOCS_GRADE_ASSESSMENT_ENGINE_DIR: template,
 }
 console.log(JSON.stringify({ template, dataDirectory: env.SZTU_DOCS_DEV_DATA_DIR, url: "http://127.0.0.1:5174" }, null, 2))
 if (!process.argv.includes("--check")) {

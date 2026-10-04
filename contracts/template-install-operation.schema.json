@@ -9,7 +9,7 @@
       "required": ["source_directory", "document_type"],
       "properties": {
         "source_directory": {"type": "string", "minLength": 1, "maxLength": 4096},
-        "document_type": {"enum": ["proposal", "midterm", "task_book"]}
+        "document_type": {"enum": ["proposal", "midterm", "task_book", "advisor_review", "reviewer_review", "defense_record", "grade_assessment"]}
       }
     },
     "result": {

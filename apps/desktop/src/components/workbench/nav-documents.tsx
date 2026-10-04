@@ -1,13 +1,15 @@
+import { Field, FieldLabel } from "@/components/ui/field"
+import { useId } from "react"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { EllipsisIcon } from "@/components/ui/animateicons/ellipsis"
 import { FeatherIcon } from "@/components/ui/feather"
 import { RotateCCWIcon as RotateCcwIconAnimated } from "@/components/ui/rotate-ccw"
 import { PlusIcon } from "@/components/ui/plus"
 import { DeleteIcon } from "@/components/ui/delete"
-import { AnimatedActionIcon } from "@/components/workbench/animated-action-icon"
+import { AnimatedActionIcon } from "@/components/animated-action-icon"
 import { FileTextIcon } from "@/components/ui/file-text"
 import { FolderOpenIcon } from "@/components/ui/folder-open"
-import { useSidebarIconAnimation } from "@/hooks/use-sidebar-icon-animation"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { ChevronRightIcon } from "lucide-react"
 import { AlignJustifyIcon } from "@/components/ui/align-justify-icon"
 import { LayoutGridIcon } from "@/components/ui/layout-grid-icon"
@@ -51,16 +53,18 @@ import {
 } from "@/components/ui/sidebar"
 import type { DocumentRecord, DocumentType } from "@/types/desktop-api"
 import { thesisToolOptions, type ThesisToolId } from "@/lib/thesis-tools"
+import { assessmentDocumentRegistry } from "@/lib/assessment-documents"
+import { defaultDocumentTitle } from "@/lib/document-names"
 
 const documentGroups: Array<{
   type: DocumentType
   label: string
-  defaultTitle: string
 }> = [
-  { type: "task_book", label: "任务书", defaultTitle: "未命名任务书" },
-  { type: "proposal", label: "开题报告", defaultTitle: "未命名开题报告" },
-  { type: "midterm", label: "中期检查", defaultTitle: "未命名中期检查表" },
-  { type: "thesis", label: "毕业论文", defaultTitle: "未命名毕业论文" },
+  { type: "task_book", label: "任务书" },
+  { type: "proposal", label: "开题报告" },
+  { type: "midterm", label: "中期检查" },
+  { type: "thesis", label: "毕业论文" },
+  ...Object.entries(assessmentDocumentRegistry).map(([type, { label }]) => ({ type: type as DocumentType, label })),
 ]
 
 function ThesisToolIcon({ toolId }: { toolId: ThesisToolId }) {
@@ -81,6 +85,7 @@ type ConfirmAction =
   | null
 
 export function NavDocuments({
+  studentName,
   profileActive,
   toolsActive,
   inspectionActive,
@@ -89,6 +94,11 @@ export function NavDocuments({
   activeDocumentId,
   documents,
   deletedDocuments,
+  documentsHasMore = false,
+  deletedDocumentsHasMore = false,
+  documentsLoading = false,
+  deletedDocumentsLoading = false,
+  onLoadMoreDocuments,
   disabled,
   onSelectDocument,
   onSelectThesisTool,
@@ -98,6 +108,7 @@ export function NavDocuments({
   onRestoreDocument,
   onPurgeDocument,
 }: {
+  studentName: string
   profileActive: boolean
   toolsActive: boolean
   inspectionActive: boolean
@@ -106,6 +117,11 @@ export function NavDocuments({
   activeDocumentId: string | null
   documents: DocumentRecord[]
   deletedDocuments: DocumentRecord[]
+  documentsHasMore?: boolean
+  deletedDocumentsHasMore?: boolean
+  documentsLoading?: boolean
+  deletedDocumentsLoading?: boolean
+  onLoadMoreDocuments?: (deleted: boolean) => Promise<void>
   disabled: boolean
   onSelectDocument: (documentId: string) => Promise<void>
   onSelectThesisTool: (toolId: ThesisToolId) => void
@@ -115,14 +131,31 @@ export function NavDocuments({
   onRestoreDocument: (documentId: string) => Promise<void>
   onPurgeDocument: (documentId: string) => Promise<void>
 }) {
-  const activeType = documents.find((item) => item.id === activeDocumentId)?.document_type
-  const animation = useSidebarIconAnimation()
+  const componentFieldId = useId()
+  const activeRecordType = documents.find((item) => item.id === activeDocumentId)?.document_type
+  const activeType = documentGroups.find(group => group.type === activeRecordType)?.type
   const [expanded, setExpanded] = useState<Record<DocumentType, boolean>>({
     proposal: activeType === "proposal" || activeType === undefined,
     task_book: activeType === "task_book",
     midterm: activeType === "midterm",
     thesis: activeType === "thesis",
+    advisor_review: activeType === "advisor_review",
+    reviewer_review: activeType === "reviewer_review",
+    defense_record: activeType === "defense_record",
+    grade_assessment: activeType === "grade_assessment",
   })
+  const [expandedSelection, setExpandedSelection] = useState({ id: activeDocumentId, type: activeType })
+  if (expandedSelection.id !== activeDocumentId || expandedSelection.type !== activeType) {
+    setExpandedSelection({ id: activeDocumentId, type: activeType })
+    if (activeType && !expanded[activeType]) {
+      setExpanded({ ...expanded, [activeType]: true })
+    }
+  }
+  const activeDocumentButton = useRef<HTMLElement | null>(null)
+  const activeGroupExpanded = activeType ? expanded[activeType] : false
+  useEffect(() => {
+    if (activeGroupExpanded) activeDocumentButton.current?.scrollIntoView?.({ block: "nearest" })
+  }, [activeDocumentId, activeGroupExpanded])
   const [layoutToolsExpanded, setLayoutToolsExpanded] = useState(thesisToolsActive)
   const [trashExpanded, setTrashExpanded] = useState(false)
   const [createType, setCreateType] = useState<DocumentType | null>(null)
@@ -145,9 +178,9 @@ export function NavDocuments({
     [documents],
   )
 
-  const openCreate = (type: DocumentType, defaultTitle: string) => {
+  const openCreate = (type: DocumentType) => {
     setCreateType(type)
-    setCreateTitle(defaultTitle)
+    setCreateTitle(defaultDocumentTitle(type, studentName))
     setCreateSource("blank")
     setError(null)
   }
@@ -175,26 +208,26 @@ export function NavDocuments({
             const groupDocuments = groupedDocuments[group.type]
             const isExpanded = expanded[group.type]
             return (
-              <SidebarMenuItem key={group.type}>
-                <SidebarMenuButton
-                  {...animation.row(`group:${group.type}`)}
-                  tooltip={group.label}
-                  aria-expanded={isExpanded}
-                  onClick={() =>
-                    setExpanded((current) => ({
-                      ...current,
-                      [group.type]: !current[group.type],
-                    }))
-                  }
+              <Collapsible
+                key={group.type}
+                open={isExpanded}
+                onOpenChange={open => setExpanded(current => ({ ...current, [group.type]: open }))}
+                render={<SidebarMenuItem />}
+              >
+                <CollapsibleTrigger
+                  render={<SidebarMenuButton tooltip={group.label} />}
+                  aria-label={group.label}
+                  aria-description={group.type === "thesis" ? "论文模板预览和下载暂未开放" : undefined}
                 >
                   <ChevronRightIcon
                     className={isExpanded
-                      ? "rotate-90 transition-transform duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
-                      : "transition-transform duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"}
+                      ? "rotate-90 transition-transform duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
+                      : "transition-transform duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"}
                   />
-                  <FolderOpenIcon {...animation.icon(`group:${group.type}`)} />
+                  <AnimatedActionIcon icon={FolderOpenIcon} />
                   <span>{group.label}</span>
-                </SidebarMenuButton>
+                  {group.type === "thesis" ? <span className="text-xs text-muted-foreground">未开放</span> : null}
+                </CollapsibleTrigger>
                 <SidebarMenuAction
                   aria-label={`新建${group.label}`}
                   title={`新建${group.label}`}
@@ -202,30 +235,22 @@ export function NavDocuments({
                   showOnHover
                   onClick={(event) => {
                     event.stopPropagation()
-                    openCreate(group.type, group.defaultTitle)
+                    openCreate(group.type)
                   }}
                 >
                   <AnimatedActionIcon icon={PlusIcon} />
                 </SidebarMenuAction>
-                <div
-                  aria-hidden={!isExpanded}
-                  inert={!isExpanded}
-                  className={`grid transition-[grid-template-rows,opacity] duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${
-                    isExpanded
-                      ? "grid-rows-[1fr] opacity-100"
-                      : "grid-rows-[0fr] opacity-0"
-                  }`}
-                >
-                  <div className="min-h-0 overflow-hidden">
+                <CollapsibleContent>
                     <SidebarMenuSub className="mr-0 pr-0">
                     {groupDocuments.length === 0 ? (
                       <SidebarMenuSubItem>
-                        <span className="block px-2 py-1 text-xs text-muted-foreground">暂无文档</span>
+                        <span className="block px-2 py-1 text-xs text-muted-foreground">{documentsHasMore ? "当前未载入此类文档" : "暂无文档"}</span>
                       </SidebarMenuSubItem>
                     ) : null}
                     {groupDocuments.map((item) => (
                       <SidebarMenuSubItem key={item.id}>
                         <SidebarMenuSubButton
+                          ref={item.id === activeDocumentId ? (node) => { activeDocumentButton.current = node } : undefined}
                           render={<button type="button" disabled={disabled} />}
                           className="w-full justify-start pr-8 text-left"
                           isActive={
@@ -235,18 +260,16 @@ export function NavDocuments({
                             !thesisToolsActive &&
                             item.id === activeDocumentId
                           }
-                          {...animation.row(`document:${item.id}`, disabled)}
                           onClick={() => void onSelectDocument(item.id)}
                         >
-                          <FileTextIcon {...animation.icon(`document:${item.id}`)} />
+                          <AnimatedActionIcon icon={FileTextIcon} />
                           <span className="min-w-0 flex-1 truncate text-left">{item.title}</span>
                         </SidebarMenuSubButton>
                         <DropdownMenu>
                           <DropdownMenuTrigger
                             render={
-                              <button
+                              <SidebarMenuAction
                                 type="button"
-                                className="absolute top-1 right-1 flex size-5 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring disabled:pointer-events-none disabled:opacity-50"
                                 aria-label={`管理文档 ${item.title}`}
                                 disabled={disabled}
                               />
@@ -281,45 +304,40 @@ export function NavDocuments({
                       </SidebarMenuSubItem>
                     ))}
                     </SidebarMenuSub>
-                  </div>
-                </div>
-              </SidebarMenuItem>
+                </CollapsibleContent>
+              </Collapsible>
             )
           })}
-
-
-
+          {documentsHasMore ? (
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                disabled={disabled || documentsLoading || !onLoadMoreDocuments}
+                aria-label="加载更多文档"
+                onClick={() => void onLoadMoreDocuments?.(false)}
+              >
+                {documentsLoading ? "正在加载文档…" : "加载更多文档"}
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          ) : null}
         </SidebarMenu>
       </SidebarGroup>
 
       <SidebarSeparator className="mx-4 mt-auto w-auto opacity-60" />
       <SidebarGroup>
         <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              {...animation.row("layout-tools")}
-              tooltip="排版工具"
-              aria-expanded={layoutToolsExpanded}
-              onClick={() => setLayoutToolsExpanded((current) => !current)}
+          <Collapsible open={layoutToolsExpanded} onOpenChange={setLayoutToolsExpanded} render={<SidebarMenuItem />}>
+            <CollapsibleTrigger
+              render={<SidebarMenuButton tooltip="排版工具" />}
             >
               <ChevronRightIcon
                 className={layoutToolsExpanded
-                  ? "rotate-90 transition-transform duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
-                  : "transition-transform duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"}
+                  ? "rotate-90 transition-transform duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
+                  : "transition-transform duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"}
               />
-              <FolderOpenIcon {...animation.icon("layout-tools")} />
+              <AnimatedActionIcon icon={FolderOpenIcon} />
               <span>排版工具</span>
-            </SidebarMenuButton>
-            <div
-              aria-hidden={!layoutToolsExpanded}
-              inert={!layoutToolsExpanded}
-              className={`grid transition-[grid-template-rows,opacity] duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${
-                layoutToolsExpanded
-                  ? "grid-rows-[1fr] opacity-100"
-                  : "grid-rows-[0fr] opacity-0"
-              }`}
-            >
-              <div className="min-h-0 overflow-hidden">
+            </CollapsibleTrigger>
+            <CollapsibleContent>
                 <SidebarMenuSub className="mr-0 pr-0">
                 {thesisToolOptions.map((tool) => (
                   <SidebarMenuSubItem key={tool.id}>
@@ -335,38 +353,26 @@ export function NavDocuments({
                   </SidebarMenuSubItem>
                 ))}
                 </SidebarMenuSub>
-              </div>
-            </div>
-          </SidebarMenuItem>
+            </CollapsibleContent>
+          </Collapsible>
 
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              tooltip="回收站"
-              aria-label={`回收站（${deletedDocuments.length} 个文档）`}
-              aria-expanded={trashExpanded}
-              onClick={() => setTrashExpanded((current) => !current)}
+          <Collapsible open={trashExpanded} onOpenChange={setTrashExpanded} render={<SidebarMenuItem />}>
+            <CollapsibleTrigger
+              render={<SidebarMenuButton tooltip="回收站" />}
+              aria-label={deletedDocumentsHasMore ? `回收站（已载入 ${deletedDocuments.length} 个文档，还有更多）` : `回收站（${deletedDocuments.length} 个文档）`}
             >
               <ChevronRightIcon
                 className={trashExpanded
-                  ? "rotate-90 transition-transform duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
-                  : "transition-transform duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"}
+                  ? "rotate-90 transition-transform duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
+                  : "transition-transform duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"}
               />
               <AnimatedActionIcon icon={DeleteIcon} />
               <span>回收站</span>
               {deletedDocuments.length > 0 ? (
-                <span className="ml-auto text-xs text-muted-foreground">{deletedDocuments.length}</span>
+                <span className="ml-auto text-xs text-muted-foreground">{deletedDocuments.length}{deletedDocumentsHasMore ? "+" : ""}</span>
               ) : null}
-            </SidebarMenuButton>
-            <div
-              aria-hidden={!trashExpanded}
-              inert={!trashExpanded}
-              className={`grid transition-[grid-template-rows,opacity] duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${
-                trashExpanded
-                  ? "grid-rows-[1fr] opacity-100"
-                  : "grid-rows-[0fr] opacity-0"
-              }`}
-            >
-              <div className="min-h-0 overflow-hidden">
+            </CollapsibleTrigger>
+            <CollapsibleContent>
                 <SidebarMenuSub className="mr-0 pr-0">
                 {deletedDocuments.length === 0 ? (
                   <SidebarMenuSubItem>
@@ -384,9 +390,8 @@ export function NavDocuments({
                     <DropdownMenu>
                       <DropdownMenuTrigger
                         render={
-                          <button
+                          <SidebarMenuAction
                             type="button"
-                            className="absolute top-1 right-1 flex size-5 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring disabled:pointer-events-none disabled:opacity-50"
                             aria-label={`管理回收站文档 ${item.title}`}
                             disabled={disabled}
                           />
@@ -414,10 +419,20 @@ export function NavDocuments({
                     </DropdownMenu>
                   </SidebarMenuSubItem>
                 ))}
+                {deletedDocumentsHasMore ? (
+                  <SidebarMenuSubItem>
+                    <SidebarMenuSubButton
+                      render={<button type="button" disabled={disabled || deletedDocumentsLoading || !onLoadMoreDocuments} />}
+                      aria-label="加载更多回收站文档"
+                      onClick={() => void onLoadMoreDocuments?.(true)}
+                    >
+                      {deletedDocumentsLoading ? "正在加载文档…" : "加载更多回收站文档"}
+                    </SidebarMenuSubButton>
+                  </SidebarMenuSubItem>
+                ) : null}
                 </SidebarMenuSub>
-              </div>
-            </div>
-          </SidebarMenuItem>
+            </CollapsibleContent>
+          </Collapsible>
         </SidebarMenu>
       </SidebarGroup>
 
@@ -425,17 +440,17 @@ export function NavDocuments({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>新建{documentGroups.find((item) => item.type === createType)?.label}</DialogTitle>
-            <DialogDescription>新建空白文档，或复制一份已有内容后独立编辑。</DialogDescription>
+            <DialogDescription>{createType === "thesis" ? "论文模板功能暂未开放，创建的文件目前不能预览或导出。" : "新建空白文档，或复制一份已有内容后独立编辑。"}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-3">
-            <label className="grid gap-2 text-sm font-medium">
-              文件名
-              <Input value={createTitle} maxLength={240} onChange={(event) => setCreateTitle(event.target.value)} />
-            </label>
-            <label className="grid gap-2 text-sm font-medium">
-              初始内容
-              <Select value={createSource} onValueChange={(value) => setCreateSource(value ?? "blank")}>
-                <SelectTrigger className="w-full">
+            <Field>
+                  <FieldLabel htmlFor={`${componentFieldId}-1`}>文件名</FieldLabel>
+                  <Input id={`${componentFieldId}-1`} value={createTitle} maxLength={240} onChange={(event) => setCreateTitle(event.target.value)} />
+                </Field>
+            <Field>
+                  <FieldLabel htmlFor={`${componentFieldId}-2`}>初始内容</FieldLabel>
+                  <Select value={createSource} onValueChange={(value) => setCreateSource(value ?? "blank")}>
+                <SelectTrigger id={`${componentFieldId}-2`} className="w-full">
                   <SelectValue>
                     {createSource === "blank" ? "空白文档" : `基于：${documents.find(item => item.id === createSource)?.title ?? "已有文档"}`}
                   </SelectValue>
@@ -456,7 +471,7 @@ export function NavDocuments({
                   ))}
                 </SelectContent>
               </Select>
-            </label>
+                </Field>
             {error ? <p className="text-sm text-destructive">{error}</p> : null}
           </div>
           <DialogFooter>

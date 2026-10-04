@@ -1,4 +1,6 @@
-import { AnimatedActionIcon } from "@/components/workbench/animated-action-icon"
+import { Field, FieldLabel } from "@/components/ui/field"
+import { useId } from "react"
+import { AnimatedActionIcon } from "@/components/animated-action-icon"
 import { InfoIcon as InfoIconAnimated } from "@/components/ui/animateicons/info"
 import { useMemo } from "react"
 
@@ -55,6 +57,7 @@ export function ThreeLineTableGenerator({
 }: {
   onSaveStateChange?: (state: SaveState) => void
 } = {}) {
+  const componentFieldId = useId()
   const { value: draft, setValue: setDraft, clearDraft } = useLocalDraft({
     storageKey,
     initialValue: initialDraft,
@@ -99,22 +102,22 @@ export function ThreeLineTableGenerator({
             </CardHeader>
             <CardContent className="grid gap-4">
               <div className="grid gap-2 sm:grid-cols-2">
-                <label className="grid gap-2 text-sm font-medium">
-                  表题（可选）
-                  <Input
+                <Field>
+                  <FieldLabel htmlFor={`${componentFieldId}-1`}>表题（可选）</FieldLabel>
+                  <Input id={`${componentFieldId}-1`}
                     value={caption}
                     onChange={(event) => setDraft((current) => ({ ...current, caption: event.target.value }))}
                     placeholder="例如：不同方法的实验结果"
                   />
-                </label>
-                <label className="grid gap-2 text-sm font-medium">
-                  引用标签（可选）
-                  <Input
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor={`${componentFieldId}-2`}>引用标签（可选）</FieldLabel>
+                  <Input id={`${componentFieldId}-2`}
                     value={label}
                     onChange={(event) => setDraft((current) => ({ ...current, label: event.target.value }))}
                     placeholder="例如：tab:experiment"
                   />
-                </label>
+                </Field>
               </div>
               <VisualTableEditor
                 value={{ source, rowCount, columnCount }}

@@ -9,8 +9,12 @@ interface AnimationHandle {
 
 // Adapt the registry icon to its existing action, without adding another button
 // or changing its hit area, keyboard behavior, or accessible name.
-export function AnimatedActionIcon({ icon: Icon, playOnMount = false, className, size = 16 }: {
+export function AnimatedActionIcon({ icon: Icon, playOnMount = false, className, size = 16, "data-slot": dataSlot, "data-icon": dataIcon, interactionTarget, disabled = false }: {
   size?: number
+  interactionTarget?: HTMLElement | null
+  disabled?: boolean
+  "data-slot"?: string
+  "data-icon"?: "inline-start" | "inline-end"
   playOnMount?: boolean
   className?: string
   icon: ComponentType<{ size?: number; className?: string } & RefAttributes<AnimationHandle>>
@@ -22,10 +26,10 @@ export function AnimatedActionIcon({ icon: Icon, playOnMount = false, className,
   useEffect(() => {
     if (playOnMount && !reducedMotion) animation.current?.startAnimation()
     if (playOnMount) return
-    const action = element.current?.closest<HTMLElement>('button, [role="button"], [role="menuitem"], [role="tab"], [role="combobox"], [role="option"]')
+    const action = interactionTarget ?? element.current?.closest<HTMLElement>('button, [role="button"], [role="menuitem"], [role="tab"], [role="combobox"], [role="option"]')
     if (!action) return
     const start = () => {
-      if (!reducedMotion && !action.matches(':disabled, [aria-disabled="true"], [data-disabled]')) {
+      if (!disabled && !reducedMotion && !action.matches(':disabled, [aria-disabled="true"], [data-disabled]')) {
         animation.current?.startAnimation()
       }
     }
@@ -44,11 +48,11 @@ export function AnimatedActionIcon({ icon: Icon, playOnMount = false, className,
       action.removeEventListener("focus", start)
       action.removeEventListener("blur", stop)
     }
-  }, [reducedMotion, Icon, playOnMount])
+  }, [reducedMotion, Icon, playOnMount, interactionTarget, disabled])
 
   return (
-    <span ref={element} aria-hidden="true" className={cn("inline-flex size-4 shrink-0", className)} style={size === 16 ? undefined : { width: size, height: size }}>
-      <Icon ref={animation} size={size} className="size-full" />
+    <span ref={element} data-slot={dataSlot} data-icon={dataIcon} aria-hidden="true" className={cn("inline-flex size-4 shrink-0 items-center justify-center", className)} style={size === 16 ? undefined : { width: size, height: size }}>
+      <Icon ref={animation} size={size} className="flex size-full items-center justify-center" />
     </span>
   )
 }

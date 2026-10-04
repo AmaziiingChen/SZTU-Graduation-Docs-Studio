@@ -23,8 +23,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
-import { AnimatedPanelLeftCloseIcon as PanelLeftCloseIcon, AnimatedPanelLeftOpenIcon as PanelLeftOpenIcon } from "@/components/workbench/animated-panel-icons"
-import { AnimatedActionIcon } from "@/components/workbench/animated-action-icon"
+import { AnimatedPanelLeftCloseIcon as PanelLeftCloseIcon, AnimatedPanelLeftOpenIcon as PanelLeftOpenIcon } from "@/components/animated-panel-icons"
+import { AnimatedActionIcon } from "@/components/animated-action-icon"
 
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state"

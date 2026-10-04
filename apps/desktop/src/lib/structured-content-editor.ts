@@ -4,7 +4,7 @@ import { createProcessMathLivePreview } from "@/lib/process-math-live-preview"
 import Subscript from "@tiptap/extension-subscript"
 import Superscript from "@tiptap/extension-superscript"
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model"
-import { Plugin } from "@tiptap/pm/state"
+import { Plugin, PluginKey } from "@tiptap/pm/state"
 import { Decoration, DecorationSet } from "@tiptap/pm/view"
 import {
   Extension,
@@ -27,6 +27,51 @@ import type {
 
 export const MAX_STRUCTURED_LIST_DEPTH = 4
 export type StructuredEditorMode = "body" | "paragraphs" | "inline"
+export const AUTHORING_GUIDANCE_COMPOSITION = "authoringGuidanceComposition"
+const guidancePluginKey = new PluginKey<boolean>("authoringGuidance")
+
+/** View-only paragraph semantics; never written into canonical body blocks or HTML. */
+const AuthoringGuidance = Extension.create({
+  name: "authoringGuidance",
+  addGlobalAttributes() {
+    return [{ types: ["paragraph"], attributes: { authoringRole: { default: null, rendered: false, keepOnSplit: false } } }]
+  },
+  addProseMirrorPlugins() {
+    return [new Plugin({
+      key: guidancePluginKey,
+      state: {
+        init: () => false,
+        apply: (transaction, composing) => transaction.getMeta(AUTHORING_GUIDANCE_COMPOSITION) ?? composing,
+      },
+      appendTransaction(transactions, oldState, state) {
+        if (guidancePluginKey.getState(state) || !transactions.some(transaction => transaction.docChanged || transaction.getMeta(AUTHORING_GUIDANCE_COMPOSITION) === false)) return null
+        const transaction = state.tr
+        let retained = false
+        let insertedBodyBlock = false
+        oldState.doc.forEach((node, position) => {
+          if (node.type.name !== "paragraph" || node.attrs.authoringRole !== "guidance") return
+          let from = position + 1
+          let to = position + node.nodeSize - 1
+          for (const change of transactions) {
+            from = change.mapping.map(from, -1)
+            to = change.mapping.map(to, 1)
+          }
+          state.doc.nodesBetween(Math.min(from, state.doc.content.size), Math.min(to, state.doc.content.size), current => {
+            if (["figureBlock", "dataTableBlock", "equationBlock", "processEquation", "orderedList", "bulletList"].includes(current.type.name)) insertedBodyBlock = true
+          })
+        })
+        state.doc.descendants((node, position, parent) => {
+          if (node.type.name !== "paragraph" || node.attrs.authoringRole !== "guidance") return
+          // An empty/deleted guide and a guide turned into a list become ordinary
+          // body paragraphs. Subsequent typing must not recreate the old role.
+          if (parent === state.doc && !retained && !insertedBodyBlock && guidanceParagraphIsTextOnly(node.toJSON()) && paragraphHasText(paragraphFromTiptap(node.toJSON()))) retained = true
+          else transaction.setNodeMarkup(position, undefined, { ...node.attrs, authoringRole: null })
+        })
+        return transaction.docChanged ? transaction : null
+      },
+    })]
+  },
+})
 
 export function editorShortcutLabels(platform: string) {
   const mac = /Mac|iPhone|iPad|iPod/i.test(platform)
@@ -753,6 +798,34 @@ export function structuredBodyFingerprint(value: StructuredBodyValue): string {
   return JSON.stringify(tiptapToStructuredBody(structuredBodyToTiptap(value)))
 }
 
+/** Show an optional editable guide and normal body in the same existing editor. */
+export function structuredAuthoringToTiptap(value: StructuredBodyValue, numbering: FigureNumberingContext = {}, guidance?: ParagraphInput | null): JSONContent {
+  const document = structuredBodyToTiptap(value, numbering)
+  if (guidance != null && paragraphHasText(guidance)) {
+    document.content?.unshift({ ...paragraphToTiptap(guidance), attrs: { authoringRole: "guidance" } })
+  }
+  return document
+}
+
+function guidanceParagraphIsTextOnly(node: JSONContent): boolean {
+  return (node.content ?? []).every(child => child.type === "text")
+}
+
+export function tiptapToStructuredAuthoring(document: JSONContent): { body: StructuredBodyValue; guidance: ParagraphInput | null } {
+  let guidance: ParagraphInput | null = null
+  const content = (document.content ?? []).filter(node => {
+    if (node.type !== "paragraph" || node.attrs?.authoringRole !== "guidance" || guidance !== null || !guidanceParagraphIsTextOnly(node)) return true
+    const paragraph = paragraphFromTiptap(node)
+    if (paragraphHasText(paragraph)) guidance = paragraph
+    return false
+  })
+  return { body: tiptapToStructuredBody({ ...document, content }), guidance }
+}
+
+export function structuredAuthoringFingerprint(value: StructuredBodyValue, guidance: ParagraphInput | null): string {
+  return JSON.stringify(tiptapToStructuredAuthoring(structuredAuthoringToTiptap(value, {}, guidance)))
+}
+
 export function listDepthAtSelection(editor: Editor): number {
   const { $from } = editor.state.selection
   let depth = 0
@@ -1065,6 +1138,7 @@ export function createRestrictedEditorExtensions(
   mode: StructuredEditorMode = "body",
   figureNumbering: FigureNumberingContext = {},
   enableProcessEquations = false,
+  guidanceMode = false,
 ) {
   const listsEnabled = mode === "body"
   return [
@@ -1093,6 +1167,7 @@ export function createRestrictedEditorExtensions(
     Subscript,
     Superscript,
     FormattingMarks,
+    ...(guidanceMode ? [AuthoringGuidance] : []),
     createRestrictedDocumentBehavior(mode),
   ]
 }

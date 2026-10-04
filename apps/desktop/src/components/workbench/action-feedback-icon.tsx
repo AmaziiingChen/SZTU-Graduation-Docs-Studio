@@ -1,6 +1,6 @@
 import type { ReactNode } from "react"
 import { CircleCheckIcon } from "@/components/ui/circle-check"
-import { AnimatedActionIcon } from "@/components/workbench/animated-action-icon"
+import { AnimatedActionIcon } from "@/components/animated-action-icon"
 
 export function ActionFeedbackIcon({ token, children }: { token?: number; children: ReactNode }) {
   return token ? (
