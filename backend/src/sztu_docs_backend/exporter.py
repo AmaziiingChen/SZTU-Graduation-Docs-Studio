@@ -2131,6 +2131,21 @@ def _run(
     if process.returncode != 0:
         diagnostic = stdout + "\n" + stderr
         if "SINGLE_PAGE_OVERFLOW" in diagnostic:
+            # Renderer diagnostics may contain private text. Only translate
+            # allowlisted field identifiers, never forward the diagnostic.
+            field = re.search(r"SINGLE_PAGE_OVERFLOW:\s*(?:metadata\.|sections\.)?([a-z_]+)(?=[\s.:]|$)", diagnostic)
+            labels = {
+                "college": "学院", "major": "专业", "title": "论文题目",
+                "student_name": "姓名", "student_id": "学号",
+                "advisor": "指导教师", "advisor_title": "指导教师职称",
+                "reviewer": "评阅教师", "reviewer_title": "评阅教师职称",
+                "comments": "评语", "division_of_work": "分工情况",
+                "questions": "答辩问答", "members": "成员名单",
+                "final_grade": "最终成绩", "date": "日期",
+            }
+            label = labels.get(field.group(1)) if field else None
+            if label:
+                raise ExportError("SINGLE_PAGE_OVERFLOW", f"“{label}”栏超出固定区域，请检查该栏内容后重试。")
             raise ExportError("SINGLE_PAGE_OVERFLOW", "填写内容超出这一页的固定区域，请缩短内容后重新导出。")
         if "尚不能编译" in diagnostic or "Required font" in diagnostic:
             raise ExportError("REQUIRED_FONT_MISSING", "论文模板缺少规定字体；请在本机安装字体，或在本地模板 fonts.local 中提供已授权字体文件。")

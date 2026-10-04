@@ -202,6 +202,14 @@ class AssessmentContractTests(unittest.TestCase):
         self.assertEqual(raised.exception.code, 'SINGLE_PAGE_OVERFLOW')
         self.assertNotIn('private input', raised.exception.message)
 
+    def test_renderer_overflow_names_only_allowlisted_fields(self) -> None:
+        for diagnostic in ('SINGLE_PAGE_OVERFLOW: metadata.major private input', '! SINGLE_PAGE_OVERFLOW: major.'):
+            with self.subTest(diagnostic=diagnostic), tempfile.TemporaryDirectory() as tmp, self.assertRaises(ExportError) as raised:
+                _run([sys.executable, '-c', 'import sys; print(sys.argv[1], file=sys.stderr); sys.exit(2)', diagnostic], cwd=Path(tmp))
+            self.assertEqual(raised.exception.code, 'SINGLE_PAGE_OVERFLOW')
+            self.assertIn('“专业”栏', raised.exception.message)
+            self.assertNotIn('private input', raised.exception.message)
+
     def test_protocol_can_create_each_type_without_database_tables(self) -> None:
         session = ProtocolSession()
         def request(method, params):
