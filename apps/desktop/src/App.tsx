@@ -1,6 +1,6 @@
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 import { FormField as Field } from "@/components/workbench/form-field"
-import { FieldLegend, FieldSet } from "@/components/ui/field"
+import { FieldSet } from "@/components/ui/field"
 import { Separator } from "@/components/ui/separator"
 import { TEACHER_TITLE_OPTIONS } from "@/lib/teacher-title-options"
 import { inferStudentNumberAcademics } from "@/lib/student-number-academics"
@@ -1951,7 +1951,7 @@ function StudentProfileEditor({
 
         <Card size="sm">
           <CardHeader>
-            <CardTitle>论文题目</CardTitle>
+            <CardTitle className="text-sm font-medium">论文题目</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-4">
             <div className="grid gap-2" data-profile-field="title">
@@ -1976,9 +1976,6 @@ function StudentProfileEditor({
         </Card>
 
         <Card>
-          <CardHeader>
-            <CardTitle>基础信息</CardTitle>
-          </CardHeader>
           <CardContent className="grid gap-4">
             <div className="grid gap-4 md:grid-cols-2">
               <Field
@@ -2044,8 +2041,7 @@ function StudentProfileEditor({
               />
             </div>
             <Separator />
-            <FieldSet>
-              <FieldLegend variant="label">指导信息</FieldLegend>
+            <FieldSet aria-label="指导信息">
               <div className="grid gap-4 md:grid-cols-2">
                 {advisorEntries.map((entry, index) => (
                   <Fragment key={index}>
