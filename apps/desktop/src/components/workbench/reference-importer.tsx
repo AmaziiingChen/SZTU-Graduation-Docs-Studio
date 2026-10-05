@@ -429,7 +429,8 @@ export function ReferenceImporter({
           </DialogHeader>
           <div
             data-slot="reference-entry-dialog-body"
-            className="grid min-h-0 gap-4 overflow-y-auto"
+            // Reserve space inside the scroll clip for the Textarea's 3px focus ring.
+            className="-m-1 grid min-h-0 gap-4 overflow-y-auto p-1"
           >
             <Textarea
               aria-label={

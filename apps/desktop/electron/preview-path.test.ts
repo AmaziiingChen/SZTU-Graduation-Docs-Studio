@@ -17,7 +17,7 @@ it("uses the sidecar's canonical cache path when userData is reached through an 
   const actualUserData = path.join(directory, "actual")
   const aliasUserData = path.join(directory, "alias")
   await mkdir(actualUserData)
-  await symlink(actualUserData, aliasUserData)
+  await symlink(actualUserData, aliasUserData, process.platform === "win32" ? "junction" : "dir")
 
   expect(await privatePreviewRoot(aliasUserData, "document-id", "preview-id")).toBe(
     path.join(await realpath(actualUserData), "previews", "document-id", "preview-id"),

@@ -3,6 +3,7 @@
 ## Scope and evidence
 
 - Preserve unrelated working-tree changes and never commit, publish, or upload without explicit authorization.
+- Current Windows UI workflow: use local build/dev for validation first; defer installer packaging during UI iteration.
 - Never run `texclear.sh`, `git clean -X`, `git clean -x`, or another broad cleanup command in this repository or an adjacent template checkout. Ignored files may include the only copy of private references, student materials, or generated evidence. Resolve exact targets with a dry-run and use a recoverable, narrowly scoped operation only after explicit authorization.
 - Treat implementation, automated checks, rendered output, target-editor verification, packaging, and release as separate gates.
 - Do not commit real student data, signatures, commercial fonts, school seals, credentials, signing materials, databases, exports, or official files whose redistribution rights are unconfirmed.
@@ -43,6 +44,7 @@ These rules apply to every frontend prototype, screenshot, and production page i
    - Keep the installer-selected default color system, typography, radii, spacing, focus treatment, and light/dark behavior.
    - Do not introduce a custom brand palette, custom font family, gradients, decorative backgrounds, glass effects, bespoke shadows, or ornamental motion.
    - Keep workbench page, form, and editor containers flat. Do not add decorative shadows to containers; use existing borders and separators to express boundaries.
+   - User-approved shell exception: retain the generated shadcn `SidebarInset` default `shadow-sm` around the main workbench area. Do not override that outer shadow with `shadow-none`; keep internal forms and editors flat.
    - Preserve user-approved interaction motion: selection-toolbar entry/exit, document/tool/trash folding, and Select opening/closing must have short interruptible transitions with reduced-motion support. Component reuse must not remove these behaviors; reuse existing components and lifecycle APIs.
    - User-approved theme transition: appearance light/dark/system buttons reuse Animate UI ThemeToggler's 700ms left-to-right snapshot wipe. Keep existing controls and next-themes persistence, honor reduced motion, and make the latest request win on interruption. Do not remove this effect during component reuse cleanup.
    - User-approved editor glass: the existing StructuredContentEditor format toolbar uses background/70 and backdrop-blur-md, with an opaque background fallback when blur is unsupported. Preserve this effect during component reuse cleanup. Keep the toolbar sticky inside the editor scroll viewport so real text passes behind the blur; reserve the scrollbar track below the measured toolbar and keep flat container boundaries. Use a separate bottom-fade layer instead of a viewport mask that disables backdrop blur; this exception does not authorize glass on other containers or decorative shadows.

@@ -2269,7 +2269,8 @@ function DocumentEditor({
     figureCatalog.map((figure) => [figure.id, figure.label]),
   )
   Object.assign(figureLabels, structuredProcessEquationLabels(...figureBodies))
-  const DocumentScrollContainer = immersiveSection ? "div" : ScrollArea
+  const isTemplateSection = isThesis && activeSection === "thesis_template"
+  const DocumentScrollContainer = immersiveSection || isTemplateSection ? "div" : ScrollArea
   const hasRichTextToolbar = isAssessmentBodySection || [
     "task_basic", "task_materials", "midterm_research", "midterm_progress",
     "proposal_significance", "proposal_research", "proposal_methods", "proposal_steps",
@@ -2286,10 +2287,12 @@ function DocumentEditor({
         {toolbarActions}
       </div>
     ) : null}
-    <DocumentScrollContainer className="min-h-0 flex-1">
+    <DocumentScrollContainer className={cn("min-h-0 flex-1", isTemplateSection && "overflow-y-auto")}>
       <div
         className={cn(
-          immersiveSection
+          isTemplateSection
+            ? "flex min-h-full w-full flex-col gap-6 p-6"
+            : immersiveSection
             ? "flex h-full min-h-0 w-full flex-col"
             : "mx-auto grid max-w-4xl gap-6 p-6",
         )}
@@ -2389,13 +2392,13 @@ function DocumentEditor({
 
         {isAssessmentDocumentType(documentType) && !isAssessmentBodySection ? <AssessmentDocumentEditor type={documentType} activeSection={activeSection} value={draft.assessment} onChange={onAssessmentChange} disabled={disabled} sharedInformation={[{ label: "论文题目", value: inlineParagraphFromBody(draft.title) }, { label: "姓名", value: draft.studentName }, { label: "学号", value: draft.studentId }, { label: "学院", value: draft.college }, { label: "专业", value: draft.major }, ...(documentType === "advisor_review" ? [{ label: "指导教师", value: draft.advisor }, { label: "指导教师职称", value: draft.advisorTitle }] : [])]} /> : null}
 
-        {isThesis && activeSection === "thesis_template" ? (
-          <Card className="border-0 shadow-none ring-0">
-            <CardHeader>
-              <CardTitle className="sr-only">毕业论文 LaTeX 模板</CardTitle>
-              <CardDescription>下载后解压，在 LaTeX 编辑器或 Agent 中打开工程文件夹。</CardDescription>
+        {isTemplateSection ? (
+          <Card className="my-auto w-full max-w-lg shrink-0 self-center border-0 bg-transparent text-center shadow-none ring-0">
+            <CardHeader className="justify-items-center gap-3">
+              <CardTitle className="text-sm font-medium">毕业论文 LaTeX 模板</CardTitle>
+              <CardDescription className="text-sm leading-6">下载后解压，在 LaTeX 编辑器或 Agent 中打开工程文件夹。</CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-4">
+            <CardContent className="grid justify-items-center gap-4">
               <Button type="button" disabled={templateDownloading} onClick={() => void downloadTemplate()} className="w-fit">
                 <AnimatedActionIcon icon={DownloadIcon} />
                 {templateDownloading ? "正在保存模板…" : "下载 LaTeX 模板"}
@@ -4757,6 +4760,16 @@ export default function App() {
     }
   }
 
+  const downloadUpdate = async () => {
+    const api = getDesktopApi()
+    if (!api) return
+    try {
+      setUpdateStatus(await api.downloadUpdate())
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "无法下载更新，请稍后重试。")
+    }
+  }
+
   const revealDownloadedUpdate = async () => {
     const api = getDesktopApi()
     if (!api) return
@@ -4868,7 +4881,7 @@ export default function App() {
 
   const releaseControl = "control" in updateStatus ? updateStatus.control : undefined
   const releaseHasNewVersion =
-    updateStatus.state === "downloading" || updateStatus.state === "downloaded"
+    updateStatus.state === "available" || updateStatus.state === "downloading" || updateStatus.state === "downloaded"
   const releaseRequiresUpdate = Boolean(
     releaseControl?.requiresUpgrade ||
       (releaseControl?.updatePolicy === "required" && releaseHasNewVersion),
@@ -5057,6 +5070,8 @@ export default function App() {
         appearanceActive={activePane === "appearance"}
         inspectionActive={activePane === "inspection"}
         generatedDocumentCount={generatedDocumentCount}
+        updateLabel={releaseHasNewVersion ? updateStatus.state === "downloaded" ? "更新已就绪" : updateStatus.state === "downloading" ? "正在下载更新" : "新版本可用" : undefined}
+        onOpenUpdate={() => setDismissedUpdateVersion(null)}
         thesisToolsActive={activePane === "thesis_tools"}
         activeThesisTool={activeThesisTool}
         activeDocumentId={activePane === "document" ? activeDocumentId ?? null : null}
@@ -5325,7 +5340,11 @@ export default function App() {
                 : releaseRequiresUpdate
                   ? updateStatus.state === "downloaded"
                     ? `版本 ${updateStatus.version} 已下载并完成校验。`
-                    : "正在检查或下载可用的新版本，请稍候。"
+                    : updateStatus.state === "available"
+                      ? updateStatus.downloadFailed
+                        ? "下载失败，请重试。下载完成后需手动安装。"
+                        : `版本 ${updateStatus.version} 可用，请下载并手动安装。`
+                      : "正在检查或下载可用的新版本，请稍候。"
                   : releaseAnnouncement?.body}
             </DialogDescription>
           </DialogHeader>
@@ -5339,7 +5358,12 @@ export default function App() {
                 查看说明
               </Button>
             ) : null}
-            {updateStatus.state === "downloaded" ? (
+            {updateStatus.state === "available" ? (
+              <Button onClick={() => void downloadUpdate()}>
+                <AnimatedActionIcon icon={DownloadIcon} />
+                {updateStatus.downloadFailed ? "重试下载" : "下载更新"}
+              </Button>
+            ) : updateStatus.state === "downloaded" ? (
               <Button onClick={() => void revealDownloadedUpdate()}>
                 <AnimatedActionIcon icon={FolderOpenIconAnimated} />
                 显示更新文件
@@ -5399,39 +5423,50 @@ export default function App() {
         open={
           !releaseBlocking &&
           !releaseNoticeOpen &&
-          updateStatus.state === "downloaded" &&
+          (updateStatus.state === "available" || updateStatus.state === "downloading" || updateStatus.state === "downloaded") &&
           dismissedUpdateVersion !== updateStatus.version
         }
         onOpenChange={(open) => {
-          if (!open && updateStatus.state === "downloaded") {
+          if (!open && (updateStatus.state === "available" || updateStatus.state === "downloading" || updateStatus.state === "downloaded")) {
             setDismissedUpdateVersion(updateStatus.version)
           }
         }}
       >
         <DialogContent showCloseButton={false}>
           <DialogHeader>
-            <DialogTitle>新版本已下载并校验</DialogTitle>
+            <DialogTitle>{updateStatus.state === "downloaded" ? "新版本已下载并校验" : updateStatus.state === "downloading" ? "正在下载更新" : "发现新版本"}</DialogTitle>
             <DialogDescription>
               {updateStatus.state === "downloaded"
                 ? `版本 ${updateStatus.version} 已下载并校验，可以打开更新文件进行安装。`
-                : null}
+                : updateStatus.state === "available"
+                  ? updateStatus.downloadFailed
+                    ? "下载失败，请检查网络后重试。"
+                    : `版本 ${updateStatus.version} 可用，下载大小约 ${Math.ceil(updateStatus.sizeBytes / 1_000_000)} MB。点击下载后再手动安装。`
+                  : updateStatus.state === "downloading" ? `正在下载版本 ${updateStatus.version}，完成后会校验安装包。` : null}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button
               variant="outline"
               onClick={() => {
-                if (updateStatus.state === "downloaded") {
+                if (updateStatus.state === "available" || updateStatus.state === "downloading" || updateStatus.state === "downloaded") {
                   setDismissedUpdateVersion(updateStatus.version)
                 }
               }}
             >
               稍后处理
             </Button>
-            <Button onClick={() => void revealDownloadedUpdate()}>
-              <AnimatedActionIcon icon={FolderOpenIconAnimated} />
-              显示更新文件
-            </Button>
+            {updateStatus.state === "downloaded" ? (
+              <Button onClick={() => void revealDownloadedUpdate()}>
+                <AnimatedActionIcon icon={FolderOpenIconAnimated} />
+                显示更新文件
+              </Button>
+            ) : (
+              <Button disabled={updateStatus.state !== "available"} onClick={() => void downloadUpdate()}>
+                <AnimatedActionIcon icon={DownloadIcon} />
+                {updateStatus.state === "downloading" ? "正在下载…" : updateStatus.state === "available" && updateStatus.downloadFailed ? "重试下载" : "下载更新"}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

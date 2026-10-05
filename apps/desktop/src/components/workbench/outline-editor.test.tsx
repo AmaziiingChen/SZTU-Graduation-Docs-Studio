@@ -101,7 +101,7 @@ describe("OutlineEditor", () => {
 })
 
 describe("outline helpers", () => {
-  it("renumbers outline items with the selected style", () => {
+  it("renumbers outline items with the default first style", () => {
     expect(
       renumberOutlineItems([
         { id: "1", level: 1, number: "", title: "一" },
@@ -109,7 +109,7 @@ describe("outline helpers", () => {
         { id: "3", level: 2, number: "", title: "三" },
         { id: "4", level: 1, number: "", title: "四" },
       ]).map((item) => item.number),
-    ).toEqual(["1.", "1.1", "1.2", "2."])
+    ).toEqual(["一、", "（一）", "（二）", "二、"])
   })
 
   it("rejects skipped levels and empty titles", () => {

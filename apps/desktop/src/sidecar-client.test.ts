@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest"
+import path from "node:path"
 
 import {
   SidecarClient,
@@ -15,7 +16,7 @@ const requestId = "123e4567-e89b-42d3-a456-426614174000"
 describe("SidecarClient protocol boundary", () => {
   it("prefers the packaged sidecar over a repository virtual environment", () => {
     const backendRoot = "/bundle/Contents/Resources/backend"
-    const packagedSidecar = "/bundle/Contents/Resources/sidecar/sztu-docs-backend"
+    const packagedSidecar = path.resolve(backendRoot, "../sidecar/sztu-docs-backend")
     expect(
       resolveSidecarPython(
         backendRoot,
@@ -40,6 +41,14 @@ describe("SidecarClient protocol boundary", () => {
     expect(resolveSidecarPath("C:\\Windows;C:\\Tools", "win32")).toBe(
       "C:\\Windows;C:\\Tools",
     )
+  })
+
+  it("resolves a bundled Windows executable and falls back to python", () => {
+    const backendRoot = path.resolve("bundle/backend")
+    const executable = path.resolve(backendRoot, "../sidecar/sztu-docs-backend.exe")
+    expect(resolveSidecarPython(backendRoot, undefined, "win32", candidate => candidate === executable))
+      .toBe(executable)
+    expect(resolveSidecarPython(backendRoot, undefined, "win32", () => false)).toBe("python")
   })
 
   it("accepts exact success and error envelopes with UUID ids", () => {

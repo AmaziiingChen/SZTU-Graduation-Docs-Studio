@@ -22,6 +22,47 @@ async function fixture() {
 }
 
 describe("offline signed updates and response bodies", () => {
+  it.each([["win32", "x64"], ["darwin", "arm64"]] as const)("notifies %s/%s without downloading until requested", async (platform, arch) => {
+    const f = await fixture(), bytes = Buffer.from("AAA"), value = f.payload(bytes), outcome = vi.fn()
+    value.artifacts[0]!.platform = platform
+    value.artifacts[0]!.arch = arch
+    const fetchImpl = vi.fn(async (url: string) => url.endsWith("manifest.json") ? f.response(value) : new Response(bytes))
+    const service = new UpdateService({ ...f.options, platform, arch, fetchImpl, onOutcome: outcome })
+    expect(await service.checkNow()).toMatchObject({ state: "available", version: "0.2.0", sizeBytes: 3 })
+    await service.checkNow()
+    expect(fetchImpl.mock.calls.map(([url]) => url)).toEqual([f.options.manifestUrl, f.options.manifestUrl])
+    expect(outcome.mock.calls.filter(([kind]) => kind === "available")).toHaveLength(1)
+    expect(await service.downloadNow()).toMatchObject({ state: "downloaded", version: "0.2.0" })
+    expect(await readFile(service.revealDownloadedPath()!)).toEqual(bytes)
+  })
+
+  it("keeps a hash failure retryable without revealing an unverified installer", async () => {
+    const f = await fixture(), bytes = Buffer.from("AAA"); let corrupt = true
+    const service = new UpdateService({ ...f.options, fetchImpl: async (url) => url.endsWith("manifest.json") ? f.response(f.payload(bytes)) : new Response(corrupt ? Buffer.from("BBB") : bytes) })
+    await service.checkNow()
+    expect(await service.downloadNow()).toMatchObject({ state: "available", downloadFailed: true })
+    expect(service.revealDownloadedPath()).toBeNull()
+    expect(await readdir(path.join(f.directory, "updates"))).toEqual([])
+    corrupt = false
+    expect((await service.downloadNow()).state).toBe("downloaded")
+  })
+
+  it("deduplicates download clicks and leaves an active download unchanged during polling", async () => {
+    const f = await fixture(), bytes = Buffer.from("AAA")
+    let complete!: (response: Response) => void
+    const pending = new Promise<Response>((resolve) => { complete = resolve })
+    const fetchImpl = vi.fn(async (url: string) => url.endsWith("manifest.json") ? f.response(f.payload(bytes)) : pending)
+    const service = new UpdateService({ ...f.options, fetchImpl })
+    await service.checkNow()
+    const first = service.downloadNow()
+    await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(2))
+    expect((await service.downloadNow()).state).toBe("downloading")
+    expect((await service.checkNow()).state).toBe("downloading")
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
+    complete(new Response(bytes))
+    expect((await first).state).toBe("downloaded")
+  })
+
   it("accepts a newer announcement-only schema 2 manifest without failed telemetry or an installer", async () => {
     const f = await fixture(), outcome = vi.fn()
     const fetchImpl = vi.fn(async () => f.response(f.payload()))
@@ -46,13 +87,19 @@ describe("offline signed updates and response bodies", () => {
       if (url.endsWith("manifest.json")) return f.response(f.payload(bytes))
       downloads++; return new Response(bytes)
     } })
-    expect((await service.checkNow()).state).toBe("downloaded")
+    expect((await service.checkNow()).state).toBe("available")
+    expect(downloads).toBe(0)
+    expect((await service.downloadNow()).state).toBe("downloaded")
     bytes = Buffer.from("BBB")
-    expect((await service.checkNow()).state).toBe("downloaded")
+    expect((await service.checkNow()).state).toBe("available")
+    expect(downloads).toBe(1)
+    expect((await service.downloadNow()).state).toBe("downloaded")
     expect(downloads).toBe(2)
     expect((await readFile(service.revealDownloadedPath()!)).toString()).toBe("BBB")
     await writeFile(service.revealDownloadedPath()!, "CCC")
-    expect((await service.checkNow()).state).toBe("downloaded")
+    expect((await service.checkNow()).state).toBe("available")
+    expect(downloads).toBe(2)
+    expect((await service.downloadNow()).state).toBe("downloaded")
     expect(downloads).toBe(3)
     expect((await readFile(service.revealDownloadedPath()!)).toString()).toBe("BBB")
     await service.checkNow()
@@ -84,8 +131,9 @@ describe("offline signed updates and response bodies", () => {
       if (url.endsWith("manifest.json")) return f.response(f.payload(bytes))
       signal = init!.signal as AbortSignal; began(); return new Response(stream)
     } })
+    await service.checkNow()
     vi.useFakeTimers()
-    const pending = service.checkNow()
+    const pending = service.downloadNow()
     await started
     await vi.waitFor(async () => {
       const [partial] = await readdir(path.join(f.directory, "updates"))
@@ -93,7 +141,7 @@ describe("offline signed updates and response bodies", () => {
       expect((await readFile(path.join(f.directory, "updates", partial!))).toString()).toBe("A")
     })
     await vi.advanceTimersByTimeAsync(60_000)
-    expect(await pending).toMatchObject({ state: "error", code: "DOWNLOAD_FAILED" })
+    expect(await pending).toMatchObject({ state: "available", downloadFailed: true })
     expect(signal.aborted).toBe(true)
     vi.useRealTimers()
     await vi.waitFor(async () => {

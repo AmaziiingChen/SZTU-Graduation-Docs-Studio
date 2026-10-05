@@ -137,7 +137,12 @@ class LatexBundleTests(unittest.TestCase):
             root = Path(temporary)
             source = root / "latex"
             data = _write_sources(source)
-            (source / "sztu-process-form.tex").symlink_to(source / "proposal-data.tex")
+            try:
+                (source / "sztu-process-form.tex").symlink_to(source / "proposal-data.tex")
+            except OSError as exc:
+                if getattr(exc, "winerror", None) == 1314:
+                    self.skipTest("Windows user lacks symbolic-link creation privilege")
+                raise
             with self.assertRaises(LatexBundleError):
                 build_latex_bundle(source, data, root / "source.zip")
 
@@ -259,7 +264,12 @@ class LatexBundleTests(unittest.TestCase):
             proposal = _write_sources(source)
             target = source / "real-main.tex"
             (source / "main.tex").replace(target)
-            (source / "main.tex").symlink_to(target)
+            try:
+                (source / "main.tex").symlink_to(target)
+            except OSError as exc:
+                if getattr(exc, "winerror", None) == 1314:
+                    self.skipTest("Windows user lacks symbolic-link creation privilege")
+                raise
             with self.assertRaises(LatexBundleError) as context:
                 build_latex_bundle(source, proposal, root_path / "output.zip")
         self.assertEqual(context.exception.code, "LATEX_BUNDLE_INCOMPLETE")

@@ -84,6 +84,7 @@ TASK_BOOK_ENGINE_FILE_HASHES = {
     "templates/task-book/word/render.py": "5f3dcec4a6331926830c78061c37765b23b3fade14995ec7204bbf65b03b6320",
 }
 WORKSPACE_SHARED_SUPPORT_FILE_NAMES = (
+    "templates/common/python/list_layout.py",
     "templates/common/latex/sztu-process-form.tex",
     "templates/common/python/equation.py",
     "templates/common/python/process_form.py",
@@ -105,7 +106,6 @@ PROPOSAL_WORKSPACE_FILE_NAMES = tuple(
         {
             *(f"templates/proposal/{name}" for name in ENGINE_FILE_HASHES),
             "templates/proposal/spec/layout.json",
-            "templates/common/python/list_layout.py",
             *WORKSPACE_COMMON_FILE_NAMES,
         }
     )
@@ -734,6 +734,11 @@ def _workspace_source(selected: Path, document_type: str) -> WorkspaceEngineSour
 def _workspace_pack_sha256(source: WorkspaceEngineSource) -> str:
     combined = hashlib.sha256()
     for relative_name, candidate in source.files:
+        if source.document_type in ASSESSMENT_DOCUMENT_TYPES and candidate.name == "official-template.docx" and not candidate.exists():
+            raise TemplateEngineError(
+                "TEMPLATE_OFFICIAL_MASTER_MISSING",
+                "评审模板缺少官方 Word 底稿，请补齐 word/official-template.docx 后重新关联模板工程。",
+            )
         path = _require_plain_descendant(source.selection_root, candidate)
         if not path.is_file():
             raise TemplateEngineError(

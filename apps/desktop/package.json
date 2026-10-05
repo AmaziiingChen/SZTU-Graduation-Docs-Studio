@@ -1,7 +1,7 @@
 {
   "name": "@sztu-docs/desktop",
   "private": true,
-  "version": "0.1.5",
+  "version": "0.1.6",
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -10,6 +10,8 @@
     "build:electron": "tsc -p tsconfig.electron.json",
     "build": "tsc -b && pnpm run build:electron && vite build",
     "package:mac": "electron-builder --mac dmg zip --arm64 && node ../../scripts/verify_macos_app_bundle.mjs",
+    "package:win": "electron-builder --win nsis --x64",
+    "package:win:offline": "electron-builder --config electron-builder.offline.yml --win nsis --x64",
     "lint": "node --test ../../tests/frontend-component-reuse.test.mjs && node ../../scripts/check_frontend_design_system.mjs && oxlint electron src",
     "test": "vitest run",
     "preview": "vite preview"

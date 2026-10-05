@@ -535,6 +535,7 @@ export function StructuredContentEditor({
   const pendingExternalRef = useRef<StoredExternalValue | null>(null)
   const compositionTimerRef = useRef<number | null>(null)
   const pointerSelectingRef = useRef(false)
+  const selectionMenuDismissedRef = useRef(false)
   const [formattingMarksVisible, setFormattingMarksVisible] = useState(false)
   const [menuScrollTarget, setMenuScrollTarget] = useState<HTMLElement | null>(null)
   const formatToolbarRef = useRef<HTMLDivElement | null>(null)
@@ -599,7 +600,7 @@ export function StructuredContentEditor({
   }), [menuScrollTarget, animateSelectionMenu, destroySelectionMenu, fillHeight, toolbarHeight])
   const shouldShowSelectionMenu = useCallback<NonNullable<BubbleMenuProps["shouldShow"]>>(
     ({ editor, view, state, element, from, to }) =>
-      !pointerSelectingRef.current && editor.isEditable &&
+      !pointerSelectingRef.current && !selectionMenuDismissedRef.current && editor.isEditable &&
       state.selection instanceof TextSelection && !state.selection.empty &&
       Boolean(state.doc.textBetween(from, to).length) &&
       (view.hasFocus() || element.contains(document.activeElement)),
@@ -745,6 +746,7 @@ export function StructuredContentEditor({
     let frame: number | undefined
     const handlePointerDown = (event: PointerEvent) => {
       if (event.button !== 0) return
+      selectionMenuDismissedRef.current = false
       pointerSelectingRef.current = true
       editor.commands.setMeta("selection-formatting", "hide")
     }
@@ -752,7 +754,7 @@ export function StructuredContentEditor({
       if (!pointerSelectingRef.current) return
       pointerSelectingRef.current = false
       frame = window.requestAnimationFrame(() => {
-        if (editor.isDestroyed || !editor.isEditable || !editor.isFocused) return
+        if (editor.isDestroyed || !editor.isEditable || !editor.isFocused || selectionMenuDismissedRef.current) return
         const { selection, doc } = editor.state
         if (!(selection instanceof TextSelection) || selection.empty || !doc.textBetween(selection.from, selection.to).length) return
         // Tiptap owns placement, visibility, scrolling and viewport collision handling.
@@ -760,11 +762,33 @@ export function StructuredContentEditor({
         editor.commands.setMeta("selection-formatting", "updatePosition")
       })
     }
+    const dismissMenu = () => {
+      selectionMenuDismissedRef.current = true
+      pointerSelectingRef.current = false
+      if (frame !== undefined) window.cancelAnimationFrame(frame)
+      if (!editor.isDestroyed) editor.commands.setMeta("selection-formatting", "hide")
+    }
+    const handleOutsideInteraction = (event: Event) => {
+      const target = event.target
+      if (!(target instanceof Node)) return
+      if (editor.view.dom.contains(target)) {
+        if (event.type === "focusin") selectionMenuDismissedRef.current = false
+        return
+      }
+      if (selectionMenuRef.current?.contains(target)) return
+      dismissMenu()
+    }
     editor.view.dom.addEventListener("pointerdown", handlePointerDown)
+    document.addEventListener("pointerdown", handleOutsideInteraction, true)
+    document.addEventListener("focusin", handleOutsideInteraction, true)
+    window.addEventListener("blur", dismissMenu)
     window.addEventListener("pointerup", finishPointerSelection)
     window.addEventListener("pointercancel", finishPointerSelection)
     return () => {
       editor.view.dom.removeEventListener("pointerdown", handlePointerDown)
+      document.removeEventListener("pointerdown", handleOutsideInteraction, true)
+      document.removeEventListener("focusin", handleOutsideInteraction, true)
+      window.removeEventListener("blur", dismissMenu)
       window.removeEventListener("pointerup", finishPointerSelection)
       window.removeEventListener("pointercancel", finishPointerSelection)
       if (frame !== undefined) window.cancelAnimationFrame(frame)

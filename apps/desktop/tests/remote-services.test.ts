@@ -350,6 +350,13 @@ describe("signed updates", () => {
       fetchImpl,
     })
     expect(await service.checkNow()).toMatchObject({
+      state: "available",
+      version: "0.2.0",
+      sizeBytes: artifactBytes.length,
+    })
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    expect(service.revealDownloadedPath()).toBeNull()
+    expect(await service.downloadNow()).toMatchObject({
       state: "downloaded",
       version: "0.2.0",
     })

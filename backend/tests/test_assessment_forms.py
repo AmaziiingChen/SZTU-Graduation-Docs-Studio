@@ -32,6 +32,21 @@ def fixture() -> dict:
 
 
 class AssessmentContractTests(unittest.TestCase):
+    def test_missing_official_master_reports_an_actionable_code(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'templates/advisor-review').mkdir(parents=True)
+            (root / 'scripts').mkdir()
+            (root / 'scripts/validate_cjk_render.py').write_text('', encoding='utf-8')
+            source = template_engine._workspace_source(root, 'advisor_review')
+            for _, candidate in source.files:
+                if candidate.name != 'official-template.docx':
+                    candidate.parent.mkdir(parents=True, exist_ok=True)
+                    candidate.write_bytes(b'')
+            with self.assertRaises(TemplateEngineError) as error:
+                template_engine._workspace_pack_sha256(source)
+            self.assertEqual(error.exception.code, 'TEMPLATE_OFFICIAL_MASTER_MISSING')
+
     def test_blank_review_regions_and_optional_teachers_are_printable(self) -> None:
         for kind in ASSESSMENT_DOCUMENT_TYPES:
             with self.subTest(kind=kind):
@@ -48,7 +63,7 @@ class AssessmentContractTests(unittest.TestCase):
             data = fixture(); data['sections']['editable_headings'] = value
             with self.subTest(value=value), self.assertRaises(ExportError):
                 validate_document('advisor_review', data)
-        contract = json.loads((Path(__file__).resolve().parents[2] / 'contracts/assessment-form.schema.json').read_text())
+        contract = json.loads((Path(__file__).resolve().parents[2] / 'contracts/assessment-form.schema.json').read_text(encoding="utf-8"))
         self.assertEqual(contract['properties']['sections']['properties']['editable_headings']['type'], 'boolean')
         self.assertNotIn('editable_headings', contract['properties']['sections']['required'])
 
@@ -81,7 +96,7 @@ class AssessmentContractTests(unittest.TestCase):
                 validate_document('advisor_review', data)
         data = fixture(); data['sections']['writing_guidance'] = {}
         self.assertIs(validate_document('advisor_review', data), data)
-        contract = json.loads((Path(__file__).resolve().parents[2] / 'contracts/assessment-form.schema.json').read_text())
+        contract = json.loads((Path(__file__).resolve().parents[2] / 'contracts/assessment-form.schema.json').read_text(encoding="utf-8"))
         self.assertEqual(set(contract['properties']['sections']['properties']['writing_guidance']['properties']), {'comments', 'division_of_work', 'questions'})
 
     def test_explicit_guidance_keeps_fixed_title_font_and_separate_indent(self) -> None:
@@ -228,10 +243,10 @@ class AssessmentContractTests(unittest.TestCase):
         for kind in ASSESSMENT_DOCUMENT_TYPES:
             with self.subTest(kind=kind), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp); generated = root / 'latex'; generated.mkdir()
-                (generated / 'main.tex').write_text('\\input{assessment-fonts.tex}\n\\input{body.tex}\n')
-                (generated / 'body.tex').write_text('合成基本信息')
-                (generated / 'assessment-fonts.tex').write_text('private fonts /Users/example/private.ttf')
-                source = root / 'input.json'; source.write_text(json.dumps(fixture(), ensure_ascii=False))
+                (generated / 'main.tex').write_text('\\input{assessment-fonts.tex}\n\\input{body.tex}\n', encoding='utf-8')
+                (generated / 'body.tex').write_text('合成基本信息', encoding='utf-8')
+                (generated / 'assessment-fonts.tex').write_text('private fonts /Users/example/private.ttf', encoding='utf-8')
+                source = root / 'input.json'; source.write_text(json.dumps(fixture(), ensure_ascii=False), encoding='utf-8')
                 target = root / 'assessment.zip'
                 self.assertEqual(build_latex_bundle(generated, source, target, document_type=kind)['status'], 'pass')
                 with zipfile.ZipFile(target) as archive:
@@ -246,6 +261,8 @@ class AssessmentContractTests(unittest.TestCase):
         source = Path(__file__).resolve().parents[3] / 'Thesis'
         if not (source / 'templates/common/python/assessment_word.py').is_file():
             self.skipTest('Adjacent assessment templates are unavailable.')
+        if not all((source / f'templates/{kind.replace("_", "-")}/word/official-template.docx').is_file() for kind in ASSESSMENT_DOCUMENT_TYPES):
+            self.skipTest('Validated local assessment Word masters are unavailable.')
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             data = fixture()
@@ -255,11 +272,11 @@ class AssessmentContractTests(unittest.TestCase):
                 questions=[{'question': ['合成问题。'], 'answer': ['合成回答。']}],
                 members=['合成成员甲'], final_grade='105.5', date='2026-10-02',
             )
-            input_path = root / 'input.json'; input_path.write_text(json.dumps(data, ensure_ascii=False))
+            input_path = root / 'input.json'; input_path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
             for kind in sorted(ASSESSMENT_DOCUMENT_TYPES):
                 with self.subTest(kind=kind):
                     data['sections']['editable_headings'] = kind == 'defense_record'
-                    input_path.write_text(json.dumps(data, ensure_ascii=False))
+                    input_path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
                     descriptor, _, _ = template_engine._snapshot_workspace_engine(root / 'data', source, kind, source_label='test-workspace')
                     output = root / (kind + '.docx')
                     try:
@@ -268,24 +285,56 @@ class AssessmentContractTests(unittest.TestCase):
                         if exc.code == 'REQUIRED_FONT_MISSING':
                             self.skipTest('Required licensed fonts are unavailable.')
                         raise
-                    layout = json.loads((descriptor.root / 'spec/layout.json').read_text())
+                    layout = json.loads((descriptor.root / 'spec/layout.json').read_text(encoding="utf-8"))
                     result = inspect_docx(output, data, document_type=kind, layout=layout)
                     self.assertEqual(result['status'], 'pass')
                     self.assertFalse(result['details']['target_editor_verified'])
+
+    def test_measured_defense_row_layout_passes_export_checks_and_rejects_stale_reports(self) -> None:
+        from sztu_docs_backend.exporter import _assessment_docx_layout
+        source = Path(__file__).resolve().parents[3] / 'Thesis'
+        if not (source / 'templates/defense-record/word/official-template.docx').is_file():
+            self.skipTest('Validated local defense master is unavailable.')
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data = fixture()
+            data['metadata'].update(title='合成Windows安装包验收题目', student_name='合成验收学生', major='合成材料科学工程专业')
+            input_path = root / 'input.json'
+            input_path.write_text(json.dumps(data, ensure_ascii=False), encoding='utf-8')
+            descriptor, _, _ = template_engine._snapshot_workspace_engine(root / 'data', source, 'defense_record', source_label='test-workspace')
+            output = root / 'defense.docx'
+            report = root / 'effective-layout.json'
+            try:
+                _run([sys.executable, str(descriptor.root / 'word/render.py'), '--data', str(input_path), '--output', str(output), '--layout-output', str(report)], cwd=root)
+            except ExportError as exc:
+                if exc.code == 'REQUIRED_FONT_MISSING':
+                    self.skipTest('Required document fonts are unavailable.')
+                raise
+            spec = descriptor.root / 'spec/layout.json'
+            effective = _assessment_docx_layout(spec, input_path, report)
+            original = json.loads(spec.read_text(encoding='utf-8'))
+            self.assertNotEqual(effective['word']['row_heights_twips'], original['word']['row_heights_twips'])
+            self.assertEqual(inspect_docx(output, data, document_type='defense_record', layout=effective)['status'], 'pass')
+            input_path.write_text(input_path.read_text(encoding='utf-8') + '\n', encoding='utf-8')
+            with self.assertRaises(ExportError) as failure:
+                _assessment_docx_layout(spec, input_path, report)
+            self.assertEqual(failure.exception.code, 'DOCX_EXPECTATION_INVALID')
 
     def test_deleted_editable_prompts_are_not_restored_in_docx(self) -> None:
         source = Path(__file__).resolve().parents[3] / 'Thesis'
         if not (source / 'templates/common/python/assessment_word.py').is_file():
             self.skipTest('Adjacent assessment templates are unavailable.')
+        if not all((source / f'templates/{kind.replace("_", "-")}/word/official-template.docx').is_file() for kind in ASSESSMENT_DOCUMENT_TYPES):
+            self.skipTest('Validated local assessment Word masters are unavailable.')
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp); data = fixture(); data['sections']['editable_headings'] = True
-            input_path = root / 'input.json'; input_path.write_text(json.dumps(data, ensure_ascii=False))
+            input_path = root / 'input.json'; input_path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
             for kind in sorted(ASSESSMENT_DOCUMENT_TYPES):
                 with self.subTest(kind=kind):
                     descriptor, _, _ = template_engine._snapshot_workspace_engine(root / 'data', source, kind, source_label='test-workspace')
                     output = root / (kind + '.docx')
                     _run([sys.executable, str(descriptor.root / 'word/render.py'), '--data', str(input_path), '--output', str(output)], cwd=root)
-                    layout = json.loads((descriptor.root / 'spec/layout.json').read_text())
+                    layout = json.loads((descriptor.root / 'spec/layout.json').read_text(encoding="utf-8"))
                     self.assertEqual(inspect_docx(output, data, document_type=kind, layout=layout)['status'], 'pass')
                     from xml.etree import ElementTree
                     with zipfile.ZipFile(output) as archive:
@@ -314,6 +363,12 @@ class AssessmentContractTests(unittest.TestCase):
             result = subprocess.run([sys.executable, str(descriptor.root / 'word/render.py')], capture_output=True, text=True, check=True)
             self.assertEqual(result.stdout.strip(), '42')
             self.assertTrue(descriptor.template_id.startswith('sztu.advisor-review.'))
-            renderer.unlink(); renderer.symlink_to(shared)
+            renderer.unlink()
+            try:
+                renderer.symlink_to(shared)
+            except OSError as exc:
+                if getattr(exc, 'winerror', None) == 1314:
+                    self.skipTest('Windows user lacks symbolic-link creation privilege')
+                raise
             with self.assertRaises(TemplateEngineError):
                 template_engine._snapshot_workspace_engine(root / 'data', source, 'advisor_review', source_label='test-workspace')

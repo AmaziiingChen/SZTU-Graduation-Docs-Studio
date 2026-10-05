@@ -43,6 +43,7 @@ const PRIMARY_CHECK_IDS = new Set([
   "thesis_tex_packages",
   "pdf_tools",
   "office_editor",
+  "thesis_template",
 ])
 
 const CHECK_TITLES: Record<string, string> = {
@@ -62,6 +63,11 @@ const CHECK_TITLES: Record<string, string> = {
   proposal_engine: "开题报告模板",
   task_book_engine: "任务书模板",
   midterm_engine: "中期检查模板",
+  thesis_template: "毕业论文 LaTeX 源码包",
+  advisor_review_engine: "指导教师评审模板",
+  reviewer_review_engine: "评阅人评审模板",
+  defense_record_engine: "答辩记录模板",
+  grade_assessment_engine: "成绩考核模板",
 }
 
 type InstallationGuide = {
@@ -75,6 +81,12 @@ function installationGuide(
   system: string,
 ): InstallationGuide | undefined {
   const isMac = system === "Darwin"
+  if (check.id === "special_document_fonts" && Array.isArray(check.details?.missing)
+    && check.details.missing.includes("方正小标宋简体")) {
+    return {
+      description: "仅中期检查表的两行 18 pt 大标题使用方正小标宋。当前暂缓引入该字体；其他六类过程文档不受此项影响，中期表原版预览与导出需待字体方案确定。",
+    }
+  }
   switch (check.id) {
     case "xelatex":
     case "process_tex_packages":
@@ -100,7 +112,7 @@ function installationGuide(
     case "task_book_docx_font":
       return {
         description:
-          "请从你合法使用的 Windows、Office、WPS、macOS 或学校软件环境安装缺失字体；本软件不会分发商业字体。",
+          "软件可使用随附的已授权字体，也可读取本机字体。缺失时请获取对应字体支持，或安装模板要求的字体；Word/WPS 还需能够识别这些字体。",
         linkId: isMac ? "font-book-help" : "windows-font-help",
         linkLabel: "查看字体安装方法",
       }

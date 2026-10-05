@@ -72,7 +72,8 @@ describe("local diagnostic package", () => {
 
     expect(summary.environmentCheckCount).toBe(1)
     expect(summary.sourceFieldsRemoved).toBe(3)
-    expect(savedMode).toBe(0o600)
+    // Windows chmod exposes only the read-only bit; POSIX mode bits are not ACLs.
+    if (process.platform !== "win32") expect(savedMode).toBe(0o600)
     expect(serialized).toContain('"operation": "preview.generate"')
     expect(serialized).toContain('"error_code": "RENDER_FAILED"')
     expect(serialized).toContain('"id": "python"')

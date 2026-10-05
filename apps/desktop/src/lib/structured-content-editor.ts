@@ -3,7 +3,7 @@ import { InlineEquationNode, ProcessEquationNode, isInlineEquation, isProcessEqu
 import { createProcessMathLivePreview } from "@/lib/process-math-live-preview"
 import Subscript from "@tiptap/extension-subscript"
 import Superscript from "@tiptap/extension-superscript"
-import type { Node as ProseMirrorNode } from "@tiptap/pm/model"
+import { Fragment, Slice, type Node as ProseMirrorNode } from "@tiptap/pm/model"
 import { Plugin, PluginKey } from "@tiptap/pm/state"
 import { Decoration, DecorationSet } from "@tiptap/pm/view"
 import {
@@ -1139,6 +1139,23 @@ function createRestrictedDocumentBehavior(mode: StructuredEditorMode) {
     addProseMirrorPlugins() {
       return [
         new Plugin({
+          props: {
+            transformPasted(slice, view) {
+              if (mode !== "inline") return slice
+              // Single-paragraph fields cannot accept block breaks. Flatten the
+              // parsed slice before validation, retaining supported text marks.
+              const content: ProseMirrorNode[] = []
+              slice.content.descendants((node) => {
+                if (node.isTextblock && content.length) content.push(view.state.schema.text(" "))
+                if (node.isInline) {
+                  content.push(node)
+                  return false
+                }
+                return true
+              })
+              return new Slice(Fragment.fromArray(content), 0, 0)
+            },
+          },
           filterTransaction(transaction) {
             return (
               !transaction.docChanged ||

@@ -596,7 +596,7 @@ class StorageTests(unittest.TestCase):
                 document_id=document["id"],
                 request_id="request-active-1",
                 formats=["docx"],
-                output_directory="/synthetic/output",
+                output_directory=str(self.data_dir / "synthetic-output"),
                 input_sha256=SYNTHETIC_SHA256,
                 template_id="synthetic.template",
                 template_version="1.0",
@@ -609,7 +609,7 @@ class StorageTests(unittest.TestCase):
                     document_id=document["id"],
                     request_id="request-active-2",
                     formats=["pdf"],
-                    output_directory="/synthetic/output",
+                    output_directory=str(self.data_dir / "synthetic-output"),
                     input_sha256=SYNTHETIC_SHA256,
                     template_id="synthetic.template",
                     template_version="1.0",
@@ -624,7 +624,7 @@ class StorageTests(unittest.TestCase):
                 document_id=document["id"],
                 request_id="request-active-2",
                 formats=["pdf"],
-                output_directory="/synthetic/output",
+                output_directory=str(self.data_dir / "synthetic-output"),
                 input_sha256=SYNTHETIC_SHA256,
                 template_id="synthetic.template",
                 template_version="1.0",
@@ -636,7 +636,7 @@ class StorageTests(unittest.TestCase):
             self.assertEqual([item["id"] for item in history], [second["id"], first["id"]])
 
     def test_export_snapshot_receipt_and_artifacts_round_trip(self) -> None:
-        forbidden_directory = "/synthetic/private/export"
+        forbidden_directory = str(self.data_dir / "synthetic-private-export")
         frozen_snapshot = {
             "schema_version": "1.0",
             "output_directory": forbidden_directory,
@@ -705,7 +705,7 @@ class StorageTests(unittest.TestCase):
                 document_id=document["id"],
                 request_id="request-interrupted",
                 formats=["pdf"],
-                output_directory="/synthetic/output",
+                output_directory=str(self.data_dir / "synthetic-output"),
                 input_sha256=SYNTHETIC_SHA256,
                 template_id="synthetic.template",
                 template_version="1.0",
@@ -723,7 +723,7 @@ class StorageTests(unittest.TestCase):
             self.assertIsNone(recovered["receipt"])
 
     def test_template_installation_metadata_round_trip_and_snapshot_privacy(self) -> None:
-        install_path = "/synthetic/private/template"
+        install_path = str(self.data_dir / "synthetic-private-template")
         metadata = {"source": "synthetic", "contract_versions": {"proposal": "0.2"}}
         with Workspace.open_persistent(self.data_dir) as workspace:
             installed = workspace.upsert_template_installation(

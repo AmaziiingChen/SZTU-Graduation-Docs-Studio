@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build and smoke-test the self-contained macOS document sidecar."""
+"""Build and smoke-test the self-contained native document sidecar."""
 
 from __future__ import annotations
 
@@ -8,23 +8,24 @@ import hashlib
 import importlib.metadata
 import os
 import platform
-import select
+import queue
 import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import uuid
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-ARCHITECTURE = {"arm64": "arm64", "aarch64": "arm64", "x86_64": "x64"}.get(
+ARCHITECTURE = {"arm64": "arm64", "aarch64": "arm64", "x86_64": "x64", "amd64": "x64"}.get(
     platform.machine().lower(), platform.machine().lower()
 )
 BUILD_ROOT = ROOT / "build"
-DIST_ROOT = BUILD_ROOT / "sidecar" / f"darwin-{ARCHITECTURE}"
-WORK_ROOT = BUILD_ROOT / "pyinstaller" / f"darwin-{ARCHITECTURE}"
-EXECUTABLE = DIST_ROOT / "sztu-docs-backend"
+DIST_ROOT = BUILD_ROOT / "sidecar" / f"{sys.platform}-{ARCHITECTURE}"
+WORK_ROOT = BUILD_ROOT / "pyinstaller" / f"{sys.platform}-{ARCHITECTURE}"
+EXECUTABLE = DIST_ROOT / ("sztu-docs-backend.exe" if sys.platform == "win32" else "sztu-docs-backend")
 BUILD_MANIFEST = DIST_ROOT / "build-manifest.json"
 
 
@@ -44,10 +45,21 @@ def request(process: subprocess.Popen[str], method: str) -> dict[str, object]:
         + "\n"
     )
     process.stdin.flush()
-    ready, _, _ = select.select([process.stdout], [], [], 30)
-    if not ready:
-        raise RuntimeError(f"Packaged sidecar did not answer {method} within 30 seconds.")
-    response = json.loads(process.stdout.readline())
+    # Windows select() supports sockets only, so read pipe replies on a daemon thread.
+    replies: queue.Queue[str | Exception] = queue.Queue(maxsize=1)
+    def read_reply() -> None:
+        try:
+            replies.put(process.stdout.readline())
+        except Exception as exc:
+            replies.put(exc)
+    threading.Thread(target=read_reply, daemon=True).start()
+    try:
+        line = replies.get(timeout=30)
+    except queue.Empty as exc:
+        raise RuntimeError(f"Packaged sidecar did not answer {method} within 30 seconds.") from exc
+    if isinstance(line, Exception):
+        raise RuntimeError(f"Packaged sidecar reply could not be read for {method}.") from line
+    response = json.loads(line)
     if response.get("id") != request_id or response.get("ok") is not True:
         raise RuntimeError(f"Packaged sidecar returned an invalid response: {response!r}")
     return response
@@ -62,11 +74,14 @@ def smoke_test() -> None:
             **os.environ,
             "SZTU_DOCS_DATA_DIR": data_root,
             "SZTU_DOCS_TEMPLATE_PACKS_DIR": str(ROOT / "template-packs"),
+            "PYTHONUTF8": "1",
+            "PYTHONIOENCODING": "utf-8",
         },
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        encoding="utf-8",
     )
     try:
         request(process, "system.ping")
@@ -114,7 +129,7 @@ def write_build_manifest() -> None:
         json.dumps(
             {
                 "schema_version": "1.0",
-                "target": "darwin",
+                "target": sys.platform,
                 "architecture": ARCHITECTURE,
                 "python_version": platform.python_version(),
                 "packages": packages,
@@ -139,14 +154,15 @@ def write_build_manifest() -> None:
 
 
 def main() -> int:
-    if sys.platform != "darwin":
-        raise SystemExit("This build target must run on macOS.")
+    if sys.platform not in {"darwin", "win32"}:
+        raise SystemExit("This build target must run on macOS or Windows.")
     if ARCHITECTURE not in {"arm64", "x64"}:
-        raise SystemExit(f"Unsupported macOS architecture: {ARCHITECTURE}")
+        raise SystemExit(f"Unsupported architecture: {ARCHITECTURE}")
 
     for target in (DIST_ROOT, WORK_ROOT):
-        if target.exists():
-            shutil.rmtree(target)
+        # Preserve previous build evidence; PyInstaller overwrites its own outputs.
+        if target.is_symlink() or not target.resolve().is_relative_to(BUILD_ROOT.resolve()):
+            raise SystemExit(f"Build directory is outside the workspace: {target}")
         target.mkdir(parents=True, exist_ok=True)
 
     subprocess.run(
@@ -158,7 +174,7 @@ def main() -> int:
             "--clean",
             "--onefile",
             "--name",
-            EXECUTABLE.name,
+            "sztu-docs-backend",
             "--distpath",
             str(DIST_ROOT),
             "--workpath",

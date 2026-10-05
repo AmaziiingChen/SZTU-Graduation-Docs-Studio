@@ -9,6 +9,8 @@ import { DeleteIcon } from "@/components/ui/delete"
 import { AnimatedActionIcon } from "@/components/animated-action-icon"
 import { FileTextIcon } from "@/components/ui/file-text"
 import { FolderOpenIcon } from "@/components/ui/folder-open"
+import { SlidersHorizontal } from "@/components/animate-ui/icons/sliders-horizontal"
+import { useReducedMotion } from "motion/react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { ChevronRightIcon } from "lucide-react"
 import { AlignJustifyIcon } from "@/components/ui/align-justify-icon"
@@ -158,6 +160,8 @@ export function NavDocuments({
     if (activeGroupExpanded) activeDocumentButton.current?.scrollIntoView?.({ block: "nearest" })
   }, [activeDocumentId, activeGroupExpanded])
   const [layoutToolsExpanded, setLayoutToolsExpanded] = useState(thesisToolsActive)
+  const [layoutIconActive, setLayoutIconActive] = useState(false)
+  const reducedMotion = useReducedMotion()
   const [trashExpanded, setTrashExpanded] = useState(false)
   const [createType, setCreateType] = useState<DocumentType | null>(null)
   const [createTitle, setCreateTitle] = useState("")
@@ -218,6 +222,7 @@ export function NavDocuments({
                 <CollapsibleTrigger
                   render={<SidebarMenuButton tooltip={group.label} />}
                   aria-label={group.label}
+                  title={group.type === "thesis" ? "毕业论文：下载 LaTeX 模板" : undefined}
                   aria-description={group.type === "thesis" ? "下载 LaTeX 工程，在外部编辑器中撰写论文" : undefined}
                 >
                   <ChevronRightIcon
@@ -226,8 +231,7 @@ export function NavDocuments({
                       : "transition-transform duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"}
                   />
                   <AnimatedActionIcon icon={FolderOpenIcon} />
-                  <span>{group.label}</span>
-                  {group.type === "thesis" ? <span className="text-xs text-muted-foreground">模板下载</span> : null}
+                  <span className="min-w-0 flex-1 truncate">{group.label}</span>
                 </CollapsibleTrigger>
                 <SidebarMenuAction
                   aria-label={`新建${group.label}`}
@@ -329,13 +333,17 @@ export function NavDocuments({
           <Collapsible open={layoutToolsExpanded} onOpenChange={setLayoutToolsExpanded} render={<SidebarMenuItem />}>
             <CollapsibleTrigger
               render={<SidebarMenuButton tooltip="排版工具" />}
+              onMouseEnter={() => setLayoutIconActive(true)}
+              onMouseLeave={() => setLayoutIconActive(false)}
+              onFocus={() => setLayoutIconActive(true)}
+              onBlur={() => setLayoutIconActive(false)}
             >
               <ChevronRightIcon
                 className={layoutToolsExpanded
                   ? "rotate-90 transition-transform duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
                   : "transition-transform duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"}
               />
-              <AnimatedActionIcon icon={FolderOpenIcon} />
+              <SlidersHorizontal size={16} animate={!reducedMotion && layoutIconActive} aria-hidden="true" />
               <span>排版工具</span>
             </CollapsibleTrigger>
             <CollapsibleContent>

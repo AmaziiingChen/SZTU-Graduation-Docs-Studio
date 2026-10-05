@@ -10,6 +10,7 @@ import {
 } from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
+import { verifyThesisTemplateResource } from "./verify_thesis_template_resource.mjs"
 
 const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -36,7 +37,7 @@ const frameworkResourcesRoot = path.join(
 const allowedLocales = new Set(["en", "zh_CN"])
 const maximumAsarBytes = 16 * 1024 * 1024
 const forbiddenFontExtensions = new Set([".otf", ".ttc", ".ttf"])
-const requiredEngineNames = ["midterm", "proposal", "task_book"]
+const requiredEngineNames = ["midterm", "proposal", "task_book", "advisor_review", "reviewer_review", "defense_record", "grade_assessment"]
 const publicReleaseRedistribution = "public-release-authorized"
 const releaseDocxMetadataPolicy = "public-release-scrubbed-v1"
 const failures = []
@@ -186,6 +187,10 @@ requireFile(
 )
 
 const asarBytes = existsSync(asarPath) ? statSync(asarPath).size : 0
+if (existsSync(asarPath)) {
+  try { verifyThesisTemplateResource(asarPath) }
+  catch (error) { failures.push(`thesis download resource: ${error.message}`) }
+}
 if (asarBytes > maximumAsarBytes) {
   failures.push(
     `application archive is unexpectedly large: ${asarBytes} bytes (limit ${maximumAsarBytes})`,

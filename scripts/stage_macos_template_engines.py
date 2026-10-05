@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Stage the authorized process-document engines for a macOS release."""
+"""Stage the authorized process-document engines for a desktop release."""
 
 from __future__ import annotations
 
 import json
+import argparse
 import os
 import shutil
 import sys
@@ -106,7 +107,26 @@ def stage_engine(source_root: Path, document_type: str) -> dict[str, object]:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--check", action="store_true", help="Validate source dependencies without changing staged resources")
+    args = parser.parse_args()
     source_root = template_source_root()
+    missing = [
+        f"templates/{kind.replace('_', '-')}/word/official-template.docx"
+        for kind in DOCUMENT_TYPES
+        if kind not in {"proposal", "task_book", "midterm"}
+        and not (source_root / "templates" / kind.replace("_", "-") / "word/official-template.docx").is_file()
+    ]
+    if missing:
+        raise SystemExit("缺少已核对的官方 Word 底稿，请从本地模板工程补齐：\n" + "\n".join(missing))
+    # Fail before replacing any previous bundle when a source checkout is incomplete.
+    for kind in DOCUMENT_TYPES:
+        _workspace_pack_sha256(_workspace_source(source_root, kind))
+    if args.check:
+        print("Template source preflight passed for all seven process-document engines.")
+        return 0
+    if OUTPUT_ROOT.is_symlink() or not OUTPUT_ROOT.resolve().is_relative_to((ROOT / "build").resolve()):
+        raise SystemExit("Template staging directory is outside the expected build directory.")
     if OUTPUT_ROOT.exists():
         shutil.rmtree(OUTPUT_ROOT)
     OUTPUT_ROOT.mkdir(parents=True)

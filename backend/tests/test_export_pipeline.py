@@ -81,6 +81,12 @@ def write_task_book_layout(engine_root: Path) -> None:
 
 
 class ExportFilenameTests(unittest.TestCase):
+    def test_windows_device_names_are_portable_without_changing_normal_names(self) -> None:
+        for title in ('CON', 'nul', 'COM1.notes'):
+            with self.subTest(title=title):
+                self.assertEqual(_output_filenames({'title': title}, ['pdf'])['pdf'], '_' + title + '.pdf')
+        self.assertEqual(_output_filenames({'title': 'CON研究报告'}, ['pdf'])['pdf'], 'CON研究报告.pdf')
+
     def test_saved_document_names_are_not_given_another_type_suffix(self) -> None:
         labels = {
             "proposal": "开题报告",
@@ -1165,7 +1171,12 @@ class TemplateEngineInstallationTests(unittest.TestCase):
         outside.mkdir()
         payload = b"synthetic renderer outside selection"
         (outside / "render.py").write_bytes(payload)
-        (self.source / "word").symlink_to(outside, target_is_directory=True)
+        try:
+            (self.source / "word").symlink_to(outside, target_is_directory=True)
+        except OSError as exc:
+            if getattr(exc, "winerror", None) == 1314:
+                self.skipTest("Windows user lacks symbolic-link creation privilege")
+            raise
         validator = self.source / "scripts" / "validate_cjk_render.py"
         validator.parent.mkdir(parents=True)
         validator.write_bytes(b"synthetic validator")

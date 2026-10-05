@@ -145,6 +145,7 @@ const KNOWN_ENVIRONMENT_CHECKS = new Set([
   "pdf_tools",
   "office_editor",
   "template_pack",
+  "thesis_template",
   "proposal_engine",
   "midterm_engine",
   "task_book_engine",

@@ -34,6 +34,7 @@ export type UpdateStatus =
   | { state: "idle" }
   | { state: "checking"; control?: ReleaseControl }
   | { state: "up_to_date"; checkedAt: string; control?: ReleaseControl }
+  | { state: "available"; version: string; sizeBytes: number; downloadFailed?: boolean; control?: ReleaseControl }
   | { state: "downloading"; version: string; control?: ReleaseControl }
   | { state: "downloaded"; version: string; downloadedAt: string; control?: ReleaseControl }
   | { state: "error"; code: "CHECK_FAILED" | "MANIFEST_INVALID" | "DOWNLOAD_FAILED"; control?: ReleaseControl }
@@ -306,6 +307,8 @@ export class UpdateService {
   private status: UpdateStatus
   private timer: NodeJS.Timeout | undefined
   private checking = false
+  private downloading = false
+  private availableUpdate: { version: string; artifact: UpdateArtifact } | undefined
   private downloadedPath: string | undefined
   private downloadedVersion: string | undefined
   private downloadedSha256: string | undefined
@@ -365,7 +368,7 @@ export class UpdateService {
   }
 
   async checkNow(): Promise<UpdateStatus> {
-    if (!this.options.manifestUrl || !this.options.publicKeyPem || this.checking) {
+    if (!this.options.manifestUrl || !this.options.publicKeyPem || this.checking || this.downloading) {
       return this.status
     }
     this.checking = true
@@ -420,6 +423,7 @@ export class UpdateService {
       this.currentControl = control
       if (compareSemver(manifest.version, this.options.currentVersion) <= 0 ||
           (manifest.schema_version === "2.0" && manifest.artifacts.length === 0)) {
+        this.availableUpdate = undefined
         this.setStatus({
           state: "up_to_date",
           checkedAt: (this.options.now?.() ?? new Date()).toISOString(),
@@ -448,26 +452,16 @@ export class UpdateService {
         })
         return this.status
       }
-      await this.options.onOutcome?.("available", manifest.version)
-      this.setStatus({ state: "downloading", version: manifest.version, ...(control ? { control } : {}) })
-      try {
-        this.downloadedPath = await this.downloadArtifact(manifest.version, artifact)
-      } catch {
-        this.setStatus({ state: "error", code: "DOWNLOAD_FAILED", ...(this.currentControl ? { control: this.currentControl } : {}) })
-        await this.options.onOutcome?.("failed", manifest.version)
-        return this.status
-      }
+      const alreadyKnown = this.availableUpdate?.version === manifest.version &&
+        this.availableUpdate.artifact.sha256 === artifact.sha256
+      this.availableUpdate = { version: manifest.version, artifact }
       this.setStatus({
-        state: "downloaded",
+        state: "available",
         version: manifest.version,
-        downloadedAt: (this.options.now?.() ?? new Date()).toISOString(),
+        sizeBytes: artifact.size_bytes,
         ...(control ? { control } : {}),
       })
-      this.downloadedVersion = manifest.version
-      this.downloadedSha256 = artifact.sha256
-      this.downloadedAt =
-        this.status.state === "downloaded" ? this.status.downloadedAt : undefined
-      await this.options.onOutcome?.("downloaded", manifest.version)
+      if (!alreadyKnown) await this.options.onOutcome?.("available", manifest.version)
       return this.status
     } catch {
       this.setStatus({ state: "error", code: "CHECK_FAILED", ...(this.currentControl ? { control: this.currentControl } : {}) })
@@ -476,6 +470,28 @@ export class UpdateService {
     } finally {
       this.checking = false
     }
+  }
+
+  async downloadNow(): Promise<UpdateStatus> {
+    if (this.checking || this.downloading || this.status.state !== "available" || !this.availableUpdate) return this.status
+    const { version, artifact } = this.availableUpdate
+    this.downloading = true
+    const control = this.currentControl
+    this.setStatus({ state: "downloading", version, ...(control ? { control } : {}) })
+    try {
+      this.downloadedPath = await this.downloadArtifact(version, artifact)
+      this.downloadedVersion = version
+      this.downloadedSha256 = artifact.sha256
+      this.downloadedAt = (this.options.now?.() ?? new Date()).toISOString()
+      this.setStatus({ state: "downloaded", version, downloadedAt: this.downloadedAt, ...(control ? { control } : {}) })
+      await this.options.onOutcome?.("downloaded", version)
+    } catch {
+      this.setStatus({ state: "available", version, sizeBytes: artifact.size_bytes, downloadFailed: true, ...(control ? { control } : {}) })
+      await this.options.onOutcome?.("failed", version)
+    } finally {
+      this.downloading = false
+    }
+    return this.status
   }
 
   private setStatus(status: UpdateStatus): void {

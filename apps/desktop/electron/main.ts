@@ -44,7 +44,7 @@ import { developmentConfig } from "./development-config.js"
 import { privatePreviewRoot } from "./preview-path.js"
 import { CloseCoordinator } from "./close-coordinator.js"
 import { SidecarChannels } from "./sidecar-channels.js"
-import { downloadThesisTemplate, ThesisTemplateError } from "./thesis-template.js"
+import { checkThesisTemplateResource, downloadThesisTemplate, ThesisTemplateError } from "./thesis-template.js"
 
 const localDevelopment = developmentConfig(app.isPackaged)
 const moduleDirectory = path.dirname(fileURLToPath(import.meta.url))
@@ -608,6 +608,7 @@ function createWindow(): BrowserWindow {
     minWidth: 1100,
     minHeight: 700,
     show: false,
+    autoHideMenuBar: process.platform === "win32",
     icon: desktopAssetPath("app-icon.png"),
     webPreferences: {
       preload: path.join(moduleDirectory, "preload.cjs"),
@@ -617,6 +618,9 @@ function createWindow(): BrowserWindow {
       webSecurity: true,
     },
   })
+
+  // Keep native shortcuts; Windows users can reveal the hidden menu with Alt.
+  if (process.platform === "win32") window.setMenuBarVisibility(false)
 
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }))
   window.webContents.on("will-navigate", (event, targetUrl) => {
@@ -739,6 +743,12 @@ function privacyNoticeStatus() {
   }
 }
 
+async function checkWorkbenchEnvironment(): Promise<DiagnosticEnvironmentInput> {
+  const environment = await requestSidecar<DiagnosticEnvironmentInput>("environment.check", {})
+  environment.checks.push(await checkThesisTemplateResource(path.join(app.getAppPath(), "resources", "thesis-template")))
+  return environment
+}
+
 function registerIpc(): void {
   ipcMain.handle("sztu:close-complete", (event, input: unknown) => {
     assertTrustedSender(event)
@@ -775,17 +785,14 @@ function registerIpc(): void {
 
   ipcMain.handle("sztu:environment-check", async (event) => {
     assertTrustedSender(event)
-    return runBridge(() => requestSidecar("environment.check", {}))
+    return runBridge(checkWorkbenchEnvironment)
   })
 
   ipcMain.handle("sztu:diagnostic-prepare", async (event) => {
     assertTrustedSender(event)
     return runBridge(async () => {
       if (!diagnostics) throw new Error("Diagnostics service is not initialized.")
-      const environment = await requestSidecar<DiagnosticEnvironmentInput>(
-        "environment.check",
-        {},
-      )
+      const environment = await checkWorkbenchEnvironment()
       const privacy = privacyNoticeStatus()
       return diagnostics.prepare(environment, {
         telemetryConfigured: privacy.telemetryConfigured,
@@ -929,6 +936,11 @@ function registerIpc(): void {
     return runBridge<MidtermDatePolicyStatus>(() =>
       midtermDatePolicyService?.getStatus() ?? { state: "unconfigured", rules: [] },
     )
+  })
+
+  ipcMain.handle("sztu:update-download", (event) => {
+    assertTrustedSender(event)
+    return runBridge<UpdateStatus>(() => updateService?.downloadNow() ?? { state: "unconfigured" })
   })
 
   ipcMain.handle("sztu:update-reveal", (event) => {

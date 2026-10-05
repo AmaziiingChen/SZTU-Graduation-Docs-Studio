@@ -6,16 +6,12 @@ import { SortableContentRow } from "@/components/sortable-content-row"
 import { AnimatedActionIcon } from "@/components/animated-action-icon"
 import { Button } from "@/components/ui/button"
 import { CollapsibleTrigger } from "@/components/ui/collapsible"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { PlusIcon } from "@/components/ui/plus"
-import { ArrowUpIcon } from "@/components/ui/arrow-up"
-import { ArrowDownIcon } from "@/components/ui/arrow-down"
 import { DeleteIcon } from "@/components/ui/delete"
 import { ChevronDownIcon } from "@/components/ui/chevron-down"
 import { ChevronUpIcon } from "@/components/ui/chevron-up"
-import { EllipsisIcon } from "@/components/ui/animateicons/ellipsis"
 import { StructuredContentEditor } from "@/components/workbench/structured-content-editor"
 import { paragraphInputText } from "@/lib/paragraph"
 import { isParagraphInput } from "@/lib/structured-content-editor"
@@ -154,16 +150,9 @@ export function TaskScheduleEditor({ value, onChange, disabled = false, error, v
                   setFocusRequest(selected ? null : { id: item.id, field: "content" })
                 }}
                 onMove={direction => moveItem(index, direction)} onRemove={() => removeItem(index)}
-                actions={<DropdownMenu>
-                  <DropdownMenuTrigger render={<Button type="button" variant="ghost" size="icon-sm" aria-label={`第 ${index + 1} 项进度：更多操作`} disabled={disabled} />}>
-                    <AnimatedActionIcon icon={EllipsisIcon} />
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem disabled={disabled || index === 0} onClick={() => moveItem(index, -1)}><AnimatedActionIcon icon={ArrowUpIcon} />上移</DropdownMenuItem>
-                    <DropdownMenuItem disabled={disabled || index === value.length - 1} onClick={() => moveItem(index, 1)}><AnimatedActionIcon icon={ArrowDownIcon} />下移</DropdownMenuItem>
-                    <DropdownMenuItem variant="destructive" disabled={disabled} onClick={() => removeItem(index)}><AnimatedActionIcon icon={DeleteIcon} />删除</DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>}
+                actions={<Button type="button" variant="ghost" size="icon-sm" aria-label={`第 ${index + 1} 项进度：删除`} title="删除进度" disabled={disabled} onClick={() => removeItem(index)}>
+                  <AnimatedActionIcon icon={DeleteIcon} />
+                </Button>}
                 editor={{
                   header: <>
                     <CollapsibleTrigger render={<Button type="button" variant="ghost" size="sm" aria-label={`收起第 ${index + 1} 项进度`} disabled={disabled} />}>
@@ -189,7 +178,7 @@ export function TaskScheduleEditor({ value, onChange, disabled = false, error, v
                   }}>
                     <StructuredContentEditor value={inlineBody(item.content)} onChange={next => replaceItem(index, { ...item, content: inlineParagraph(next) })}
                       mode="inline" disabled={disabled} ariaLabel={`第 ${index + 1} 项进度内容`} ariaInvalid={Boolean(contentError)} ariaDescribedBy={contentError ? contentErrorId : undefined}
-                      className="border-0 rounded-none" placeholder="输入本阶段要完成的工作" />
+                      className="[&_[data-slot=editor-format-toolbar]]:h-8 [&_.ProseMirror]:min-h-10 [&_.ProseMirror]:py-2" placeholder="输入本阶段要完成的工作" />
                     {contentError ? <p id={contentErrorId} className="mt-1 text-xs text-destructive">{contentError}</p> : null}
                   </div>,
                 }}

@@ -227,6 +227,7 @@ describe("Electron security boundary", () => {
       "sztu:telemetry-completion-count",
       "sztu:telemetry-complete-document",
       "sztu:update-status",
+      "sztu:update-download",
       "sztu:midterm-date-policy-status",
       "sztu:update-reveal",
       "sztu:update-open-help",
@@ -314,7 +315,7 @@ describe("Electron security boundary", () => {
 
   it("wraps the environment sidecar response in the preload bridge envelope", () => {
     expect(mainSource).toContain(
-      'return runBridge(() => requestSidecar("environment.check", {}))',
+      'return runBridge(checkWorkbenchEnvironment)',
     )
   })
 
@@ -333,7 +334,7 @@ describe("Electron security boundary", () => {
     expect(sidecarSource).toContain("SZTU_DOCS_MIDTERM_ENGINE_DIR")
     expect(sidecarSource).toContain("SZTU_STXINGKAI_FONT")
     expect(sidecarSource).toContain('path.resolve(this.backendRoot, "../template-packs")')
-    expect(sidecarSource).toContain('PATH: resolveSidecarPath()')
+    expect(sidecarSource).toContain('offlineRuntimePaths(this.backendRoot)')
     expect(sidecarSource).toContain('path.join(repositoryRoot, ".venv", "bin", "python")')
     expect(sidecarSource).toContain('path.join(repositoryRoot, ".venv", "Scripts", "python.exe")')
     const spawnEnvironment = sidecarSource.match(
@@ -345,10 +346,12 @@ describe("Electron security boundary", () => {
         .map((match) => match[1])
         .sort(),
     ).toEqual(
-      [
-        "COMSPEC",
-        "HOME",
-        "LANG",
+        [
+          "COMSPEC",
+          "HOME",
+          "LANG",
+          "LOCALAPPDATA",
+          "PROGRAMFILES",
         "LC_ALL",
         "PATHEXT",
         "SYSTEMROOT",
@@ -360,7 +363,6 @@ describe("Electron security boundary", () => {
         "SZTU_DOCS_GRADE_ASSESSMENT_ENGINE_DIR",
         "SZTU_DOCS_PROPOSAL_ENGINE_DIR",
         "SZTU_DOCS_TASK_BOOK_ENGINE_DIR",
-        "SZTU_FONT_DIR",
         "SZTU_FZXIAOBIAOSONG_FONT",
         "SZTU_SIMHEI_FONT",
         "SZTU_SIMSUN_FONT",
@@ -436,7 +438,7 @@ describe("Electron security boundary", () => {
 
   it("does not import Node built-ins in renderer source", () => {
     for (const sourcePath of rendererSources(rendererRoot)) {
-      if (sourcePath.endsWith("electron-security.test.ts")) continue
+      if (/\.test\.tsx?$/.test(sourcePath)) continue
       const source = readFileSync(sourcePath, "utf8")
       expect(source, sourcePath).not.toMatch(/from ["']node:/)
       expect(source, sourcePath).not.toMatch(/\brequire\s*\(/)

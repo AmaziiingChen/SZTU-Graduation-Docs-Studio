@@ -34,9 +34,8 @@ function LiveSchedule({ initial = items, onChange = vi.fn(), disabled = false }:
   return <TaskScheduleEditor value={value} onChange={next => { setValue(next); onChange(next) }} disabled={disabled} />
 }
 
-async function menuAction(index: number, action: string) {
-  fireEvent.click(screen.getByRole("button", { name: `第 ${index} 项进度：更多操作` }))
-  fireEvent.click(await screen.findByRole("menuitem", { name: action }))
+function deleteItem(index: number) {
+  fireEvent.click(screen.getByRole("button", { name: `第 ${index} 项进度：删除` }))
 }
 
 describe("TaskScheduleEditor", () => {
@@ -125,12 +124,13 @@ describe("TaskScheduleEditor", () => {
     expect(screen.getByRole("textbox", { name: "第 2 项进度内容" }).querySelector("sub")).toHaveTextContent("2")
   })
 
-  it("keeps the active item while reordering through the menu", async () => {
-    const onChange = vi.fn()
-    render(<LiveSchedule onChange={onChange} />)
-    await menuAction(1, "下移")
-    expect(onChange).toHaveBeenLastCalledWith([items[1], items[0]])
-    expect(screen.getByRole("textbox", { name: "第 2 项进度内容" })).toHaveTextContent("完成文献调研。")
+  it("provides direct delete buttons and drag handles for expanded and collapsed rows", () => {
+    render(<LiveSchedule />)
+    for (const index of [1, 2]) {
+      expect(screen.getByRole("button", { name: `第 ${index} 项进度：删除` })).toBeEnabled()
+      expect(screen.getByRole("button", { name: `拖动第 ${index} 项进度调整顺序` })).toBeEnabled()
+    }
+    expect(screen.queryByRole("button", { name: /更多操作/ })).toBeNull()
     expect(screen.queryByRole("button", { name: "第 1 项进度：上移" })).toBeNull()
   })
 
@@ -138,7 +138,7 @@ describe("TaskScheduleEditor", () => {
     const info = vi.spyOn(toast, "info")
     const onChange = vi.fn()
     render(<LiveSchedule onChange={onChange} />)
-    await menuAction(2, "删除")
+    deleteItem(2)
     expect(screen.getByRole("textbox", { name: "第 1 项进度内容" })).toHaveTextContent("完成文献调研。")
     fireEvent.change(screen.getByRole("textbox", { name: "第 1 项时间范围" }), { target: { value: "第1—3周" } })
     const undo = info.mock.calls.at(-1)?.[1]?.action as { onClick: () => void }
@@ -151,7 +151,7 @@ describe("TaskScheduleEditor", () => {
     const info = vi.spyOn(toast, "info")
     const onChange = vi.fn()
     render(<LiveSchedule initial={[items[1]]} onChange={onChange} />)
-    await menuAction(1, "删除")
+    deleteItem(1)
     const undo = info.mock.calls.at(-1)?.[1]?.action as { onClick: () => void }
     fireEvent.change(screen.getByRole("textbox", { name: "第 1 项时间范围" }), { target: { value: "第9周" } })
     act(() => undo.onClick())
@@ -165,7 +165,7 @@ describe("TaskScheduleEditor", () => {
     const info = vi.spyOn(toast, "info")
     const onChange = vi.fn()
     const view = render(<TaskScheduleEditor value={items} onChange={onChange} />)
-    await menuAction(2, "删除")
+    deleteItem(2)
     const undo = info.mock.calls.at(-1)?.[1]?.action as { onClick: () => void }
     view.rerender(<TaskScheduleEditor value={[{ id: "other-document", period: "第1周", content: "另一份安排" }]} onChange={onChange} />)
     onChange.mockClear()
@@ -185,7 +185,7 @@ describe("TaskScheduleEditor", () => {
   it("keeps all mutations disabled and shows field errors when requested by the caller", () => {
     render(<TaskScheduleEditor value={[{ id: "empty", period: "", content: "" }]} onChange={vi.fn()} disabled error="请检查进度安排。" />)
     expect(screen.getByRole("button", { name: "新增进度" })).toBeDisabled()
-    expect(screen.getByRole("button", { name: "第 1 项进度：更多操作" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "第 1 项进度：删除" })).toBeDisabled()
     expect(screen.getByRole("textbox", { name: "第 1 项时间范围" })).toBeDisabled()
     expect(screen.getByText("缺少时间范围。")).toBeInTheDocument()
     expect(screen.getByText("缺少进度内容。")).toBeInTheDocument()

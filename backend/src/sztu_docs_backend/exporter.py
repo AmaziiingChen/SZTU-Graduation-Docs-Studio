@@ -36,6 +36,7 @@ from .template_engine import (
     sha256_file,
 )
 from .version import BACKEND_VERSION
+from .runtime_paths import windows_tool_path, offline_tex_environment
 
 SUPPORTED_FORMATS = ("docx", "pdf", "tex")
 DOCUMENT_OUTPUT_LABELS = {
@@ -124,6 +125,9 @@ def _safe_export_title(value: Any) -> str:
     title = UNSAFE_FILENAME_PATTERN.sub("-", title)
     title = re.sub(r"\s+", " ", title).strip(" .-")
     title = _truncate_utf8(title, MAX_EXPORT_TITLE_BYTES).strip(" .-")
+    # Keep names portable when a macOS-created draft is later exported on Windows.
+    if re.fullmatch(r"CON|PRN|AUX|NUL|CONIN\$|CONOUT\$|COM[1-9¹²³]|LPT[1-9¹²³]", title.split(".", 1)[0].rstrip().upper()):
+        title = "_" + title
     return title or "未命名文档"
 
 
@@ -1439,6 +1443,29 @@ def _template_json_object(path: Path, *, relative_name: str) -> dict[str, Any]:
     return value
 
 
+def _assessment_docx_layout(spec_path: Path, input_path: Path, report_path: Path | None = None) -> dict[str, Any]:
+    """Use the trusted renderer's shared row plan, bound to this exact input/spec."""
+    base = _template_json_object(spec_path, relative_name="spec/layout.json")
+    if not base.get("word", {}).get("effective_layout_report"):
+        return base
+    try:
+        if report_path is None or report_path.is_symlink() or report_path.stat().st_size > 256 * 1024:
+            raise ValueError("Invalid layout report")
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+        if not isinstance(report, dict) or set(report) != {"schema_version", "input_sha256", "layout_spec_sha256", "layout"}:
+            raise ValueError("Invalid report envelope")
+        if report["schema_version"] != "1.0" or report["input_sha256"] != sha256_file(input_path) or report["layout_spec_sha256"] != sha256_file(spec_path):
+            raise ValueError("Layout report binding mismatch")
+        effective = report["layout"]
+        if not isinstance(effective, dict) or effective.get("page") != base.get("page"):
+            raise ValueError("Page geometry changed")
+        if not isinstance(effective.get("word"), dict) or any(effective["word"].get(key) != base["word"].get(key) for key in ("table_count", "table_grid_twips", "row_height_rule")):
+            raise ValueError("Fixed table geometry changed")
+        return effective
+    except (OSError, ValueError, TypeError, KeyError) as exc:
+        raise ExportError("DOCX_EXPECTATION_INVALID", "评审表有效版式报告缺失或与当前输入不一致。") from exc
+
+
 def _positive_number(value: Any) -> float | None:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
@@ -1958,6 +1985,7 @@ def _renderer_environment(
         "PATH",
         "HOME",
         "USERPROFILE",
+        "LOCALAPPDATA",
         "SYSTEMROOT",
         "WINDIR",
         "TEMP",
@@ -1977,8 +2005,18 @@ def _renderer_environment(
     environment = {
         key: value for key in allowed if (value := os.environ.get(key))
     }
+    environment.update({"PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"})
+    if "PATH" in environment:
+        environment["PATH"] = windows_tool_path(environment["PATH"])
+        environment.update(offline_tex_environment(environment["PATH"]))
     if overrides:
         environment.update(overrides)
+    # Windows ships the same STXingkai family under the shortened STXINGKA filename.
+    # Older trusted template policies recognize only its macOS filename.
+    if os.name == "nt" and not environment.get("SZTU_STXINGKAI_FONT"):
+        windows_font = Path(environment.get("WINDIR", r"C:\Windows")) / "Fonts" / "STXINGKA.TTF"
+        if windows_font.is_file():
+            environment["SZTU_STXINGKAI_FONT"] = str(windows_font)
     return environment
 
 
@@ -2102,6 +2140,11 @@ def _run(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            # Native Windows tools may emit legacy-encoded console diagnostics.
+            # A decode error in Popen's reader thread must not break communicate().
+            encoding="utf-8",
+            errors="replace",
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
             start_new_session=os.name != "nt",
         )
     except OSError as exc:
@@ -2147,7 +2190,7 @@ def _run(
             if label:
                 raise ExportError("SINGLE_PAGE_OVERFLOW", f"“{label}”栏超出固定区域，请检查该栏内容后重试。")
             raise ExportError("SINGLE_PAGE_OVERFLOW", "填写内容超出这一页的固定区域，请缩短内容后重新导出。")
-        if "尚不能编译" in diagnostic or "Required font" in diagnostic:
+        if "尚不能编译" in diagnostic or "Required font" in diagnostic or "缺少必需字体" in diagnostic:
             raise ExportError("REQUIRED_FONT_MISSING", "论文模板缺少规定字体；请在本机安装字体，或在本地模板 fonts.local 中提供已授权字体文件。")
         if "公式命令不受支持" in diagnostic or "公式包含不支持" in diagnostic or "公式花括号不成对" in diagnostic:
             raise ExportError("THESIS_EQUATION_INVALID", "论文公式包含当前预览不支持的数学命令或括号结构，请修改公式源码。")
@@ -3366,6 +3409,12 @@ def run_export(
             if "docx" in ordered_formats:
                 _check_cancelled(cancel_path)
                 docx_path = work / f"{record['document_type']}.docx"
+                assessment_spec = descriptor.root / "spec/layout.json"
+                effective_layout_path = None
+                layout_arguments: list[str] = []
+                if record["document_type"] in ASSESSMENT_DOCUMENT_TYPES and _template_json_object(assessment_spec, relative_name="spec/layout.json").get("word", {}).get("effective_layout_report"):
+                    effective_layout_path = work / "effective-layout.json"
+                    layout_arguments = ["--layout-output", str(effective_layout_path)]
                 _run(
                     _python_script_command(
                         descriptor.root / "word" / "render.py",
@@ -3374,6 +3423,7 @@ def run_export(
                         "--output",
                         str(docx_path),
                         "--overwrite",
+                        *layout_arguments,
                     ),
                     cwd=work,
                     cancellation_file=cancel_path,
@@ -3387,7 +3437,7 @@ def run_export(
                             docx_path,
                             proposal,
                             document_type=record["document_type"],
-                            layout=_template_json_object(descriptor.root / "spec/layout.json", relative_name="spec/layout.json") if record["document_type"] in ASSESSMENT_DOCUMENT_TYPES else None,
+                            layout=_assessment_docx_layout(assessment_spec, data_path, effective_layout_path) if record["document_type"] in ASSESSMENT_DOCUMENT_TYPES else None,
                         )
                     )
                 except DocxInspectionError as exc:

@@ -436,6 +436,7 @@ function mockApi(): SztuDesktopApi {
       total: 1287,
     }),
     getUpdateStatus: vi.fn().mockResolvedValue({ state: "unconfigured" }),
+    downloadUpdate: vi.fn().mockResolvedValue({ state: "unconfigured" }),
     getMidtermDatePolicyStatus: vi.fn().mockResolvedValue({ state: "unconfigured", rules: [] }),
     revealDownloadedUpdate: vi.fn().mockResolvedValue(null),
     openToolLink: vi.fn().mockResolvedValue(null),
@@ -680,6 +681,38 @@ function closePreviewDrawerFromBackdrop() {
 }
 
 describe("M3 workbench persistence", () => {
+  it("notifies about an update and downloads only on click, with a later sidebar entry", async () => {
+    const api = mockApi()
+    vi.mocked(api.getUpdateStatus).mockResolvedValue({ state: "available", version: "0.2.0", sizeBytes: 375095528 })
+    vi.mocked(api.downloadUpdate).mockResolvedValue({ state: "downloaded", version: "0.2.0", downloadedAt: "2026-10-05T00:00:00Z" })
+    installApi(api)
+    renderApp()
+    const notice = await screen.findByRole("dialog", { name: "发现新版本" })
+    expect(within(notice).getByText(/376 MB/)).toBeInTheDocument()
+    expect(api.downloadUpdate).not.toHaveBeenCalled()
+    fireEvent.click(within(notice).getByRole("button", { name: "稍后处理" }))
+    if (!screen.queryByRole("button", { name: "新版本可用" })) fireEvent.click(await screen.findByRole("button", { name: "Toggle Sidebar" }))
+    fireEvent.click(await screen.findByRole("button", { name: "新版本可用" }))
+    fireEvent.click(within(await screen.findByRole("dialog", { name: "发现新版本" })).getByRole("button", { name: "下载更新" }))
+    expect(api.downloadUpdate).toHaveBeenCalledTimes(1)
+    const downloaded = await screen.findByRole("dialog", { name: "新版本已下载并校验" })
+    fireEvent.click(within(downloaded).getByRole("button", { name: "显示更新文件" }))
+    expect(api.revealDownloadedUpdate).toHaveBeenCalledTimes(1)
+  })
+
+  it("allows required update download retries instead of leaving the blocking notice waiting", async () => {
+    const api = mockApi()
+    const control = { updatePolicy: "required" as const, minimumSupportedVersion: "0.2.0", requiresUpgrade: true, serviceStatus: "normal" as const, helpUrl: null, announcement: null }
+    vi.mocked(api.getUpdateStatus).mockResolvedValue({ state: "available", version: "0.2.0", sizeBytes: 1000, control })
+    vi.mocked(api.downloadUpdate).mockResolvedValue({ state: "available", version: "0.2.0", sizeBytes: 1000, downloadFailed: true, control })
+    installApi(api)
+    renderApp()
+    const notice = await screen.findByRole("dialog", { name: "需要更新后继续使用" })
+    fireEvent.click(within(notice).getByRole("button", { name: "下载更新" }))
+    expect(await within(notice).findByRole("button", { name: "重试下载" })).toBeEnabled()
+    expect(within(notice).getByText(/下载失败/)).toBeInTheDocument()
+  })
+
   beforeEach(() => {
     installApi(mockApi())
   })
@@ -982,7 +1015,7 @@ describe("M3 workbench persistence", () => {
     expect(editorFooter).not.toBeNull()
     expect(within(editorFooter!).getByLabelText("保存状态：已保存")).toHaveClass("text-muted-foreground")
     expect(within(editorFooter!).getByRole("button", { name: /查看内容统计/ })).toBeInTheDocument()
-    expect(toolbar.querySelector('[data-slot="document-toolbar-actions"]')).toHaveClass("contents")
+    expect(toolbar.querySelector('[data-slot="document-toolbar-actions"]')).toHaveClass("flex", "shrink-0", "items-center")
     expect(within(toolbar).queryByRole("button", { name: "导出" })).not.toBeInTheDocument()
     const sectionNavigation = screen.getByRole("navigation", {
       name: "当前文档板块",
@@ -1007,7 +1040,7 @@ describe("M3 workbench persistence", () => {
       screen.getByRole("toolbar", {
         name: "本选题的意义及国内外发展状况格式工具栏",
       }),
-    ).toHaveClass("min-h-(--header-height)")
+    ).toHaveClass("h-(--header-height)")
     expect(immersiveTextbox.closest('[data-slot="card"]')).toBeNull()
     const immersiveSurface = immersiveTextbox.closest(
       '[data-slot="immersive-writing-surface"]',
@@ -3329,7 +3362,7 @@ describe("single-page assessment forms", () => {
     expect(screen.queryByText("学生档案尚未补全")).not.toBeInTheDocument()
     if (type === "advisor_review") {
       fireEvent.click(screen.getByRole("button", { name: "学生档案" }))
-      expect(screen.getByText("基础信息")).toBeInTheDocument()
+      expect(screen.getByLabelText("学生姓名")).toBeInTheDocument()
       expect(screen.queryByText("请输入班级。")).not.toBeInTheDocument()
       expect(screen.queryByText("请输入指导教师姓名。")).not.toBeInTheDocument()
       expect(screen.queryByText("请输入指导教师职称。")).not.toBeInTheDocument()

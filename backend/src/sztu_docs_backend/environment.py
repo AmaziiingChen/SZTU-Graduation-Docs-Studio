@@ -36,7 +36,7 @@ CORE_DOCUMENT_FONT_GROUPS = {
 }
 SPECIAL_DOCUMENT_FONT_GROUPS = {
     "华文行楷": ("STXINGKA.ttf", "STXingkai.ttf", "华文行楷.ttf"),
-    "方正小标宋简体": ("方正小标宋简体.ttf", "FZXiaoBiaoSong-B05S.ttf"),
+    "方正小标宋简体": ("方正小标宋简体.ttf", "FZXiaoBiaoSong-B05S.ttf", "FZXBSJW.TTF"),
 }
 FONT_OVERRIDE_ENVIRONMENTS = (
     "SZTU_STXINGKAI_FONT",
@@ -256,6 +256,21 @@ def _font_index() -> dict[str, Path]:
         for path in root.rglob("*"):
             if path.is_file():
                 index.setdefault(path.name.casefold(), path.resolve())
+    # Match the renderer's explicit file overrides even when a file was renamed.
+    override_aliases = {
+        "SZTU_STXINGKAI_FONT": "STXingkai.ttf",
+        "SZTU_FZXIAOBIAOSONG_FONT": "FZXiaoBiaoSong-B05S.ttf",
+        "SZTU_SIMSUN_FONT": "simsun.ttc",
+        "SZTU_SIMHEI_FONT": "simhei.ttf",
+        "SZTU_TIMES_REGULAR_FONT": "times.ttf",
+        "SZTU_TIMES_BOLD_FONT": "timesbd.ttf",
+        "SZTU_TIMES_ITALIC_FONT": "timesi.ttf",
+        "SZTU_TIMES_BOLD_ITALIC_FONT": "timesbi.ttf",
+    }
+    for variable, alias in override_aliases.items():
+        configured = os.environ.get(variable)
+        if configured and (candidate := Path(configured).expanduser()).is_file():
+            index[alias.casefold()] = candidate.resolve()
     return index
 
 
@@ -512,21 +527,6 @@ def _check_task_book_engine() -> dict[str, Any]:
     }
 
 
-def _check_thesis_engine() -> dict[str, Any]:
-    try:
-        engine = resolve_engine("thesis")
-    except ExportError as exc:
-        return {
-            "id": "thesis_engine", "required": False, "status": "warn",
-            "message": exc.message, "details": {"code": exc.code},
-        }
-    return {
-        "id": "thesis_engine", "required": False, "status": "pass",
-        "message": "毕业论文模板已同步为本地快照，可生成 PDF。",
-        "details": {"version": engine.version, "pack_sha256": engine.pack_sha256, "source": engine.source},
-    }
-
-
 def _check_assessment_engine(document_type: str) -> dict[str, Any]:
     try:
         engine = resolve_engine(document_type)
@@ -578,6 +578,26 @@ def _check_task_book_docx_font() -> dict[str, Any]:
     }
 
 
+def _windows_office_registry_candidates() -> list[str]:
+    """Read registered application paths without executing registry commands."""
+    try:
+        import winreg
+    except ImportError:
+        return []
+    candidates: list[str] = []
+    for hive in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+        for view in (winreg.KEY_WOW64_64KEY, winreg.KEY_WOW64_32KEY):
+            for executable in ("WINWORD.EXE", "wps.exe", "ksolaunch.exe"):
+                try:
+                    with winreg.OpenKey(hive, rf"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\{executable}", 0, winreg.KEY_READ | view) as key:
+                        value, _ = winreg.QueryValueEx(key, "")
+                except OSError:
+                    continue
+                if isinstance(value, str) and value.strip():
+                    candidates.append(os.path.expandvars(value.strip().strip('"')))
+    return list(dict.fromkeys(candidates))
+
+
 def _office_candidates() -> list[str]:
     system = platform.system()
     if system == "Darwin":
@@ -594,28 +614,30 @@ def _office_candidates() -> list[str]:
         ]
         relative_paths = [
             "Microsoft Office/root/Office16/WINWORD.EXE",
+            "Microsoft Office/Office16/WINWORD.EXE",
             "Kingsoft/WPS Office/ksolaunch.exe",
         ]
-        return [
+        fallback = [
             str(Path(root) / relative)
             for root in roots
             if root
             for relative in relative_paths
         ]
+        return list(dict.fromkeys([*_windows_office_registry_candidates(), *fallback]))
     return [path for name in ("wps", "libreoffice") if (path := shutil.which(name))]
 
 
 def _check_office_editor() -> dict[str, Any]:
     candidates = _office_candidates()
-    installed = next((path for path in candidates if Path(path).exists()), None)
+    installed = next((path for path in candidates if Path(path).is_file()), None)
     return {
         "id": "office_editor",
         "required": False,
         "status": "pass" if installed else "warn",
         "message": (
-            "A Word-compatible target editor was found."
+            "已检测到本机 Word/WPS，可用于打开和验收 DOCX。"
             if installed
-            else "Microsoft Word or WPS was not found automatically."
+            else "未自动找到 Word/WPS；请确认已安装，或检查应用的安装注册信息。"
         ),
         "details": {"path": installed, "candidates": candidates},
     }
@@ -668,7 +690,6 @@ def check_environment() -> dict[str, Any]:
         _check_proposal_engine(),
         _check_midterm_engine(),
         _check_task_book_engine(),
-        _check_thesis_engine(),
         *(_check_assessment_engine(kind) for kind in sorted(ASSESSMENT_DOCUMENT_TYPES)),
         _check_task_book_docx_font(),
     ]

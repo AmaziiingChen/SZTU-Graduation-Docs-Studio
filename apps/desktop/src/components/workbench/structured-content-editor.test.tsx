@@ -35,6 +35,46 @@ afterEach(() => {
 })
 
 describe("one-click editor cleanup controls", () => {
+  it.each(["pointer", "focus", "window"])("dismisses the selection toolbar on outside %s interaction", async (interaction) => {
+    render(<><StructuredContentEditor value={["选择文字"]} onChange={vi.fn()} selectionSnapshot={{ anchor: 1, head: 3 }} restoreFocus ariaLabel="关闭测试" /><button>其他区域</button></>)
+    const textbox = screen.getByRole("textbox", { name: "关闭测试" }) as HTMLElement & { editor: Editor }
+    await waitFor(() => expect(textbox).toHaveFocus())
+    act(() => { textbox.editor.commands.setMeta("selection-formatting", "show") })
+    const menu = document.querySelector('[aria-label="选中文字格式工具栏"]')!
+    expect(menu).toHaveAttribute("data-state", "open")
+    const outside = screen.getByRole("button", { name: "其他区域" })
+    if (interaction === "pointer") fireEvent.pointerDown(document.body, { button: 0 })
+    else if (interaction === "focus") act(() => { outside.focus() })
+    else fireEvent.blur(window)
+    await waitFor(() => expect(menu).not.toBeInTheDocument())
+  })
+
+  it.each(["inline", "body"] as const)("copies and pastes formatted text at the new caret and undoes in %s mode", (mode) => {
+    const original: StructuredBodyValue = [{ type: "paragraph", runs: [{ text: "复制", bold: true, italic: false, script: "normal" }, { text: "后文", bold: false, italic: false, script: "normal" }] }]
+    render(<StructuredContentEditor value={original} onChange={vi.fn()} mode={mode} ariaLabel="复制粘贴" />)
+    const textbox = screen.getByRole("textbox", { name: "复制粘贴" }) as HTMLElement & { editor: Editor }
+    const editor = textbox.editor
+    const data: Record<string, string> = {}
+    act(() => { editor.commands.setTextSelection({ from: 1, to: 3 }) })
+    fireEvent.copy(textbox, { clipboardData: { clearData: () => {}, setData: (type: string, value: string) => { data[type] = value } } })
+    expect(data["text/plain"]).toBe("复制")
+    act(() => { editor.commands.setTextSelection(5) })
+    fireEvent.paste(textbox, { clipboardData: { types: Object.keys(data), getData: (type: string) => data[type] ?? "" } })
+    expect(editor.getText()).toBe("复制后文复制")
+    expect(editor.getHTML()).toContain("后文<strong>复制</strong>")
+    act(() => { editor.commands.undo() })
+    expect(tiptapToStructuredBody(editor.getJSON())).toEqual(original)
+  })
+
+  it("pastes multiple paragraphs into an inline field without silently rejecting them", () => {
+    render(<StructuredContentEditor value={["原文"]} onChange={vi.fn()} mode="inline" ariaLabel="粘贴测试" />)
+    const textbox = screen.getByRole("textbox", { name: "粘贴测试" }) as HTMLElement & { editor: Editor }
+    act(() => { textbox.editor.commands.setTextSelection(3) })
+    fireEvent.paste(textbox, { clipboardData: { types: ["text/plain", "text/html"], getData: (type: string) => type === "text/html" ? "<p><strong>复制</strong></p><p>文字</p>" : "复制\n文字" } })
+    expect(textbox.editor.getText()).toBe("原文复制 文字")
+    expect(textbox.editor.getHTML()).toContain("<strong>复制</strong>")
+  })
+
   it("merges cleanup into one icon button, one saved update and one undo", () => {
     const onChange = vi.fn()
     const value = ["3. 研究[1]，发展,OpenMV", "4. 结果[2]，H7,提供"]

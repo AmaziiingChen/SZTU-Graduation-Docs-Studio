@@ -1,7 +1,7 @@
 {
   "name": "sztu-graduation-docs-studio",
   "private": true,
-  "version": "0.1.5",
+  "version": "0.1.6",
   "packageManager": "pnpm@11.19.0",
   "scripts": {
     "setup:backend": "python scripts/setup_backend_runtime.py",
@@ -19,6 +19,8 @@
     "build:templates:mac": ".venv/bin/python scripts/stage_macos_template_engines.py",
     "build:thesis-template": "python scripts/stage_thesis_template.py",
     "package:mac": "pnpm setup:backend && .venv/bin/python -m pip install --disable-pip-version-check -r scripts/requirements-packaging.txt && pnpm verify && pnpm build:sidecar:mac && pnpm build:templates:mac && pnpm build:icon:mac && pnpm --filter @sztu-docs/desktop package:mac",
+    "package:win": "node scripts/package_windows.mjs",
+    "package:win:offline": "node scripts/package_windows.mjs --offline",
     "lint": "pnpm --filter @sztu-docs/desktop lint",
     "test": "pnpm --filter @sztu-docs/desktop test",
     "test:backend": "pnpm setup:backend && python scripts/run_backend_tests.py",

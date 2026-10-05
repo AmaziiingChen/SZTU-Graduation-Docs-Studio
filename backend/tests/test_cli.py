@@ -30,6 +30,7 @@ class CommandLineTests(unittest.TestCase):
                 for request in requests
             ),
             text=True,
+            encoding="utf-8",
             capture_output=True,
             check=False,
             timeout=10,
@@ -59,6 +60,7 @@ class CommandLineTests(unittest.TestCase):
                 f'{{"protocol":"1.0","id":"{last_id}","method":"unknown.method"}}\n'
             ),
             text=True,
+            encoding="utf-8",
             capture_output=True,
             check=False,
             timeout=10,

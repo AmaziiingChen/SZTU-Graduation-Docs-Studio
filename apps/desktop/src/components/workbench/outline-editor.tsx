@@ -326,14 +326,6 @@ export function OutlineEditor({
             </div>
           ) : null}
           <div className="flex flex-wrap items-center gap-2">
-            <OutlineImportDialog disabled={disabled} onImport={(imported, replace) => {
-              const added = imported.map(item => ({ ...createOutlineEditorItem(item.level), title: item.title }))
-              const existing = value.length === 1 && !paragraphInputText(value[0].title).trim() ? [] : value
-              const next = replace ? added : [...existing, ...added]
-              onNumberingStyleChange("decimal_hierarchy")
-              onChange(numberOutlineItems(next, "decimal_hierarchy"))
-              setSelectedId(added[0]?.id ?? "")
-            }} />
             <Select
               value={numberingStyle}
               onValueChange={(nextStyle) => {
@@ -365,6 +357,14 @@ export function OutlineEditor({
                 ))}
               </SelectContent>
             </Select>
+            <OutlineImportDialog disabled={disabled} onImport={(imported, replace) => {
+              const added = imported.map(item => ({ ...createOutlineEditorItem(item.level), title: item.title }))
+              const existing = value.length === 1 && !paragraphInputText(value[0].title).trim() ? [] : value
+              const next = replace ? added : [...existing, ...added]
+              onNumberingStyleChange("decimal_hierarchy")
+              onChange(numberOutlineItems(next, "decimal_hierarchy"))
+              setSelectedId(added[0]?.id ?? "")
+            }} />
             <Button
               type="button"
               variant="outline"
@@ -397,6 +397,7 @@ export function OutlineEditor({
             ariaLabel={`第 ${selectedIndex + 1} 条目录标题`}
             ariaInvalid={!paragraphInputText(selectedItem.title).trim()}
             placeholder="输入目录标题"
+            className="[&_[data-slot=editor-format-toolbar]]:h-8 [&_.ProseMirror]:min-h-10 [&_.ProseMirror]:py-2"
           />
         ) : null}
 

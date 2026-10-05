@@ -15,7 +15,7 @@ export type OutlineNumberingStyleOption = {
 }
 
 export const DEFAULT_OUTLINE_NUMBERING_STYLE: OutlineNumberingStyle =
-  "decimal_hierarchy"
+  "chinese_hierarchy"
 
 export const OUTLINE_NUMBERING_STYLE_OPTIONS: readonly OutlineNumberingStyleOption[] = [
   {

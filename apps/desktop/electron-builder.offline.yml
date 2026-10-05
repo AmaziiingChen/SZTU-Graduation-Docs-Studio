@@ -1,0 +1,23 @@
+extends: ./electron-builder.yml
+productName: SZTU Docs Studio
+directories:
+  output: ../../release/offline
+extraResources:
+  - from: ../../local-fonts
+    to: document-fonts
+    filter:
+      - FZXiaoBiaoSong-B05S.ttf
+  - from: ../../backend/pyproject.toml
+    to: backend/pyproject.toml
+  - from: ../../template-packs
+    to: template-packs
+  - from: ../../build/bundled-template-engines
+    to: bundled-template-engines
+  - from: ../../config/remote-services.production.json
+    to: remote-services.json
+  - from: ../../build/offline-runtime
+    to: offline-runtime
+win:
+  artifactName: "SZTU-Docs-Studio-${version}-win-${arch}-offline.${ext}"
+nsis:
+  shortcutName: SZTU文档工作台

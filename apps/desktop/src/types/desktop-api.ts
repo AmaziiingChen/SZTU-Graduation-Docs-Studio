@@ -87,6 +87,7 @@ export type UpdateStatus =
   | { state: "idle" }
   | { state: "checking"; control?: ReleaseControl }
   | { state: "up_to_date"; checkedAt: string; control?: ReleaseControl }
+  | { state: "available"; version: string; sizeBytes: number; downloadFailed?: boolean; control?: ReleaseControl }
   | { state: "downloading"; version: string; control?: ReleaseControl }
   | { state: "downloaded"; version: string; downloadedAt: string; control?: ReleaseControl }
   | {
@@ -519,6 +520,7 @@ export type SztuDesktopApi = {
     input: DocumentCompletionInput,
   ) => Promise<DocumentCompletionResult>
   getUpdateStatus: () => Promise<UpdateStatus>
+  downloadUpdate: () => Promise<UpdateStatus>
   getMidtermDatePolicyStatus: () => Promise<MidtermDatePolicyStatus>
   revealDownloadedUpdate: () => Promise<null>
   openReleaseHelp: () => Promise<null>

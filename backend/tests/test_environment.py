@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import unittest
+import tempfile
+import sys
+from contextlib import nullcontext
 from pathlib import Path
 from subprocess import CompletedProcess
 from types import SimpleNamespace
@@ -11,6 +14,45 @@ from sztu_docs_backend.environment import check_environment
 
 
 class EnvironmentTests(unittest.TestCase):
+    def test_explicit_font_file_override_matches_renderer_even_with_custom_filename(self):
+        with tempfile.TemporaryDirectory() as directory:
+            font = Path(directory) / 'private-title-font.ttf'
+            font.write_bytes(b'synthetic path-discovery fixture; not rendered')
+            with patch.object(environment_module, '_font_search_roots', return_value=[]), patch.dict(
+                environment_module.os.environ, {'SZTU_FZXIAOBIAOSONG_FONT': str(font)}, clear=True
+            ):
+                check = environment_module._check_special_document_fonts(environment_module._font_index())
+            self.assertEqual(check['details']['fonts']['方正小标宋简体'], str(font.resolve()))
+            self.assertNotIn('方正小标宋简体', check['details']['missing'])
+
+    def test_registered_custom_wps_install_is_found_without_default_roots(self):
+        with tempfile.TemporaryDirectory() as directory:
+            executable = Path(directory) / "custom-wps" / "office6" / "wps.exe"
+            executable.parent.mkdir(parents=True)
+            executable.write_bytes(b"synthetic executable marker; never executed")
+            def open_key(hive, key, reserved, access):
+                if hive == 1 and access == 0x202 and key.endswith("\\wps.exe"):
+                    return nullcontext(str(executable))
+                raise FileNotFoundError(key)
+            registry = SimpleNamespace(
+                HKEY_CURRENT_USER=1, HKEY_LOCAL_MACHINE=2,
+                KEY_WOW64_64KEY=0x100, KEY_WOW64_32KEY=0x200, KEY_READ=2,
+                OpenKey=open_key, QueryValueEx=lambda key, name: (f'"{key}"', 1),
+            )
+            with patch.dict(sys.modules, {"winreg": registry}), patch.object(
+                environment_module.platform, "system", return_value="Windows"
+            ), patch.dict(environment_module.os.environ, {}, clear=True):
+                result = environment_module._check_office_editor()
+            self.assertEqual(result["status"], "pass")
+            self.assertEqual(result["details"]["path"], str(executable))
+
+    def test_stale_registry_path_is_not_reported_as_installed(self):
+        with patch.object(environment_module.platform, "system", return_value="Windows"), patch.object(
+            environment_module, "_windows_office_registry_candidates", return_value=["missing-office/WINWORD.EXE"]
+        ), patch.dict(environment_module.os.environ, {}, clear=True):
+            result = environment_module._check_office_editor()
+        self.assertEqual(result["status"], "warn")
+
     def test_document_font_checks_distinguish_required_and_optional_fonts(self) -> None:
         core_index = {
             candidates[0].casefold(): Path("fonts") / candidates[0]
@@ -103,6 +145,7 @@ class EnvironmentTests(unittest.TestCase):
         with patch.object(environment_module, "resolve_engine", return_value=engine):
             result = check_environment()
         checks = {check["id"]: check for check in result["checks"]}
+        self.assertNotIn("thesis_engine", checks)
         for kind in environment_module.ASSESSMENT_DOCUMENT_TYPES:
             with self.subTest(kind=kind):
                 self.assertEqual(checks[f"{kind}_engine"]["status"], "pass")

@@ -18,7 +18,7 @@ W = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
 @unittest.skipUnless(FIXTURE.is_file(), 'Local template source with embedded-tools fixture required')
 class EmbeddedToolTests(unittest.TestCase):
     def fixture(self):
-        return json.loads(FIXTURE.read_text())
+        return json.loads(FIXTURE.read_text(encoding="utf-8"))
 
     def test_valid_tool_blocks_and_rejections(self):
         source = self.fixture()

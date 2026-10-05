@@ -1,0 +1,107 @@
+{
+  "schema_version": "1.0",
+  "updated_at": "2026-10-05",
+  "purpose": "Font inventory and acquisition policy; rendering typography remains template-owned",
+  "sets": {
+    "interface": [
+      "Geist Variable",
+      "system-cjk"
+    ],
+    "process_documents": [
+      "SimSun",
+      "SimHei",
+      "Times New Roman"
+    ],
+    "task_book": [
+      "STXingkai",
+      "Wingdings 2"
+    ],
+    "midterm_original_title": [
+      "FZXiaoBiaoSong"
+    ],
+    "standalone_thesis": [
+      "KaiTi",
+      "STZhongsong"
+    ]
+  },
+  "fonts": {
+    "Geist Variable": {
+      "family": "Geist Variable",
+      "status": "bundled",
+      "license": "OFL-1.1",
+      "usage": "Interface Latin text and numbers"
+    },
+    "system-cjk": {
+      "families": [
+        "PingFang SC",
+        "Microsoft YaHei",
+        "Noto Sans CJK SC",
+        "Noto Sans SC"
+      ],
+      "status": "system",
+      "usage": "Interface CJK fallback"
+    },
+    "SimSun": {
+      "family": "宋体",
+      "status": "system",
+      "usage": "Chinese document body",
+      "software_redistribution_confirmed": false
+    },
+    "SimHei": {
+      "family": "黑体",
+      "status": "system",
+      "usage": "Document titles and labels",
+      "software_redistribution_confirmed": false
+    },
+    "Times New Roman": {
+      "family": "Times New Roman",
+      "styles": [
+        "regular",
+        "bold",
+        "italic",
+        "bold-italic"
+      ],
+      "status": "system",
+      "usage": "Document Latin text and numbers",
+      "software_redistribution_confirmed": false
+    },
+    "STXingkai": {
+      "family": "华文行楷",
+      "status": "system",
+      "usage": "Task-book cover school name",
+      "software_redistribution_confirmed": false
+    },
+    "Wingdings 2": {
+      "family": "Wingdings 2",
+      "status": "system",
+      "usage": "Task-book DOCX checkboxes",
+      "software_redistribution_confirmed": false
+    },
+    "FZXiaoBiaoSong": {
+      "family": "方正小标宋简体",
+      "status": "private-bundled",
+      "document_types": [
+        "midterm"
+      ],
+      "usage": "Two centered, non-bold title lines",
+      "size_pt": 18,
+      "software_redistribution_confirmed": false,
+      "source": "user-provided",
+      "bundle_requested_by_user": true,
+      "file": "local-fonts/FZXiaoBiaoSong-B05S.ttf",
+      "sha256": "c52d577dd3aa719ef5fb9ff2043b7f7ca36fae468ef34a47628a3a555d006a49"
+    },
+    "KaiTi": {
+      "family": "楷体",
+      "status": "external-template",
+      "usage": "Standalone thesis fields and abstract",
+      "software_redistribution_confirmed": false
+    },
+    "STZhongsong": {
+      "family": "华文中宋",
+      "status": "external-template",
+      "usage": "Standalone thesis title",
+      "software_redistribution_confirmed": false
+    }
+  }
+}

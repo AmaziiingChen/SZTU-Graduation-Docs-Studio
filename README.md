@@ -37,7 +37,7 @@
 中的毕业届别统一派生，教师意见、签名和日期继续保留为空白。
 中期检查当前开放检查日期、论文题目、论文目录、主要研究内容和进展情况；教师勾选、意见、
 签名和日期保持空白。底层模板支持的图片、列表和富文本尚未全部开放为可视化编辑控件。
-当前已发布 macOS Apple Silicon 0.1.3 安装包；它尚未经过 Apple Developer ID 签名或公证，Windows 安装包和目标编辑器验收仍需分别完成。
+Windows x64 0.1.6 离线验收包已构建，已整合工作台新功能、四类评审模板及内置论文 LaTeX 工程下载，保留所需 TeX 和 Poppler。自动检查及七类文档导出通过，安装升级记录与待完成的 Word/WPS 人工验收见 [0.1.6 验收记录](docs/evidence/WINDOWS_ACCEPTANCE_0.1.6.md)和 [macOS 接续说明](docs/RELEASE_HANDOFF_0.1.6.md)。完整开发流程见 [Windows 开发与打包](docs/WINDOWS_DEVELOPMENT.md)。
 
 姓名、学号、学院、专业、班级和指导教师只在“学生档案”中维护。过程文档页面不提供
 这些字段的重复覆盖入口；内容检查、导出预检和最终导出会读取当前关联档案，并把当时
@@ -108,8 +108,7 @@ pnpm verify
 pnpm dev
 ```
 
-Windows 还需按文档功能安装 XeLaTeX、Poppler 和所需的合法字体；Windows 构建与 Word/WPS
-验收须在目标机器上单独验证。
+Windows 还需按文档功能安装 XeLaTeX、Poppler 和所需的合法字体。运行 `pnpm package:win` 生成内置 Python 引擎的 x64 安装包；完整环境准备、模板限制和验证记录见 [Windows 开发与打包](docs/WINDOWS_DEVELOPMENT.md)及 [Windows 本地验证记录](docs/evidence/WINDOWS_20260930.md)。Word/WPS 人工验收须在目标机器上单独完成。
 
 ## macOS 本地预览安装包
 

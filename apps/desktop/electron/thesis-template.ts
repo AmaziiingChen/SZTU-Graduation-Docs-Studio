@@ -11,11 +11,8 @@ export class ThesisTemplateError extends Error {
   }
 }
 
-/** 读取随应用分发的固定源码包；下载不依赖 Python、TeX 或学生档案。 */
-export async function downloadThesisTemplate(
-  resourceDirectory: string,
-  chooseTarget: (fileName: string) => Promise<string | null>,
-): Promise<{ saved: boolean }> {
+/** Shared integrity gate for environment checks and the actual download. */
+async function readValidatedThesisTemplate(resourceDirectory: string): Promise<Buffer> {
   let bytes: Buffer
   try {
     const archivePath = path.join(resourceDirectory, FILE_NAME)
@@ -33,6 +30,25 @@ export async function downloadThesisTemplate(
   } catch {
     throw new ThesisTemplateError("THESIS_TEMPLATE_INVALID", "LaTeX 模板资源缺失或损坏，请重新安装软件后重试。")
   }
+  return bytes
+}
+
+export async function checkThesisTemplateResource(resourceDirectory: string) {
+  const base = { id: "thesis_template", required: false } as const
+  try {
+    await readValidatedThesisTemplate(resourceDirectory)
+    return { ...base, status: "pass" as const, message: "内置毕业论文 LaTeX 源码包完整，可离线下载。" }
+  } catch {
+    return { ...base, status: "warn" as const, message: "内置毕业论文源码包缺失或损坏，请更新模板资源或重新安装软件。" }
+  }
+}
+
+/** 读取随应用分发的固定源码包；下载不依赖 Python、TeX 或学生档案。 */
+export async function downloadThesisTemplate(
+  resourceDirectory: string,
+  chooseTarget: (fileName: string) => Promise<string | null>,
+): Promise<{ saved: boolean }> {
+  const bytes = await readValidatedThesisTemplate(resourceDirectory)
 
   // 路径只由主进程的系统保存对话框提供，不接受网页传入路径。
   const destination = await chooseTarget(FILE_NAME)

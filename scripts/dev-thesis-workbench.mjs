@@ -23,10 +23,12 @@ const env = {
 }
 console.log(JSON.stringify({ template, dataDirectory: env.SZTU_DOCS_DEV_DATA_DIR, url: "http://127.0.0.1:5174" }, null, 2))
 if (!process.argv.includes("--check")) {
-  const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm"
-  const build = spawnSync(pnpm, ["--filter", "@sztu-docs/desktop", "build:electron"], { cwd: root, env, stdio: "inherit" })
+  const pnpmScript = process.env.npm_execpath
+  if (!pnpmScript) throw new Error("请使用 pnpm dev:thesis 启动工作台。")
+  const build = spawnSync(process.execPath, [pnpmScript, "--filter", "@sztu-docs/desktop", "build:electron"], { cwd: root, env, stdio: "inherit", windowsHide: true })
+  if (build.error) throw build.error
   if (build.status !== 0) process.exit(build.status ?? 1)
-  const child = spawn(pnpm, ["exec", "concurrently", "-k", "-s", "first", "vite --host 127.0.0.1 --port 5174", "wait-on tcp:127.0.0.1:5174 && electron ."], { cwd: path.join(root, "apps/desktop"), env, stdio: "inherit" })
+  const child = spawn(process.execPath, [pnpmScript, "exec", "concurrently", "-k", "-s", "first", "vite --host 127.0.0.1 --port 5174", "wait-on tcp:127.0.0.1:5174 && electron ."], { cwd: path.join(root, "apps/desktop"), env, stdio: "inherit", windowsHide: true })
   child.on("error", error => { console.error(error.message); process.exitCode = 1 })
   child.on("exit", code => { process.exitCode = code ?? 1 })
   for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => child.kill(signal))

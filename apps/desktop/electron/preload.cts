@@ -61,6 +61,7 @@ contextBridge.exposeInMainWorld("sztuDesktop", {
   recordDocumentCompletion: (input: unknown) =>
     invoke("sztu:telemetry-complete-document", input),
   getUpdateStatus: () => invoke("sztu:update-status"),
+  downloadUpdate: () => invoke("sztu:update-download"),
   getMidtermDatePolicyStatus: () => invoke("sztu:midterm-date-policy-status"),
   revealDownloadedUpdate: () => invoke("sztu:update-reveal"),
   openReleaseHelp: () => invoke("sztu:update-open-help"),

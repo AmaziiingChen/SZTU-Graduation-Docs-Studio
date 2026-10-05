@@ -14,17 +14,16 @@ files:
   - package.json
 
 extraResources:
+  - from: ../../local-fonts
+    to: document-fonts
+    filter:
+      - FZXiaoBiaoSong-B05S.ttf
   - from: ../../backend/pyproject.toml
     to: backend/pyproject.toml
   - from: ../../template-packs
     to: template-packs
     filter:
       - "**/*"
-  - from: ../../build/sidecar/darwin-arm64
-    to: sidecar
-    filter:
-      - sztu-docs-backend
-      - build-manifest.json
   - from: ../../build/bundled-template-engines
     to: bundled-template-engines
     filter:
@@ -33,6 +32,12 @@ extraResources:
     to: remote-services.json
 
 mac:
+  extraResources:
+    - from: ../../build/sidecar/darwin-${arch}
+      to: sidecar
+      filter:
+        - sztu-docs-backend
+        - build-manifest.json
   category: public.app-category.productivity
   icon: build/icon.icns
   identity: "-"
@@ -52,3 +57,25 @@ dmg:
   title: "SZTU文档工作台 ${version}"
 
 artifactName: "SZTU-Docs-Studio-${version}-mac-${arch}.${ext}"
+
+win:
+  executableName: SZTU-Docs-Studio
+  icon: build/icon.ico
+  artifactName: "SZTU-Docs-Studio-${version}-win-${arch}.${ext}"
+  extraResources:
+    - from: ../../build/sidecar/win32-${arch}
+      to: sidecar
+      filter:
+        - sztu-docs-backend.exe
+        - build-manifest.json
+  target:
+    - target: nsis
+      arch:
+        - x64
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true

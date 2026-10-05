@@ -2,6 +2,8 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process"
 import { randomUUID } from "node:crypto"
 import { existsSync } from "node:fs"
 import path from "node:path"
+import { offlineRuntimePaths } from "./offline-runtime.js"
+import { documentFontDirectories } from "./document-fonts.js"
 
 type RequestId = string
 
@@ -99,7 +101,7 @@ export function resolveSidecarPython(
     platform === "win32"
       ? path.join(repositoryRoot, ".venv", "Scripts", "python.exe")
       : path.join(repositoryRoot, ".venv", "bin", "python")
-  return fileExists(virtualenvPython) ? virtualenvPython : "python3"
+  return fileExists(virtualenvPython) ? virtualenvPython : platform === "win32" ? "python" : "python3"
 }
 
 export function resolveSidecarPath(
@@ -380,12 +382,16 @@ export class SidecarClient {
     const sidecarArguments = packagedSidecar ? [] : ["-m", "sztu_docs_backend"]
     const child = spawn(this.pythonExecutable, sidecarArguments, {
       cwd: this.backendRoot,
+      windowsHide: true,
       env: {
-        PATH: resolveSidecarPath(),
+        PATH: [...offlineRuntimePaths(this.backendRoot), resolveSidecarPath()].join(path.delimiter),
         LANG: process.env.LANG,
         LC_ALL: process.env.LC_ALL,
         HOME: process.env.HOME,
         USERPROFILE: process.env.USERPROFILE,
+        PROGRAMFILES: process.env.PROGRAMFILES,
+        "PROGRAMFILES(X86)": process.env["PROGRAMFILES(X86)"],
+        LOCALAPPDATA: process.env.LOCALAPPDATA,
         SYSTEMROOT: process.env.SYSTEMROOT,
         WINDIR: process.env.WINDIR,
         COMSPEC: process.env.COMSPEC,
@@ -393,6 +399,8 @@ export class SidecarClient {
         TEMP: process.env.TEMP,
         TMP: process.env.TMP,
         PYTHONPATH: sourceRoot,
+        PYTHONUTF8: "1",
+        PYTHONIOENCODING: "utf-8",
         SZTU_DOCS_DATA_DIR: this.dataRoot,
         SZTU_DOCS_SIDECAR_ROLE: this.options.role ?? "control",
         SZTU_DOCS_RECOVER_INTERRUPTED: this.options.role === "render" || generation > 1 ? "0" : "1",
@@ -408,7 +416,7 @@ export class SidecarClient {
         SZTU_DOCS_DEFENSE_RECORD_ENGINE_DIR: process.env.SZTU_DOCS_DEFENSE_RECORD_ENGINE_DIR,
         SZTU_DOCS_GRADE_ASSESSMENT_ENGINE_DIR: process.env.SZTU_DOCS_GRADE_ASSESSMENT_ENGINE_DIR,
         SZTU_DOCS_CJK_VALIDATOR: process.env.SZTU_DOCS_CJK_VALIDATOR,
-        SZTU_FONT_DIR: process.env.SZTU_FONT_DIR,
+        SZTU_FONT_DIR: documentFontDirectories(this.backendRoot),
         SZTU_FZXIAOBIAOSONG_FONT: process.env.SZTU_FZXIAOBIAOSONG_FONT,
         SZTU_STXINGKAI_FONT: process.env.SZTU_STXINGKAI_FONT,
         SZTU_SIMSUN_FONT: process.env.SZTU_SIMSUN_FONT,

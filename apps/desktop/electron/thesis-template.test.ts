@@ -3,7 +3,7 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { downloadThesisTemplate } from "./thesis-template.js"
+import { checkThesisTemplateResource, downloadThesisTemplate } from "./thesis-template.js"
 
 const directories: string[] = []
 async function fixture() {
@@ -20,6 +20,13 @@ async function fixture() {
 afterEach(async () => { await Promise.all(directories.splice(0).map(directory => rm(directory, { recursive: true, force: true }))) })
 
 describe("bundled thesis download", () => {
+  it("checks the actual source package without requiring a thesis rendering engine", async () => {
+    const resource = path.resolve(import.meta.dirname, "../resources/thesis-template")
+    await expect(checkThesisTemplateResource(resource)).resolves.toMatchObject({id: "thesis_template", status: "pass", required: false})
+    const {directory} = await fixture()
+    await writeFile(path.join(directory, "sztu-thesis-2026.zip"), "corrupt archive")
+    await expect(checkThesisTemplateResource(directory)).resolves.toMatchObject({status: "warn"})
+  })
   it("saves the verified bytes and replaces only the user-selected target", async () => {
     const { directory, bytes } = await fixture()
     const target = path.join(directory, "用户选择.zip")

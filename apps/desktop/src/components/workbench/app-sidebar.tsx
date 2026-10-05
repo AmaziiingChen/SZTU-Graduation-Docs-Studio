@@ -39,6 +39,8 @@ export function AppSidebar({
   appearanceActive,
   inspectionActive,
   generatedDocumentCount,
+  updateLabel,
+  onOpenUpdate,
   thesisToolsActive,
   activeThesisTool,
   activeDocumentId,
@@ -70,6 +72,8 @@ export function AppSidebar({
   appearanceActive: boolean
   inspectionActive: boolean
   generatedDocumentCount: number | null
+  updateLabel?: string
+  onOpenUpdate?: () => void
   thesisToolsActive: boolean
   activeThesisTool: ThesisToolId
   activeDocumentId: string | null
@@ -162,6 +166,14 @@ export function AppSidebar({
       <SidebarFooter>
         <SidebarSeparator className="mx-2 w-auto opacity-60" />
         <SidebarMenu>
+          {updateLabel && onOpenUpdate ? (
+            <SidebarMenuItem>
+              <SidebarMenuButton tooltip={updateLabel} className="pl-8" onClick={() => finishNavigation(onOpenUpdate)}>
+                <AnimatedActionIcon icon={DownloadIcon} />
+                <span>{updateLabel}</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          ) : null}
           <SidebarMenuItem>
             <SidebarMenuButton
               tooltip="效率工具"
