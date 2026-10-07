@@ -4,7 +4,7 @@ import { SendIcon } from "@/components/ui/send"
 import { FolderCodeIcon } from "@/components/ui/folder-code"
 import { AnimatedActionIcon } from "@/components/animated-action-icon"
 import { useState } from "react"
-import { LoaderCircleIcon, ShieldCheckIcon, TriangleAlertIcon } from "lucide-react"
+import { LoaderCircleIcon, TriangleAlertIcon } from "lucide-react"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -43,7 +43,7 @@ export function DiagnosticSupport() {
   const prepare = async () => {
     const api = desktopApi()
     if (!api) {
-      setState({ status: "error", message: "请在 Electron 桌面应用中创建诊断包。" })
+      setState({ status: "error", message: "请在桌面应用中创建诊断包。" })
       return
     }
     setState({ status: "preparing" })
@@ -107,7 +107,7 @@ export function DiagnosticSupport() {
       <div className="grid gap-1">
         <div className="text-sm font-medium">故障诊断包</div>
         <p className="text-xs text-muted-foreground">
-          收集版本、运行环境和结构化操作结果，不包含正文、姓名、学号、文件名或完整路径。
+          诊断包用于故障排查，不含姓名、学号、班级、文档正文及文件路径。
         </p>
       </div>
       {state.status === "error" ? (
@@ -128,7 +128,7 @@ export function DiagnosticSupport() {
           ) : (
             <AnimatedActionIcon icon={FolderCodeIcon} />
           )}
-          {state.status === "preparing" ? "正在检查隐私" : "创建诊断包"}
+          {state.status === "preparing" ? "正在生成" : "创建诊断包"}
         </Button>
         <Button
           variant="outline"
@@ -149,20 +149,13 @@ export function DiagnosticSupport() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>诊断包已通过隐私扫描</DialogTitle>
+            <DialogTitle>诊断包已生成</DialogTitle>
             <DialogDescription className="text-xs">
-              请确认摘要后保存到本机。诊断包将在十分钟后失效，需要时可重新创建。
+              包含应用版本、运行环境、操作记录及文档结构统计，不含文档正文。
             </DialogDescription>
           </DialogHeader>
           {state.status === "ready" ? (
             <div className="grid gap-3">
-              <Alert>
-                <ShieldCheckIcon />
-                <AlertTitle className="text-sm font-medium">未发现敏感内容</AlertTitle>
-                <AlertDescription className="text-xs">
-                  已移除 {state.summary.sourceFieldsRemoved} 个原始说明或扩展字段。
-                </AlertDescription>
-              </Alert>
               <div className="grid gap-2 text-sm">
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-muted-foreground">运行环境检查</span>
@@ -170,7 +163,7 @@ export function DiagnosticSupport() {
                 </div>
                 <Separator />
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-muted-foreground">结构化操作记录</span>
+                  <span className="text-muted-foreground">操作记录</span>
                   <span>{state.summary.operationCount} 条</span>
                 </div>
                 <Separator />

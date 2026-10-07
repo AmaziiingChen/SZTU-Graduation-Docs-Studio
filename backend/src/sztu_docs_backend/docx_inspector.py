@@ -7,6 +7,8 @@ not evidence that Word/WPS layout or Chinese glyph rendering was accepted.
 from __future__ import annotations
 
 import re
+from contextvars import ContextVar
+from collections.abc import Callable
 import stat
 import zipfile
 from pathlib import Path, PurePosixPath
@@ -202,7 +204,13 @@ def _flatten_runs(root: ElementTree.Element) -> tuple[str, list[dict[str, Any]]]
     return "".join(characters), styles
 
 
+_RUN_NORMALIZER: ContextVar[Any] = ContextVar("docx_run_normalizer", default=None)
+
+
 def _paragraph_runs(value: Any) -> list[dict[str, Any]]:
+    normalizer = _RUN_NORMALIZER.get()
+    if normalizer is not None:
+        return [run for run in normalizer(value, "inspection", 100000, max_runs=10000) if run.get("type") != "inline_equation"]
     if isinstance(value, str):
         return [{"text": value, "script": "normal", "bold": False, "italic": False}]
     if isinstance(value, dict) and isinstance(value.get("runs"), list):
@@ -349,7 +357,7 @@ def _expected_paragraphs(proposal: dict[str, Any]) -> list[tuple[str, list[dict[
     result: list[tuple[str, list[dict[str, Any]]]] = []
     for field in ("title", "student_name", "student_id", "major", "college", "advisor"):
         if field not in metadata:
-            _raise("DOCX_EXPECTATION_INVALID", "DOCX 检查输入缺少字段。", field=f"metadata.{field}")
+            _raise("DOCX_EXPECTATION_INVALID", "文档信息不完整，无法检查 Word 文件。", field=f"metadata.{field}")
         result.append((f"metadata.{field}", _paragraph_runs(metadata[field])))
     structured_sections = {"research_content", "methods_and_means", "research_steps"}
     for section in (
@@ -389,7 +397,7 @@ def _expected_midterm_paragraphs(midterm: dict[str, Any]) -> list[tuple[str, lis
     result: list[tuple[str, list[dict[str, Any]]]] = []
     for field in ("student_name", "college", "major", "class_name", "advisor"):
         if field not in metadata:
-            _raise("DOCX_EXPECTATION_INVALID", "DOCX 检查输入缺少字段。", field=f"metadata.{field}")
+            _raise("DOCX_EXPECTATION_INVALID", "文档信息不完整，无法检查 Word 文件。", field=f"metadata.{field}")
         result.append((f"metadata.{field}", _paragraph_runs(metadata[field])))
     check_date = metadata.get("check_date")
     if not isinstance(check_date, str):
@@ -453,7 +461,7 @@ def _expected_task_book_paragraphs(
         if field not in metadata:
             _raise(
                 "DOCX_EXPECTATION_INVALID",
-                "DOCX 检查输入缺少任务书字段。",
+                "任务书信息不完整，无法检查 Word 文件。",
                 field=f"metadata.{field}",
             )
     graduation_year = metadata["graduation_year"]
@@ -576,7 +584,7 @@ def _check_task_book_cover(
     if _compact(_text(cohort_paragraph)) != expected_cohort:
         _raise(
             "DOCX_CONTENT_MISMATCH",
-            "任务书封面毕业届别与结构化输入不一致。",
+            "任务书封面毕业届别与填写内容不一致。",
             field="metadata.graduation_year",
         )
 
@@ -852,7 +860,7 @@ def _check_task_book_topic(
         if codes != expected[field]:
             _raise(
                 "DOCX_CONTENT_MISMATCH",
-                "任务书勾选状态与结构化输入不一致。",
+                "任务书勾选状态与填写内容不一致。",
                 field=f"sections.topic_information.{field}",
             )
 
@@ -867,7 +875,7 @@ def _check_task_book_topic(
     if _compact(_text(other_level_cell)) != _compact(expected["other_level"]):
         _raise(
             "DOCX_CONTENT_MISMATCH",
-            "任务书科研项目级别说明与结构化输入不一致。",
+            "任务书科研项目级别说明与填写内容不一致。",
             field="sections.topic_information.source.research_project.other_level",
         )
     if _compact(_text(project_cells[1])) != "项目编号：":
@@ -875,7 +883,7 @@ def _check_task_book_topic(
     if _compact(_text(project_cells[2])) != _compact(expected["project_number"]):
         _raise(
             "DOCX_CONTENT_MISMATCH",
-            "任务书项目编号与结构化输入不一致。",
+            "任务书项目编号与填写内容不一致。",
             field="sections.topic_information.source.research_project.project_number",
         )
 
@@ -948,7 +956,7 @@ def _check_expected_content(
         )
         position = full_text.find(expected_text, cursor)
         if position < 0:
-            _raise("DOCX_CONTENT_MISMATCH", "Word 内容与已验证的结构化输入不一致。", field=field)
+            _raise("DOCX_CONTENT_MISMATCH", "Word 内容与填写内容不一致。", field=field)
         offset = position
         is_rich = len(expected_runs) > 1 or any(
             run["script"] != "normal" or run["bold"] or run["italic"]
@@ -1296,7 +1304,7 @@ def _check_assessment_body(document: ElementTree.Element, data: dict[str, Any], 
             _raise("DOCX_FONT_MISMATCH", "评审表正文须保留正文样式及用户的富文本标记。", field=field)
 
 
-def inspect_docx(
+def _inspect_docx(
     path: Path,
     proposal: dict[str, Any],
     *,
@@ -1498,3 +1506,11 @@ def inspect_docx(
 
 
 __all__ = ["DocxInspectionError", "inspect_docx"]
+
+
+def inspect_docx(path: Path, proposal: dict[str, Any], *, document_type: str = "proposal", layout: dict[str, Any] | None = None, normalize_paragraph: Callable[..., Any] | None = None) -> dict[str, Any]:
+    token = _RUN_NORMALIZER.set(normalize_paragraph)
+    try:
+        return _inspect_docx(path, proposal, document_type=document_type, layout=layout)
+    finally:
+        _RUN_NORMALIZER.reset(token)

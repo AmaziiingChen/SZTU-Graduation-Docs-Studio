@@ -1,6 +1,7 @@
 'use strict';
 
 const http = require('node:http');
+const { validDiagnosticContext } = require('./diagnostic-context.cjs');
 
 const PORT = 9000;
 const MAX_BODY_BYTES = 256 * 1024;
@@ -10,7 +11,7 @@ const RATE_LIMIT_MAX_BATCHES = 30;
 const RATE_LIMIT_MAX_KEYS = 5000;
 const ENV_ID = process.env.CLOUDBASE_ENV_ID;
 const API_KEY = process.env.CLOUDBASE_API_KEY;
-const SERVICE_VERSION = '1.2.0';
+const SERVICE_VERSION = '1.3.0';
 const DIAGNOSTIC_RETENTION_DAYS = 30;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -21,9 +22,9 @@ const EVENT_NAMES = new Set(['app_started', 'heartbeat', 'app_stopped', 'usage_e
 const PLATFORMS = new Set(['darwin', 'win32', 'linux']);
 const ARCHES = new Set(['arm64', 'x64']);
 const UPTIME_BUCKETS = new Set(['under_5m', '5m_to_30m', '30m_to_1h', '1h_to_3h', 'over_3h']);
-const VIEWS = new Set(['profile', 'proposal', 'task_book', 'midterm', 'inspection']);
+const VIEWS = new Set(['profile', 'proposal', 'task_book', 'midterm', 'advisor_review', 'reviewer_review', 'defense_record', 'grade_assessment', 'inspection']);
 const ACTIONS = new Set(['check', 'preview', 'template_sync', 'export', 'qa_record']);
-const DOCUMENT_TYPES = new Set(['proposal', 'task_book', 'midterm']);
+const DOCUMENT_TYPES = new Set(['proposal', 'task_book', 'midterm', 'advisor_review', 'reviewer_review', 'defense_record', 'grade_assessment']);
 const OUTCOMES = new Set(['success', 'failure', 'cancelled']);
 const UPDATE_OUTCOMES = new Set(['up_to_date', 'available', 'downloaded', 'failed']);
 const DIAGNOSTIC_PLATFORMS = new Set(['darwin', 'win32', 'linux']);
@@ -35,7 +36,7 @@ const OPERATION_OUTCOMES = new Set(['success', 'failure', 'cancelled']);
 const DURATION_BUCKETS = new Set(['under_100ms', '100ms_to_1s', '1s_to_5s', '5s_to_30s', 'over_30s']);
 const DIAGNOSTIC_OPERATIONS = new Set([
   'app.lifecycle', 'renderer.process', 'system.ping', 'system.version',
-  'environment.check', 'workspace.open', 'workspace.saveProfileDraft',
+  'environment.check', 'workspace.open', 'workspace.listDocuments', 'workspace.renameDocument', 'workspace.deleteDocument', 'workspace.restoreDocument', 'workspace.purgeDocument', 'workspace.saveProfileDraft',
   'workspace.saveProfile', 'workspace.createDocument', 'workspace.selectDocument',
   'workspace.saveDraft', 'workspace.closeTemporary', 'document.check',
   'preview.generate', 'export.preflight', 'export.run', 'export.history',
@@ -44,7 +45,7 @@ const DIAGNOSTIC_OPERATIONS = new Set([
 ]);
 const ENVIRONMENT_CHECKS = new Set([
   'python', 'temporary_directory', 'document_dependencies', 'xelatex', 'pdf_tools',
-  'office_editor', 'template_pack', 'proposal_engine', 'midterm_engine', 'task_book_engine',
+  'office_editor', 'template_pack', 'thesis_template', 'advisor_review_engine', 'reviewer_review_engine', 'defense_record_engine', 'grade_assessment_engine', 'proposal_engine', 'midterm_engine', 'task_book_engine',
 ]);
 const rateWindows = new Map();
 let diagnosticRateWindow = { startedAt: 0, count: 0 };
@@ -88,6 +89,12 @@ function consumeRateLimit(key) {
 }
 
 function validAttributes(name, attributes) {
+  if (!attributes || typeof attributes !== 'object' || Array.isArray(attributes)) return false;
+  if ('college' in attributes || 'major' in attributes) {
+    const { college, major, ...rest } = attributes;
+    if (![college, major].every(value => typeof value === 'string' && value.length >= 1 && value.length <= 200 && value === value.trim())) return false;
+    attributes = rest;
+  }
   if (name === 'app_started') {
     return exactKeys(attributes, ['launch_mode'])
       && ['packaged', 'development'].includes(attributes.launch_mode);
@@ -149,7 +156,7 @@ function validateDiagnosticReport(report) {
     'schema_version', 'report_id', 'created_at', 'application', 'device',
     'environment', 'services', 'operations', 'privacy',
   ])) return 'INVALID_DIAGNOSTIC_SHAPE';
-  if (report.schema_version !== '1.0' || !UUID_RE.test(report.report_id) || !isDateTime(report.created_at)) {
+  if (!['1.0', '2.0'].includes(report.schema_version) || !UUID_RE.test(report.report_id) || !isDateTime(report.created_at)) {
     return 'INVALID_DIAGNOSTIC_METADATA';
   }
   if (!exactKeys(report.application, ['version', 'electron_version', 'packaged'])
@@ -178,7 +185,9 @@ function validateDiagnosticReport(report) {
       || typeof report.services.update_configured !== 'boolean') return 'INVALID_DIAGNOSTIC_SERVICES';
   if (!Array.isArray(report.operations) || report.operations.length > 200) return 'INVALID_DIAGNOSTIC_OPERATIONS';
   for (const operation of report.operations) {
-    if (!exactKeys(operation, ['occurred_at', 'operation', 'outcome', 'duration_bucket'], ['error_code'])
+    if (!exactKeys(operation, ['occurred_at', 'operation', 'outcome', 'duration_bucket'], report.schema_version === '2.0' ? ['error_code', 'duration_ms', 'context'] : ['error_code'])
+        || (operation.duration_ms !== undefined && (!Number.isInteger(operation.duration_ms) || operation.duration_ms < 0 || operation.duration_ms > 86400000))
+        || (operation.context !== undefined && !validDiagnosticContext(operation.context))
         || !isDateTime(operation.occurred_at)
         || !DIAGNOSTIC_OPERATIONS.has(operation.operation)
         || !OPERATION_OUTCOMES.has(operation.outcome)

@@ -59,7 +59,7 @@ const CHECK_TITLES: Record<string, string> = {
   python: "应用运行组件",
   temporary_directory: "本机临时目录",
   document_dependencies: "文档生成组件",
-  template_pack: "受信任模板",
+  template_pack: "文档模板",
   proposal_engine: "开题报告模板",
   task_book_engine: "任务书模板",
   midterm_engine: "中期检查模板",
@@ -84,7 +84,7 @@ function installationGuide(
   if (check.id === "special_document_fonts" && Array.isArray(check.details?.missing)
     && check.details.missing.includes("方正小标宋简体")) {
     return {
-      description: "仅中期检查表的两行 18 pt 大标题使用方正小标宋。当前暂缓引入该字体；其他六类过程文档不受此项影响，中期表原版预览与导出需待字体方案确定。",
+      description: "中期检查表缺少“方正小标宋简体”字体，请安装后重新检查。",
     }
   }
   switch (check.id) {
@@ -112,13 +112,13 @@ function installationGuide(
     case "task_book_docx_font":
       return {
         description:
-          "软件可使用随附的已授权字体，也可读取本机字体。缺失时请获取对应字体支持，或安装模板要求的字体；Word/WPS 还需能够识别这些字体。",
+          "请安装缺失字体，完成后重启应用及 Word/WPS。",
         linkId: isMac ? "font-book-help" : "windows-font-help",
         linkLabel: "查看字体安装方法",
       }
     case "office_editor":
       return {
-        description: "安装 Microsoft Word 或 WPS，用于最终打开和验收 DOCX。",
+        description: "请安装 Word 或 WPS，用于检查导出文档的排版。",
         linkId: "wps-office",
         linkLabel: "打开 WPS 下载页面",
       }
@@ -179,7 +179,7 @@ export function EnvironmentOnboardingDialog({
         className="max-h-[calc(100dvh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden sm:max-w-2xl"
       >
         <DialogHeader>
-          <DialogTitle>准备本机文档环境</DialogTitle>
+          <DialogTitle>环境检查</DialogTitle>
           <DialogDescription>
             检查字体、TeX、PDF 工具和 Word/WPS，查看缺失项目及安装方法。
           </DialogDescription>
@@ -201,11 +201,11 @@ export function EnvironmentOnboardingDialog({
             <div className="grid min-h-0 gap-3">
               {environment.result.ready ? (
                 <Alert className="pr-12">
-                  <AlertTitle>基础环境可以使用</AlertTitle>
+                  <AlertTitle>基础环境可用</AlertTitle>
                   <AlertDescription>
                     已检查 {platformName(environment.result.platform.system)} 本机环境
                     {warningCount > 0
-                      ? `；另有 ${warningCount} 项建议补充，不阻止进入工作台。`
+                      ? `；另有 ${warningCount} 项提示。`
                       : "，可以进入工作台。"}
                   </AlertDescription>
                   <AlertAction className="top-1/2 -translate-y-1/2">
@@ -220,9 +220,9 @@ export function EnvironmentOnboardingDialog({
               ) : (
                 <Alert variant="destructive">
                   <TriangleAlertIcon />
-                  <AlertTitle>还有 {failureCount} 项必要环境缺失</AlertTitle>
+                  <AlertTitle>缺少 {failureCount} 项必要组件</AlertTitle>
                   <AlertDescription>
-                    你可以按下方指引安装后重新检查，也可以稍后配置；缺失环境对应的预览和导出功能会保持不可用。
+                    请按指引安装缺失组件，完成后重新检查。当前可继续编辑。
                   </AlertDescription>
                 </Alert>
               )}

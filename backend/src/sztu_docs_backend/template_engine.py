@@ -234,7 +234,7 @@ def verify_engine(
     if not root.is_absolute() or root.is_symlink() or not root.is_dir():
         raise TemplateEngineError(
             "TEMPLATE_ENGINE_INVALID",
-            "开题报告模板引擎目录无效或使用了符号链接。",
+            "开题报告模板位置无效，请重新选择模板文件夹。",
         )
     root = root.resolve()
     combined = hashlib.sha256()
@@ -244,20 +244,20 @@ def verify_engine(
         except TemplateEngineError as exc:
             raise TemplateEngineError(
                 "TEMPLATE_ENGINE_INVALID",
-                "开题报告模板引擎包含不受信任的链接或路径。",
+                "开题报告模板包含无法使用的文件链接，请重新选择模板。",
                 {"file": relative_name},
             ) from exc
         if not path.is_file():
             raise TemplateEngineError(
                 "TEMPLATE_ENGINE_INVALID",
-                "开题报告模板引擎缺少受信任文件。",
+                "开题报告模板文件不完整，请重新选择模板。",
                 {"file": relative_name},
             )
         actual_hash = sha256_file(path)
         if actual_hash != expected_hash:
             raise TemplateEngineError(
                 "TEMPLATE_ENGINE_HASH_MISMATCH",
-                "开题报告模板引擎与已提交版本不一致，已停止执行。",
+                "开题报告模板完整性校验失败，请重新选择模板。",
                 {"file": relative_name},
             )
         combined.update(relative_name.encode("utf-8"))
@@ -276,7 +276,7 @@ def verify_engine(
     ):
         raise TemplateEngineError(
             "TEMPLATE_ENGINE_INVALID",
-            "缺少受信任的中文字形检查脚本。",
+            "中文字形检查组件缺失，请重新安装应用。",
         )
     selected_validator = selected_validator.resolve()
     if sha256_file(selected_validator) != VALIDATOR_SHA256:
@@ -306,7 +306,7 @@ def verify_midterm_engine(
     if not bundle_root.is_absolute() or bundle_root.is_symlink() or not bundle_root.is_dir():
         raise TemplateEngineError(
             "TEMPLATE_ENGINE_INVALID",
-            "中期检查模板引擎目录无效或使用了符号链接。",
+            "中期检查模板位置无效，请重新选择模板文件夹。",
         )
     bundle_root = bundle_root.resolve()
     combined = hashlib.sha256()
@@ -316,20 +316,20 @@ def verify_midterm_engine(
         except TemplateEngineError as exc:
             raise TemplateEngineError(
                 "TEMPLATE_ENGINE_INVALID",
-                "中期检查模板引擎包含不受信任的链接或路径。",
+                "中期检查模板包含无法使用的文件链接，请重新选择模板。",
                 {"file": relative_name},
             ) from exc
         if not path.is_file():
             raise TemplateEngineError(
                 "TEMPLATE_ENGINE_INVALID",
-                "中期检查模板引擎缺少受信任文件。",
+                "中期检查模板文件不完整，请重新选择模板。",
                 {"file": relative_name},
             )
         actual_hash = sha256_file(path)
         if actual_hash != expected_hash:
             raise TemplateEngineError(
                 "TEMPLATE_ENGINE_HASH_MISMATCH",
-                "中期检查模板引擎与已验收工作区快照不一致，已停止执行。",
+                "中期检查模板完整性校验失败，请重新选择模板。",
                 {"file": relative_name},
             )
         combined.update(relative_name.encode("utf-8"))
@@ -343,12 +343,12 @@ def verify_midterm_engine(
     except TemplateEngineError as exc:
         raise TemplateEngineError(
             "TEMPLATE_ENGINE_INVALID",
-            "缺少受信任的中文字形检查脚本。",
+            "中文字形检查组件缺失，请重新安装应用。",
         ) from exc
     if not selected_validator.is_file() or sha256_file(selected_validator) != VALIDATOR_SHA256:
         raise TemplateEngineError(
             "TEMPLATE_ENGINE_HASH_MISMATCH",
-            "中文字形检查脚本与受信任版本不一致，已停止执行。",
+            "中文字形检查组件校验失败，请重新安装应用。",
         )
     combined.update(b"validator\0")
     combined.update(VALIDATOR_SHA256.encode("ascii"))
@@ -374,7 +374,7 @@ def verify_task_book_engine(
     if not bundle_root.is_absolute() or bundle_root.is_symlink() or not bundle_root.is_dir():
         raise TemplateEngineError(
             "TEMPLATE_ENGINE_INVALID",
-            "任务书模板引擎目录无效或使用了符号链接。",
+            "任务书模板位置无效，请重新选择模板文件夹。",
         )
     bundle_root = bundle_root.resolve()
     combined = hashlib.sha256()
@@ -386,20 +386,20 @@ def verify_task_book_engine(
         except TemplateEngineError as exc:
             raise TemplateEngineError(
                 "TEMPLATE_ENGINE_INVALID",
-                "任务书模板引擎包含不受信任的链接或路径。",
+                "任务书模板包含无法使用的文件链接，请重新选择模板。",
                 {"file": relative_name},
             ) from exc
         if not candidate.is_file():
             raise TemplateEngineError(
                 "TEMPLATE_ENGINE_INVALID",
-                "任务书模板引擎缺少受信任文件。",
+                "任务书模板文件不完整，请重新选择模板。",
                 {"file": relative_name},
             )
         actual_hash = sha256_file(candidate)
         if actual_hash != expected_hash:
             raise TemplateEngineError(
                 "TEMPLATE_ENGINE_HASH_MISMATCH",
-                "任务书模板引擎与已提交版本不一致，已停止执行。",
+                "任务书模板完整性校验失败，请重新选择模板。",
                 {"file": relative_name},
             )
         combined.update(relative_name.encode("utf-8"))
@@ -413,12 +413,12 @@ def verify_task_book_engine(
     except TemplateEngineError as exc:
         raise TemplateEngineError(
             "TEMPLATE_ENGINE_INVALID",
-            "缺少受信任的中文字形检查脚本。",
+            "中文字形检查组件缺失，请重新安装应用。",
         ) from exc
     if not selected_validator.is_file() or sha256_file(selected_validator) != VALIDATOR_SHA256:
         raise TemplateEngineError(
             "TEMPLATE_ENGINE_HASH_MISMATCH",
-            "中文字形检查脚本与受信任版本不一致，已停止执行。",
+            "中文字形检查组件校验失败，请重新安装应用。",
         )
     combined.update(b"validator\0")
     combined.update(VALIDATOR_SHA256.encode("ascii"))
@@ -446,7 +446,7 @@ def installed_engine_root(data_directory: Path, document_type: str = "proposal")
 
 def resolve_engine(document_type: str = "proposal") -> EngineDescriptor:
     if document_type not in SUPPORTED_ENGINE_DOCUMENT_TYPES:
-        raise TemplateEngineError("TEMPLATE_ENGINE_UNSUPPORTED", "当前文档类型没有可用模板引擎。")
+        raise TemplateEngineError("TEMPLATE_ENGINE_UNSUPPORTED", "当前文档类型暂无可用模板。")
 
     data_dir_value = os.environ.get("SZTU_DOCS_DATA_DIR")
     data_directory = (
@@ -558,7 +558,7 @@ def resolve_engine(document_type: str = "proposal") -> EngineDescriptor:
 
     raise TemplateEngineError(
         "TEMPLATE_ENGINE_UNAVAILABLE",
-        "未找到已关联或已安装的模板引擎，当前不能导出 Word、LaTeX 或 PDF。",
+        "未找到可用模板，请安装或重新选择模板后再导出。",
     )
 
 
@@ -791,7 +791,7 @@ def _resolve_bundled_engine(
         or not bundled_root.is_dir()
     ):
         raise TemplateEngineError(
-            "TEMPLATE_BUNDLE_INVALID", "安装包内的模板引擎目录无效。"
+            "TEMPLATE_BUNDLE_INVALID", "随附模板位置无效，请重新安装应用。"
         )
     bundled_root = bundled_root.resolve()
     engine_bundle = _require_plain_descendant(
@@ -823,7 +823,7 @@ def _resolve_bundled_engine(
         ValueError,
     ) as exc:
         raise TemplateEngineError(
-            "TEMPLATE_BUNDLE_INVALID", "安装包内的模板引擎清单无效。"
+            "TEMPLATE_BUNDLE_INVALID", "随附模板信息损坏，请重新安装应用。"
         ) from exc
 
     source = _workspace_source(engine_bundle, document_type)
@@ -867,7 +867,7 @@ def _resolve_bundled_engine(
     ):
         raise TemplateEngineError(
             "TEMPLATE_BUNDLE_HASH_MISMATCH",
-            "安装包内的模板引擎校验失败，已停止执行。",
+            "随附模板损坏或不完整，请重新安装应用。",
         )
     return EngineDescriptor(
         root=source.engine_root,
@@ -892,7 +892,7 @@ def _workspace_snapshot_directory_name(
     if not safe_version:
         raise TemplateEngineError(
             "TEMPLATE_ENGINE_INVALID",
-            "模板引擎版本无效，无法创建本地快照。",
+            "模板版本无法识别，请重新选择模板。",
         )
     return f"{document_type}-{safe_version}-{pack_sha256}"
 
@@ -950,7 +950,7 @@ def _snapshot_workspace_engine(
             if _workspace_pack_sha256(staged_source) != pack_sha256:
                 raise TemplateEngineError(
                     "TEMPLATE_SNAPSHOT_INVALID",
-                    "模板快照复核失败，未执行导出。",
+                    "模板校验失败，请重新选择模板后导出。",
                 )
             staging.rename(destination)
             created = True
@@ -962,7 +962,7 @@ def _snapshot_workspace_engine(
     if _workspace_pack_sha256(snapshot_source) != pack_sha256:
         raise TemplateEngineError(
             "TEMPLATE_SNAPSHOT_INVALID",
-            "已保存的模板快照校验失败，未执行导出。",
+            "模板校验失败，请重新选择模板后导出。",
         )
     manifest_path = destination / INSTALL_MANIFEST_NAME
     try:
@@ -977,7 +977,7 @@ def _snapshot_workspace_engine(
             raise ValueError
     except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, ValueError) as exc:
         raise TemplateEngineError(
-            "TEMPLATE_SNAPSHOT_INVALID", "模板快照清单无效，未执行导出。"
+            "TEMPLATE_SNAPSHOT_INVALID", "模板信息损坏，请重新选择模板后导出。"
         ) from exc
     return (
         EngineDescriptor(

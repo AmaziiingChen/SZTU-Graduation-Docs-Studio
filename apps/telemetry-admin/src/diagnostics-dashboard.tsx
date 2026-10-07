@@ -186,7 +186,7 @@ function ReportDetails({ report }: { report: DiagnosticReportItem }) {
               ))}
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">这份报告没有操作记录。</p>
+            <p className="text-sm text-muted-foreground">暂无操作记录</p>
           )}
         </section>
 
@@ -200,7 +200,7 @@ function ReportDetails({ report }: { report: DiagnosticReportItem }) {
                   <TableHead>操作</TableHead>
                   <TableHead>结果</TableHead>
                   <TableHead>耗时</TableHead>
-                  <TableHead>错误码</TableHead>
+                  <TableHead>错误与上下文</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -209,8 +209,16 @@ function ReportDetails({ report }: { report: DiagnosticReportItem }) {
                     <TableCell className="whitespace-nowrap">{formatTimestamp(item.occurredAt)}</TableCell>
                     <TableCell>{item.label}</TableCell>
                     <TableCell>{outcomeBadge(item.outcome)}</TableCell>
-                    <TableCell className="whitespace-nowrap">{item.durationLabel}</TableCell>
-                    <TableCell className="text-xs tabular-nums">{item.errorCode ?? "—"}</TableCell>
+                    <TableCell className="whitespace-nowrap">{item.durationMs !== undefined ? `${item.durationMs} ms` : item.durationLabel}</TableCell>
+                    <TableCell className="max-w-sm whitespace-normal break-all text-xs tabular-nums">{item.errorCode ?? "—"}
+                      {item.context?.request_id ? <div>请求：{item.context.request_id}</div> : null}
+                      {item.context?.stage ? <div>阶段：{item.context.stage}</div> : null}
+                      {item.context?.document_type ? <div>文档：{item.context.document_type}</div> : null}
+                      {item.context?.template_version ? <div>模板：{item.context.template_version}</div> : null}
+                      {item.context?.field ? <div>字段：{item.context.field}</div> : null}
+                      {item.context?.trace?.map((frame, index) => <div key={index}>{frame.module}:{frame.line}</div>)}
+                      {item.context?.structure ? <div>结构：{Object.entries(item.context.structure).map(([key, count]) => `${key}=${count}`).join("；")}</div> : null}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

@@ -3,6 +3,8 @@ import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 
+import { diagnosticContext, validDiagnosticContext, type DiagnosticContext } from "./diagnostic-context.js"
+
 const MAX_OPERATION_ENTRIES = 200
 const MAX_PERSISTED_BYTES = 128 * 1024
 const MAX_REPORT_BYTES = 256 * 1024
@@ -20,6 +22,10 @@ export const DIAGNOSTIC_OPERATIONS = [
   "environment.check",
   "workspace.open",
   "workspace.listDocuments",
+  "workspace.renameDocument",
+  "workspace.deleteDocument",
+  "workspace.restoreDocument",
+  "workspace.purgeDocument",
   "workspace.saveProfileDraft",
   "workspace.saveProfile",
   "workspace.createDocument",
@@ -57,6 +63,8 @@ export type DiagnosticOperationEntry = {
   outcome: DiagnosticOutcome
   duration_bucket: DurationBucket
   error_code?: string
+  duration_ms?: number
+  context?: DiagnosticContext
 }
 
 type EnvironmentCheckInput = {
@@ -79,7 +87,7 @@ export type DiagnosticEnvironmentInput = {
 }
 
 export type DiagnosticReport = {
-  schema_version: "1.0"
+  schema_version: "2.0"
   report_id: string
   created_at: string
   application: {
@@ -225,8 +233,10 @@ function parseOperationEntry(value: unknown): DiagnosticOperationEntry | null {
     !exactKeys(
       value,
       ["occurred_at", "operation", "outcome", "duration_bucket"],
-      ["error_code"],
+      ["error_code", "duration_ms", "context"],
     ) ||
+    (value.duration_ms !== undefined && (!Number.isInteger(value.duration_ms) || Number(value.duration_ms) < 0 || Number(value.duration_ms) > 86400000)) ||
+    (value.context !== undefined && !validDiagnosticContext(value.context)) ||
     typeof value.occurred_at !== "string" ||
     !Number.isFinite(Date.parse(value.occurred_at)) ||
     typeof value.operation !== "string" ||
@@ -308,16 +318,21 @@ export class DiagnosticService {
     outcome: DiagnosticOutcome,
     durationMs: number,
     errorCode?: string,
+    context?: DiagnosticContext,
   ): void {
+    if (!OPERATIONS.has(operation)) return
     const normalizedCode = safeErrorCode(errorCode)
     const entry: DiagnosticOperationEntry = {
       occurred_at: this.now().toISOString(),
       operation,
       outcome,
       duration_bucket: durationBucket(Math.max(0, durationMs)),
+      duration_ms: Number.isFinite(durationMs) ? Math.min(86400000, Math.max(0, Math.round(durationMs))) : 0,
+      ...(context ? { context: diagnosticContext(context) } : {}),
       ...(normalizedCode ? { error_code: normalizedCode } : {}),
     }
     this.operations = [...this.operations, entry].slice(-MAX_OPERATION_ENTRIES)
+    while (Buffer.byteLength(JSON.stringify(this.operations), "utf8") > MAX_PERSISTED_BYTES) this.operations.shift()
     this.writeChain = this.writeChain
       .then(() => this.writeOperations())
       .catch(() => undefined)
@@ -346,7 +361,7 @@ export class DiagnosticService {
         : "linux"
     const architecture = this.options.arch === "arm64" ? "arm64" : "x64"
     const report: DiagnosticReport = {
-      schema_version: "1.0",
+      schema_version: "2.0",
       report_id: randomUUID(),
       created_at: this.now().toISOString(),
       application: {

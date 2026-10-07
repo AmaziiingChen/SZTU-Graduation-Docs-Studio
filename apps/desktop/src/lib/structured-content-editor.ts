@@ -518,7 +518,7 @@ function listToTiptap(
     attrs: ordered && (start || decimalMarkers) ? { ...(start ? { start } : {}), ...(decimalMarkers ? { contractDecimalMarkers: true } : {}) } : undefined,
     content: list.items.map((item) => {
       if (!ordered && "marker" in item && item.marker !== undefined) {
-        throw new TypeError("无序列表项不能包含 marker。")
+        throw new TypeError("无序列表的编号格式有误，请重新设置列表格式。")
       }
       return {
         type: "listItem",
@@ -660,7 +660,7 @@ function paragraphFromTiptap(node: JSONContent): ParagraphInput {
       continue
     }
     if (child.type !== "text") {
-      throw new TypeError(`正文段落包含不受支持的节点：${child.type ?? "未知"}。`)
+      throw new TypeError(`段落包含不支持的内容类型。`)
     }
     const text = child.text ?? ""
     if (!text) continue
@@ -719,7 +719,7 @@ function listFromTiptap(node: JSONContent, depth: number): StructuredListBlock {
   }
   const ordered = node.type === "orderedList"
   if (!ordered && node.type !== "bulletList") {
-    throw new TypeError(`正文包含不受支持的列表节点：${node.type ?? "未知"}。`)
+    throw new TypeError(`列表格式无法识别，请重新设置列表格式。`)
   }
 
   const start = node.attrs?.start ?? 1
@@ -742,7 +742,7 @@ function listFromTiptap(node: JSONContent, depth: number): StructuredListBlock {
 
     const marker = itemNode.attrs?.contractMarker
     if (marker !== undefined && marker !== null && typeof marker !== "string") {
-      throw new TypeError("列表 marker 必须是字符串。")
+      throw new TypeError("列表编号格式无法识别，请重新设置。")
     }
 
     return {
@@ -769,7 +769,7 @@ function listFromTiptap(node: JSONContent, depth: number): StructuredListBlock {
 /** Convert editor view state back to the repository-owned body contract. */
 export function tiptapToStructuredBody(document: JSONContent): StructuredBodyValue {
   if (document.type !== "doc") {
-    throw new TypeError("编辑器根节点必须是 doc。")
+    throw new TypeError("正文结构无效，无法载入。")
   }
 
   const blocks: StructuredBodyValue = []
@@ -800,7 +800,7 @@ export function tiptapToStructuredBody(document: JSONContent): StructuredBodyVal
       blocks.push(listFromTiptap(node, 1))
       continue
     }
-    throw new TypeError(`正文包含不受支持的节点：${node.type ?? "未知"}。`)
+    throw new TypeError(`正文包含不支持的内容类型。`)
   }
   return blocks
 }

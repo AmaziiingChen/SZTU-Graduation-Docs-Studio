@@ -199,14 +199,14 @@ def _require_text(
     if not isinstance(value, str) or not value.strip():
         raise ExportError(
             "DOCUMENT_NOT_READY",
-            "开题报告内容不完整，请补全必填字段后重试。",
+            "开题报告内容不完整，请补全必填项后重试。",
             {"field": path, "reason": "required"},
         )
     normalized = value.strip()
     if len(normalized) > maximum:
         raise ExportError(
             "DOCUMENT_NOT_READY",
-            "开题报告字段超过允许长度。",
+            "开题报告内容超出字数限制，请调整后重试。",
             {"field": path, "reason": "too_long", "maximum": maximum},
         )
     return normalized
@@ -306,7 +306,7 @@ def _validate_paragraph(value: Any, path: str, maximum: int, *, allow_inline_equ
         if not isinstance(run, dict) or set(run) - {"text", "script", "italic", "bold"}:
             raise ExportError(
                 "DOCUMENT_NOT_READY",
-                "开题报告富文本字段无效。",
+                "开题报告的文字格式有误，请检查后重试。",
                 {"field": run_path, "reason": "unsupported_field"},
             )
         text = _require_text(run.get("text"), f"{run_path}.text", maximum=maximum)
@@ -621,7 +621,7 @@ def validate_proposal(document: Any) -> dict[str, Any]:
     if ADVISOR_TITLE_PATTERN.search(clean_metadata["advisor"]):
         raise ExportError(
             "DOCUMENT_NOT_READY",
-            "指导教师字段只填写姓名，不填写职称。",
+            "“指导教师”仅填写姓名，职称请填写至“指导教师职称”。",
             {"field": "metadata.advisor", "reason": "name_only"},
         )
 
@@ -686,7 +686,7 @@ def _validate_midterm_paragraph(value: Any, path: str, maximum: int) -> None:
         if not value.strip() or len(value.strip()) > maximum:
             raise ExportError(
                 "DOCUMENT_NOT_READY",
-                "中期检查文本字段不完整或超过允许长度。",
+                "中期检查内容不完整或超出字数限制，请检查后重试。",
                 {"field": path, "reason": "invalid_text", "maximum": maximum},
             )
         _reject_unresolved_math_source(value, path)
@@ -707,7 +707,7 @@ def _validate_midterm_tool(block: dict, path: str) -> None:
 
     if block["type"] == "figure_group":
         if set(block) - {"type", "id", "chapter", "columns", "items", "caption", "source_citation_key"}:
-            invalid(path, "组合图包含不支持的字段。")
+            invalid(path, "组合图信息格式有误，请重新插入图片。")
         proxy = {key: value for key, value in block.items() if key in {"id", "chapter", "caption", "source_citation_key"}}
         _validate_image_block({**proxy, "type": "image", "path": "group", "alt": "group"}, path, 5000, _validate_midterm_paragraph, document_name="中期检查")
         _validate_midterm_paragraph(block.get("caption"), f"{path}.caption", 5000)
@@ -924,7 +924,7 @@ def validate_midterm(document: Any) -> dict[str, Any]:
     if ADVISOR_TITLE_PATTERN.search(clean_metadata["advisor"]):
         raise ExportError(
             "DOCUMENT_NOT_READY",
-            "指导教师字段只填写姓名，不填写职称。",
+            "“指导教师”仅填写姓名，职称请填写至“指导教师职称”。",
             {"field": "metadata.advisor", "reason": "name_only"},
         )
     check_date = metadata.get("check_date")
@@ -1225,7 +1225,7 @@ def validate_task_book(document: Any) -> dict[str, Any]:
     if TASK_BOOK_ADVISOR_TITLE_PATTERN.search(clean_metadata["advisor"]):
         raise ExportError(
             "DOCUMENT_NOT_READY",
-            "指导教师字段只填写姓名，不填写职称。",
+            "“指导教师”仅填写姓名，职称请填写至“指导教师职称”。",
             {"field": "metadata.advisor", "reason": "name_only"},
         )
 
@@ -1422,7 +1422,7 @@ def validate_document(document_type: str, document: Any) -> dict[str, Any]:
         except BibtexValidationError as exc:
             raise ExportError("DOCUMENT_NOT_READY", "参考文献 BibTeX 内容无效。", {"reason": exc.reason}) from exc
         return document
-    raise ExportError("DOCUMENT_TYPE_UNSUPPORTED", "当前文档类型尚未接入导出管线。")
+    raise ExportError("DOCUMENT_TYPE_UNSUPPORTED", "当前文档类型不支持导出。")
 
 
 def _template_json_object(path: Path, *, relative_name: str) -> dict[str, Any]:
@@ -1598,7 +1598,7 @@ def validate_template_renderability(
 
     if engine.document_type != document_type:
         raise ExportError(
-            "TEMPLATE_ENGINE_MISMATCH", "模板引擎与当前文档类型不匹配。"
+            "TEMPLATE_ENGINE_MISMATCH", "模板与文档类型不匹配，请重新选择模板。"
         )
     if document_type != "task_book":
         return
@@ -1960,17 +1960,17 @@ def content_check(
         "status": "pass",
         "blocking": True,
         "message": (
-            "基本信息与评审填写结构已通过检查；留白区域可打印后手写。"
+            "基本信息和评审内容检查通过；空白处可打印后手写。"
             if document_type in ASSESSMENT_DOCUMENT_TYPES else
-            "开题报告必填字段和段落结构已通过严格检查。"
+            "开题报告内容检查通过。"
             if document_type == "proposal"
             else (
-                "中期检查基本信息、目录和进展内容已通过严格检查。"
+                "中期检查内容检查通过。"
                 if document_type == "midterm"
                 else (
                     "论文基本信息、摘要、章节和参考文献已通过内容检查。"
                     if document_type == "thesis"
-                    else "任务书基本信息、正文、进度安排、选题信息和当前模板封面容量已通过严格检查。"
+                    else "任务书内容检查通过。"
                 )
             )
         ),
@@ -2150,7 +2150,7 @@ def _run(
     except OSError as exc:
         raise ExportError(
             "RENDER_START_FAILED",
-            "无法启动本地文档渲染器。",
+            "文档生成服务启动失败，请查看环境检查结果。",
         ) from exc
 
     deadline = time.monotonic() + timeout
@@ -2169,7 +2169,7 @@ def _run(
                 _terminate_process(process)
                 raise ExportError(
                     "RENDER_TIMEOUT",
-                    "文档渲染超时，已停止本次导出。",
+                    "文档生成超时，导出已终止，请重试。",
                 )
     if process.returncode != 0:
         diagnostic = stdout + "\n" + stderr
@@ -2215,7 +2215,7 @@ def _run(
         if "No module named 'docx'" in diagnostic or "Pillow is required" in diagnostic:
             raise ExportError(
                 "PYTHON_RENDER_DEPENDENCY_MISSING",
-                "缺少本地文档渲染依赖；请运行 corepack pnpm setup:backend 后重启工作台。",
+                "文档生成组件缺失，请重新安装应用。",
                 {"exit_code": process.returncode},
             )
         if (
@@ -2224,12 +2224,12 @@ def _run(
         ):
             raise ExportError(
                 "TEMPLATE_ENGINE_INCOMPLETE",
-                "当前模板快照缺少共享排版文件；请重启工作台后重试，仍失败则重新关联模板工程。",
+                "模板文件不完整，请重新选择模板。",
                 {"exit_code": process.returncode},
             )
         raise ExportError(
             "RENDER_FAILED",
-            "文档渲染失败；请重试，若持续失败请创建诊断包以便定位。",
+            "文档生成失败，请重试或发送诊断包。",
             {"exit_code": process.returncode},
         )
     return (stdout + "\n" + stderr)[-20_000:]
@@ -2302,7 +2302,7 @@ def _run_cjk_gate(
         "gate": "cjk_glyph",
         "status": "pass",
         "blocking": True,
-        "message": "PDF 中文字形门禁通过。",
+        "message": "PDF 中文字形检查通过。",
         "checked_at": utc_now(),
     }
 
@@ -2459,9 +2459,9 @@ def preflight_export(
             "status": "pass",
             "blocking": True,
             "message": (
-                "本地模板工程已冻结为内容寻址快照。"
+                "模板可用。"
                 if live_workspace
-                else "本地模板引擎文件与受信任版本哈希一致。"
+                else "模板文件完整性检查通过。"
             ),
             "details": {
                 "pack_sha256": descriptor.pack_sha256,
@@ -3391,9 +3391,9 @@ def run_export(
                     "status": "pass",
                     "blocking": True,
                     "message": (
-                        "本地模板工程已冻结为内容寻址快照。"
+                        "模板可用。"
                         if live_workspace
-                        else "本地模板引擎文件与已提交版本哈希一致。"
+                        else "模板文件完整性检查通过。"
                     ),
                     "evidence": [
                         {"kind": "hash", "value": descriptor.pack_sha256},
@@ -3432,11 +3432,26 @@ def run_export(
                 try:
                     from .docx_inspector import DocxInspectionError, inspect_docx
 
+                    # Load shared rules lazily: inspection owns their use; mocked
+                    # inspectors do not need a complete template filesystem.
+                    shared_module = None
+                    def normalize_expected(value: Any, field: str, maximum: int, **options: Any) -> Any:
+                        nonlocal shared_module
+                        if shared_module is None:
+                            import importlib.util
+                            shared_content = descriptor.root.parent / "common" / "python" / "content.py"
+                            spec = importlib.util.spec_from_file_location("_trusted_docx_content", shared_content)
+                            if spec is None or spec.loader is None:
+                                raise ExportError("DOCX_EXPECTATION_INVALID", "无法载入模板共用内容规则。")
+                            shared_module = importlib.util.module_from_spec(spec)
+                            spec.loader.exec_module(shared_module)
+                        return shared_module.normalize_paragraph(value, field, maximum, **options)
                     checks.append(
                         inspect_docx(
                             docx_path,
                             proposal,
                             document_type=record["document_type"],
+                            normalize_paragraph=normalize_expected,
                             layout=_assessment_docx_layout(assessment_spec, data_path, effective_layout_path) if record["document_type"] in ASSESSMENT_DOCUMENT_TYPES else None,
                         )
                     )

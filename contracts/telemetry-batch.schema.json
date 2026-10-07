@@ -37,7 +37,10 @@
                   "type": "object",
                   "additionalProperties": false,
                   "required": ["launch_mode"],
+                  "allOf": [{ "$ref": "#/$defs/academicContext" }],
                   "properties": {
+                    "college": { "type": "string" },
+                    "major": { "type": "string" },
                     "launch_mode": { "enum": ["packaged", "development"] }
                   }
                 }
@@ -52,7 +55,10 @@
                   "type": "object",
                   "additionalProperties": false,
                   "required": ["uptime_bucket"],
+                  "allOf": [{ "$ref": "#/$defs/academicContext" }],
                   "properties": {
+                    "college": { "type": "string" },
+                    "major": { "type": "string" },
                     "uptime_bucket": { "enum": ["under_5m", "5m_to_30m", "30m_to_1h", "1h_to_3h", "over_3h"] }
                   }
                 }
@@ -69,7 +75,10 @@
                       "type": "object",
                       "additionalProperties": false,
                       "required": ["event_name", "view"],
+                      "allOf": [{ "$ref": "#/$defs/academicContext" }],
                       "properties": {
+                        "college": { "type": "string" },
+                        "major": { "type": "string" },
                         "event_name": { "const": "view_opened" },
                         "view": { "enum": ["profile", "proposal", "task_book", "midterm", "inspection", "advisor_review", "reviewer_review", "defense_record", "grade_assessment"] }
                       }
@@ -78,7 +87,10 @@
                       "type": "object",
                       "additionalProperties": false,
                       "required": ["event_name", "action", "document_type", "outcome"],
+                      "allOf": [{ "$ref": "#/$defs/academicContext" }],
                       "properties": {
+                        "college": { "type": "string" },
+                        "major": { "type": "string" },
                         "event_name": { "const": "document_action" },
                         "action": { "enum": ["check", "preview", "template_sync", "export", "qa_record"] },
                         "document_type": { "enum": ["proposal", "task_book", "midterm", "advisor_review", "reviewer_review", "defense_record", "grade_assessment"] },
@@ -91,7 +103,10 @@
                       "type": "object",
                       "additionalProperties": false,
                       "required": ["event_name", "document_type"],
+                      "allOf": [{ "$ref": "#/$defs/academicContext" }],
                       "properties": {
+                        "college": { "type": "string" },
+                        "major": { "type": "string" },
                         "event_name": { "const": "document_completed" },
                         "document_type": { "enum": ["proposal", "task_book", "midterm", "advisor_review", "reviewer_review", "defense_record", "grade_assessment"] }
                       }
@@ -109,7 +124,10 @@
                   "type": "object",
                   "additionalProperties": false,
                   "required": ["outcome"],
+                  "allOf": [{ "$ref": "#/$defs/academicContext" }],
                   "properties": {
+                    "college": { "type": "string" },
+                    "major": { "type": "string" },
                     "outcome": { "enum": ["up_to_date", "available", "downloaded", "failed"] },
                     "target_version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$" }
                   }
@@ -118,6 +136,32 @@
             }
           }
         ]
+      }
+    }
+  },
+  "$defs": {
+    "academicContext": {
+      "dependentRequired": {
+        "college": [
+          "major"
+        ],
+        "major": [
+          "college"
+        ]
+      },
+      "properties": {
+        "college": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "pattern": "^\\S(?:[\\s\\S]*\\S)?$"
+        },
+        "major": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "pattern": "^\\S(?:[\\s\\S]*\\S)?$"
+        }
       }
     }
   }

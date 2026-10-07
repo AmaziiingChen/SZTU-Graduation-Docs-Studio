@@ -22,6 +22,26 @@ async function fixture() {
 }
 
 describe("offline signed updates and response bodies", () => {
+  it("reports streamed byte progress and verifies before making the installer available", async () => {
+    const f = await fixture(), bytes = Buffer.from("ABCDEF")
+    let controller!: ReadableStreamDefaultController<Uint8Array>
+    const stream = new ReadableStream<Uint8Array>({ start(value) { controller = value } })
+    const service = new UpdateService({ ...f.options, fetchImpl: async (url) => url.endsWith("manifest.json") ? f.response(f.payload(bytes)) : new Response(stream) })
+    const states: string[] = []
+    service.onStatus((status) => states.push(status.state === "downloading" ? status.phase : status.state))
+    await service.checkNow()
+    const pending = service.downloadNow()
+    expect(service.getStatus()).toMatchObject({ state: "downloading", downloadedBytes: 0, sizeBytes: 6, phase: "transferring" })
+    controller.enqueue(bytes.subarray(0, 3))
+    await vi.waitFor(() => expect(service.getStatus()).toMatchObject({ state: "downloading", downloadedBytes: 3, sizeBytes: 6 }))
+    expect(service.revealDownloadedPath()).toBeNull()
+    controller.enqueue(bytes.subarray(3))
+    controller.close()
+    expect((await pending).state).toBe("downloaded")
+    expect(states.indexOf("verifying")).toBeLessThan(states.indexOf("downloaded"))
+    expect(await readFile(service.revealDownloadedPath()!)).toEqual(bytes)
+  })
+
   it.each([["win32", "x64"], ["darwin", "arm64"]] as const)("notifies %s/%s without downloading until requested", async (platform, arch) => {
     const f = await fixture(), bytes = Buffer.from("AAA"), value = f.payload(bytes), outcome = vi.fn()
     value.artifacts[0]!.platform = platform

@@ -79,6 +79,7 @@ import { ToolDirectory } from "@/components/workbench/tool-directory"
 import { ThesisToolsWorkbench } from "@/components/workbench/thesis-tools-workbench"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
+import { Progress, ProgressLabel, ProgressValue } from "@/components/ui/progress"
 import {
   Card,
   CardContent,
@@ -346,7 +347,7 @@ async function loadEnvironmentState(): Promise<EnvironmentState> {
   if (!api) {
     return {
       status: "error",
-      message: "请在 Electron 桌面应用中运行工作台。",
+      message: "请在桌面应用中打开工作台。",
     }
   }
   try {
@@ -446,10 +447,10 @@ const PREVIEW_DRAWER_MIN_WIDTH = 384
 const PREVIEW_ACCEPTANCE_BOUNDARY_TOAST_ID = "preview-acceptance-boundary"
 
 function showPreviewAcceptanceBoundary(): void {
-  toast.info("验收边界", {
+  toast.info("Word 版式检查", {
     id: PREVIEW_ACCEPTANCE_BOUNDARY_TOAST_ID,
     description:
-      "这里显示正式模板生成的 PDF 页面，但与 Word/WPS 中的最终效果可能存在差异，仍需在目标编辑器中人工验收。",
+      "预览与 Word 文件的排版可能存在差异，提交前请使用 Word 或 WPS 检查。",
     duration: 8_000,
   })
 }
@@ -1067,7 +1068,7 @@ function documentSectionOptions(
       {
         id: "midterm_directory",
         label: "论文目录",
-        description: "一至四级结构化目录",
+        description: "一至四级论文目录",
         state: completionState(
           outlineErrors.length === 0,
           draft.directory.some((item) =>
@@ -1138,7 +1139,7 @@ function documentSectionOptions(
     {
       id: "proposal_references",
       label: "参考文献",
-      description: "独立保存的参考文献条目",
+      description: "参考文献",
       state: completionState(
         referenceState(
           draft.referencesBibtex,
@@ -1736,9 +1737,9 @@ function StructuredBodyField<TField extends string>({
           ) : null}
           <Alert>
             <TriangleAlertIcon />
-            <AlertTitle>本栏包含暂不支持编辑的内容块</AlertTitle>
+            <AlertTitle>当前内容暂不支持编辑</AlertTitle>
             <AlertDescription>
-              检测到图片或其他非文本结构。为避免覆盖原内容，本栏已暂停编辑；原始结构仍会原样保存并可继续检查、预览和导出。
+              当前内容包含不支持编辑的图片或其他结构，原内容将保留，支持保存、预览和导出。
             </AlertDescription>
           </Alert>
         </>
@@ -2349,7 +2350,7 @@ function DocumentEditor({
             <TriangleAlertIcon />
             <AlertTitle>保存失败</AlertTitle>
             <AlertDescription className="grid gap-3">
-              <span>内容仍保留在当前窗口中，请检查文档引擎后重试。</span>
+              <span>修改尚未保存，请重试。关闭窗口前请复制未保存的内容。</span>
               <Button variant="outline" size="sm" onClick={onRetrySave}>
                 <AnimatedActionIcon icon={SaveIconAnimated} />
                 重试保存
@@ -2379,9 +2380,9 @@ function DocumentEditor({
         {saveState === "conflict" ? (
           <Alert variant="destructive">
             <TriangleAlertIcon />
-            <AlertTitle>修订冲突</AlertTitle>
+            <AlertTitle>版本冲突</AlertTitle>
             <AlertDescription className="grid gap-3">
-              <span>已有更新版本。重新载入前会保留当前草稿，载入后可以恢复。</span>
+              <span>当前草稿与已保存版本不一致。重新载入将保留当前草稿副本，可在载入后恢复。</span>
               <Button variant="outline" size="sm" disabled={retryLoadDisabled} onClick={onRetryLoad}>
                 <AnimatedActionIcon icon={RefreshCwIconAnimated} />
                 重新载入
@@ -2492,7 +2493,7 @@ function DocumentEditor({
                       !structuredBodyHasText(draft.taskBasicContent)
                         ? "请填写至少一段内容要求。"
                         : draft.taskBasicContent.length > 80
-                          ? "内容要求最多 80 个内容块。"
+                          ? "“内容要求”最多支持 80 个内容块，请删减后重试。"
                           : undefined
                     }
                     onChange={onStructuredBodyChange}
@@ -2524,7 +2525,7 @@ function DocumentEditor({
                     value={draft.taskRequiredMaterials}
                     error={
                       draft.taskRequiredMaterials.length > 50
-                        ? "需收集资料最多 50 个内容块。"
+                        ? "“需收集资料”最多支持 50 个内容块，请删减后重试。"
                         : undefined
                     }
                     onChange={onStructuredBodyChange}
@@ -2924,7 +2925,7 @@ function PaginatedPreviewPanel({
             <AnimatedActionIcon icon={FileTextIconAnimated} />
             <AlertTitle>正在准备预览</AlertTitle>
             <AlertDescription>
-              工作台将自动保存并检查当前内容，然后生成正式分页预览。
+              保存并检查内容后生成预览。
             </AlertDescription>
           </Alert>
         ) : null}
@@ -2943,7 +2944,7 @@ function PaginatedPreviewPanel({
             <div className="min-w-0">
               <AlertTitle>正在保存并检查内容</AlertTitle>
               <AlertDescription>
-                内容检查通过后，将自动生成{documentTypeLabels[documentType]}分页预览。
+                正在检查{documentTypeLabels[documentType]}内容。
               </AlertDescription>
             </div>
           </Alert>
@@ -2963,7 +2964,7 @@ function PaginatedPreviewPanel({
             <div className="min-w-0">
               <AlertTitle>正在生成分页预览</AlertTitle>
               <AlertDescription>
-                正在调用{documentTypeLabels[documentType]}模板并检查 PDF 中文字形。
+                正在生成{documentTypeLabels[documentType]}预览。
               </AlertDescription>
             </div>
           </Alert>
@@ -3086,7 +3087,7 @@ function InspectionPanel({
                   {environment.status === "loading"
                     ? "正在检查运行环境。"
                     : environment.status === "error"
-                      ? "文档引擎未连接，请查看环境检查结果。"
+                      ? "文档服务连接失败，请查看环境检查结果。"
                       : !environment.result.ready
                         ? "运行环境需要修复，请查看缺失项目和安装指引。"
                         : thesisTemplatePending
@@ -3119,7 +3120,7 @@ function InspectionPanel({
                 {environment.status === "error" ? (
                   <Alert variant="destructive">
                     <TriangleAlertIcon />
-                    <AlertTitle className="text-sm font-medium">文档引擎未连接</AlertTitle>
+                    <AlertTitle className="text-sm font-medium">文档服务未连接</AlertTitle>
                     <AlertDescription className="text-xs">{environment.message}</AlertDescription>
                   </Alert>
                 ) : null}
@@ -3591,7 +3592,7 @@ export default function App() {
         message:
           error instanceof Error
             ? error.message
-            : "无法读取匿名遥测与更新服务状态。",
+            : "使用设置与更新状态读取失败，请重试。",
       })
     }
   }, [])
@@ -3604,7 +3605,7 @@ export default function App() {
   const applyWorkspace = useCallback(
     async (snapshot: WorkspaceSnapshot, fallback?: Draft, prefillNewProposal = false) => {
       const api = getDesktopApi()
-      if (!api) throw new Error("请在 Electron 桌面应用中运行工作台。")
+      if (!api) throw new Error("请在桌面应用中打开工作台。")
 
       documentListGeneration.current += 1
       documentListsLoadingRef.current = { active: false, deleted: false }
@@ -3753,7 +3754,7 @@ export default function App() {
       if (!api) {
         setWorkspace({
           status: "error",
-          message: "请在 Electron 桌面应用中运行工作台。",
+          message: "请在桌面应用中打开工作台。",
         })
         setSaveState("error")
         return false
@@ -4111,7 +4112,7 @@ export default function App() {
         if (closeSavePromise.current === pending) closeSavePromise.current = null
         const conflict = saveStateRef.current === "conflict"
         if (!saved) toast.error(conflict
-          ? "草稿存在修订冲突，请处理后再关闭窗口。"
+          ? "草稿存在版本冲突，请处理后再关闭窗口。"
           : "草稿尚未保存，窗口已保留，请重试保存后再关闭。")
         const completion = await api.completeCloseRequest({
           requestId,
@@ -4233,7 +4234,7 @@ export default function App() {
         outcome: "failure",
         errorCode: "REVISION_CONFLICT",
       })
-      toast.error("当前草稿存在修订冲突，请重新载入后再检查或生成预览。")
+      toast.error("草稿存在版本冲突，请重新载入后再检查或预览。")
       return false
     }
     if (
@@ -4278,7 +4279,7 @@ export default function App() {
       graduationYearFromCohort(draft.graduationCohort) === null
     ) {
       const message =
-        "任务书必须从学生档案的毕业届别提取四位年份，例如“2026届”。请先修改学生档案。"
+        "毕业届别须包含四位年份，请在“学生档案”中修改，例如“2026届”。"
       navigateToCheck({ pane: "profile", selector: "#graduationCohort" })
       recordTelemetry({
         name: "document_action",
@@ -4454,8 +4455,8 @@ export default function App() {
       }
       toast.success(
         installed.status === "already_current"
-          ? `本地模板工程已是最新快照 ${installed.version}。`
-          : `本地模板工程已关联并同步为 ${installed.version}。`,
+          ? `模板已是最新版本 ${installed.version}。`
+          : `模板已更新至 ${installed.version}。`,
       )
       setPreviewState((current) =>
         current.status === "ready" &&
@@ -4489,10 +4490,10 @@ export default function App() {
     if (!api) return
     try {
       await api.revealExportArtifact(artifactId)
-      toast.success("已在系统文件管理器中显示产物。")
+      toast.success("已打开文件所在位置。")
     } catch (error) {
       await refreshHistory()
-      toast.error(error instanceof Error ? error.message : "无法打开产物所在位置。")
+      toast.error(error instanceof Error ? error.message : "无法打开文件所在位置。")
     }
   }
 
@@ -4576,7 +4577,7 @@ export default function App() {
         })
         .catch(() => undefined)
       toast.success(
-        `文件已准备好，已导出 ${receipt.artifacts
+        `已导出 ${receipt.artifacts
           .map((artifact) => artifact.format.toUpperCase())
           .join("、")}。`,
       )
@@ -4590,7 +4591,7 @@ export default function App() {
       }
       const cancelled = errorHasCode(error, "EXPORT_CANCELLED")
       const message = cancelled
-        ? "导出已取消，未完成的临时产物已清理。"
+        ? "已取消导出。"
         : error instanceof Error
           ? error.message
           : "导出失败。"
@@ -4753,7 +4754,7 @@ export default function App() {
         message:
           error instanceof Error
             ? error.message
-            : "无法保存匿名运行数据与更新服务确认状态。",
+            : "隐私设置保存失败，请重试。",
       })
     } finally {
       setPrivacySubmitting(false)
@@ -4837,7 +4838,7 @@ export default function App() {
     : !environmentReady
     ? environmentFailure?.message ?? "请先修复本机文档环境"
     : !templateReady
-      ? "请先在左侧“导出记录”中关联可用的本地模板工程"
+      ? "请先在左侧“导出记录”中选择可用模板"
       : !previewReady
         ? "请先生成当前内容的排版预览"
         : draftExportReady
@@ -4845,8 +4846,8 @@ export default function App() {
           : activeDocumentType === "task_book"
             ? "请补全任务书正文、进度安排、参考文献和选题信息，并确认毕业届别含四位年份"
             : activeDocumentType === "midterm"
-              ? "请先填写全部必填字段、有效目录、研究内容和进展情况"
-              : "请先填写全部必填字段，并确保选题意义至少有两个段落"
+              ? "请先填写全部必填项、有效目录、研究内容和进展情况"
+              : "请先填写全部必填项，并确保选题意义至少有两个段落"
 
   const openPreviewAndExport = () => {
     if (activeDocumentType === "thesis") return
@@ -4863,7 +4864,7 @@ export default function App() {
   const openToolLink = async (toolId: ToolLinkId) => {
     const api = getDesktopApi()
     if (!api) {
-      toast.error("当前不是受支持的 Electron 桌面环境。")
+      toast.error("请在桌面应用中使用此功能。")
       return
     }
     try {
@@ -4880,6 +4881,15 @@ export default function App() {
   }
 
   const releaseControl = "control" in updateStatus ? updateStatus.control : undefined
+  const updateDownloadProgress = updateStatus.state === "downloading" ? (
+    <Progress value={Math.floor(updateStatus.downloadedBytes / updateStatus.sizeBytes * 100)}>
+      <ProgressLabel className="sr-only">下载进度</ProgressLabel>
+      <span className="text-sm text-muted-foreground tabular-nums">
+        {(updateStatus.downloadedBytes / 1_000_000).toFixed(1)} MB / {(updateStatus.sizeBytes / 1_000_000).toFixed(1)} MB
+      </span>
+      <ProgressValue />
+    </Progress>
+  ) : null
   const releaseHasNewVersion =
     updateStatus.state === "available" || updateStatus.state === "downloading" || updateStatus.state === "downloaded"
   const releaseRequiresUpdate = Boolean(
@@ -5011,11 +5021,11 @@ export default function App() {
       previewState={previewState}
       blockedMessage={
         environment.status === "error"
-          ? "本地文档引擎未连接，请在“导出记录”中查看环境问题。"
+          ? "文档服务暂时无法连接，请在“导出记录”中查看环境检查。"
           : environmentFailure
             ? environmentFailure.message
           : environment.status === "ready" && !templateReady
-            ? templateCheck?.message ?? "当前文档模板工程不可用。"
+            ? templateCheck?.message ?? "当前文档模板不可用，请重新选择模板。"
             : undefined
       }
       disabled={
@@ -5243,15 +5253,15 @@ export default function App() {
       >
         <DialogContent showCloseButton={false} className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>使用说明与隐私告知</DialogTitle>
+            <DialogTitle>使用与隐私</DialogTitle>
             <DialogDescription>
-              继续使用前，请确认本软件的必要使用说明。
+              使用前请阅读并同意以下说明。
             </DialogDescription>
           </DialogHeader>
           {privacyNotice.status === "error" ? (
             <Alert variant="destructive">
               <TriangleAlertIcon />
-              <AlertTitle>暂时无法继续</AlertTitle>
+              <AlertTitle>初始化失败</AlertTitle>
               <AlertDescription>
                 初始化未完成，请稍后重试。
               </AlertDescription>
@@ -5259,9 +5269,9 @@ export default function App() {
           ) : privacyNotice.status === "required" ? (
             <div className="grid gap-3 text-sm text-muted-foreground">
               <p className="text-muted-foreground">
-                本软件会收集必要的匿名运行信息，用于稳定性分析、功能改进和版本服务，不会上传你填写的文档内容和个人资料。
+                本应用收集功能使用情况、运行状态及填写的学院、专业名称，用于功能改进与故障排查。
               </p>
-              <p>点击“同意并继续”即表示你已知悉并接受上述说明。</p>
+              <p>不上传姓名、学号、班级及文档正文。</p>
               {privacyNotice.result.configurationRequired &&
               (!privacyNotice.result.telemetryConfigured ||
                 !privacyNotice.result.updateConfigured) ? (
@@ -5269,7 +5279,7 @@ export default function App() {
                   <TriangleAlertIcon />
                   <AlertTitle>当前版本暂不可用</AlertTitle>
                   <AlertDescription>
-                    必要服务尚未完成配置，请退出应用并联系开发者。
+                    必要服务配置缺失，请退出应用并联系开发者。
                   </AlertDescription>
                 </Alert>
               ) : null}
@@ -5339,15 +5349,16 @@ export default function App() {
                 ? "请安装最新版本，或查看使用说明了解后续安排。"
                 : releaseRequiresUpdate
                   ? updateStatus.state === "downloaded"
-                    ? `版本 ${updateStatus.version} 已下载并完成校验。`
+                    ? `版本 ${updateStatus.version} 已下载，可以安装。`
                     : updateStatus.state === "available"
                       ? updateStatus.downloadFailed
                         ? "下载失败，请重试。下载完成后需手动安装。"
                         : `版本 ${updateStatus.version} 可用，请下载并手动安装。`
-                      : "正在检查或下载可用的新版本，请稍候。"
+                      : updateStatus.state === "downloading" ? `正在下载版本 ${updateStatus.version}。` : "正在检查更新…"
                   : releaseAnnouncement?.body}
             </DialogDescription>
           </DialogHeader>
+          {updateDownloadProgress}
           <DialogFooter>
             <Button variant="outline" onClick={() => void getDesktopApi()?.quitApp()}>
               退出应用
@@ -5393,7 +5404,7 @@ export default function App() {
             </DialogTitle>
             <DialogDescription className="whitespace-pre-wrap">
               {releaseAnnouncement?.body ??
-                "远程服务正在维护，本地编辑与已有资料仍可继续使用。"}
+                "服务维护中，本地编辑仍可使用。"}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -5432,24 +5443,25 @@ export default function App() {
           }
         }}
       >
-        <DialogContent showCloseButton={false}>
+        <DialogContent showCloseButton={updateStatus.state === "downloading"}>
           <DialogHeader>
-            <DialogTitle>{updateStatus.state === "downloaded" ? "新版本已下载并校验" : updateStatus.state === "downloading" ? "正在下载更新" : "发现新版本"}</DialogTitle>
+            <DialogTitle>{updateStatus.state === "downloaded" ? "更新已就绪" : updateStatus.state === "downloading" ? updateStatus.phase === "verifying" ? "正在检查安装包" : "下载更新" : "发现新版本"}</DialogTitle>
             <DialogDescription>
               {updateStatus.state === "downloaded"
-                ? `版本 ${updateStatus.version} 已下载并校验，可以打开更新文件进行安装。`
+                ? `版本 ${updateStatus.version} 已下载并通过校验，可打开安装包进行安装。`
                 : updateStatus.state === "available"
                   ? updateStatus.downloadFailed
                     ? "下载失败，请检查网络后重试。"
-                    : `版本 ${updateStatus.version} 可用，下载大小约 ${Math.ceil(updateStatus.sizeBytes / 1_000_000)} MB。点击下载后再手动安装。`
-                  : updateStatus.state === "downloading" ? `正在下载版本 ${updateStatus.version}，完成后会校验安装包。` : null}
+                    : `版本 ${updateStatus.version} 可用，安装包约 ${Math.ceil(updateStatus.sizeBytes / 1_000_000)} MB。`
+                  : updateStatus.state === "downloading" ? `版本 ${updateStatus.version}` : null}
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter>
+          {updateDownloadProgress}
+          {updateStatus.state !== "downloading" ? <DialogFooter>
             <Button
               variant="outline"
               onClick={() => {
-                if (updateStatus.state === "available" || updateStatus.state === "downloading" || updateStatus.state === "downloaded") {
+                if (updateStatus.state === "available" || updateStatus.state === "downloaded") {
                   setDismissedUpdateVersion(updateStatus.version)
                 }
               }}
@@ -5464,10 +5476,10 @@ export default function App() {
             ) : (
               <Button disabled={updateStatus.state !== "available"} onClick={() => void downloadUpdate()}>
                 <AnimatedActionIcon icon={DownloadIcon} />
-                {updateStatus.state === "downloading" ? "正在下载…" : updateStatus.state === "available" && updateStatus.downloadFailed ? "重试下载" : "下载更新"}
+                {updateStatus.state === "available" && updateStatus.downloadFailed ? "重试下载" : "下载更新"}
               </Button>
             )}
-          </DialogFooter>
+          </DialogFooter> : null}
         </DialogContent>
       </Dialog>
       <Toaster />

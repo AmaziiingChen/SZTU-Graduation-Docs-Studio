@@ -2,7 +2,9 @@ import { randomUUID } from "node:crypto"
 import { chmod, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises"
 import path from "node:path"
 
-export const TELEMETRY_NOTICE_VERSION = "1.1"
+import { academicTelemetry } from "./academic-telemetry.js"
+
+export const TELEMETRY_NOTICE_VERSION = "1.2"
 export const TELEMETRY_INTERVAL_MS = 30 * 60 * 1000
 const INSTALLATION_ID_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000
 const MAX_QUEUE_LENGTH = 1_000
@@ -113,6 +115,8 @@ const EVENT_NAMES = new Set([
   "update_event",
 ])
 const ATTRIBUTE_KEYS = new Set([
+  "college",
+  "major",
   "launch_mode",
   "uptime_bucket",
   "event_name",
@@ -224,10 +228,13 @@ function parseState(value: unknown): TelemetryState | null {
 
 function validPersistedAttributes(value: unknown): value is TelemetryAttributes {
   if (!isObject(value) || Object.keys(value).length > 10) return false
+  const academic = academicTelemetry(value)
+  if ((value.college !== undefined || value.major !== undefined) &&
+      (value.college !== academic.college || value.major !== academic.major)) return false
   return Object.entries(value).every(
     ([key, item]) =>
       ATTRIBUTE_KEYS.has(key) &&
-      ((typeof item === "string" && item.length <= 64) ||
+      ((typeof item === "string" && item.length <= (key === "college" || key === "major" ? 200 : 64)) ||
         typeof item === "boolean" ||
         (typeof item === "number" && Number.isFinite(item))),
   )
@@ -253,6 +260,7 @@ export class TelemetryService {
   private readonly sessionId = randomUUID()
   private readonly sessionStartedAt: number
   private timer: NodeJS.Timeout | undefined
+  private academic = academicTelemetry(null)
   private started = false
   private persistence: Promise<void> = Promise.resolve()
 
@@ -426,7 +434,12 @@ export class TelemetryService {
     })
   }
 
+  setAcademicProfile(profile: unknown): void {
+    this.academic = academicTelemetry(profile)
+  }
+
   async flush(): Promise<boolean> {
+    if (!this.getPrivacyStatus().acknowledged) return false
     if (!this.options.endpoint || this.queue.length === 0) return false
     const batch: TelemetryEvent[] = []
     for (const event of this.queue.slice(0, MAX_BATCH_LENGTH)) {
@@ -483,7 +496,7 @@ export class TelemetryService {
       app_version: this.options.appVersion,
       platform: this.options.platform,
       arch: this.options.arch,
-      attributes,
+      attributes: { ...attributes, ...this.academic },
     })
     if (this.queue.length > MAX_QUEUE_LENGTH) {
       this.queue = this.queue.slice(-MAX_QUEUE_LENGTH)

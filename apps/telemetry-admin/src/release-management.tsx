@@ -172,7 +172,7 @@ export function ReleaseManagement() {
           <div className="flex items-center justify-between gap-4">
             <div>
               <CardTitle>发布信任</CardTitle>
-              <CardDescription>免费 Ed25519 签名；私钥只保存在这台发布电脑</CardDescription>
+              <CardDescription>发布密钥保存在本机，请妥善备份。</CardDescription>
             </div>
             <Badge variant={status?.keyReady ? "secondary" : "outline"}>
               {status?.keyReady ? "已初始化" : "未初始化"}
@@ -194,7 +194,7 @@ export function ReleaseManagement() {
       <Card>
         <CardHeader>
           <CardTitle>生成签名发布清单</CardTitle>
-          <CardDescription>只发公告时可不填安装包；此页面生成清单但不会自动公开文件</CardDescription>
+          <CardDescription>仅发布公告时无需填写安装包。生成后上传更新清单及安装包。</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-5">
           <Field><FieldLabel htmlFor={`${releaseFieldId}-2`}>版本号</FieldLabel><Input id={`${releaseFieldId}-2`} aria-label="版本号" value={version} onChange={(event) => setVersion(event.target.value)} placeholder="0.2.0" /></Field>

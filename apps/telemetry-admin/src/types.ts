@@ -60,6 +60,7 @@ export type TelemetryRecentResponse =
   | { status: "error"; message: string }
 
 export type TelemetryDashboardData = {
+  academicDistribution: Array<{ college: string; major: string; installations: number }>
   generatedAt: string
   rangeDays: 7 | 30 | 90
   sourceRowCount: number
@@ -104,6 +105,8 @@ export type DiagnosticOperation = {
   operation: string
   label: string
   outcome: DiagnosticOutcome
+  context?: { stage?: string; request_id?: string; document_type?: string; template_version?: string; field?: string; trace?: Array<{ module: string; line: number }>; structure?: Record<string, number> }
+  durationMs?: number
   durationBucket: string
   durationLabel: string
   errorCode: string | null

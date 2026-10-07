@@ -88,7 +88,7 @@ export type UpdateStatus =
   | { state: "checking"; control?: ReleaseControl }
   | { state: "up_to_date"; checkedAt: string; control?: ReleaseControl }
   | { state: "available"; version: string; sizeBytes: number; downloadFailed?: boolean; control?: ReleaseControl }
-  | { state: "downloading"; version: string; control?: ReleaseControl }
+  | { state: "downloading"; version: string; downloadedBytes: number; sizeBytes: number; phase: "transferring" | "verifying"; control?: ReleaseControl }
   | { state: "downloaded"; version: string; downloadedAt: string; control?: ReleaseControl }
   | {
       state: "error"

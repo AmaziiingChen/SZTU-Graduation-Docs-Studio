@@ -513,7 +513,7 @@ export function OutlineEditor({
               <p className="text-xs text-destructive">{validationErrors[0]}</p>
             ) : (
               <p className="text-xs text-muted-foreground">
-                选择目录条目后在上方统一编辑标题；Enter 新建同级目录，Tab 增加缩进，Shift+Tab 减少缩进。
+                选择目录条目后在上方编辑标题；Enter 新建同级目录，Tab 增加缩进，Shift+Tab 减少缩进。
               </p>
             )}
           </div>

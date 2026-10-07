@@ -69,21 +69,21 @@ const environmentResult = {
       id: "proposal_engine",
       required: false,
       status: "pass" as const,
-      message: "开题报告本地模板工程已实时同步为导出快照。",
+      message: "开题报告模板已更新，可以导出。",
       details: { source: "development-workspace", live_workspace: true },
     },
     {
       id: "midterm_engine",
       required: false,
       status: "pass" as const,
-      message: "中期检查本地模板工程已实时同步为导出快照。",
+      message: "中期检查模板已更新，可以导出。",
       details: { source: "development-workspace", live_workspace: true },
     },
     {
       id: "task_book_engine",
       required: false,
       status: "pass" as const,
-      message: "任务书本地模板工程已实时同步为导出快照。",
+      message: "任务书模板已更新，可以导出。",
       details: { source: "development-workspace", live_workspace: true },
     },
   ],
@@ -184,7 +184,7 @@ const contentCheck = {
   gate: "content" as const,
   status: "pass" as const,
   blocking: true,
-  message: "开题报告必填字段和段落结构已通过严格检查。",
+  message: "开题报告内容检查通过。",
   checked_at: "2026-08-30T00:00:02Z",
 }
 
@@ -695,7 +695,7 @@ describe("M3 workbench persistence", () => {
     fireEvent.click(await screen.findByRole("button", { name: "新版本可用" }))
     fireEvent.click(within(await screen.findByRole("dialog", { name: "发现新版本" })).getByRole("button", { name: "下载更新" }))
     expect(api.downloadUpdate).toHaveBeenCalledTimes(1)
-    const downloaded = await screen.findByRole("dialog", { name: "新版本已下载并校验" })
+    const downloaded = await screen.findByRole("dialog", { name: "更新已就绪" })
     fireEvent.click(within(downloaded).getByRole("button", { name: "显示更新文件" }))
     expect(api.revealDownloadedUpdate).toHaveBeenCalledTimes(1)
   })
@@ -743,10 +743,10 @@ describe("M3 workbench persistence", () => {
 
     expect(
       await screen.findByRole("dialog", {
-        name: "使用说明与隐私告知",
+        name: "使用与隐私",
       }),
     ).toBeInTheDocument()
-    expect(screen.getByText(/必要的匿名运行信息/)).toBeInTheDocument()
+    expect(screen.getByText(/本应用收集功能使用情况/)).toBeInTheDocument()
     expect(screen.queryByText("当前开发构建尚未配置远程服务")).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole("button", { name: "同意并继续" }))
@@ -754,9 +754,27 @@ describe("M3 workbench persistence", () => {
     await waitFor(() => expect(api.acceptPrivacyNotice).toHaveBeenCalledOnce())
     await waitFor(() =>
       expect(
-        screen.queryByRole("dialog", { name: "使用说明与隐私告知" }),
+        screen.queryByRole("dialog", { name: "使用与隐私" }),
       ).not.toBeInTheDocument(),
     )
+  })
+
+  it("shows live download progress and keeps downloading when the dialog is dismissed", async () => {
+    const api = mockApi()
+    vi.mocked(api.getUpdateStatus).mockResolvedValue({ state: "downloading", version: "0.2.0", downloadedBytes: 25_000_000, sizeBytes: 100_000_000, phase: "transferring" })
+    installApi(api)
+    renderApp()
+    const dialog = await screen.findByRole("dialog", { name: "下载更新" })
+    expect(within(dialog).getByRole("progressbar", { name: "下载进度" })).toHaveAttribute("aria-valuenow", "25")
+    expect(within(dialog).getByText("25.0 MB / 100.0 MB")).toBeInTheDocument()
+    expect(within(dialog).queryByText(/收起后会继续下载/)).not.toBeInTheDocument()
+    expect(within(dialog).getAllByRole("button")).toHaveLength(1)
+    const listener = vi.mocked(api.onUpdateStatus).mock.calls[0]![0]
+    act(() => listener({ state: "downloading", version: "0.2.0", downloadedBytes: 60_000_000, sizeBytes: 100_000_000, phase: "transferring" }))
+    expect(within(dialog).getByRole("progressbar", { name: "下载进度" })).toHaveAttribute("aria-valuenow", "60")
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }))
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "下载更新" })).not.toBeInTheDocument())
+    expect(api.downloadUpdate).not.toHaveBeenCalled()
   })
 
   it("shows the environment guide after the privacy notice on first launch", async () => {
@@ -776,20 +794,20 @@ describe("M3 workbench persistence", () => {
 
     expect(
       await screen.findByRole("dialog", {
-        name: "使用说明与隐私告知",
+        name: "使用与隐私",
       }),
     ).toBeInTheDocument()
     expect(
-      screen.queryByRole("dialog", { name: "准备本机文档环境" }),
+      screen.queryByRole("dialog", { name: "环境检查" }),
     ).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole("button", { name: "同意并继续" }))
 
     const dialog = await screen.findByRole("dialog", {
-      name: "准备本机文档环境",
+      name: "环境检查",
     })
     expect(dialog).toBeInTheDocument()
-    expect(screen.getByText("基础环境可以使用")).toBeInTheDocument()
+    expect(screen.getByText("基础环境可用")).toBeInTheDocument()
     expect(within(dialog).getByText("XeLaTeX")).toBeInTheDocument()
     expect(within(dialog).queryByText("XeLaTeX is available.")).toBeNull()
     expect(dialog.querySelector('[data-slot="badge"]')).toBeNull()
@@ -800,7 +818,7 @@ describe("M3 workbench persistence", () => {
     fireEvent.click(screen.getByRole("button", { name: "进入工作台" }))
     await waitFor(() =>
       expect(
-        screen.queryByRole("dialog", { name: "准备本机文档环境" }),
+        screen.queryByRole("dialog", { name: "环境检查" }),
       ).not.toBeInTheDocument(),
     )
   })
@@ -826,9 +844,9 @@ describe("M3 workbench persistence", () => {
     renderApp()
 
     const dialog = await screen.findByRole("dialog", {
-      name: "准备本机文档环境",
+      name: "环境检查",
     })
-    expect(within(dialog).getByText("还有 1 项必要环境缺失")).toBeInTheDocument()
+    expect(within(dialog).getByText("缺少 1 项必要组件")).toBeInTheDocument()
 
     fireEvent.click(
       within(dialog).getByRole("button", { name: "打开 TeX 安装页面" }),
@@ -1515,11 +1533,11 @@ describe("M3 workbench persistence", () => {
     fireEvent.click(screen.getByRole("button", { name: "创建诊断包" }))
 
     expect(
-      await screen.findByRole("dialog", { name: "诊断包已通过隐私扫描" }),
+      await screen.findByRole("dialog", { name: "诊断包已生成" }),
     ).toBeInTheDocument()
     expect(screen.getByText("12 条")).toBeInTheDocument()
     expect(screen.getByText("4.0 KB")).toBeInTheDocument()
-    expect(screen.getByText("已移除 8 个原始说明或扩展字段。")).toBeInTheDocument()
+    expect(screen.queryByText(/原始说明或扩展字段/)).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "保存到本机" }))
     await waitFor(() =>
       expect(api.saveDiagnosticReport).toHaveBeenCalledWith(
@@ -1590,12 +1608,12 @@ describe("M3 workbench persistence", () => {
     const previewDrawer = firstPage.closest<HTMLElement>(
       '[data-slot="sheet-content"]',
     )
-    const acceptanceBoundary = await screen.findByText("验收边界")
+    const acceptanceBoundary = await screen.findByText("Word 版式检查")
     expect(acceptanceBoundary.closest("[data-sonner-toast]")).not.toBeNull()
     expect(previewDrawer).not.toContainElement(acceptanceBoundary)
     expect(
       screen.getByText(
-        "这里显示正式模板生成的 PDF 页面，但与 Word/WPS 中的最终效果可能存在差异，仍需在目标编辑器中人工验收。",
+        "预览与 Word 文件的排版可能存在差异，提交前请使用 Word 或 WPS 检查。",
       ),
     ).toBeInTheDocument()
     expect(previewDrawer).toHaveClass(
@@ -1629,7 +1647,7 @@ describe("M3 workbench persistence", () => {
       name: "排版预览第 1 页",
     })).toBeInTheDocument()
     expect(api.generatePreview).toHaveBeenCalledTimes(1)
-    expect(screen.getAllByText("验收边界")).toHaveLength(1)
+    expect(screen.getAllByText("Word 版式检查")).toHaveLength(1)
   })
 
   it("marks the generated preview stale as soon as input changes", async () => {
@@ -1701,7 +1719,7 @@ describe("M3 workbench persistence", () => {
     expect(exportButton).toBeDisabled()
     expect(exportButton).toHaveAttribute(
       "title",
-      "请先在左侧“导出记录”中关联可用的本地模板工程",
+      "请先在左侧“导出记录”中选择可用模板",
     )
     expect(api.generatePreview).not.toHaveBeenCalled()
   })
@@ -2199,7 +2217,7 @@ describe("M3 workbench persistence", () => {
     )
     expect(api.saveDraft).not.toHaveBeenCalled()
     expect(screen.getByLabelText("保存状态：已保存")).toBeInTheDocument()
-    expect(screen.queryByText("修订冲突")).not.toBeInTheDocument()
+    expect(screen.queryByText("版本冲突")).not.toBeInTheDocument()
   })
 
   it("does not claim a save when profile draft persistence fails", async () => {
@@ -2258,7 +2276,7 @@ describe("M3 workbench persistence", () => {
     replaceRichText(significance, "会发生冲突的选题意义")
     await act(async () => vi.advanceTimersByTimeAsync(700))
 
-    expect(screen.getAllByText("修订冲突")).not.toHaveLength(0)
+    expect(screen.getAllByText("版本冲突")).not.toHaveLength(0)
     expect(screen.queryByLabelText("保存状态：已保存")).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "重新载入" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "预览&导出" })).toBeDisabled()
@@ -2487,7 +2505,7 @@ describe("M3 workbench persistence", () => {
       rejectExport(Object.assign(new Error("cancelled"), { code: "EXPORT_CANCELLED" }))
     })
     expect(
-      (await screen.findAllByText("导出已取消，未完成的临时产物已清理。"))
+      (await screen.findAllByText("已取消导出。"))
         .length,
     ).toBeGreaterThan(0)
     expect(celebrateExportSuccess).not.toHaveBeenCalled()
@@ -3015,7 +3033,7 @@ describe("M3 workbench persistence", () => {
     expect(await screen.findByText("毕业届别缺少年份")).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "预览&导出" }))
     expect(
-      await screen.findByText(/任务书必须从学生档案的毕业届别提取四位年份/),
+      await screen.findByText(/毕业届别须包含四位年份/),
     ).toBeInTheDocument()
     await waitFor(() => expect(screen.getByRole("combobox", { name: "毕业届别" })).toHaveFocus())
     expect(api.checkDocument).not.toHaveBeenCalled()
@@ -3246,7 +3264,7 @@ describe("M3 workbench persistence", () => {
     expect(await screen.findByText("图片：合成示意图")).toBeInTheDocument()
     expect(screen.getByRole("textbox", { name: "研究内容" })).toBeInTheDocument()
     expect(
-      screen.queryByText("本栏包含暂不支持编辑的内容块"),
+      screen.queryByText("当前内容暂不支持编辑"),
     ).not.toBeInTheDocument()
   })
 
@@ -3303,7 +3321,7 @@ describe("M3 workbench persistence", () => {
     expect(screen.getByRole("button", { name: "插入图表" })).toBeEnabled()
     expect(screen.getByRole("textbox", { name: "研究内容" })).toBeInTheDocument()
     expect(
-      screen.queryByText("本栏包含暂不支持编辑的内容块"),
+      screen.queryByText("当前内容暂不支持编辑"),
     ).not.toBeInTheDocument()
   })
 
@@ -3334,7 +3352,7 @@ describe("environment boundary", () => {
     expect(await screen.findByText("暂时无法生成预览")).toBeInTheDocument()
     closePreviewDrawer()
     await openOperationsPanel()
-    expect(screen.getByText("文档引擎未连接")).toBeInTheDocument()
+    expect(screen.getByText("文档服务未连接")).toBeInTheDocument()
     expect(screen.getByText("SIDECAR_EXITED")).toBeInTheDocument()
   })
 })
@@ -3924,12 +3942,12 @@ describe("workspace lifecycle", () => {
     await mountBody(api)
     await openOperationsPanel()
     fireEvent.click(screen.getByRole("button", { name: "查看环境修复指引" }))
-    const guide = await screen.findByRole("dialog", { name: "准备本机文档环境" })
+    const guide = await screen.findByRole("dialog", { name: "环境检查" })
     expect(within(guide).getByText("缺少虚构测试 XeLaTeX")).toBeInTheDocument()
     fireEvent.click(within(guide).getByRole("button", { name: "打开 TeX 安装页面" }))
     expect(api.openToolLink).toHaveBeenCalledWith("mactex")
     fireEvent.click(within(guide).getByRole("button", { name: "返回工作台" }))
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "准备本机文档环境" })).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "环境检查" })).not.toBeInTheDocument())
   })
 
   it("can leave a reopened environment guide when the environment check fails", async () => {
@@ -3938,10 +3956,10 @@ describe("workspace lifecycle", () => {
     await mountBody(api)
     await openOperationsPanel()
     fireEvent.click(screen.getByRole("button", { name: "查看环境修复指引" }))
-    const guide = await screen.findByRole("dialog", { name: "准备本机文档环境" })
+    const guide = await screen.findByRole("dialog", { name: "环境检查" })
     expect(within(guide).getByText("SYNTHETIC_ENGINE_FAILURE")).toBeInTheDocument()
     fireEvent.click(within(guide).getByRole("button", { name: "返回工作台" }))
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "准备本机文档环境" })).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "环境检查" })).not.toBeInTheDocument())
     expect(api.quitApp).not.toHaveBeenCalled()
   })
 

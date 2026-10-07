@@ -1,3 +1,4 @@
+import { diagnosticContext } from "../../desktop/electron/diagnostic-context.ts"
 import { execFile } from "node:child_process"
 
 import type {
@@ -36,6 +37,11 @@ const CHECK_LABELS: Record<string, string> = {
   proposal_engine: "开题报告模板",
   task_book_engine: "任务书模板",
   midterm_engine: "中期检查模板",
+  thesis_template: "论文模板",
+  advisor_review_engine: "指导教师评审模板",
+  reviewer_review_engine: "评阅教师评审模板",
+  defense_record_engine: "答辩记录模板",
+  grade_assessment_engine: "成绩评定模板",
 }
 
 const OPERATION_LABELS: Record<string, string> = {
@@ -45,6 +51,11 @@ const OPERATION_LABELS: Record<string, string> = {
   "system.version": "运行组件版本",
   "environment.check": "环境检查",
   "workspace.open": "打开工作区",
+  "workspace.listDocuments": "读取文档列表",
+  "workspace.renameDocument": "重命名文档",
+  "workspace.deleteDocument": "移入回收站",
+  "workspace.restoreDocument": "恢复文档",
+  "workspace.purgeDocument": "彻底删除文档",
   "workspace.saveProfileDraft": "保存档案草稿",
   "workspace.saveProfile": "保存学生档案",
   "workspace.createDocument": "新建文档",
@@ -138,6 +149,8 @@ function parseOperations(value: unknown): DiagnosticOperation[] {
       operation,
       label: OPERATION_LABELS[operation] ?? operation,
       outcome,
+      context: diagnosticContext(item.context),
+      ...(Number.isInteger(item.duration_ms) && Number(item.duration_ms) >= 0 && Number(item.duration_ms) <= 86400000 ? { durationMs: Number(item.duration_ms) } : {}),
       durationBucket,
       durationLabel: DURATION_LABELS[durationBucket] ?? durationBucket,
       errorCode,
@@ -373,7 +386,7 @@ export function fixtureDiagnosticRows(now = new Date()): RawDiagnosticRow[] {
       services: { telemetry_configured: true, update_configured: true },
       operations: [
         { occurred_at: createdAt, operation: "workspace.saveDraft", outcome: "success", duration_bucket: "under_100ms" },
-        { occurred_at: createdAt, operation: "preview.generate", outcome: "failure", duration_bucket: "5s_to_30s", error_code: "RENDER_FAILED" },
+        { occurred_at: createdAt, operation: "preview.generate", outcome: "failure", duration_bucket: "5s_to_30s", duration_ms: 6250, error_code: "RENDER_FAILED", context: { request_id: "11111111-1111-4111-8111-111111111111", document_type: "midterm", template_version: "0.3+workspace.123456abcdef", field: "sections.main_research_content[3].columns[1].header", trace: [{ module: "docx_inspector.py", line: 961 }], structure: { paragraphs: 12, tables: 1, rows: 3, columns: 4, images: 2, runs: 24 } } },
       ],
       privacy: { scan_status: "passed", source_fields_removed: 2, blocked_findings: 0 },
     },

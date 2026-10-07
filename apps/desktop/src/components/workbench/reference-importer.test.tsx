@@ -113,7 +113,7 @@ describe("ReferenceImporter", () => {
       screen.getByText("[1] 张三. 可用条目[J]. 合成期刊, 2026."),
     ).toBeInTheDocument()
     expect(screen.queryByText("[1] 已保存的有效文献[J].")).not.toBeInTheDocument()
-    expect(screen.getByText(/不会被错误输入覆盖/)).toBeInTheDocument()
+    expect(screen.getByText(/已保留上次保存的参考文献/)).toBeInTheDocument()
   })
 
   it("adds one complete entry from the focused entry dialog", () => {

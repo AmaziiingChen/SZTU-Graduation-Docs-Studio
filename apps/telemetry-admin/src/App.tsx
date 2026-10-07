@@ -256,7 +256,7 @@ function Dashboard({ data }: { data: TelemetryDashboardData }) {
         <MetricCard
           title="活跃安装"
           value={data.kpis.activeInstallations.toLocaleString()}
-          description={`最近 ${data.rangeDays} 天的轮换匿名安装标识`}
+          description={`最近 ${data.rangeDays} 天使用过应用的安装数`}
         />
         <MetricCard
           title="会话数"
@@ -266,7 +266,7 @@ function Dashboard({ data }: { data: TelemetryDashboardData }) {
         <MetricCard
           title="启动次数"
           value={data.kpis.launches.toLocaleString()}
-          description="app_started 事件"
+          description="应用启动次数"
         />
         <MetricCard
           title="导出尝试"
@@ -285,7 +285,7 @@ function Dashboard({ data }: { data: TelemetryDashboardData }) {
         <MetricCard
           title="失败事件"
           value={data.kpis.errorEvents.toLocaleString()}
-          description="仅统计稳定错误码对应的失败结果"
+          description="按错误码统计失败次数"
         />
       </div>
 
@@ -293,7 +293,7 @@ function Dashboard({ data }: { data: TelemetryDashboardData }) {
         <Card>
           <CardHeader>
             <CardTitle>每日使用趋势</CardTitle>
-            <CardDescription>按 CloudBase 接收时间统计活跃安装和事件量</CardDescription>
+            <CardDescription>按收到数据的日期统计</CardDescription>
           </CardHeader>
           <CardContent>
             {trendReady ? (
@@ -321,7 +321,7 @@ function Dashboard({ data }: { data: TelemetryDashboardData }) {
                 </LineChart>
               </ChartContainer>
             ) : (
-              <EmptyAnalysis>至少积累 8 个日期点后才展示趋势图；当前保留精确指标卡和事件表。</EmptyAnalysis>
+              <EmptyAnalysis>趋势图至少需要 8 天数据。</EmptyAnalysis>
             )}
           </CardContent>
         </Card>
@@ -412,6 +412,25 @@ function Dashboard({ data }: { data: TelemetryDashboardData }) {
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader>
+          <CardTitle>学院与专业分布</CardTitle>
+          <CardDescription>按区间内每个安装标识最后一次记录统计。标识每 30 天轮换，安装数不代表学生人数。</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader><TableRow><TableHead>学院</TableHead><TableHead>专业</TableHead><TableHead className="text-right">安装数</TableHead></TableRow></TableHeader>
+            <TableBody>
+              {data.academicDistribution.map((item) => <TableRow key={`${item.college}|${item.major}`}>
+                <TableCell>{item.college === "unknown" ? "未知" : item.college}</TableCell>
+                <TableCell>{item.major === "unknown" ? "未知" : item.major}</TableCell>
+                <TableCell className="text-right tabular-nums">{item.installations}</TableCell>
+              </TableRow>)}
+              {data.academicDistribution.length === 0 ? <TableRow><TableCell colSpan={3}>暂无数据</TableCell></TableRow> : null}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
       <RecentEventsTable rangeDays={data.rangeDays} refreshKey={data.generatedAt} />
     </div>
   )

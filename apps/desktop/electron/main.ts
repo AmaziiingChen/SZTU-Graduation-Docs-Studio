@@ -1,6 +1,7 @@
 import { mkdirSync } from "node:fs"
 import { fileURLToPath } from "node:url"
-import { createHash } from "node:crypto"
+import { diagnosticContext, documentStructure, type DiagnosticContext } from "./diagnostic-context.js"
+import { createHash, randomUUID } from "node:crypto"
 import { lstat, mkdir, readFile, realpath, unlink, writeFile } from "node:fs/promises"
 import path from "node:path"
 import {
@@ -160,7 +161,7 @@ function assertExactKeys(
 ): void {
   const allowed = new Set([...required, ...optional])
   if (!required.every((key) => key in value) || !Object.keys(value).every((key) => allowed.has(key))) {
-    throw new IpcValidationError("请求字段不完整或包含未支持字段。")
+    throw new IpcValidationError("请求参数不完整或包含不支持的字段。")
   }
 }
 
@@ -172,29 +173,29 @@ function assertText(
 ): asserts value is string | null | undefined {
   if (!required && (value === undefined || value === null)) return
   if (typeof value !== "string" || (required && value.trim().length === 0) || value.length > maximum) {
-    throw new IpcValidationError(`${field} 格式无效。`)
+    throw new IpcValidationError(`${field}格式无效。`)
   }
 }
 
-function assertResourceId(value: unknown, field = "documentId"): asserts value is string {
+function assertResourceId(value: unknown, field = "文档编号"): asserts value is string {
   if (typeof value !== "string" || !RESOURCE_ID_PATTERN.test(value)) {
-    throw new IpcValidationError(`${field} 格式无效。`)
+    throw new IpcValidationError(`${field}格式无效。`)
   }
 }
 
-function assertRequestId(value: unknown, field = "requestId"): asserts value is string {
+function assertRequestId(value: unknown, field = "任务编号"): asserts value is string {
   if (typeof value !== "string" || !REQUEST_ID_PATTERN.test(value)) {
-    throw new IpcValidationError(`${field} 必须是 UUID。`)
+    throw new IpcValidationError(`${field}格式无效。`)
   }
 }
 
 function assertDocumentListCursor(value: unknown): void {
   if (!isRecord(value)) throw new IpcValidationError("文档列表游标无效。")
   assertExactKeys(value, ["updated_at", "id"])
-  assertResourceId(value.id, "cursor.id")
-  assertText(value.updated_at, "cursor.updated_at", 100)
+  assertResourceId(value.id, "文档编号")
+  assertText(value.updated_at, "文档更新时间", 100)
   if (typeof value.updated_at !== "string" || !Number.isFinite(Date.parse(value.updated_at))) {
-    throw new IpcValidationError("文档列表游标时间无效。")
+    throw new IpcValidationError("文档列表分页信息无效，请重新加载。")
   }
 }
 
@@ -233,7 +234,7 @@ function decodeClipboardPng(value: unknown): Buffer {
   }
   const bytes = Buffer.from(encoded, "base64")
   if (bytes.length > MAX_IMAGE_ASSET_BYTES || detectImageMime(bytes) !== "image/png") {
-    throw new IpcValidationError("剪贴板图片必须是真实且小于 20 MiB 的 PNG。")
+    throw new IpcValidationError("请复制小于 20 MiB 的 PNG 图片。")
   }
   return bytes
 }
@@ -343,24 +344,24 @@ async function verifyPreviewPdf(
 
 function assertJsonValue(value: unknown, depth = 0): asserts value is JsonValue {
   if (depth > MAX_JSON_DEPTH) {
-    throw new IpcValidationError("content 嵌套层级过深。")
+    throw new IpcValidationError("文档内容嵌套层级超出限制。")
   }
   if (value === null || typeof value === "string" || typeof value === "boolean") return
   if (typeof value === "number") {
-    if (!Number.isFinite(value)) throw new IpcValidationError("content 包含无效数字。")
+    if (!Number.isFinite(value)) throw new IpcValidationError("文档内容包含无效数值。")
     return
   }
   if (Array.isArray(value)) {
-    if (value.length > MAX_JSON_COLLECTION_SIZE) throw new IpcValidationError("content 数组过大。")
+    if (value.length > MAX_JSON_COLLECTION_SIZE) throw new IpcValidationError("文档内容数量超出限制。")
     for (const item of value) assertJsonValue(item, depth + 1)
     return
   }
-  if (!isRecord(value)) throw new IpcValidationError("content 必须是 JSON 数据。")
+  if (!isRecord(value)) throw new IpcValidationError("文档内容格式无效。")
   const entries = Object.entries(value)
-  if (entries.length > MAX_JSON_COLLECTION_SIZE) throw new IpcValidationError("content 对象过大。")
+  if (entries.length > MAX_JSON_COLLECTION_SIZE) throw new IpcValidationError("文档内容数量超出限制。")
   for (const [key, item] of entries) {
     if (!key || key.length > 128 || ["__proto__", "constructor", "prototype"].includes(key)) {
-      throw new IpcValidationError("content 包含无效字段名。")
+      throw new IpcValidationError("文档内容包含无效字段。")
     }
     assertJsonValue(item, depth + 1)
   }
@@ -372,16 +373,16 @@ function assertThesisTitle(
 ): asserts value is JsonValue[] | null {
   if (value === null) return
   if (!Array.isArray(value) || value.length > 1) {
-    throw new IpcValidationError(`${field} 必须是至多一个段落的结构化题目。`)
+    throw new IpcValidationError(`${field}仅支持一个段落。`)
   }
   assertJsonValue(value)
   if (JSON.stringify(value).length > 20_000) {
-    throw new IpcValidationError(`${field} 内容过长。`)
+    throw new IpcValidationError(`${field}内容超出长度限制。`)
   }
 }
 
 function assertProfile(value: unknown): asserts value is Record<string, unknown> {
-  if (!isRecord(value)) throw new IpcValidationError("profile 必须是对象。")
+  if (!isRecord(value)) throw new IpcValidationError("学生档案格式无效。")
   assertExactKeys(
     value,
     ["full_name", "student_number", "college", "major"],
@@ -395,56 +396,56 @@ function assertProfile(value: unknown): asserts value is Record<string, unknown>
       "thesis_title_en",
     ],
   )
-  if (value.id !== undefined) assertResourceId(value.id, "profile.id")
-  assertText(value.full_name, "profile.full_name", 100)
-  assertText(value.student_number, "profile.student_number", 64)
-  assertText(value.college, "profile.college", 200)
-  assertText(value.major, "profile.major", 200)
-  assertText(value.class_name, "profile.class_name", 100, false)
-  assertText(value.advisor_name, "profile.advisor_name", 100, false)
-  assertText(value.advisor_title, "profile.advisor_title", 100, false)
-  assertText(value.graduation_cohort, "profile.graduation_cohort", 20, false)
+  if (value.id !== undefined) assertResourceId(value.id, "学生档案编号")
+  assertText(value.full_name, "姓名", 100)
+  assertText(value.student_number, "学号", 64)
+  assertText(value.college, "学院", 200)
+  assertText(value.major, "专业", 200)
+  assertText(value.class_name, "班级", 100, false)
+  assertText(value.advisor_name, "指导教师", 100, false)
+  assertText(value.advisor_title, "指导教师职称", 100, false)
+  assertText(value.graduation_cohort, "毕业届别", 20, false)
   if (value.thesis_title !== undefined && value.thesis_title !== null) {
-    assertThesisTitle(value.thesis_title, "profile.thesis_title")
+    assertThesisTitle(value.thesis_title, "论文题目")
   }
-  assertText(value.thesis_title_en, "profile.thesis_title_en", 300, false)
+  assertText(value.thesis_title_en, "英文题目", 300, false)
 }
 
 function assertProfileDraft(value: unknown): asserts value is Record<string, unknown> {
-  if (!isRecord(value)) throw new IpcValidationError("profile draft 必须是对象。")
+  if (!isRecord(value)) throw new IpcValidationError("学生档案草稿格式无效。")
   const fields = [
-    ["full_name", 100],
-    ["student_number", 64],
-    ["college", 200],
-    ["major", 200],
-    ["class_name", 100],
-    ["advisor_name", 100],
-    ["advisor_title", 100],
-    ["graduation_cohort", 20],
+    ["full_name", 100, "姓名"],
+    ["student_number", 64, "学号"],
+    ["college", 200, "学院"],
+    ["major", 200, "专业"],
+    ["class_name", 100, "班级"],
+    ["advisor_name", 100, "指导教师"],
+    ["advisor_title", 100, "指导教师职称"],
+    ["graduation_cohort", 20, "毕业届别"],
   ] as const
   assertExactKeys(
     value,
     [...fields.map(([field]) => field), "thesis_title", "thesis_title_en"],
   )
-  for (const [field, maximum] of fields) {
+  for (const [field, maximum, label] of fields) {
     const fieldValue = value[field]
     if (typeof fieldValue !== "string" || fieldValue.length > maximum) {
-      throw new IpcValidationError(`profile draft.${field} 格式无效。`)
+      throw new IpcValidationError(`${label}格式无效，最多支持 ${maximum} 个字符。`)
     }
   }
-  assertThesisTitle(value.thesis_title, "profile draft.thesis_title")
-  assertText(value.thesis_title_en, "profile draft.thesis_title_en", 300, false)
+  assertThesisTitle(value.thesis_title, "论文题目")
+  assertText(value.thesis_title_en, "英文题目", 300, false)
 }
 
 function assertDocument(value: unknown): asserts value is Record<string, unknown> {
-  if (!isRecord(value)) throw new IpcValidationError("document 必须是对象。")
+  if (!isRecord(value)) throw new IpcValidationError("无法读取文档，请重新打开。")
   assertExactKeys(
     value,
     ["document_type", "template_version", "schema_version", "title"],
     ["profile_id", "source_document_id"],
   )
   if (value.profile_id !== undefined && value.profile_id !== null) {
-    assertResourceId(value.profile_id, "document.profile_id")
+    assertResourceId(value.profile_id, "学生档案编号")
   }
   if (
     value.document_type !== "proposal" &&
@@ -456,13 +457,13 @@ function assertDocument(value: unknown): asserts value is Record<string, unknown
     value.document_type !== "defense_record" &&
     value.document_type !== "grade_assessment"
   ) {
-    throw new IpcValidationError("document.document_type 暂不支持。")
+    throw new IpcValidationError("不支持当前文档类型。")
   }
-  assertText(value.template_version, "document.template_version", 64)
-  assertText(value.schema_version, "document.schema_version", 64)
-  assertText(value.title, "document.title", 240)
+  assertText(value.template_version, "模板版本", 64)
+  assertText(value.schema_version, "文档格式版本", 64)
+  assertText(value.title, "文档名称", 240)
   if (value.source_document_id !== undefined) {
-    assertResourceId(value.source_document_id, "document.source_document_id")
+    assertResourceId(value.source_document_id, "来源文档编号")
   }
 }
 
@@ -474,7 +475,7 @@ function assertExportFormats(value: unknown): asserts value is Array<"docx" | "p
     new Set(value).size !== value.length ||
     !value.every((format) => format === "docx" || format === "pdf" || format === "tex")
   ) {
-    throw new IpcValidationError("formats 必须从 Word、PDF、LaTeX 中选择一到三项。")
+    throw new IpcValidationError("请选择 Word、PDF 或 LaTeX 中的至少一种格式。")
   }
 }
 
@@ -757,13 +758,13 @@ function registerIpc(): void {
       assertExactKeys(input, ["requestId", "outcome"], ["reason"])
       assertRequestId(input.requestId)
       if (input.outcome !== "saved" && input.outcome !== "failed") {
-        throw new IpcValidationError("关闭确认结果必须是 saved 或 failed。")
+        throw new IpcValidationError("保存状态无效，无法关闭窗口。")
       }
       if (input.reason !== undefined && input.reason !== "conflict" && input.reason !== "save_failed") {
         throw new IpcValidationError("关闭失败原因无效。")
       }
       if (input.outcome === "saved" && input.reason !== undefined) {
-        throw new IpcValidationError("保存成功的关闭确认不能包含失败原因。")
+        throw new IpcValidationError("保存状态无效，无法关闭窗口。")
       }
       const window = BrowserWindow.fromWebContents(event.sender)
       const matched = window && closeCoordinator.complete(window.id, {
@@ -805,7 +806,7 @@ function registerIpc(): void {
     assertTrustedSender(event)
     return runBridge(async () => {
       if (!diagnostics) throw new Error("Diagnostics service is not initialized.")
-      assertRequestId(reportId, "reportId")
+      assertRequestId(reportId, "诊断报告编号")
       const options: SaveDialogOptions = {
         title: "保存故障诊断包",
         defaultPath: path.join(
@@ -847,7 +848,7 @@ function registerIpc(): void {
     assertTrustedSender(event)
     return runBridge(async () => {
       if (!diagnostics) throw new Error("Diagnostics service is not initialized.")
-      assertRequestId(reportId, "reportId")
+      assertRequestId(reportId, "诊断报告编号")
       return diagnostics.send(reportId)
     })
   })
@@ -867,7 +868,7 @@ function registerIpc(): void {
         (!current.telemetryConfigured || !current.updateConfigured)
       ) {
         throw new IpcValidationError(
-          "正式构建缺少匿名遥测或签名更新配置，不能继续运行。",
+          "应用配置不完整，请重新安装或联系开发者。",
         )
       }
       await telemetry.acceptNotice()
@@ -892,7 +893,7 @@ function registerIpc(): void {
       try {
         parsed = parseTelemetryUsageEvent(input)
       } catch {
-        throw new IpcValidationError("遥测事件不在允许列表中。")
+        throw new IpcValidationError("不支持当前使用统计事件。")
       }
       await telemetry.recordUsage(parsed)
       return null
@@ -911,11 +912,11 @@ function registerIpc(): void {
     assertTrustedSender(event)
     return runBridge(async () => {
       if (!telemetry) throw new Error("Telemetry service is not initialized.")
-      if (!isRecord(input)) throw new IpcValidationError("文档完成参数必须是对象。")
+      if (!isRecord(input)) throw new IpcValidationError("文档完成状态参数无效。")
       assertExactKeys(input, ["documentId", "documentType"])
       assertResourceId(input.documentId)
       if (!["proposal", "task_book", "midterm", "advisor_review", "reviewer_review", "defense_record", "grade_assessment"].includes(String(input.documentType))) {
-        throw new IpcValidationError("documentType 暂不支持。")
+        throw new IpcValidationError("不支持当前文档类型。")
       }
       return telemetry.recordDocumentCompletion(
         input.documentId,
@@ -947,7 +948,7 @@ function registerIpc(): void {
     assertTrustedSender(event)
     return runBridge(() => {
       const downloadedPath = updateService?.revealDownloadedPath()
-      if (!downloadedPath) throw new IpcValidationError("当前没有已校验的更新文件。")
+      if (!downloadedPath) throw new IpcValidationError("未找到可用的更新安装包，请重新下载。")
       shell.showItemInFolder(downloadedPath)
       return null
     })
@@ -1002,11 +1003,11 @@ function registerIpc(): void {
   const importManagedImage = async (sourcePath: string) => {
     const fileStat = await lstat(sourcePath)
     if (!fileStat.isFile() || fileStat.isSymbolicLink() || fileStat.size > MAX_IMAGE_ASSET_BYTES) {
-      throw new IpcValidationError("图片必须是小于 20 MiB 的普通文件。")
+      throw new IpcValidationError("请选择小于 20 MiB 的图片文件。")
     }
     const bytes = await readFile(sourcePath)
     const mimeType = detectImageMime(bytes)
-    if (!mimeType) throw new IpcValidationError("仅支持真实的 PNG 或 JPEG 图片。")
+    if (!mimeType) throw new IpcValidationError("请选择 PNG 或 JPEG 图片。")
     const sha256 = createHash("sha256").update(bytes).digest("hex")
     const suffix = mimeType === "image/png" ? "png" : "jpg"
     const fileName = `${sha256}.${suffix}`
@@ -1075,7 +1076,7 @@ function registerIpc(): void {
     assertTrustedSender(event)
     return runBridge(() => {
       if (mode !== "persistent" && mode !== "temporary") {
-        throw new IpcValidationError("mode 必须是 persistent 或 temporary。")
+        throw new IpcValidationError("工作区模式无效。")
       }
       return requestSidecar("workspace.open", { mode })
     })
@@ -1084,10 +1085,10 @@ function registerIpc(): void {
   ipcMain.handle("sztu:workspace-list-documents", async (event, input: unknown) => {
     assertTrustedSender(event)
     return runBridge(async () => {
-      if (!isRecord(input)) throw new IpcValidationError("文档列表参数必须是对象。")
+      if (!isRecord(input)) throw new IpcValidationError("文档列表请求参数无效。")
       assertExactKeys(input, ["profileId", "deleted"], ["cursor", "limit"])
-      if (input.profileId !== null) assertResourceId(input.profileId, "profileId")
-      if (typeof input.deleted !== "boolean") throw new IpcValidationError("deleted 必须是布尔值。")
+      if (input.profileId !== null) assertResourceId(input.profileId, "学生档案编号")
+      if (typeof input.deleted !== "boolean") throw new IpcValidationError("文档列表筛选条件无效。")
       if (input.cursor !== undefined) assertDocumentListCursor(input.cursor)
       const limit = input.limit ?? 100
       if (!Number.isInteger(limit) || Number(limit) < 1 || Number(limit) > 100) {
@@ -1108,9 +1109,9 @@ function registerIpc(): void {
       else if (result.next_cursor !== null) throw new SidecarError("INVALID_SIDECAR_RESULT", "文档列表游标无效。")
       for (const document of result.documents) {
         if (!isRecord(document)) throw new SidecarError("INVALID_SIDECAR_RESULT", "文档列表项无效。")
-        assertResourceId(document.id, "document.id")
-        assertText(document.title, "document.title", 240)
-        assertText(document.document_type, "document.document_type", 64)
+        assertResourceId(document.id, "文档编号")
+        assertText(document.title, "文档名称", 240)
+        assertText(document.document_type, "文档类型", 64)
       }
       return result
     })
@@ -1151,10 +1152,10 @@ function registerIpc(): void {
   ipcMain.handle("sztu:workspace-rename-document", async (event, input: unknown) => {
     assertTrustedSender(event)
     return runBridge(() => {
-      if (!isRecord(input)) throw new IpcValidationError("重命名参数必须是对象。")
+      if (!isRecord(input)) throw new IpcValidationError("重命名参数无效。")
       assertExactKeys(input, ["documentId", "title"])
       assertResourceId(input.documentId)
-      assertText(input.title, "title", 240)
+      assertText(input.title, "文档名称", 240)
       return requestSidecar("workspace.renameDocument", {
         document_id: input.documentId,
         title: input.title,
@@ -1179,16 +1180,16 @@ function registerIpc(): void {
   ipcMain.handle("sztu:workspace-save-draft", async (event, input: unknown) => {
     assertTrustedSender(event)
     return runBridge(() => {
-      if (!isRecord(input)) throw new IpcValidationError("保存草稿参数必须是对象。")
+      if (!isRecord(input)) throw new IpcValidationError("草稿保存参数无效。")
       assertExactKeys(input, ["documentId", "content", "expectedRevision"], ["reason"])
       assertResourceId(input.documentId)
-      if (!isRecord(input.content)) throw new IpcValidationError("content 必须是对象。")
+      if (!isRecord(input.content)) throw new IpcValidationError("文档内容格式无效。")
       assertJsonValue(input.content)
       if (!Number.isInteger(input.expectedRevision) || (input.expectedRevision as number) < 0) {
-        throw new IpcValidationError("expectedRevision 必须是非负整数。")
+        throw new IpcValidationError("草稿版本号无效。")
       }
       if (input.reason !== undefined && input.reason !== "auto" && input.reason !== "manual") {
-        throw new IpcValidationError("reason 必须是 auto 或 manual。")
+        throw new IpcValidationError("草稿保存参数无效。")
       }
       return requestSidecar<Record<string, unknown>>("workspace.saveDraft", {
         document_id: input.documentId,
@@ -1196,7 +1197,7 @@ function registerIpc(): void {
         expected_revision: input.expectedRevision,
         reason: input.reason ?? "auto",
       }).then((document) => {
-        assertResourceId(document.id, "result.id")
+        assertResourceId(document.id, "文档编号")
         if (!Number.isInteger(document.current_revision) || (document.current_revision as number) < 0) {
           throw new SidecarError("INVALID_SIDECAR_RESULT", "Sidecar returned an invalid revision.")
         }
@@ -1240,7 +1241,7 @@ function registerIpc(): void {
       assertRequestId(input.requestId)
       assertResourceId(input.documentId)
       if (activePreviewCancellationFiles.has(input.requestId)) {
-        throw new IpcValidationError("同一 requestId 已有预览任务正在运行。")
+        throw new IpcValidationError("预览任务正在运行。")
       }
       const marker = cancellationPath(input.requestId)
       await mkdir(path.dirname(marker), { recursive: true, mode: 0o700 })
@@ -1275,7 +1276,7 @@ function registerIpc(): void {
         if (result.schema_version !== "1.0" || result.document_id !== input.documentId) {
           throw new SidecarError("INVALID_SIDECAR_RESULT", "Sidecar preview identity is invalid.")
         }
-        assertResourceId(result.preview_id, "result.preview_id")
+        assertResourceId(result.preview_id, "预览编号")
         if (!Number.isInteger(result.document_revision) || (result.document_revision as number) < 1) {
           throw new SidecarError("INVALID_SIDECAR_RESULT", "Sidecar preview revision is invalid.")
         }
@@ -1286,12 +1287,12 @@ function registerIpc(): void {
           throw new SidecarError("INVALID_SIDECAR_RESULT", "Sidecar preview template is invalid.")
         }
         assertExactKeys(result.template, ["template_id", "version", "pack_sha256"])
-        assertText(result.template.template_id, "result.template.template_id", 128)
-        assertText(result.template.version, "result.template.version", 128)
+        assertText(result.template.template_id, "模板编号", 128)
+        assertText(result.template.version, "模板版本", 128)
         if (typeof result.template.pack_sha256 !== "string" || !SHA256_PATTERN.test(result.template.pack_sha256)) {
           throw new SidecarError("INVALID_SIDECAR_RESULT", "Sidecar preview template hash is invalid.")
         }
-        assertText(result.generated_at, "result.generated_at", 100)
+        assertText(result.generated_at, "预览生成时间", 100)
         assertJsonValue(result.checks)
         if (!Array.isArray(result.checks) || !isRecord(result.pdf) || !Array.isArray(result.pages)) {
           throw new SidecarError("INVALID_SIDECAR_RESULT", "Sidecar preview artifacts are invalid.")
@@ -1305,7 +1306,7 @@ function registerIpc(): void {
           result.preview_id,
         )
         assertExactKeys(result.pdf, ["absolute_path", "sha256", "size_bytes"])
-        assertText(result.pdf.absolute_path, "result.pdf.absolute_path", 4096)
+        assertText(result.pdf.absolute_path, "预览文件路径", 4096)
         if (
           typeof result.pdf.sha256 !== "string" ||
           !SHA256_PATTERN.test(result.pdf.sha256) ||
@@ -1332,7 +1333,7 @@ function registerIpc(): void {
             throw new SidecarError("INVALID_SIDECAR_RESULT", "Sidecar preview page is invalid.")
           }
           assertExactKeys(rawPage, ["page_number", "absolute_path", "sha256", "size_bytes"])
-          assertText(rawPage.absolute_path, "result.pages.absolute_path", 4096)
+          assertText(rawPage.absolute_path, "预览页面路径", 4096)
           if (
             rawPage.page_number !== index + 1 ||
             typeof rawPage.sha256 !== "string" ||
@@ -1398,18 +1399,18 @@ function registerIpc(): void {
   ipcMain.handle("sztu:export-preflight", async (event, input: unknown) => {
     assertTrustedSender(event)
     return runBridge(() => {
-      if (!isRecord(input)) throw new IpcValidationError("导出预检参数必须是对象。")
+      if (!isRecord(input)) throw new IpcValidationError("导出预检参数无效。")
       assertExactKeys(input, ["documentId", "previewId", "outputDirectory", "formats"])
       assertResourceId(input.documentId)
-      assertResourceId(input.previewId)
+      assertResourceId(input.previewId, "预览编号")
       assertExportFormats(input.formats)
-      assertText(input.outputDirectory, "outputDirectory", 4096)
+      assertText(input.outputDirectory, "导出目录", 4096)
       if (!path.isAbsolute(input.outputDirectory as string)) {
-        throw new IpcValidationError("outputDirectory 必须是绝对路径。")
+        throw new IpcValidationError("保存位置无效，请重新选择文件夹。")
       }
       const outputDirectory = path.resolve(input.outputDirectory as string)
       if (!approvedExportDirectories.has(outputDirectory)) {
-        throw new IpcValidationError("输出目录必须通过系统文件夹选择器确认。")
+        throw new IpcValidationError("请点击“选择文件夹”确认保存位置。")
       }
       const params: Record<string, unknown> = {
         document_id: input.documentId,
@@ -1431,21 +1432,21 @@ function registerIpc(): void {
       )
       assertRequestId(input.requestId)
       assertResourceId(input.documentId)
-      assertResourceId(input.previewId)
-      assertText(input.outputDirectory, "outputDirectory", 4096)
+      assertResourceId(input.previewId, "预览编号")
+      assertText(input.outputDirectory, "导出目录", 4096)
       if (!path.isAbsolute(input.outputDirectory as string)) {
-        throw new IpcValidationError("outputDirectory 必须是绝对路径。")
+        throw new IpcValidationError("保存位置无效，请重新选择文件夹。")
       }
       const outputDirectory = path.resolve(input.outputDirectory as string)
       if (!approvedExportDirectories.delete(outputDirectory)) {
-        throw new IpcValidationError("输出目录必须通过系统文件夹选择器确认。")
+        throw new IpcValidationError("请点击“选择文件夹”确认保存位置。")
       }
       assertExportFormats(input.formats)
       if (typeof input.overwriteConfirmed !== "boolean") {
-        throw new IpcValidationError("overwriteConfirmed 必须是布尔值。")
+        throw new IpcValidationError("请重新确认是否替换已有文件。")
       }
       if (typeof input.preflightToken !== "string" || !SHA256_PATTERN.test(input.preflightToken)) {
-        throw new IpcValidationError("preflightToken 格式无效。")
+        throw new IpcValidationError("导出校验信息无效，请重新导出。")
       }
       const params: Record<string, unknown> = {
         request_id: input.requestId,
@@ -1458,7 +1459,7 @@ function registerIpc(): void {
         app_version: app.getVersion(),
       }
       if (activeCancellationFiles.has(input.requestId)) {
-        throw new IpcValidationError("同一 requestId 已有导出任务正在运行。")
+        throw new IpcValidationError("导出任务正在运行。")
       }
       const marker = cancellationPath(input.requestId)
       return mkdir(path.dirname(marker), { recursive: true, mode: 0o700 })
@@ -1506,13 +1507,13 @@ function registerIpc(): void {
   ipcMain.handle("sztu:export-history", async (event, input: unknown) => {
     assertTrustedSender(event)
     return runBridge(() => {
-      if (!isRecord(input)) throw new IpcValidationError("导出历史参数必须是对象。")
+      if (!isRecord(input)) throw new IpcValidationError("导出记录查询参数无效。")
       assertExactKeys(input, ["documentId"], ["limit"])
       assertResourceId(input.documentId)
       const params: Record<string, unknown> = { document_id: input.documentId }
       if (input.limit !== undefined) {
         if (!Number.isInteger(input.limit) || (input.limit as number) < 1 || (input.limit as number) > 100) {
-          throw new IpcValidationError("limit 必须是 1 到 100 的整数。")
+          throw new IpcValidationError("导出记录分页信息无效。")
         }
         params.limit = input.limit
       }
@@ -1523,7 +1524,7 @@ function registerIpc(): void {
   ipcMain.handle("sztu:export-reveal-artifact", async (event, artifactId: unknown) => {
     assertTrustedSender(event)
     return runBridge(async () => {
-      assertResourceId(artifactId, "artifactId")
+      assertResourceId(artifactId, "导出文件编号")
       const resolved = await requestSidecar<unknown>(
         "export.resolveArtifact",
         { artifact_id: artifactId },
@@ -1539,8 +1540,8 @@ function registerIpc(): void {
       ) {
         throw new SidecarError("INVALID_SIDECAR_RESULT", "Sidecar returned unexpected artifact fields.")
       }
-      assertResourceId(resolved.artifact_id, "result.artifact_id")
-      assertText(resolved.absolute_path, "result.absolute_path", 4096)
+      assertResourceId(resolved.artifact_id, "导出文件编号")
+      assertText(resolved.absolute_path, "导出文件路径", 4096)
       if (
         resolved.artifact_id !== artifactId ||
         (resolved.format !== "docx" && resolved.format !== "pdf" && resolved.format !== "tex") ||
@@ -1560,10 +1561,10 @@ function registerIpc(): void {
   ipcMain.handle("sztu:export-delete-history", async (event, input: unknown) => {
     assertTrustedSender(event)
     return runBridge(() => {
-      if (!isRecord(input)) throw new IpcValidationError("删除导出记录参数必须是对象。")
+      if (!isRecord(input)) throw new IpcValidationError("导出记录删除参数无效。")
       assertExactKeys(input, ["documentId", "exportId"])
-      assertResourceId(input.documentId, "documentId")
-      assertResourceId(input.exportId, "exportId")
+      assertResourceId(input.documentId, "文档编号")
+      assertResourceId(input.exportId, "导出记录编号")
       return requestSidecar(
         "export.deleteHistory",
         { document_id: input.documentId, export_id: input.exportId },
@@ -1586,7 +1587,7 @@ function registerIpc(): void {
         documentType !== "grade_assessment"
       ) {
         throw new IpcValidationError(
-          "documentType 暂不支持。",
+          "不支持当前文档类型。",
         )
       }
       const options: OpenDialogOptions = {
@@ -1619,29 +1620,29 @@ function registerIpc(): void {
   ipcMain.handle("sztu:qa-record", async (event, input: unknown) => {
     assertTrustedSender(event)
     return runBridge(() => {
-      if (!isRecord(input)) throw new IpcValidationError("QA 记录参数必须是对象。")
+      if (!isRecord(input)) throw new IpcValidationError("检查结果格式无效。")
       assertExactKeys(input, ["gate", "status", "message"], ["exportId", "artifactId", "editor"])
-      if (input.exportId !== undefined) assertResourceId(input.exportId, "exportId")
-      if (input.artifactId !== undefined) assertResourceId(input.artifactId, "artifactId")
+      if (input.exportId !== undefined) assertResourceId(input.exportId, "导出记录编号")
+      if (input.artifactId !== undefined) assertResourceId(input.artifactId, "导出文件编号")
       if (input.gate !== "full_page_layout" && input.gate !== "target_editor") {
-        throw new IpcValidationError("gate 仅允许逐页版式或目标编辑器验收。")
+        throw new IpcValidationError("请选择逐页版式检查或 Word/WPS 检查。")
       }
       if (input.status !== "pass" && input.status !== "fail") {
-        throw new IpcValidationError("status 必须是 pass 或 fail。")
+        throw new IpcValidationError("请选择检查通过或未通过。")
       }
       if (input.gate === "target_editor") {
         if (
           input.artifactId === undefined ||
           (input.editor !== "word" && input.editor !== "wps")
         ) {
-          throw new IpcValidationError("目标编辑器验收必须指定 Word 产物和 Word/WPS。")
+          throw new IpcValidationError("请先选择要检查的 Word 文件和使用的 Word/WPS。")
         }
       } else if (input.editor !== undefined) {
-        throw new IpcValidationError("逐页版式记录不得声明 editor。")
+        throw new IpcValidationError("逐页版式检查无需选择 Word/WPS，请重新填写。")
       } else if (input.exportId === undefined) {
-        throw new IpcValidationError("逐页版式验收必须指定导出记录。")
+        throw new IpcValidationError("请先选择要检查的导出记录。")
       }
-      assertText(input.message, "message", 1000)
+      assertText(input.message, "检查备注", 1000)
       const params: Record<string, unknown> = {
         gate: input.gate,
         status: input.status,
@@ -1655,12 +1656,16 @@ function registerIpc(): void {
   })
 }
 
+let activeDiagnosticContext: DiagnosticContext = {}
+
 async function requestSidecar<T>(
   method: SidecarMethod,
   params: Record<string, unknown>,
   timeoutMs?: number,
 ): Promise<T> {
   const startedAt = Date.now()
+  const requestId = diagnosticContext({ request_id: params.request_id }).request_id ?? randomUUID()
+  const operationContext = { ...activeDiagnosticContext, request_id: requestId }
   sidecar ??= new SidecarChannels(
     new SidecarClient(backendRoot(), app.getPath("userData"), undefined, { role: "control", retryRequests: false }),
     new SidecarClient(backendRoot(), app.getPath("userData"), undefined, { role: "render", retryRequests: false }),
@@ -1668,7 +1673,21 @@ async function requestSidecar<T>(
   )
   try {
     const result = await sidecar.request<T>(method, params, timeoutMs)
-    diagnostics?.record(method as DiagnosticOperation, "success", Date.now() - startedAt)
+    if (method === "workspace.saveProfile" || method === "workspace.saveProfileDraft") {
+      telemetry?.setAcademicProfile(params.profile)
+    } else if (["workspace.open", "workspace.selectDocument", "workspace.deleteDocument", "workspace.restoreDocument", "workspace.purgeDocument"].includes(method)) {
+      const snapshot = result as Record<string, unknown> | null
+      telemetry?.setAcademicProfile(snapshot?.profile_draft ?? snapshot?.profile)
+    } else if (method === "workspace.closeTemporary") {
+      telemetry?.setAcademicProfile(null)
+    }
+    if (result && typeof result === "object") {
+      const snapshot = result as Record<string, unknown>
+      const document = (snapshot.document ?? (method === "workspace.saveDraft" || method === "workspace.createDocument" ? snapshot : null)) as Record<string, unknown> | null
+      if (["workspace.open", "workspace.selectDocument", "workspace.deleteDocument", "workspace.restoreDocument", "workspace.purgeDocument"].includes(method) || method === "workspace.closeTemporary") activeDiagnosticContext = {}
+      if (document) activeDiagnosticContext = diagnosticContext({ document_type: document.document_type, structure: documentStructure(document.content) })
+    }
+    diagnostics?.record(method as DiagnosticOperation, "success", Date.now() - startedAt, undefined, { ...activeDiagnosticContext, request_id: requestId })
     return result
   } catch (error) {
     diagnostics?.record(
@@ -1676,6 +1695,11 @@ async function requestSidecar<T>(
       "failure",
       Date.now() - startedAt,
       stableDiagnosticErrorCode(error),
+      {
+        ...operationContext,
+        ...diagnosticContext(error instanceof SidecarError ? error.details?.diagnostic : undefined),
+        ...diagnosticContext(error instanceof SidecarError ? { field: error.details?.field } : undefined),
+      },
     )
     throw error
   }

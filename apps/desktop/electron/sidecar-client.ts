@@ -352,17 +352,17 @@ export class SidecarClient {
     if (!pending) return
     pending.deadlineReached = true
     if (!options.onDeadline) {
-      await this.stop(new SidecarError("REQUEST_TIMEOUT", "请求超时，文档进程已停止；请重新打开并核对任务状态。"))
+      await this.stop(new SidecarError("REQUEST_TIMEOUT", "操作超时，请重新打开应用，并查看文档是否已保存或导出。"))
       return
     }
     // Keep the request pending until a backend terminal response or confirmed exit.
     // A completion racing the cancellation remains a real successful completion.
     pending.timeout = setTimeout(() => {
       if (!this.pending.has(id)) return
-      void this.stop(new SidecarError("REQUEST_OUTCOME_UNKNOWN", "任务未确认完成或取消，渲染进程已停止；请检查导出历史和输出目录。"))
+      void this.stop(new SidecarError("REQUEST_OUTCOME_UNKNOWN", "无法确认本次任务是否完成，请查看导出记录及保存文件夹。"))
     }, Math.min(10_000, Math.max(1, options.cancellationGraceMs ?? 10_000)))
     try { await options.onDeadline() } catch {
-      if (this.pending.has(id)) await this.stop(new SidecarError("REQUEST_OUTCOME_UNKNOWN", "取消信号发送失败，渲染进程已停止；请检查导出历史和输出目录。"))
+      if (this.pending.has(id)) await this.stop(new SidecarError("REQUEST_OUTCOME_UNKNOWN", "取消失败，请查看导出记录及保存文件夹，确认是否已生成文件。"))
     }
   }
 
@@ -509,7 +509,7 @@ export class SidecarClient {
       return
     }
     if (pending.deadlineReached && ["EXPORT_CANCELLED", "PREVIEW_CANCELLED", "REQUEST_CANCELLED"].includes(envelope.error.code)) {
-      pending.reject(new SidecarError("REQUEST_TIMEOUT", "任务超时，后台已确认取消。", { cancellation_confirmed: true }))
+      pending.reject(new SidecarError("REQUEST_TIMEOUT", "操作超时，已取消本次任务。", { cancellation_confirmed: true }))
     } else pending.reject(new SidecarError(envelope.error.code, envelope.error.message, envelope.error.details))
   }
 

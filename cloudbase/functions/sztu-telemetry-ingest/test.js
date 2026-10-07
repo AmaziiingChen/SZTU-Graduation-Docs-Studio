@@ -117,3 +117,34 @@ test('rejects diagnostic reports containing a forbidden source field', () => {
   report.operations[0].message = '/Users/student/private';
   assert.equal(scanDiagnosticReport(report), false);
 });
+
+test('accepts custom academic names and all seven document types', () => {
+  const batch = validBatch();
+  Object.assign(batch.events[0].attributes, { college: '音乐学院', major: '音乐表演' });
+  assert.equal(validateBatch(batch), null);
+  batch.events[0].attributes.major = '新增专业';
+  assert.equal(validateBatch(batch), null);
+  batch.events[0].attributes.college = '新设学院';
+  assert.equal(validateBatch(batch), null);
+  batch.events[0].attributes.major = 'A'.repeat(200);
+  assert.equal(validateBatch(batch), null);
+  batch.events[0].attributes.major = 'A'.repeat(201);
+  assert.equal(validateBatch(batch), 'INVALID_ATTRIBUTES');
+  delete batch.events[0].attributes.major;
+  assert.equal(validateBatch(batch), 'INVALID_ATTRIBUTES');
+  for (const document_type of ['proposal', 'task_book', 'midterm', 'advisor_review', 'reviewer_review', 'defense_record', 'grade_assessment']) {
+    batch.events[0].name = 'usage_event';
+    batch.events[0].attributes = { event_name: 'document_completed', document_type, college: 'unknown', major: 'unknown' };
+    assert.equal(validateBatch(batch), null);
+  }
+});
+
+test('accepts v2 bounded diagnostic evidence while retaining v1', () => {
+  const report = validDiagnosticReport();
+  assert.equal(validateDiagnosticReport(report), null);
+  report.schema_version = '2.0';
+  Object.assign(report.operations[0], { duration_ms: 1289, context: { field: 'sections.progress[0].columns[1].header', trace: [{ module: 'docx_inspector.py', line: 220 }], structure: { tables: 1 } } });
+  assert.equal(validateDiagnosticReport(report), null);
+  report.operations[0].context.trace[0].module = '/Users/private/file.py';
+  assert.equal(validateDiagnosticReport(report), 'INVALID_DIAGNOSTIC_OPERATION');
+});

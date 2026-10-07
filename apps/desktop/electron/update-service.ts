@@ -35,7 +35,7 @@ export type UpdateStatus =
   | { state: "checking"; control?: ReleaseControl }
   | { state: "up_to_date"; checkedAt: string; control?: ReleaseControl }
   | { state: "available"; version: string; sizeBytes: number; downloadFailed?: boolean; control?: ReleaseControl }
-  | { state: "downloading"; version: string; control?: ReleaseControl }
+  | { state: "downloading"; version: string; downloadedBytes: number; sizeBytes: number; phase: "transferring" | "verifying"; control?: ReleaseControl }
   | { state: "downloaded"; version: string; downloadedAt: string; control?: ReleaseControl }
   | { state: "error"; code: "CHECK_FAILED" | "MANIFEST_INVALID" | "DOWNLOAD_FAILED"; control?: ReleaseControl }
 
@@ -477,7 +477,7 @@ export class UpdateService {
     const { version, artifact } = this.availableUpdate
     this.downloading = true
     const control = this.currentControl
-    this.setStatus({ state: "downloading", version, ...(control ? { control } : {}) })
+    this.setStatus({ state: "downloading", version, downloadedBytes: 0, sizeBytes: artifact.size_bytes, phase: "transferring", ...(control ? { control } : {}) })
     try {
       this.downloadedPath = await this.downloadArtifact(version, artifact)
       this.downloadedVersion = version
@@ -564,6 +564,7 @@ export class UpdateService {
       const handle = await open(temporary, "wx", 0o600)
       const hash = createHash("sha256")
       let size = 0, committed = false
+      let lastProgressAt = 0
       const reader = response.body.getReader()
       try {
         while (true) {
@@ -575,8 +576,14 @@ export class UpdateService {
           }
           hash.update(chunk.value)
           await handle.write(chunk.value)
+          const now = Date.now()
+          if (now - lastProgressAt >= 200 || size === artifact.size_bytes) {
+            lastProgressAt = now
+            this.setStatus({ state: "downloading", version, downloadedBytes: size, sizeBytes: artifact.size_bytes, phase: "transferring", ...(this.currentControl ? { control: this.currentControl } : {}) })
+          }
         }
         await handle.close()
+        this.setStatus({ state: "downloading", version, downloadedBytes: size, sizeBytes: artifact.size_bytes, phase: "verifying", ...(this.currentControl ? { control: this.currentControl } : {}) })
         if (size !== artifact.size_bytes || hash.digest("hex") !== artifact.sha256) {
           throw new Error("Update artifact integrity verification failed.")
         }

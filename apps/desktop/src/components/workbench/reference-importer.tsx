@@ -254,7 +254,7 @@ export function ReferenceImporter({
               ))}
             </ul>
             {legacyReferences.length > 0 ? (
-              <p className="mt-2">当前仍保留上一次有效的格式化条目，不会被错误输入覆盖。</p>
+              <p className="mt-2">已保留上次保存的参考文献。</p>
             ) : null}
           </AlertDescription>
         </Alert>
@@ -265,7 +265,7 @@ export function ReferenceImporter({
           <TriangleAlertIcon />
           <AlertTitle>当前文献包含宏、注释或其他扩展内容</AlertTitle>
           <AlertDescription>
-            为避免破坏 BibTeX 依赖，现有条目的编辑、删除和调整顺序已关闭；仍可继续添加一条或多条独立文献。
+            为保留 BibTeX 依赖，现有条目暂不支持单独编辑、删除或排序，仍可添加新文献。
           </AlertDescription>
         </Alert>
       ) : null}
@@ -275,7 +275,7 @@ export function ReferenceImporter({
           <BookOpenCheckIcon />
           <AlertTitle>已保留旧版参考文献</AlertTitle>
           <AlertDescription>
-            这些条目来自现有文档，仍可继续导出。添加 BibTeX 后，系统会用自动排版结果替换它们。
+            旧版参考文献仍可导出，导入 BibTeX 后将被替换。
           </AlertDescription>
         </Alert>
       ) : null}

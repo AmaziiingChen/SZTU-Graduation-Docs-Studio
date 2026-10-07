@@ -632,7 +632,7 @@ class ExportPipelineTests(unittest.TestCase):
             )
 
         self.assertEqual(caught.exception.code, "TEMPLATE_ENGINE_INCOMPLETE")
-        self.assertIn("模板快照", caught.exception.message)
+        self.assertIn("模板文件不完整", caught.exception.message)
 
     def test_renderer_maps_missing_list_layout_snapshot(self) -> None:
         with self.assertRaises(ExportError) as caught:

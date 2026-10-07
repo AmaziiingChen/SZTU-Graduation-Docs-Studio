@@ -1,5 +1,7 @@
 import { mkdtemp, readFile, rm, stat } from "node:fs/promises"
 import os from "node:os"
+import { createRequire } from "node:module"
+const receiver = createRequire(import.meta.url)("../../../cloudbase/functions/sztu-telemetry-ingest/index.js")
 import path from "node:path"
 import { afterEach, describe, expect, it } from "vitest"
 
@@ -34,7 +36,7 @@ describe("local diagnostic package", () => {
       now: () => new Date("2026-08-31T12:00:00Z"),
     })
     await service.initialize()
-    service.record("preview.generate", "failure", 1_500, "RENDER_FAILED")
+    service.record("preview.generate", "failure", 1_500, "RENDER_FAILED", { field: "sections.main_research_content[3].columns[1].header", trace: [{ module: "exporter.py", line: 3430 }], structure: { tables: 1 }, template_version: "0.3+workspace.123456abcdef" })
 
     const summary = service.prepare(
       {
@@ -68,6 +70,10 @@ describe("local diagnostic package", () => {
     await service.save(summary.reportId, target)
     await service.flush()
     const serialized = await readFile(target, "utf8")
+    expect(receiver.validateDiagnosticReport(JSON.parse(serialized))).toBeNull()
+    expect(receiver.scanDiagnosticReport(JSON.parse(serialized))).toBe(true)
+    expect(JSON.parse(serialized).schema_version).toBe("2.0")
+    expect(JSON.parse(serialized).operations.at(-1).duration_ms).toBe(1500)
     const savedMode = (await stat(target)).mode & 0o777
 
     expect(summary.environmentCheckCount).toBe(1)

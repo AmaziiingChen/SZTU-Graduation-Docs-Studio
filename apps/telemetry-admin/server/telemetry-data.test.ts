@@ -184,3 +184,34 @@ describe("telemetry dashboard aggregation", () => {
     expect(secondArgs[secondArgs.indexOf("--sql") + 1]).toContain("(received_at, event_id) <")
   })
 })
+
+it("counts latest academic context once per installation, including unknown and old clients", () => {
+  const common = rows[0]
+  const result = aggregateTelemetry([
+    { ...common, attributes: { college: "音乐学院", major: "音乐表演" } },
+    { ...common, received_at: "2026-08-30T02:00:00Z", attributes: { college: "人工智能学院", major: "人工智能" } },
+    { ...rows[2], attributes: {} },
+  ], 30)
+  expect(result.academicDistribution).toEqual(expect.arrayContaining([
+    { college: "人工智能学院", major: "人工智能", installations: 1 },
+    { college: "unknown", major: "unknown", installations: 1 },
+  ]))
+  expect(result.academicDistribution).toHaveLength(2)
+})
+
+
+it("uses occurrence time for academic context when queued events arrive late", () => {
+  const common = rows[0]
+  const result = aggregateTelemetry([
+    { ...common, received_at: "2026-08-30T03:00:00Z", occurred_at: "2026-08-30T01:00:00Z", attributes: { college: "音乐学院", major: "音乐表演" } },
+    { ...common, received_at: "2026-08-30T02:00:00Z", occurred_at: "2026-08-30T02:00:00Z", attributes: { college: "人工智能学院", major: "人工智能" } },
+  ], 30)
+  expect(result.academicDistribution).toEqual([{ college: "人工智能学院", major: "人工智能", installations: 1 }])
+})
+
+it("preserves custom colleges and long custom majors in academic distribution", () => {
+  const college = "新设跨学科学院"
+  const major = "自定义专业方向".repeat(15)
+  const result = aggregateTelemetry([{ ...rows[0], attributes: { college, major } }], 30)
+  expect(result.academicDistribution).toEqual([{ college, major, installations: 1 }])
+})

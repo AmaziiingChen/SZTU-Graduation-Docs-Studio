@@ -451,7 +451,7 @@ export function NavDocuments({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>新建{documentGroups.find((item) => item.type === createType)?.label}</DialogTitle>
-            <DialogDescription>{createType === "thesis" ? "创建记录后可下载 LaTeX 模板，在自己的编辑器或 Agent 中撰写论文。" : "新建空白文档，或复制一份已有内容后独立编辑。"}</DialogDescription>
+            <DialogDescription>{createType === "thesis" ? "下载 LaTeX 模板后，可在 LaTeX 编辑器或 Agent 中撰写论文。" : "新建空白文档，或复制一份已有内容后独立编辑。"}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-3">
             <Field>

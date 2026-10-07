@@ -91,7 +91,7 @@ export function ThreeLineTableGenerator({
                       <AnimatedActionIcon icon={InfoIconAnimated} />
                     </TooltipTrigger>
                     <TooltipContent>
-                      粘贴 Excel、WPS 表格或 CSV 数据，生成可直接放入论文的 booktabs 源码。
+                      粘贴 Excel、WPS 表格或 CSV 数据，生成三线表的 LaTeX 代码。
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>

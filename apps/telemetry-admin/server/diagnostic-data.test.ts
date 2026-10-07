@@ -25,7 +25,7 @@ describe("diagnostic dashboard data", () => {
         failedOperationCount: 1,
       }),
     )
-    expect(data.reports[0]?.environment.checks).toHaveLength(10)
+    expect(data.reports[0]?.environment.checks).toHaveLength(15)
     expect(data.reports[0]?.operationSummary).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ label: "生成预览", failure: 1 }),

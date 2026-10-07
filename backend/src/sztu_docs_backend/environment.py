@@ -104,9 +104,9 @@ def _check_python() -> dict[str, Any]:
         "required": True,
         "status": "pass" if supported else "fail",
         "message": (
-            f"Python {platform.python_version()} is supported."
+            f"应用运行组件可用（Python {platform.python_version()}）。"
             if supported
-            else "Python 3.11 or newer is required."
+            else "应用运行组件版本过低，请重新安装应用。"
         ),
         "details": {"minimum": "3.11", "executable": sys.executable},
     }
@@ -125,14 +125,14 @@ def _check_temp_directory() -> dict[str, Any]:
             "id": "temporary_directory",
             "required": True,
             "status": "fail",
-            "message": "The temporary directory is not writable.",
+            "message": "无法写入临时文件，请检查磁盘空间和文件夹权限。",
             "details": {"path": tempfile.gettempdir(), "reason": str(exc)},
         }
     return {
         "id": "temporary_directory",
         "required": True,
         "status": "pass",
-        "message": "The temporary directory is writable.",
+        "message": "临时目录写入正常。",
         "details": {"path": tempfile.gettempdir()},
     }
 
@@ -163,9 +163,9 @@ def _check_document_dependencies() -> dict[str, Any]:
         "required": True,
         "status": "pass" if available else "fail",
         "message": (
-            "Word 与中文字形检查所需 Python 依赖可用。"
+            "文档生成组件可用。"
             if available
-            else "缺少 python-docx 或 Pillow；请运行 corepack pnpm setup:backend 后重启工作台。"
+            else "文档生成组件缺失，请重新安装应用。"
         ),
         "details": dependencies,
     }
@@ -446,9 +446,9 @@ def _check_proposal_engine() -> dict[str, Any]:
         "required": False,
         "status": "pass",
         "message": (
-            "开题报告本地模板工程已实时同步为导出快照。"
+            "开题报告模板已更新，可以导出。"
             if live_workspace
-            else "已提交版本的开题报告 Word/PDF 引擎可用。"
+            else "开题报告模板可用。"
         ),
         "details": {
             "version": engine.version,
@@ -480,9 +480,9 @@ def _check_midterm_engine() -> dict[str, Any]:
         "required": False,
         "status": "pass",
         "message": (
-            "中期检查本地模板工程已实时同步为导出快照。"
+            "中期检查模板已更新，可以导出。"
             if live_workspace
-            else "受信任的中期检查 Word/PDF/LaTeX 引擎可用。"
+            else "中期检查模板可用。"
         ),
         "details": {
             "version": engine.version,
@@ -514,9 +514,9 @@ def _check_task_book_engine() -> dict[str, Any]:
         "required": False,
         "status": "pass",
         "message": (
-            "任务书本地模板工程已实时同步为导出快照。"
+            "任务书模板已更新，可以导出。"
             if live_workspace
-            else "已提交版本的任务书 Word/PDF/LaTeX 引擎可用。"
+            else "任务书模板可用。"
         ),
         "details": {
             "version": engine.version,
@@ -538,7 +538,7 @@ def _check_assessment_engine(document_type: str) -> dict[str, Any]:
     live_workspace = engine.source in {"development-workspace", "environment-workspace", "linked-workspace"}
     return {
         "id": f"{document_type}_engine", "required": False, "status": "pass",
-        "message": f"{DOCUMENT_OUTPUT_LABELS[document_type]}模板已同步为本地快照，可导出一页 PDF、Word 和 LaTeX 源码。",
+        "message": f"{DOCUMENT_OUTPUT_LABELS[document_type]}模板可用，支持导出 PDF、Word 和 LaTeX 源码。",
         "details": {"version": engine.version, "pack_sha256": engine.pack_sha256, "source": engine.source, "live_workspace": live_workspace},
     }
 
@@ -635,7 +635,7 @@ def _check_office_editor() -> dict[str, Any]:
         "required": False,
         "status": "pass" if installed else "warn",
         "message": (
-            "已检测到本机 Word/WPS，可用于打开和验收 DOCX。"
+            "已检测到 Word/WPS。"
             if installed
             else "未自动找到 Word/WPS；请确认已安装，或检查应用的安装注册信息。"
         ),
@@ -651,7 +651,7 @@ def _check_template_packs() -> dict[str, Any]:
             "id": "template_pack",
             "required": True,
             "status": "fail",
-            "message": "The bundled template pack could not be verified.",
+            "message": "随附模板损坏或不完整，请重新安装应用。",
             "details": {"error_type": type(exc).__name__},
         }
     proposal_packs = [pack for pack in packs if pack["document_type"] == "proposal"]
@@ -660,14 +660,14 @@ def _check_template_packs() -> dict[str, Any]:
             "id": "template_pack",
             "required": True,
             "status": "fail",
-            "message": "No trusted proposal template pack is available.",
+            "message": "未找到可用的开题报告模板，请重新安装应用。",
             "details": {"templates": []},
         }
     return {
         "id": "template_pack",
         "required": True,
         "status": "pass",
-        "message": "A trusted proposal development template pack is available.",
+        "message": "开题报告模板可用。",
         "details": {"templates": proposal_packs},
     }
 

@@ -84,7 +84,7 @@ export function TablePreviewCard({
     try {
       await downloadTablePreviewPng(imageOptions, pngFilename)
       complete("downloadPng")
-      toast.success("文件已准备好，已请求下载 PNG。")
+      toast.success("已开始下载 PNG。")
     } catch {
       toast.error("PNG 生成失败，请检查表格内容后重试。")
     }

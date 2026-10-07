@@ -1,3 +1,4 @@
+import { academicTelemetry } from "../../desktop/electron/academic-telemetry.ts"
 import { execFile } from "node:child_process"
 
 import type {
@@ -17,6 +18,8 @@ const ALLOWED_EVENT_NAMES = new Set([
   "update_event",
 ])
 const ALLOWED_ATTRIBUTE_KEYS = new Set([
+  "college",
+  "major",
   "launch_mode",
   "uptime_bucket",
   "event_name",
@@ -38,6 +41,7 @@ export type RawTelemetryRow = {
   session_id: string
   event_name: string
   received_at: string
+  occurred_at?: string
   app_version: string
   platform: string
   arch: string
@@ -70,7 +74,7 @@ function parseAttributes(value: unknown): Record<string, string | number | boole
   const attributes: Record<string, string | number | boolean> = {}
   for (const [key, item] of Object.entries(value)) {
     if (!ALLOWED_ATTRIBUTE_KEYS.has(key)) continue
-    if (typeof item === "string" && item.length <= 64) attributes[key] = item
+    if (typeof item === "string" && item.length <= (key === "college" || key === "major" ? 200 : 64)) attributes[key] = item
     else if (typeof item === "number" && Number.isFinite(item)) attributes[key] = item
     else if (typeof item === "boolean") attributes[key] = item
   }
@@ -104,6 +108,7 @@ function parseRow(value: unknown): RawTelemetryRow | null {
     session_id: sessionId,
     event_name: eventName,
     received_at: receivedAt,
+    ...(typeof value.occurred_at === "string" && Number.isFinite(Date.parse(value.occurred_at)) ? { occurred_at: value.occurred_at } : {}),
     app_version: appVersion,
     platform,
     arch,
@@ -121,6 +126,10 @@ function labelDocumentType(value: string): string {
       proposal: "开题报告",
       task_book: "任务书",
       midterm: "中期检查",
+      advisor_review: "指导教师评审",
+      reviewer_review: "评阅教师评审",
+      defense_record: "答辩记录",
+      grade_assessment: "成绩评定",
     }[value] ?? value
   )
 }
@@ -232,12 +241,17 @@ export function aggregateTelemetry(
     string,
     { appVersion: string; platform: string; arch: string; installations: Set<string>; events: number }
   >()
+  const academics = new Map<string, { at: number; college: string; major: string }>()
   let launches = 0
   let exportAttempts = 0
   let exportSuccesses = 0
   let errorEvents = 0
 
   for (const row of rows) {
+    const at = Date.parse(row.occurred_at ?? row.received_at)
+    if (!academics.has(row.installation_id) || at > academics.get(row.installation_id)!.at) {
+      academics.set(row.installation_id, { at, ...academicTelemetry(row.attributes) })
+    }
     installations.add(row.installation_id)
     sessions.add(row.session_id)
     const dayKey = new Date(row.received_at).toISOString().slice(0, 10)
@@ -338,7 +352,15 @@ export function aggregateTelemetry(
     }))
     .sort((left, right) => right.events - left.events || left.key.localeCompare(right.key))
 
+  const academicGroups = new Map<string, { college: string; major: string; installations: number }>()
+  for (const entry of academics.values()) {
+    const key = `${entry.college}|${entry.major}`
+    const group = academicGroups.get(key) ?? { college: entry.college, major: entry.major, installations: 0 }
+    group.installations++
+    academicGroups.set(key, group)
+  }
   return {
+    academicDistribution: [...academicGroups.values()].sort((a, b) => b.installations - a.installations || a.college.localeCompare(b.college)),
     generatedAt: (input.now ?? new Date()).toISOString(),
     rangeDays,
     sourceRowCount: rows.length,
@@ -489,7 +511,7 @@ export async function fetchRecentTelemetryPageFromCli(input: {
   const cursorFilter = cursor
     ? ` AND (received_at, event_id) < ('${cursor.receivedAt}'::timestamptz, '${cursor.eventId}'::uuid)`
     : ""
-  const sql = `SELECT event_id::text AS event_id, installation_id::text AS installation_id, session_id::text AS session_id, event_name, to_char(received_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS received_at, app_version, platform, arch, attributes FROM public.telemetry_events WHERE received_at >= NOW() - make_interval(days => ${input.rangeDays})${cursorFilter} ORDER BY received_at DESC, event_id DESC LIMIT ${RECENT_PAGE_SIZE + 1}`
+  const sql = `SELECT event_id::text AS event_id, installation_id::text AS installation_id, session_id::text AS session_id, event_name, to_char(received_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS received_at, to_char(occurred_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS occurred_at, app_version, platform, arch, attributes FROM public.telemetry_events WHERE received_at >= NOW() - make_interval(days => ${input.rangeDays})${cursorFilter} ORDER BY received_at DESC, event_id DESC LIMIT ${RECENT_PAGE_SIZE + 1}`
   const stdout = await (input.execute ?? executeCloudBaseCli)([
     "db", "execute", "-e", input.envId, "--sql", sql, "--json",
   ])
@@ -533,7 +555,7 @@ export async function fetchTelemetryRowsFromCli(input: {
   execute?: CliExecutor
 }): Promise<{ rows: RawTelemetryRow[]; truncated: boolean }> {
   if (!/^[-a-z0-9]{6,64}$/i.test(input.envId)) throw new Error("环境 ID 格式无效。")
-  const sql = `SELECT installation_id::text AS installation_id, session_id::text AS session_id, event_name, to_char(received_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS received_at, app_version, platform, arch, attributes FROM public.telemetry_events WHERE received_at >= NOW() - make_interval(days => ${input.rangeDays}) ORDER BY received_at ASC LIMIT ${MAX_ROWS + 1}`
+  const sql = `SELECT installation_id::text AS installation_id, session_id::text AS session_id, event_name, to_char(received_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS received_at, to_char(occurred_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS occurred_at, app_version, platform, arch, attributes FROM public.telemetry_events WHERE received_at >= NOW() - make_interval(days => ${input.rangeDays}) ORDER BY received_at ASC LIMIT ${MAX_ROWS + 1}`
   const execute = input.execute ?? executeCloudBaseCli
   const stdout = await execute([
     "db",
@@ -562,7 +584,7 @@ export function fixtureTelemetryRows(now = new Date()): RawTelemetryRow[] {
       app_version: "0.1.0",
       platform: "darwin",
       arch: "arm64",
-      attributes: { launch_mode: "development" },
+      attributes: { launch_mode: "development", college: "音乐学院", major: "音乐表演" },
     },
   ]
 }

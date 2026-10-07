@@ -881,3 +881,32 @@ class DocxInspectorTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class SharedNormalizationRegressionTests(unittest.TestCase):
+    def test_celsius_uses_supplied_template_rule_and_preserves_style_validation(self):
+        from sztu_docs_backend.docx_inspector import _paragraph_runs
+        original = proposal_fixture()
+        original['sections']['research_content'] = [{'runs': [{'text': '温度25℃', 'bold': True, 'italic': True}]}]
+        rendered = copy.deepcopy(original)
+        rendered['sections']['research_content'][0]['runs'][0]['text'] = '温度25°C'
+        calls = []
+        def template_normalizer(value, field, maximum, **options):
+            # A renderer-provided rule fixture. The inspector must call it without
+            # losing formatting; the real shared module is covered by K01 export.
+            calls.append(field)
+            if isinstance(value, str):
+                return [{'text': value.replace('℃', '°C'), 'script': 'normal', 'bold': False, 'italic': False}]
+            return [{'script': 'normal', 'bold': False, 'italic': False, **run, 'text': run['text'].replace('℃', '°C')} for run in value['runs']]
+        with tempfile.TemporaryDirectory() as directory:
+            docx = Path(directory) / 'celsius.docx'
+            _write_docx(docx, _document_xml(rendered))
+            with self.assertRaises(DocxInspectionError):
+                inspect_docx(docx, original)
+            self.assertEqual(inspect_docx(docx, original, normalize_paragraph=template_normalizer)['status'], 'pass')
+            self.assertTrue(calls)
+            rendered['sections']['research_content'][0]['runs'][0]['bold'] = False
+            _write_docx(docx, _document_xml(rendered))
+            with self.assertRaises(DocxInspectionError):
+                inspect_docx(docx, original, normalize_paragraph=template_normalizer)
+        # Scoped normalizer cannot leak to subsequent inspections.
+        self.assertEqual(_paragraph_runs('℃')[0]['text'], '℃')

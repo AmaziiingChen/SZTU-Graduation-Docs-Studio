@@ -53,6 +53,49 @@ STORAGE_MESSAGES = {
 }
 
 
+def _diagnostic_details(exc: Exception, details: dict[str, Any] | None = None) -> dict[str, Any]:
+    result = dict(details or {})
+    frames: list[dict[str, Any]] = []
+    stage = "request"
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        trace = current.__traceback__
+        while trace is not None:
+            source = Path(trace.tb_frame.f_code.co_filename)
+            if source.parent == Path(__file__).parent and source.name in {
+                "protocol.py", "exporter.py", "docx_inspector.py", "template_engine.py", "storage.py", "validation.py"
+            }:
+                frames.append({"module": source.name, "line": trace.tb_lineno})
+                if source.name == "docx_inspector.py":
+                    stage = "docx_inspection"
+                elif source.name == "storage.py":
+                    stage = "storage"
+                elif source.name == "template_engine.py":
+                    stage = "template"
+                elif source.name == "exporter.py":
+                    stage = {
+                        "content_check": "content_validation", "validate_document": "content_validation",
+                        "_run": "external_render", "_check_pdf": "pdf_validation",
+                        "_run_cjk_gate": "glyph_validation", "generate_preview": "preview", "run_export": "export",
+                    }.get(trace.tb_frame.f_code.co_name, stage)
+            trace = trace.tb_next
+        current = current.__cause__
+    diagnostic: dict[str, Any] = {"trace": frames[-8:], "stage": stage}
+    for frame_exc in [exc, exc.__cause__]:
+        trace = frame_exc.__traceback__ if frame_exc else None
+        while trace is not None:
+            if Path(trace.tb_frame.f_code.co_filename) == Path(__file__).with_name("exporter.py"):
+                descriptor = trace.tb_frame.f_locals.get("descriptor")
+                version = getattr(descriptor, "version", None)
+                if isinstance(version, str) and re.fullmatch(r"\d{1,4}\.\d{1,4}(?:\.\d{1,4})?(?:\+(?:workspace\.)?[0-9a-f]{7,64})?", version):
+                    diagnostic["template_version"] = version
+            trace = trace.tb_next
+    result["diagnostic"] = diagnostic
+    return result
+
+
 def canonical_request_id(value: Any) -> str | None:
     """Return a canonical UUID request id accepted by the IPC contract."""
 
@@ -320,22 +363,22 @@ class ProtocolSession:
                 result = self._dispatch_workspace(method, params)
             return success_response(request_id, result)
         except ProtocolError as exc:
-            return error_response(request_id, exc.code, exc.message, exc.details)
+            return error_response(request_id, exc.code, exc.message, _diagnostic_details(exc, exc.details))
         except StorageError as exc:
             return error_response(
                 request_id,
                 exc.code,
                 STORAGE_MESSAGES.get(exc.code, STORAGE_MESSAGES["STORAGE_ERROR"]),
-                _safe_storage_details(exc.details),
+                _diagnostic_details(exc, _safe_storage_details(exc.details)),
             )
         except ExportError as exc:
-            return error_response(request_id, exc.code, exc.message, exc.details)
+            return error_response(request_id, exc.code, exc.message, _diagnostic_details(exc, exc.details))
         except TemplateEngineError as exc:
-            return error_response(request_id, exc.code, exc.message, exc.details)
+            return error_response(request_id, exc.code, exc.message, _diagnostic_details(exc, exc.details))
         except Exception as exc:
             LOGGER.error("Unhandled protocol error (%s)", type(exc).__name__)
             return error_response(
-                request_id, "INTERNAL_ERROR", "An internal error occurred."
+                request_id, "INTERNAL_ERROR", "An internal error occurred.", _diagnostic_details(exc)
             )
 
     def _dispatch_workspace(

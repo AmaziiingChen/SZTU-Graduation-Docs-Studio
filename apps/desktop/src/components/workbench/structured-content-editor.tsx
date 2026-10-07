@@ -873,8 +873,8 @@ export function StructuredContentEditor({
     ].filter(Boolean)
     const description = [
       result.citations.skipped || result.punctuation.skipped || result.lists.skipped
-        ? "已保留受保护或含义不明确的内容。" : "",
-      result.citations.limited ? "部分段落的格式片段已达上限，请分段后重试。" : "",
+        ? "无法安全整理的内容已保留。" : "",
+      result.citations.limited ? "部分段落的格式片段超出上限，请分段后重试。" : "",
       result.lists.limited ? "列表超过 100 项，请分成较短的列表后重试。" : "",
     ].filter(Boolean).join(" ")
     toast.info(changes.length

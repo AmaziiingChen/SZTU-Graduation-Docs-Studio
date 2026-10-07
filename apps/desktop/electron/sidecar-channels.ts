@@ -52,7 +52,7 @@ export class SidecarChannels {
       if (!this.renderReady) {
         const result = await this.render.request<{ mode: string; render_ready: boolean }>("workspace.open", { mode: "persistent" })
         if (result.mode !== "persistent" || result.render_ready !== true || Object.keys(result).length !== 2) {
-          throw new SidecarError("INVALID_SIDECAR_RESULT", "渲染进程工作区初始化失败。")
+          throw new SidecarError("INVALID_SIDECAR_RESULT", "文档服务初始化失败，请重启应用。")
         }
         this.renderReady = true
       }
@@ -72,7 +72,7 @@ export class SidecarChannels {
     const directory = path.resolve(this.dataRoot, "cancellations")
     if (!marker || path.dirname(path.resolve(marker)) !== directory ||
       !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.cancel$/i.test(path.basename(marker))) {
-      throw new SidecarError("INVALID_CANCELLATION_FILE", "任务缺少有效的取消标记。")
+      throw new SidecarError("INVALID_CANCELLATION_FILE", "取消操作失败，请等待任务结束。")
     }
     await mkdir(directory, { recursive: true, mode: 0o700 })
     try { await writeFile(marker, "cancel\n", { encoding: "utf8", flag: "wx", mode: 0o600 }) }

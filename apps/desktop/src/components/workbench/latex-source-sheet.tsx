@@ -50,7 +50,7 @@ export function LatexSourceSheet({
       anchor.download = filename
       anchor.click()
       complete("downloadLatex")
-      toast.success("文件已准备好，已请求下载。")
+      toast.success("已开始下载。")
     } finally {
       URL.revokeObjectURL(url)
     }

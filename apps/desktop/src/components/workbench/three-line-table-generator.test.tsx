@@ -36,7 +36,7 @@ describe("ThreeLineTableGenerator", () => {
       name: "三线表使用说明",
     })
     fireEvent.focus(guidance)
-    expect(await screen.findByText(/生成可直接放入论文的 booktabs 源码/)).toBeInTheDocument()
+    expect(await screen.findByText(/生成三线表的 LaTeX 代码/)).toBeInTheDocument()
   })
 
   it("previews visually edited spreadsheet data and shows LaTeX in a sheet", () => {
