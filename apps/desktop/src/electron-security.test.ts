@@ -293,10 +293,10 @@ describe("Electron security boundary", () => {
     expect(mainSource).toContain('"advisor_title"')
     expect(mainSource).toContain('"graduation_cohort"')
     expect(mainSource).toContain(
-      'assertText(value.advisor_title, "profile.advisor_title", 100, false)',
+      'assertText(value.advisor_title, "指导教师职称", 100, false)',
     )
     expect(mainSource).toContain(
-      'assertText(value.graduation_cohort, "profile.graduation_cohort", 20, false)',
+      'assertText(value.graduation_cohort, "毕业届别", 20, false)',
     )
     expect(sidecarSource).toContain('"workspace.saveProfileDraft"')
   })

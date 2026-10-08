@@ -727,36 +727,42 @@ describe("M3 workbench persistence", () => {
     delete (window as Window & { sztuDesktop?: SztuDesktopApi }).sztuDesktop
   })
 
-  it("shows a concise privacy notice without a false development warning", async () => {
+  it.each([false, true])("opens the workbench without a privacy gate when configurationRequired=%s", async (configurationRequired) => {
+    window.localStorage.clear()
     const api = mockApi()
     vi.mocked(api.getPrivacyNoticeStatus).mockResolvedValue({
-      noticeVersion: "1.1",
+      noticeVersion: "1.2",
       acknowledged: false,
       acceptedAt: null,
-      telemetryConfigured: true,
+      telemetryConfigured: false,
       updateConfigured: false,
-      configurationRequired: false,
+      configurationRequired,
     })
     installApi(api)
-
     renderApp()
 
-    expect(
-      await screen.findByRole("dialog", {
-        name: "使用与隐私",
-      }),
-    ).toBeInTheDocument()
-    expect(screen.getByText(/本应用收集功能使用情况/)).toBeInTheDocument()
-    expect(screen.queryByText("当前开发构建尚未配置远程服务")).not.toBeInTheDocument()
+    await screen.findByLabelText("保存状态：已保存")
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    expect(screen.getByLabelText("本选题的意义及国内外发展状况")).toBeEnabled()
+    expect(api.getPrivacyNoticeStatus).not.toHaveBeenCalled()
+    expect(api.acceptPrivacyNotice).not.toHaveBeenCalled()
+    expect(api.quitApp).not.toHaveBeenCalled()
+    expect(api.getUpdateStatus).toHaveBeenCalled()
+    expect(api.getMidtermDatePolicyStatus).toHaveBeenCalled()
+  })
 
-    fireEvent.click(screen.getByRole("button", { name: "同意并继续" }))
+  it("keeps the workbench usable and loads date policy when update status is unavailable", async () => {
+    window.localStorage.clear()
+    const api = mockApi()
+    vi.mocked(api.getUpdateStatus).mockRejectedValue(new Error("Update service unavailable"))
+    installApi(api)
+    renderApp()
 
-    await waitFor(() => expect(api.acceptPrivacyNotice).toHaveBeenCalledOnce())
-    await waitFor(() =>
-      expect(
-        screen.queryByRole("dialog", { name: "使用与隐私" }),
-      ).not.toBeInTheDocument(),
-    )
+    await screen.findByLabelText("保存状态：已保存")
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    expect(api.getMidtermDatePolicyStatus).toHaveBeenCalled()
+    expect(api.acceptPrivacyNotice).not.toHaveBeenCalled()
+    expect(api.quitApp).not.toHaveBeenCalled()
   })
 
   it("shows live download progress and keeps downloading when the dialog is dismissed", async () => {
@@ -777,50 +783,32 @@ describe("M3 workbench persistence", () => {
     expect(api.downloadUpdate).not.toHaveBeenCalled()
   })
 
-  it("shows the environment guide after the privacy notice on first launch", async () => {
+  it("keeps environment help on demand and returns to editing after repair", async () => {
     window.localStorage.clear()
     const api = mockApi()
-    vi.mocked(api.getPrivacyNoticeStatus).mockResolvedValue({
-      noticeVersion: "1.1",
-      acknowledged: false,
-      acceptedAt: null,
-      telemetryConfigured: true,
-      updateConfigured: false,
-      configurationRequired: false,
+    vi.mocked(api.checkEnvironment).mockResolvedValueOnce({
+      ...environmentResult,
+      ready: false,
+      checks: [{ id: "xelatex", required: true, status: "fail", message: "未找到 XeLaTeX。" }],
     })
     installApi(api)
-
     renderApp()
 
-    expect(
-      await screen.findByRole("dialog", {
-        name: "使用与隐私",
-      }),
-    ).toBeInTheDocument()
-    expect(
-      screen.queryByRole("dialog", { name: "环境检查" }),
-    ).not.toBeInTheDocument()
+    await screen.findByLabelText("保存状态：已保存")
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    await openOperationsPanel()
+    fireEvent.click(await screen.findByRole("button", { name: "查看环境修复指引" }))
 
-    fireEvent.click(screen.getByRole("button", { name: "同意并继续" }))
-
-    const dialog = await screen.findByRole("dialog", {
-      name: "环境检查",
-    })
-    expect(dialog).toBeInTheDocument()
-    expect(screen.getByText("基础环境可用")).toBeInTheDocument()
+    const dialog = await screen.findByRole("dialog", { name: "环境检查" })
+    fireEvent.click(within(dialog).getByRole("button", { name: "重新检查" }))
+    expect(await within(dialog).findByText("基础环境可用")).toBeInTheDocument()
     expect(within(dialog).getByText("XeLaTeX")).toBeInTheDocument()
     expect(within(dialog).queryByText("XeLaTeX is available.")).toBeNull()
     expect(dialog.querySelector('[data-slot="badge"]')).toBeNull()
-    expect(
-      dialog.querySelector('[data-slot="section-completion-mark"]'),
-    ).toHaveAttribute("data-animate", "true")
+    expect(dialog.querySelector('[data-slot="section-completion-mark"]')).toHaveAttribute("data-animate", "true")
 
-    fireEvent.click(screen.getByRole("button", { name: "进入工作台" }))
-    await waitFor(() =>
-      expect(
-        screen.queryByRole("dialog", { name: "环境检查" }),
-      ).not.toBeInTheDocument(),
-    )
+    fireEvent.click(within(dialog).getByRole("button", { name: "返回工作台" }))
+    await waitFor(() => expect(dialog).not.toBeInTheDocument())
   })
 
   it("offers an installation guide when a required environment item is missing", async () => {
@@ -842,6 +830,10 @@ describe("M3 workbench persistence", () => {
     installApi(api)
 
     renderApp()
+    await screen.findByLabelText("保存状态：已保存")
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    await openOperationsPanel()
+    fireEvent.click(await screen.findByRole("button", { name: "查看环境修复指引" }))
 
     const dialog = await screen.findByRole("dialog", {
       name: "环境检查",
@@ -853,7 +845,7 @@ describe("M3 workbench persistence", () => {
     )
     expect(api.openToolLink).toHaveBeenCalledWith("mactex")
 
-    fireEvent.click(within(dialog).getByRole("button", { name: "稍后配置" }))
+    fireEvent.click(within(dialog).getByRole("button", { name: "返回工作台" }))
     await waitFor(() => expect(dialog).not.toBeInTheDocument())
   })
 

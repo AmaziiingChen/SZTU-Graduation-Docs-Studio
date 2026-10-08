@@ -663,9 +663,10 @@ function createWindow(): BrowserWindow {
 }
 
 async function startRemoteServices(): Promise<void> {
+  // Telemetry retains its own acknowledgement check; public update services do not.
+  await telemetry?.start()
   if (remoteServicesStarted) return
   remoteServicesStarted = true
-  await telemetry?.start()
   updateService?.start()
   midtermDatePolicyService?.start()
 }
@@ -721,9 +722,7 @@ async function initializeRemoteServices(): Promise<void> {
     mainWindow?.webContents.send("sztu:midterm-date-policy-status", status)
   })
   await midtermDatePolicyService.initialize()
-  if (privacyNoticeStatus().acknowledged) {
-    await startRemoteServices()
-  }
+  await startRemoteServices()
 }
 
 function privacyNoticeStatus() {

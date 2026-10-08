@@ -137,10 +137,6 @@ import {
   reconcileAutosaveFingerprints,
 } from "@/lib/autosave-coordinator"
 import { formatBibtex } from "@/lib/bibtex"
-import {
-  completeEnvironmentOnboarding,
-  environmentOnboardingIsComplete,
-} from "@/lib/environment-onboarding"
 import { cn } from "@/lib/utils"
 import {
   checkNavigationTarget,
@@ -186,7 +182,6 @@ import type {
   JsonObject,
   MidtermDatePolicyStatus,
   MidtermDateRule,
-  PrivacyNoticeStatus,
   PreviewResult,
   StudentProfile,
   StudentProfileDraft,
@@ -334,12 +329,6 @@ class DocumentViewStateStore {
 type EnvironmentState =
   | { status: "loading" }
   | { status: "ready"; result: EnvironmentResult }
-  | { status: "error"; message: string }
-
-type PrivacyNoticeState =
-  | { status: "loading" }
-  | { status: "required"; result: PrivacyNoticeStatus }
-  | { status: "accepted"; result: PrivacyNoticeStatus }
   | { status: "error"; message: string }
 
 async function loadEnvironmentState(): Promise<EnvironmentState> {
@@ -3446,15 +3435,9 @@ export default function App() {
     jobs: [],
   })
   const [templateInstalling, setTemplateInstalling] = useState(false)
-  const [privacyNotice, setPrivacyNotice] = useState<PrivacyNoticeState>({
-    status: "loading",
-  })
-  const [privacySubmitting, setPrivacySubmitting] = useState(false)
   const [generatedDocumentCount, setGeneratedDocumentCount] = useState<number | null>(
     null,
   )
-  const [environmentOnboardingCompleted, setEnvironmentOnboardingCompleted] =
-    useState(environmentOnboardingIsComplete)
   const [environmentGuideOpen, setEnvironmentGuideOpen] = useState(false)
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({
     state: "unconfigured",
@@ -3574,27 +3557,12 @@ export default function App() {
   const loadRemoteServiceState = useCallback(async () => {
     const api = getDesktopApi()
     if (!api) return
-    try {
-      const [notice, update, datePolicy] = await Promise.all([
-        api.getPrivacyNoticeStatus(),
-        api.getUpdateStatus(),
-        api.getMidtermDatePolicyStatus(),
-      ])
-      setPrivacyNotice({
-        status: notice.acknowledged ? "accepted" : "required",
-        result: notice,
-      })
-      setUpdateStatus(update)
-      setMidtermDatePolicyStatus(datePolicy)
-    } catch (error) {
-      setPrivacyNotice({
-        status: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "使用设置与更新状态读取失败，请重试。",
-      })
-    }
+    const [update, datePolicy] = await Promise.allSettled([
+      api.getUpdateStatus(),
+      api.getMidtermDatePolicyStatus(),
+    ])
+    if (update.status === "fulfilled") setUpdateStatus(update.value)
+    if (datePolicy.status === "fulfilled") setMidtermDatePolicyStatus(datePolicy.value)
   }, [])
 
   const isCurrentSavedRevision = (documentId: string, version: number) =>
@@ -3815,7 +3783,6 @@ export default function App() {
   }, [loadRemoteServiceState])
 
   useEffect(() => {
-    if (privacyNotice.status !== "accepted") return
     if (activePane === "tools" || activePane === "appearance") return
     const view =
       activePane === "profile"
@@ -3824,10 +3791,9 @@ export default function App() {
           ? "inspection"
           : activeDocumentType
     recordTelemetry({ name: "view_opened", view })
-  }, [activeDocumentType, activePane, privacyNotice.status, recordTelemetry])
+  }, [activeDocumentType, activePane, recordTelemetry])
 
   useEffect(() => {
-    if (privacyNotice.status !== "accepted") return
     const api = getDesktopApi()
     if (!api) return
     // oxlint-disable-next-line react/set-state-in-effect -- public aggregate is hydrated from the main-process telemetry service.
@@ -3835,7 +3801,7 @@ export default function App() {
       .getAnonymousDocumentCount()
       .then((count) => setGeneratedDocumentCount(count))
       .catch(() => undefined)
-  }, [privacyNotice.status])
+  }, [])
 
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect -- initial IPC hydration synchronizes React with the local workspace.
@@ -4740,27 +4706,6 @@ export default function App() {
     }
   }
 
-  const acceptPrivacyNotice = async () => {
-    const api = getDesktopApi()
-    if (!api || privacySubmitting) return
-    setPrivacySubmitting(true)
-    try {
-      const result = await api.acceptPrivacyNotice()
-      setPrivacyNotice({ status: "accepted", result })
-      setUpdateStatus(await api.getUpdateStatus())
-    } catch (error) {
-      setPrivacyNotice({
-        status: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "隐私设置保存失败，请重试。",
-      })
-    } finally {
-      setPrivacySubmitting(false)
-    }
-  }
-
   const downloadUpdate = async () => {
     const api = getDesktopApi()
     if (!api) return
@@ -4872,12 +4817,6 @@ export default function App() {
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "无法打开外部工具。")
     }
-  }
-
-  const finishEnvironmentOnboarding = () => {
-    completeEnvironmentOnboarding()
-    setEnvironmentOnboardingCompleted(true)
-    setEnvironmentGuideOpen(false)
   }
 
   const releaseControl = "control" in updateStatus ? updateStatus.control : undefined
@@ -5247,87 +5186,12 @@ export default function App() {
           </ResizablePanelGroup>
         </SheetContent>
       </Sheet>
-      <Dialog
-        open={privacyNotice.status === "required" || privacyNotice.status === "error"}
-        onOpenChange={() => undefined}
-      >
-        <DialogContent showCloseButton={false} className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>使用与隐私</DialogTitle>
-            <DialogDescription>
-              使用前请阅读并同意以下说明。
-            </DialogDescription>
-          </DialogHeader>
-          {privacyNotice.status === "error" ? (
-            <Alert variant="destructive">
-              <TriangleAlertIcon />
-              <AlertTitle>初始化失败</AlertTitle>
-              <AlertDescription>
-                初始化未完成，请稍后重试。
-              </AlertDescription>
-            </Alert>
-          ) : privacyNotice.status === "required" ? (
-            <div className="grid gap-3 text-sm text-muted-foreground">
-              <p className="text-muted-foreground">
-                本应用收集功能使用情况、运行状态及填写的学院、专业名称，用于功能改进与故障排查。
-              </p>
-              <p>不上传姓名、学号、班级及文档正文。</p>
-              {privacyNotice.result.configurationRequired &&
-              (!privacyNotice.result.telemetryConfigured ||
-                !privacyNotice.result.updateConfigured) ? (
-                <Alert variant="destructive">
-                  <TriangleAlertIcon />
-                  <AlertTitle>当前版本暂不可用</AlertTitle>
-                  <AlertDescription>
-                    必要服务配置缺失，请退出应用并联系开发者。
-                  </AlertDescription>
-                </Alert>
-              ) : null}
-            </div>
-          ) : null}
-          <DialogFooter>
-            <Button
-              variant="outline"
-              disabled={privacySubmitting}
-              onClick={() => void getDesktopApi()?.quitApp()}
-            >
-              退出应用
-            </Button>
-            {privacyNotice.status === "error" ? (
-              <Button
-                disabled={privacySubmitting}
-                onClick={() => void loadRemoteServiceState()}
-              >
-                重新读取
-              </Button>
-            ) : privacyNotice.status === "required" ? (
-              <Button
-                disabled={
-                  privacySubmitting ||
-                  (privacyNotice.result.configurationRequired &&
-                    (!privacyNotice.result.telemetryConfigured ||
-                      !privacyNotice.result.updateConfigured))
-                }
-                onClick={() => void acceptPrivacyNotice()}
-              >
-                {privacySubmitting ? (
-                  <LoaderCircleIcon className="animate-spin" />
-                ) : <AnimatedActionIcon icon={CircleCheckIcon} />}
-                同意并继续
-              </Button>
-            ) : null}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
       <EnvironmentOnboardingDialog
-        open={
-          privacyNotice.status === "accepted" &&
-          (!environmentOnboardingCompleted || environmentGuideOpen)
-        }
-        revisiting={environmentOnboardingCompleted}
+        open={environmentGuideOpen}
+        revisiting
         environment={environment}
         onRefresh={() => void refreshEnvironment()}
-        onComplete={finishEnvironmentOnboarding}
+        onComplete={() => setEnvironmentGuideOpen(false)}
         onQuit={() => void getDesktopApi()?.quitApp()}
         onOpenGuide={(toolId) => void openToolLink(toolId)}
       />
