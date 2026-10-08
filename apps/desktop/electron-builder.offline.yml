@@ -15,9 +15,10 @@ extraResources:
     to: bundled-template-engines
   - from: ../../config/remote-services.production.json
     to: remote-services.json
-  - from: ../../build/offline-runtime
-    to: offline-runtime
+  - from: ../../build/offline-runtime-location.json
+    to: offline-runtime-location.json
 win:
   artifactName: "SZTU-Docs-Studio-${version}-win-${arch}-offline.${ext}"
 nsis:
   shortcutName: SZTU文档工作台
+  include: ../../build/offline-runtime-installer.nsh

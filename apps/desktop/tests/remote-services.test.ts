@@ -58,7 +58,7 @@ describe("telemetry privacy boundary", () => {
     ).toThrow("invalid")
   })
 
-  it("does not transmit before acknowledgement and flushes a bounded schema batch after it", async () => {
+  it("transmits a bounded schema batch on fresh installs without fabricating acknowledgement", async () => {
     const userDataPath = await temporaryDirectory()
     const requests: string[] = []
     const service = new TelemetryService({
@@ -76,11 +76,7 @@ describe("telemetry privacy boundary", () => {
     })
     await service.initialize()
     await service.recordUsage({ name: "view_opened", view: "profile" })
-    expect(await service.flush()).toBe(false)
-    expect(requests).toHaveLength(0)
-
-    await service.acceptNotice()
-    await service.recordUsage({ name: "view_opened", view: "profile" })
+    expect(service.getPrivacyStatus()).toMatchObject({ acknowledged: false, acceptedAt: null })
     expect(await service.flush()).toBe(true)
     expect(requests).toHaveLength(1)
     const batch = JSON.parse(requests[0]) as {
@@ -96,6 +92,40 @@ describe("telemetry privacy boundary", () => {
     })
     expect(JSON.stringify(batch)).not.toContain("full_name")
     expect(JSON.parse(await readFile(path.join(userDataPath, "telemetry", "queue.json"), "utf8"))).toEqual([])
+  })
+
+  it.each(["win32", "darwin"] as const)("starts fresh %s installations without a notice dialog and retries offline events", async (platform) => {
+    const userDataPath = await temporaryDirectory()
+    const requests: string[] = []
+    let online = false
+    const service = new TelemetryService({ userDataPath, appVersion: "0.1.9", platform, arch: "x64", packaged: true,
+      endpoint: "https://telemetry.example.test/v1/events",
+      fetchImpl: async (_url, init) => { if (!online) throw new Error("offline"); requests.push(String(init?.body)); return { ok: true, status: 202 } },
+    })
+    await service.initialize()
+    try {
+      await service.start()
+      expect(service.getPrivacyStatus()).toMatchObject({ acknowledged: false, acceptedAt: null })
+      expect(await service.flush()).toBe(false)
+      online = true
+      expect(await service.flush()).toBe(true)
+      expect(JSON.parse(requests[0]).events[0]).toMatchObject({ name: "app_started", platform, app_version: "0.1.9" })
+    } finally { await service.stop() }
+  })
+
+  it("persists the fresh anonymous identity without acceptance and rotates it after thirty days", async () => {
+    const userDataPath = await temporaryDirectory()
+    let now = new Date("2026-10-08T00:00:00Z")
+    const options = { userDataPath, appVersion: "0.1.9", platform: "win32" as const, arch: "x64", packaged: true, endpoint: "https://example.invalid/events", now: () => now }
+    const statePath = path.join(userDataPath, "telemetry/state.json")
+    const first = new TelemetryService(options); await first.initialize()
+    const state = JSON.parse(await readFile(statePath, "utf8"))
+    expect(state.accepted_at).toBeNull()
+    const restarted = new TelemetryService(options); await restarted.initialize()
+    expect(JSON.parse(await readFile(statePath, "utf8")).installation_id).toBe(state.installation_id)
+    now = new Date("2026-11-09T00:00:00Z")
+    const rotated = new TelemetryService(options); await rotated.initialize()
+    expect(JSON.parse(await readFile(statePath, "utf8")).installation_id).not.toBe(state.installation_id)
   })
 
   it("records each local document completion once without transmitting its identifier", async () => {

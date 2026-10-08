@@ -10,6 +10,7 @@ import tempfile
 from pathlib import Path
 
 from build_backend_sidecar import request
+from windows_bundle_runtime import bundle_runtime
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend" / "src"))
@@ -70,7 +71,7 @@ def main() -> int:
             raise RuntimeError("Document fonts must not be bundled")
     with tempfile.TemporaryDirectory(prefix="sztu-windows-bundle-") as data_root:
         environment_path = os.environ.get("PATH", "")
-        runtime = resources / "offline-runtime"
+        runtime = bundle_runtime(resources, Path(sys.argv[2]).resolve() if len(sys.argv) > 2 else None)
         if runtime.is_dir():
             environment_path = os.pathsep.join((str(runtime / "texlive/bin/windows"), str(runtime / "poppler/Library/bin"), str(Path(os.environ["SYSTEMROOT"]) / "System32")))
         process = subprocess.Popen(

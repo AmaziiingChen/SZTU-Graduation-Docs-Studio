@@ -105,6 +105,9 @@ export function DiagnosticSupport() {
   return (
     <div className="grid gap-3">
       <div className="grid gap-1">
+        <p className="text-xs text-muted-foreground">
+          正式版默认发送匿名使用统计，用于故障分析和版本改进：包括版本、系统、操作结果及已保存的学院和专业，不包含姓名、学号、论文题目或文档正文。网络不可用时不影响编辑和导出。诊断包仅在你点击发送后上传。
+        </p>
         <div className="text-sm font-medium">故障诊断包</div>
         <p className="text-xs text-muted-foreground">
           诊断包用于故障排查，不含姓名、学号、班级、文档正文及文件路径。

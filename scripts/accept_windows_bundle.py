@@ -12,15 +12,16 @@ import subprocess
 import threading
 import uuid
 from pathlib import Path
+from windows_bundle_runtime import bundle_runtime
 
 ROOT = Path(__file__).resolve().parents[1]
 KINDS = ("proposal", "task_book", "midterm", "advisor_review", "reviewer_review", "defense_record", "grade_assessment")
 
 
 class Sidecar:
-    def __init__(self, bundle: Path, data: Path, log: Path):
+    def __init__(self, bundle: Path, data: Path, log: Path, runtime_source: Path | None = None):
         resources = bundle / "resources"
-        runtime = resources / "offline-runtime"
+        runtime = bundle_runtime(resources, runtime_source)
         env = {k: v for k, v in os.environ.items() if not k.startswith("SZTU_") and k not in {"PYTHONPATH", "PYTHONHOME"}}
         env.update({"SZTU_DOCS_DATA_DIR": str(data), "SZTU_DOCS_TEMPLATE_PACKS_DIR": str(resources / "template-packs"),
             "SZTU_DOCS_BUNDLED_ENGINES_DIR": str(resources / "bundled-template-engines"),
@@ -74,6 +75,7 @@ def main() -> int:
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--template-root", type=Path, default=ROOT.parent / "Thesis")
     parser.add_argument("--previous-bundle", type=Path)
+    parser.add_argument("--runtime-source", type=Path, help="Explicit build input for unpacked-bundle verification; not installed-runtime acceptance")
     args = parser.parse_args()
     output = args.output.resolve()
     if not output.is_relative_to((ROOT / "tmp").resolve()):
@@ -91,7 +93,7 @@ def main() -> int:
             prior = {"profile_id": profile["id"], "document_id": document["id"], "content": content}
         finally:
             old.close()
-    sidecar = Sidecar(args.bundle.resolve(), data, output / "current-sidecar.log")
+    sidecar = Sidecar(args.bundle.resolve(), data, output / "current-sidecar.log", args.runtime_source.resolve() if args.runtime_source else None)
     version = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))["version"]
     report = {"version": version, "input": "synthetic only", "system_python_and_tex_path": "excluded", "previous_draft_restored": False, "documents": []}
     try:

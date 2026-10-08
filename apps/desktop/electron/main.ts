@@ -663,7 +663,7 @@ function createWindow(): BrowserWindow {
 }
 
 async function startRemoteServices(): Promise<void> {
-  // Telemetry retains its own acknowledgement check; public update services do not.
+  // Configured telemetry starts by default; notice acknowledgement is historical metadata only.
   await telemetry?.start()
   if (remoteServicesStarted) return
   remoteServicesStarted = true

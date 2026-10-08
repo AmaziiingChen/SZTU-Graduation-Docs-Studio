@@ -13,7 +13,7 @@ vi.mock("node:fs/promises", async (importOriginal) => {
 const directories: string[] = []
 afterEach(async () => { hook.rename = undefined; await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true }))) })
 
-async function fixture(endpoint?: string) {
+async function fixture(endpoint = "https://example.invalid/events") {
   const directory = await mkdtemp(path.join(os.tmpdir(), "sztu-telemetry-regression-")); directories.push(directory)
   const fetchImpl = vi.fn(async () => ({ ok: true, status: 202 }))
   const options = { userDataPath: directory, appVersion: "0.1.5", platform: "darwin" as const, arch: "arm64", packaged: false, endpoint, fetchImpl }

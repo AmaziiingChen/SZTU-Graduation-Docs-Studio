@@ -300,8 +300,10 @@ export class TelemetryService {
           this.now().getTime() + INSTALLATION_ID_LIFETIME_MS,
         ).toISOString(),
       }
-      await this.writeState()
     }
+    // Fresh installs no longer call acceptNotice; persist the rotating anonymous
+    // identifier here so restarting the app does not create another installation.
+    await this.writeState()
   }
 
   getPrivacyStatus(): PrivacyNoticeStatus {
@@ -328,7 +330,7 @@ export class TelemetryService {
   }
 
   async start(): Promise<void> {
-    if (this.started || !this.getPrivacyStatus().acknowledged) return
+    if (this.started || !this.options.endpoint) return
     this.started = true
     await this.record("app_started", {
       launch_mode: this.options.packaged ? "packaged" : "development",
@@ -389,7 +391,7 @@ export class TelemetryService {
   }
 
   async getCompletionCount(): Promise<number | null> {
-    if (!this.options.endpoint || !this.getPrivacyStatus().acknowledged) return null
+    if (!this.options.endpoint) return null
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 8_000)
     timeout.unref()
@@ -439,7 +441,6 @@ export class TelemetryService {
   }
 
   async flush(): Promise<boolean> {
-    if (!this.getPrivacyStatus().acknowledged) return false
     if (!this.options.endpoint || this.queue.length === 0) return false
     const batch: TelemetryEvent[] = []
     for (const event of this.queue.slice(0, MAX_BATCH_LENGTH)) {
@@ -485,7 +486,7 @@ export class TelemetryService {
     attributes: TelemetryAttributes,
   ): Promise<void> {
     const state = this.requireState()
-    if (!this.getPrivacyStatus().acknowledged) return
+    if (!this.options.endpoint) return
     this.queue.push({
       schema_version: "1.0",
       event_id: randomUUID(),

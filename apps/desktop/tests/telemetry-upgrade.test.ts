@@ -19,7 +19,7 @@ it("preserves catalog and custom academic names without copying unrelated profil
   expect(academicTelemetry({ college: "音乐学院", major: "机器人工程" })).toEqual({ college: "音乐学院", major: "机器人工程" })
 })
 
-it("reconfirms old notice before transmitting and validates real payload at receiver", async () => {
+it("retains historical notice metadata without blocking upgraded telemetry and validates payload", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "telemetry-upgrade-"))
   const fetchImpl = vi.fn(async (_url: string, init?: RequestInit) => {
     const batch = JSON.parse(String(init?.body))
@@ -38,8 +38,8 @@ it("reconfirms old notice before transmitting and validates real payload at rece
     const state = JSON.parse(await readFile(statePath, "utf8")); state.notice_version = "1.1"
     await writeFile(statePath, JSON.stringify(state))
     const restarted = new TelemetryService(options); await restarted.initialize()
-    expect(await restarted.flush()).toBe(false); expect(fetchImpl).not.toHaveBeenCalled()
-    await restarted.acceptNotice(); expect(await restarted.flush()).toBe(true)
+    expect(restarted.getPrivacyStatus().acknowledged).toBe(false)
+    expect(await restarted.flush()).toBe(true)
     expect(fetchImpl).toHaveBeenCalledTimes(1)
   } finally { await rm(directory, { recursive: true, force: true }) }
 })
