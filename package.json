@@ -1,7 +1,7 @@
 {
   "name": "sztu-graduation-docs-studio",
   "private": true,
-  "version": "0.1.9",
+  "version": "0.1.10",
   "packageManager": "pnpm@11.19.0",
   "scripts": {
     "setup:backend": "python scripts/setup_backend_runtime.py",

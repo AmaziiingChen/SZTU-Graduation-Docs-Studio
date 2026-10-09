@@ -15,14 +15,16 @@ export function offlineRuntimePaths(
   let expectedManifest: string | undefined
   if (existsSync(descriptorPath)) {
     const descriptor = JSON.parse(readFileSync(descriptorPath, "utf8")) as Record<string, unknown>
-    if (descriptor.schema_version !== "1.0" || typeof descriptor.runtime_id !== "string" ||
+    if (!["1.0", "2.0"].includes(String(descriptor.schema_version)) || typeof descriptor.runtime_id !== "string" ||
       !/^[a-f0-9]{64}$/.test(descriptor.runtime_id) || typeof descriptor.manifest_sha256 !== "string" ||
       !/^[a-f0-9]{64}$/.test(descriptor.manifest_sha256) || !localAppData) {
       throw new Error("Offline runtime location is invalid")
     }
-    root = path.join(localAppData, "SZTU-Docs-Studio", "runtimes", descriptor.runtime_id)
+    root = descriptor.schema_version === "2.0"
+      ? path.join(localAppData, "SZTU-Docs", "r", descriptor.runtime_id.slice(0, 16))
+      : path.join(localAppData, "SZTU-Docs-Studio", "runtimes", descriptor.runtime_id)
     expectedManifest = descriptor.manifest_sha256
-    if (!existsSync(path.join(root, "complete.txt"))) throw new Error("Offline runtime installation is incomplete; rerun the installer")
+    if (!existsSync(path.join(root, "complete.txt")) || readFileSync(path.join(root, "complete.txt"), "utf8") !== descriptor.runtime_id) throw new Error("Offline runtime installation is incomplete; rerun the installer")
   }
   const manifestPath = path.join(root, "runtime-manifest.json")
   if (!existsSync(manifestPath)) {
