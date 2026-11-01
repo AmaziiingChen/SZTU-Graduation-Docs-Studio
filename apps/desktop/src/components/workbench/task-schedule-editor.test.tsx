@@ -5,6 +5,7 @@ import { toast } from "sonner"
 
 import {
   validateTaskScheduleItems,
+  taskScheduleItemErrors,
   type TaskScheduleEditorItem,
 } from "@/lib/task-schedule"
 import { paragraphInputText } from "@/lib/paragraph"
@@ -12,10 +13,10 @@ import { paragraphInputText } from "@/lib/paragraph"
 import { TaskScheduleEditor } from "./task-schedule-editor"
 
 const items: TaskScheduleEditorItem[] = [
-  { id: "one", period: "第1—2周", content: "完成文献调研。" },
+  { id: "one", period: "2026年11月1日—11月15日", content: "完成文献调研。" },
   {
     id: "two",
-    period: "第3—6周",
+    period: "2026年11月16日—12月15日",
     content: {
       type: "paragraph",
       runs: [
@@ -42,7 +43,7 @@ describe("TaskScheduleEditor", () => {
   it("uses one shared inline editor for the selected schedule item", () => {
     render(<TaskScheduleEditor value={items} onChange={vi.fn()} />)
 
-    expect(screen.getByLabelText("第 1 项时间范围")).toHaveValue("第1—2周")
+    expect(screen.getByLabelText("第 1 项时间范围")).toHaveValue("2026年11月1日—11月15日")
     expect(screen.getByRole("textbox", { name: "第 1 项进度内容" })).toHaveTextContent(
       "完成文献调研。",
     )
@@ -54,7 +55,7 @@ describe("TaskScheduleEditor", () => {
       screen.getByRole("button", { name: "编辑第 2 项进度内容" }),
     )
     expect(screen.queryByLabelText("第 1 项时间范围")).toBeNull()
-    expect(screen.getByLabelText("第 2 项时间范围")).toHaveValue("第3—6周")
+    expect(screen.getByLabelText("第 2 项时间范围")).toHaveValue("2026年11月16日—12月15日")
     expect(screen.getByRole("textbox", { name: "第 2 项进度内容" })).toHaveTextContent(
       "完成 H2O 模型。",
     )
@@ -70,6 +71,30 @@ describe("TaskScheduleEditor", () => {
     const next = onChange.mock.calls[0][0] as TaskScheduleEditorItem[]
     expect(next).toHaveLength(3)
     expect(next[2]).toMatchObject({ period: "", content: "" })
+  })
+
+  it("guides users to calendar dates and clears invalid-date errors after correction", () => {
+    render(<LiveSchedule initial={[{ ...items[0], period: "" }]} />)
+    const period = screen.getByRole("textbox", { name: "第 1 项时间范围" })
+    expect(period).toHaveAttribute("placeholder", "例如：2026年11月1日—11月15日")
+    fireEvent.change(period, { target: { value: "2026年2月30日—3月1日" } })
+    fireEvent.blur(period)
+    expect(period).toHaveAttribute("aria-invalid", "true")
+    expect(screen.getByText("日期无效，请检查年、月、日。")).toBeInTheDocument()
+    fireEvent.change(period, { target: { value: "2026年2月28日—3月1日" } })
+    expect(period).toHaveAttribute("aria-invalid", "false")
+    expect(screen.queryByText("日期无效，请检查年、月、日。")).toBeNull()
+  })
+
+  it("preserves saved week-based text and asks for actual dates when checked", () => {
+    const legacy = [{ ...items[0], period: "第1—2周" }]
+    const onChange = vi.fn()
+    const view = render(<TaskScheduleEditor value={legacy} onChange={onChange} />)
+    expect(screen.getByLabelText("第 1 项时间范围")).toHaveValue("第1—2周")
+    expect(onChange).not.toHaveBeenCalled()
+    view.rerender(<TaskScheduleEditor value={legacy} onChange={onChange} validationRequested />)
+    expect(screen.getByText("请填写具体起止日期，例如：2026年11月1日—11月15日。")).toBeInTheDocument()
+    expect(onChange).not.toHaveBeenCalled()
   })
 
   it("edits in the original row, hides duplicate summaries and can collapse every item", () => {
@@ -194,6 +219,39 @@ describe("TaskScheduleEditor", () => {
 })
 
 describe("task schedule helpers", () => {
+  it.each([
+    "2026年11月1日—11月15日",
+    "2026年11月1日-15日",
+    "2026年11月1日—2026年11月15日",
+    "2026年12月20日—2027年1月10日",
+    "2028年2月29日 至 3月1日",
+    "2000年2月29日—3月1日",
+    "2026年11月1日～11月1日",
+    "2026-11-01—2026-11-15",
+    "2026-11-01-2026-11-15",
+    "2026/11/01 至 2026/11/15",
+    "2026.11.01—2026.11.15",
+  ])("accepts an actual date range: %s", period => {
+    expect(taskScheduleItemErrors({ ...items[0], period })).toEqual({})
+  })
+
+  it.each([
+    ["第1—2周", "请填写具体起止日期"],
+    ["2026年11月—12月", "请填写具体起止日期"],
+    ["2026年2月29日—3月1日", "日期无效"],
+    ["2100年2月29日—3月1日", "日期无效"],
+    ["2026年4月31日—5月1日", "日期无效"],
+    ["2026年0月1日—1月15日", "日期无效"],
+    ["2026年11月1日—13月15日", "日期无效"],
+    ["2026年11月0日—11月15日", "日期无效"],
+    ["2026年11月15日—11月1日", "结束日期不能早于开始日期"],
+    ["2026年12月20日—1月10日", "跨年时请写明结束年份"],
+    ["2026-02-30—2026-03-01", "日期无效"],
+    ["2026-11-15—2026-11-01", "结束日期不能早于开始日期"],
+  ])("rejects an invalid or ambiguous date range: %s", (period, message) => {
+    expect(taskScheduleItemErrors({ ...items[0], period }).period).toContain(message)
+  })
+
   it("keeps rich paragraph text and validates fields independently", () => {
     expect(paragraphInputText(items[1].content)).toBe("完成 H2O 模型。")
     expect(validateTaskScheduleItems(items)).toEqual([])

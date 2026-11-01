@@ -1077,7 +1077,7 @@ function registerIpc(): void {
       if (mode !== "persistent" && mode !== "temporary") {
         throw new IpcValidationError("工作区模式无效。")
       }
-      return requestSidecar("workspace.open", { mode })
+      return requestSidecar("workspace.open", { mode, initialize_reference: mode === "persistent" })
     })
   })
 

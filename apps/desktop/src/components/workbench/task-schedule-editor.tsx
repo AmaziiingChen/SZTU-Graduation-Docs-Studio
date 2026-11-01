@@ -161,7 +161,7 @@ export function TaskScheduleEditor({ value, onChange, disabled = false, error, v
                     <div className="min-w-0 flex-1 py-1">
                       <FieldLabel className="sr-only" htmlFor={periodId}>时间范围</FieldLabel>
                       <Input id={periodId} aria-label={`第 ${index + 1} 项时间范围`} aria-invalid={Boolean(periodError)} aria-describedby={periodError ? `${periodId}-error` : undefined}
-                        className="w-full sm:max-w-48" value={item.period} disabled={disabled} placeholder="例如：第1—2周" maxLength={50}
+                        className="w-full" value={item.period} disabled={disabled} placeholder="例如：2026年11月1日—11月15日" maxLength={50}
                         onBlur={() => touch(item.id, "period")}
                         onKeyDown={event => {
                           if (event.key === "Tab" && !event.shiftKey) {
@@ -183,10 +183,10 @@ export function TaskScheduleEditor({ value, onChange, disabled = false, error, v
                   </div>,
                 }}
               >
-                <span className="grid min-w-0 flex-1 grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-left sm:grid-cols-[auto_8rem_minmax(0,1fr)] sm:items-start">
+                <span className="grid min-w-0 flex-1 grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-left">
                   <span className="font-medium">第 {index + 1} 项</span>
-                  <span className="truncate text-muted-foreground">{item.period.trim() || "未填写时间范围"}</span>
-                  <span className="col-span-2 line-clamp-2 whitespace-normal break-words font-normal text-muted-foreground sm:col-span-1">{paragraphInputText(item.content).trim() || "未填写进度内容"}</span>
+                  <span className="whitespace-normal break-words text-muted-foreground">{item.period.trim() || "未填写时间范围"}</span>
+                  <span className="col-span-2 line-clamp-2 whitespace-normal break-words font-normal text-muted-foreground">{paragraphInputText(item.content).trim() || "未填写进度内容"}</span>
                   {periodError || contentError ? <span className="col-span-full whitespace-normal text-xs text-destructive">{[periodError, contentError].filter(Boolean).join(" ")}</span> : null}
                 </span>
                 <AnimatedActionIcon icon={ChevronDownIcon} />

@@ -365,8 +365,8 @@ function taskBookDocumentFixture(
           "完成统一数据模型和双路文档渲染。",
         ],
         schedule: [
-          { period: "第1—2周", content: "完成文献调研和需求分析。" },
-          { period: "第3—6周", content: "完成系统实现和测试。" },
+          { period: "2026年11月1日—11月15日", content: "完成文献调研和需求分析。" },
+          { period: "2026年11月16日—12月15日", content: "完成系统实现和测试。" },
         ],
         required_materials: [],
         references: ["[1] 合成任务书参考文献。"],
@@ -2686,14 +2686,14 @@ describe("M3 workbench persistence", () => {
     expect(screen.getByRole("button", { name: "插入图片" })).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: /进度安排/ }))
     expect(screen.queryByRole("button", { name: "插入图片" })).toBeNull()
-    expect(screen.getByLabelText("第 1 项时间范围")).toHaveValue("第1—2周")
+    expect(screen.getByLabelText("第 1 项时间范围")).toHaveValue("2026年11月1日—11月15日")
     expect(screen.getByRole("textbox", { name: "第 1 项进度内容" })).toHaveTextContent(
       "完成文献调研和需求分析。",
     )
     fireEvent.click(
       screen.getByRole("button", { name: "编辑第 2 项进度内容" }),
     )
-    expect(screen.getByLabelText("第 2 项时间范围")).toHaveValue("第3—6周")
+    expect(screen.getByLabelText("第 2 项时间范围")).toHaveValue("2026年11月16日—12月15日")
     fireEvent.click(screen.getByRole("button", { name: /所需资料/ }))
     expect(screen.getByRole("button", { name: "插入图片" })).toBeInTheDocument()
     expect(
@@ -2725,7 +2725,7 @@ describe("M3 workbench persistence", () => {
     fireEvent.click(screen.getByRole("button", { name: /进度安排/ }))
     fireEvent.click(screen.getByRole("button", { name: "新增进度" }))
     fireEvent.change(screen.getByLabelText("第 3 项时间范围"), {
-      target: { value: "第7周" },
+      target: { value: "2026年12月16日—12月31日" },
     })
     replaceRichText(
       screen.getByRole("textbox", { name: "第 3 项进度内容" }),
@@ -2748,10 +2748,10 @@ describe("M3 workbench persistence", () => {
               "完成统一数据模型和双路文档渲染。",
             ],
             schedule: [
-              expect.objectContaining({ period: "第1—2周" }),
-              expect.objectContaining({ period: "第3—6周" }),
+              expect.objectContaining({ period: "2026年11月1日—11月15日" }),
+              expect.objectContaining({ period: "2026年11月16日—12月15日" }),
               expect.objectContaining({
-                period: "第7周",
+                period: "2026年12月16日—12月31日",
                 content: "完成结构化编辑器验收。",
               }),
             ],

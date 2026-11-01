@@ -1,0 +1,590 @@
+{
+  "notice": "全部身份、研究安排及实验数据均为虚构录屏素材；参考文献为真实公开文献。",
+  "profile": {
+    "full_name": "林知远",
+    "student_number": "202300302001",
+    "college": "新材料与新能源学院",
+    "major": "新能源材料与工程",
+    "class_name": "2023级新能源材料与工程1班",
+    "advisor_name": "周明远",
+    "advisor_title": "副教授",
+    "graduation_cohort": "2027届",
+    "thesis_title": [
+      {
+        "type": "paragraph",
+        "runs": [
+          {
+            "text": "α-Al"
+          },
+          {
+            "text": "2",
+            "script": "sub"
+          },
+          {
+            "text": "O"
+          },
+          {
+            "text": "3",
+            "script": "sub"
+          },
+          {
+            "text": "–ZrO"
+          },
+          {
+            "text": "2",
+            "script": "sub"
+          },
+          {
+            "text": "复合陶瓷的 Microstructure 与 10"
+          },
+          {
+            "text": "3",
+            "script": "super"
+          },
+          {
+            "text": " 次循环稳定性研究"
+          }
+        ]
+      }
+    ],
+    "thesis_title_en": "Microstructure and 1000-Cycle Stability of alpha-Al2O3-ZrO2 Composite Ceramics"
+  },
+  "documents": {
+    "task_book": {
+      "schema_version": "0.1",
+      "metadata": {
+        "title": {
+          "type": "paragraph",
+          "runs": [
+            {
+              "text": "α-Al"
+            },
+            {
+              "text": "2",
+              "script": "sub"
+            },
+            {
+              "text": "O"
+            },
+            {
+              "text": "3",
+              "script": "sub"
+            },
+            {
+              "text": "–ZrO"
+            },
+            {
+              "text": "2",
+              "script": "sub"
+            },
+            {
+              "text": "复合陶瓷的 Microstructure 与 10"
+            },
+            {
+              "text": "3",
+              "script": "super"
+            },
+            {
+              "text": " 次循环稳定性研究"
+            }
+          ]
+        },
+        "student_name": "林知远",
+        "student_id": "202300302001",
+        "college": "新材料与新能源学院",
+        "major": "新能源材料与工程",
+        "class_name": "2023级新能源材料与工程1班",
+        "advisor": "周明远",
+        "graduation_year": 2027
+      },
+      "sections": {
+        "basic_content_and_requirements": [
+          "本课题以α-Al2O3–ZrO2复合陶瓷为对象，比较不同ZrO2添加量下的显微组织与抗弯强度，分析重复加载前后材料性能的变化。建立粉体混合、成形、烧结、表征与力学测试的完整记录流程。",
+          {
+            "type": "ordered_list",
+            "items": [
+              {
+                "content": "梳理氧化锆相变增韧的基本机制，明确样品分组、变量与测试指标。"
+              },
+              {
+                "content": "设置0%、5%、10%、15%、20%五个添加量，记录制备参数并比较试样性能。"
+              },
+              {
+                "content": "对试样开展循环加载，以强度保持率评价稳定性，整理图表及分析过程。"
+              },
+              {
+                "content": "完成毕业论文与答辩材料，保证图号、表格、单位和参考文献一致。"
+              }
+            ]
+          },
+          "本套文件用于软件操作演示，后附数值均为模拟数据，不代表真实实验结论。"
+        ],
+        "schedule": [
+          {
+            "period": "2026年11月1日—2026年12月31日",
+            "content": "完成文献阅读、变量选择、实验方案与开题报告。"
+          },
+          {
+            "period": "2027年1月1日—2027年2月28日",
+            "content": "完成五组样品制备、基础表征与初始力学测试。"
+          },
+          {
+            "period": "2027年3月1日—2027年3月31日",
+            "content": "开展循环加载测试，整理中期材料与首轮分析。"
+          },
+          {
+            "period": "2027年4月1日—2027年4月30日",
+            "content": "补充重复试验，完成统计、图表与论文初稿。"
+          },
+          {
+            "period": "2027年5月1日—2027年5月31日",
+            "content": "根据指导意见修改论文，完成查重、自查和答辩准备。"
+          },
+          {
+            "period": "2027年6月1日—2027年6月15日",
+            "content": "整理最终论文、原始记录与归档材料。"
+          }
+        ],
+        "required_materials": [
+          "查阅氧化锆增韧陶瓷的基础文献，整理粉体配比、烧结工艺、抗弯强度及循环试验的记录表。"
+        ],
+        "references": [
+          {
+            "type": "paragraph",
+            "runs": [
+              {
+                "text": "[1] Hannink Richard H. J., Kelly Patrick M., Muddle Barry C.. Transformation Toughening in Zirconia-Containing Ceramics[J]. Journal of the American Ceramic Society, 2000, 83(3): 461-487. DOI: 10.1111/j.1151-2916.2000.tb01221.x."
+              }
+            ]
+          },
+          {
+            "type": "paragraph",
+            "runs": [
+              {
+                "text": "[2] Garvie R. C., Hannink R. H., Pascoe R. T.. Ceramic steel?[J]. Nature, 1975, 258(5537): 703-704. DOI: 10.1038/258703a0."
+              }
+            ]
+          },
+          {
+            "type": "paragraph",
+            "runs": [
+              {
+                "text": "[3] Kingery W. David, Bowen H. Kent, Uhlmann Donald R.. Introduction to Ceramics[M]. 2 ed., New York: Wiley, 1976."
+              }
+            ]
+          }
+        ],
+        "topic_information": {
+          "nature": "graduation_thesis",
+          "source": {
+            "type": "practice_project"
+          }
+        }
+      },
+      "editor_state": {
+        "bibliography": {
+          "source_format": "bibtex",
+          "source_text": "@article{hannink2000toughening,\n  author = {Hannink, Richard H. J. and Kelly, Patrick M. and Muddle, Barry C.},\n  title = {Transformation Toughening in Zirconia-Containing Ceramics},\n  journal = {Journal of the American Ceramic Society},\n  year = {2000}, volume = {83}, number = {3}, pages = {461--487},\n  doi = {10.1111/j.1151-2916.2000.tb01221.x}\n}\n@article{garvie1975ceramicsteel,\n  author = {Garvie, R. C. and Hannink, R. H. and Pascoe, R. T.},\n  title = {Ceramic steel?}, journal = {Nature},\n  year = {1975}, volume = {258}, number = {5537}, pages = {703--704},\n  doi = {10.1038/258703a0}\n}\n@book{kingery1976ceramics,\n  author = {Kingery, W. David and Bowen, H. Kent and Uhlmann, Donald R.},\n  title = {Introduction to Ceramics}, edition = {2},\n  address = {New York}, publisher = {Wiley}, year = {1976}\n}\n",
+          "parse_status": "valid",
+          "entry_count": 3
+        }
+      }
+    },
+    "proposal": {
+      "schema_version": "0.2",
+      "metadata": {
+        "title": {
+          "type": "paragraph",
+          "runs": [
+            {
+              "text": "α-Al"
+            },
+            {
+              "text": "2",
+              "script": "sub"
+            },
+            {
+              "text": "O"
+            },
+            {
+              "text": "3",
+              "script": "sub"
+            },
+            {
+              "text": "–ZrO"
+            },
+            {
+              "text": "2",
+              "script": "sub"
+            },
+            {
+              "text": "复合陶瓷的 Microstructure 与 10"
+            },
+            {
+              "text": "3",
+              "script": "super"
+            },
+            {
+              "text": " 次循环稳定性研究"
+            }
+          ]
+        },
+        "student_name": "林知远",
+        "student_id": "202300302001",
+        "college": "新材料与新能源学院",
+        "major": "新能源材料与工程",
+        "advisor": "周明远"
+      },
+      "sections": {
+        "significance_and_status": [
+          "氧化铝陶瓷具有较高的硬度与耐磨性，但脆性会限制其在复杂载荷条件下的应用。通过引入ZrO2并调控组织结构，可以研究材料组成、增韧机制与力学性能之间的联系。",
+          "公开文献对氧化锆相变增韧及陶瓷组织设计进行了系统讨论。本课题在此基础上设置对比组，将显微组织观察与循环加载前后的强度保持率联系起来，形成可重复检查的分析流程。"
+        ],
+        "research_content": [
+          "研究内容分为组成设计、制备表征和循环稳定性评价三个部分，以相同制备条件下的不同ZrO2添加量作为主要对比变量。",
+          {
+            "type": "ordered_list",
+            "items": [
+              {
+                "content": "建立样品编号与参数记录，比较五个添加量组的制备情况。"
+              },
+              {
+                "content": "观察组织形貌，汇总抗弯强度并分析组间差异。"
+              },
+              {
+                "content": "设置循环加载条件，绘制性能随循环次数的变化曲线。"
+              }
+            ]
+          }
+        ],
+        "methods_and_means": [
+          "采用粉体混合、球磨、压制和烧结的流程制备试样，使用显微组织观察及三点弯曲测试对比材料性能。每组采用统一的记录格式，区分独立变量、控制条件与输出指标。",
+          "通过绘图展示平均强度及循环稳定性，以强度保持率作为对比指标。对异常点先核对记录，再讨论测量误差和工艺波动。"
+        ],
+        "research_steps": [
+          {
+            "type": "ordered_list",
+            "items": [
+              {
+                "content": "阅读基础文献，确定研究问题与样品分组。"
+              },
+              {
+                "content": "形成制备方案，完成首轮试样并建立数据记录。"
+              },
+              {
+                "content": "开展组织与性能测试，整理图表和中期报告。"
+              },
+              {
+                "content": "补充验证、完成论文初稿及答辩材料。"
+              }
+            ]
+          },
+          "本演示材料中的研究安排和数据仅用于展示编辑、参考文献导入及导出功能。"
+        ],
+        "references": [
+          {
+            "type": "paragraph",
+            "runs": [
+              {
+                "text": "[1] Hannink Richard H. J., Kelly Patrick M., Muddle Barry C.. Transformation Toughening in Zirconia-Containing Ceramics[J]. Journal of the American Ceramic Society, 2000, 83(3): 461-487. DOI: 10.1111/j.1151-2916.2000.tb01221.x."
+              }
+            ]
+          },
+          {
+            "type": "paragraph",
+            "runs": [
+              {
+                "text": "[2] Garvie R. C., Hannink R. H., Pascoe R. T.. Ceramic steel?[J]. Nature, 1975, 258(5537): 703-704. DOI: 10.1038/258703a0."
+              }
+            ]
+          },
+          {
+            "type": "paragraph",
+            "runs": [
+              {
+                "text": "[3] Kingery W. David, Bowen H. Kent, Uhlmann Donald R.. Introduction to Ceramics[M]. 2 ed., New York: Wiley, 1976."
+              }
+            ]
+          }
+        ]
+      },
+      "editor_state": {
+        "bibliography": {
+          "source_format": "bibtex",
+          "source_text": "@article{hannink2000toughening,\n  author = {Hannink, Richard H. J. and Kelly, Patrick M. and Muddle, Barry C.},\n  title = {Transformation Toughening in Zirconia-Containing Ceramics},\n  journal = {Journal of the American Ceramic Society},\n  year = {2000}, volume = {83}, number = {3}, pages = {461--487},\n  doi = {10.1111/j.1151-2916.2000.tb01221.x}\n}\n@article{garvie1975ceramicsteel,\n  author = {Garvie, R. C. and Hannink, R. H. and Pascoe, R. T.},\n  title = {Ceramic steel?}, journal = {Nature},\n  year = {1975}, volume = {258}, number = {5537}, pages = {703--704},\n  doi = {10.1038/258703a0}\n}\n@book{kingery1976ceramics,\n  author = {Kingery, W. David and Bowen, H. Kent and Uhlmann, Donald R.},\n  title = {Introduction to Ceramics}, edition = {2},\n  address = {New York}, publisher = {Wiley}, year = {1976}\n}\n",
+          "parse_status": "valid",
+          "entry_count": 3
+        }
+      }
+    },
+    "midterm": {
+      "schema_version": "0.1",
+      "metadata": {
+        "title": {
+          "type": "paragraph",
+          "runs": [
+            {
+              "text": "α-Al"
+            },
+            {
+              "text": "2",
+              "script": "sub"
+            },
+            {
+              "text": "O"
+            },
+            {
+              "text": "3",
+              "script": "sub"
+            },
+            {
+              "text": "–ZrO"
+            },
+            {
+              "text": "2",
+              "script": "sub"
+            },
+            {
+              "text": "复合陶瓷的 Microstructure 与 10"
+            },
+            {
+              "text": "3",
+              "script": "super"
+            },
+            {
+              "text": " 次循环稳定性研究"
+            }
+          ]
+        },
+        "student_name": "林知远",
+        "college": "新材料与新能源学院",
+        "major": "新能源材料与工程",
+        "class_name": "2023级新能源材料与工程1班",
+        "advisor": "周明远",
+        "check_date": "2027-03-15"
+      },
+      "sections": {
+        "numbering_style": "chinese_hierarchy",
+        "directory": [
+          {
+            "level": 1,
+            "title": "绪论"
+          },
+          {
+            "level": 2,
+            "title": "研究背景与研究意义"
+          },
+          {
+            "level": 2,
+            "title": "氧化锆相变增韧研究概况"
+          },
+          {
+            "level": 1,
+            "title": "实验材料与方法"
+          },
+          {
+            "level": 2,
+            "title": "原料、配比与制备流程"
+          },
+          {
+            "level": 2,
+            "title": "组织表征及力学测试"
+          },
+          {
+            "level": 1,
+            "title": "组织结构与初始性能"
+          },
+          {
+            "level": 2,
+            "title": "添加量与抗弯强度"
+          },
+          {
+            "level": 1,
+            "title": "循环稳定性评价"
+          },
+          {
+            "level": 2,
+            "title": "强度保持率及变化规律"
+          },
+          {
+            "level": 1,
+            "title": "结论与展望"
+          }
+        ],
+        "main_research_content": [
+          "目前围绕五个ZrO2添加量建立了样品记录、工艺流程及测试指标，形成了从制备到性能比较的基本工作链。流程见{{fig:fig-demoworkflow01}}。以下图表均为录屏用模拟数据。",
+          {
+            "type": "image",
+            "id": "fig-demoworkflow01",
+            "chapter": 2,
+            "path": "图片素材/workflow.png",
+            "width_mm": 125,
+            "alt": "粉体混合、球磨、成形烧结与力学测试流程示意",
+            "caption": "试样制备与测试流程示意"
+          },
+          "在相同制备条件下比较不同添加量，以初始强度和循环后强度为基础计算保持率。下表用于演示三线表，数值不代表真实测试结果。",
+          {
+            "type": "data_table",
+            "style": "three_line",
+            "columns": [
+              {
+                "header": "ZrO2添加量/%",
+                "alignment": "center"
+              },
+              {
+                "header": "初始强度/MPa",
+                "alignment": "center"
+              },
+              {
+                "header": "循环后强度/MPa",
+                "alignment": "center"
+              },
+              {
+                "header": "保持率/%",
+                "alignment": "center"
+              }
+            ],
+            "rows": [
+              {
+                "cells": [
+                  "0",
+                  "360",
+                  "342",
+                  "95.0"
+                ]
+              },
+              {
+                "cells": [
+                  "5",
+                  "405",
+                  "392",
+                  "96.8"
+                ]
+              },
+              {
+                "cells": [
+                  "10",
+                  "455",
+                  "446",
+                  "98.0"
+                ]
+              },
+              {
+                "cells": [
+                  "15",
+                  "430",
+                  "414",
+                  "96.3"
+                ]
+              },
+              {
+                "cells": [
+                  "20",
+                  "390",
+                  "369",
+                  "94.6"
+                ]
+              }
+            ],
+            "caption": "不同添加量的示例抗弯强度与保持率（模拟数据）"
+          },
+          "强度保持率的计算式见{{eq:eq-demoretention1}}，其中N表示循环次数，σN为循环后的抗弯强度，σ0为初始抗弯强度。",
+          {
+            "type": "equation",
+            "id": "eq-demoretention1",
+            "chapter": 4,
+            "expression": {
+              "type": "row",
+              "items": [
+                {
+                  "type": "subscript",
+                  "base": {
+                    "type": "text",
+                    "value": "R"
+                  },
+                  "sub": {
+                    "type": "text",
+                    "value": "N"
+                  }
+                },
+                {
+                  "type": "text",
+                  "value": "="
+                },
+                {
+                  "type": "fraction",
+                  "numerator": {
+                    "type": "subscript",
+                    "base": {
+                      "type": "text",
+                      "value": "σ"
+                    },
+                    "sub": {
+                      "type": "text",
+                      "value": "N"
+                    }
+                  },
+                  "denominator": {
+                    "type": "subscript",
+                    "base": {
+                      "type": "text",
+                      "value": "σ"
+                    },
+                    "sub": {
+                      "type": "text",
+                      "value": "0"
+                    }
+                  }
+                },
+                {
+                  "type": "text",
+                  "value": "×100%"
+                }
+              ]
+            },
+            "alt": "第N次循环后的强度保持率等于循环后抗弯强度与初始抗弯强度之比乘以百分之百"
+          }
+        ],
+        "progress": [
+          "已完成文献梳理、五组样品的首轮制备方案及模拟数据整理，并建立了图表、公式和引用的统一编号。组合图见{{fig:fig-democompare01}}。",
+          {
+            "type": "figure_group",
+            "id": "fig-democompare01",
+            "chapter": 4,
+            "columns": 2,
+            "items": [
+              {
+                "path": "图片素材/strength.png",
+                "alt": "五个添加量组的初始与循环后强度对比模拟图",
+                "caption": "不同添加量对比"
+              },
+              {
+                "path": "图片素材/cycles.png",
+                "alt": "10%添加量组强度保持率随循环次数变化的模拟曲线",
+                "caption": "循环稳定性示例"
+              }
+            ],
+            "caption": "组成与循环性能对比（模拟数据）"
+          },
+          "从这组演示数值可以练习如何描述图表：10%组的初始强度为455 MPa，1000次循环后为446 MPa，保持率约98.0%。下一阶段安排重复性验证、异常点核对与初稿撰写。",
+          {
+            "type": "ordered_list",
+            "items": [
+              {
+                "content": "补充不同批次的重复记录，统一误差与有效数字。"
+              },
+              {
+                "content": "完善组织形貌与力学性能的对应说明。"
+              },
+              {
+                "content": "整理原始记录、图表和参考文献，完成论文初稿。"
+              }
+            ]
+          }
+        ],
+        "editable_headings": true
+      }
+    }
+  },
+  "bibtex": "@article{hannink2000toughening,\n  author = {Hannink, Richard H. J. and Kelly, Patrick M. and Muddle, Barry C.},\n  title = {Transformation Toughening in Zirconia-Containing Ceramics},\n  journal = {Journal of the American Ceramic Society},\n  year = {2000}, volume = {83}, number = {3}, pages = {461--487},\n  doi = {10.1111/j.1151-2916.2000.tb01221.x}\n}\n@article{garvie1975ceramicsteel,\n  author = {Garvie, R. C. and Hannink, R. H. and Pascoe, R. T.},\n  title = {Ceramic steel?}, journal = {Nature},\n  year = {1975}, volume = {258}, number = {5537}, pages = {703--704},\n  doi = {10.1038/258703a0}\n}\n@book{kingery1976ceramics,\n  author = {Kingery, W. David and Bowen, H. Kent and Uhlmann, Donald R.},\n  title = {Introduction to Ceramics}, edition = {2},\n  address = {New York}, publisher = {Wiley}, year = {1976}\n}\n"
+}

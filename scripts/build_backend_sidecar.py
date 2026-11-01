@@ -29,7 +29,9 @@ EXECUTABLE = DIST_ROOT / ("sztu-docs-backend.exe" if sys.platform == "win32" els
 BUILD_MANIFEST = DIST_ROOT / "build-manifest.json"
 
 
-def request(process: subprocess.Popen[str], method: str) -> dict[str, object]:
+def request(
+    process: subprocess.Popen[str], method: str, params: dict[str, object] | None = None
+) -> dict[str, object]:
     request_id = str(uuid.uuid4())
     assert process.stdin is not None
     assert process.stdout is not None
@@ -39,7 +41,7 @@ def request(process: subprocess.Popen[str], method: str) -> dict[str, object]:
                 "protocol": "1.0",
                 "id": request_id,
                 "method": method,
-                "params": {},
+                "params": params or {},
             }
         )
         + "\n"
@@ -104,6 +106,19 @@ def smoke_test() -> None:
             raise RuntimeError(
                 f"Packaged document dependencies are unavailable: {dependency_check!r}"
             )
+        opened = request(process, "workspace.open", {
+            "mode": "persistent", "initialize_reference": True,
+        }).get("result")
+        if not isinstance(opened, dict) or not isinstance(opened.get("profile"), dict):
+            raise RuntimeError("Packaged reference profile is unavailable.")
+        documents = opened.get("documents")
+        if (
+            opened["profile"].get("full_name") != "林知远"
+            or not isinstance(documents, list)
+            or len(documents) != 3
+            or {item.get("document_type") for item in documents} != {"task_book", "proposal", "midterm"}
+        ):
+            raise RuntimeError("Packaged reference documents are incomplete.")
     finally:
         process.terminate()
         try:
@@ -189,6 +204,8 @@ def main() -> int:
             "PIL",
             "--collect-all",
             "lxml",
+            "--add-data",
+            f"{ROOT / 'backend' / 'src' / 'sztu_docs_backend' / 'sample_data'}{os.pathsep}sztu_docs_backend/sample_data",
             str(ROOT / "scripts" / "backend_sidecar_entry.py"),
         ],
         cwd=ROOT,

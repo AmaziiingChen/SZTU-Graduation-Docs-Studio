@@ -439,7 +439,14 @@ class ProtocolSession:
         return workspace.bind_unassigned_profile(profile_id)
 
     def _workspace_open(self, params: dict[str, Any]) -> dict[str, Any]:
-        _shape_params(params, required={"mode"})
+        _shape_params(params, required={"mode"}, optional={"initialize_reference"})
+        initialize_reference = params.get("initialize_reference", False)
+        if not isinstance(initialize_reference, bool):
+            raise ProtocolError(
+                INVALID_PARAMS,
+                "Reference initialization must be boolean.",
+                {"field": "initialize_reference"},
+            )
         mode = params.get("mode")
         if mode not in {"persistent", "temporary"}:
             raise ProtocolError(
@@ -478,6 +485,10 @@ class ProtocolSession:
             else Workspace.create_temporary()
         )
         self.mode = mode
+        if mode == "persistent" and initialize_reference:
+            from .reference_sample import initialize_reference_sample
+
+            initialize_reference_sample(self.workspace)
         return self._selection()
 
     def _workspace_load(self, params: dict[str, Any]) -> dict[str, Any]:
