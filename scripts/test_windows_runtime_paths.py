@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path, PureWindowsPath
 
-from prepare_windows_runtime_installer import ROOT, validate_runtime_paths, windows_units
+from prepare_windows_runtime_installer import ROOT, runtime_content_hash, validate_runtime_paths, windows_units
 
 
 class RuntimePathTests(unittest.TestCase):
@@ -29,6 +29,21 @@ class RuntimePathTests(unittest.TestCase):
     def test_windows_lengths_count_utf16_units(self):
         self.assertEqual(windows_units("用户"), 2)
         self.assertEqual(windows_units("\U0001f600"), 2)
+
+    def test_font_cache_changes_do_not_replace_unchanged_tools(self):
+        with tempfile.TemporaryDirectory(prefix="runtime-identity-", dir=ROOT / "tmp") as folder:
+            root = Path(folder)
+            tool = root / "texlive/bin/windows/xelatex.exe"
+            cache = root / "texlive/texmf-var/fonts/cache/synthetic.cache"
+            tool.parent.mkdir(parents=True)
+            cache.parent.mkdir(parents=True)
+            tool.write_bytes(b"synthetic tool version 1")
+            cache.write_bytes(b"font cache version 1")
+            initial = runtime_content_hash(root)
+            cache.write_bytes(b"font cache version 2")
+            self.assertEqual(initial, runtime_content_hash(root))
+            tool.write_bytes(b"synthetic tool version 2")
+            self.assertNotEqual(initial, runtime_content_hash(root))
 
 
 if __name__ == "__main__":

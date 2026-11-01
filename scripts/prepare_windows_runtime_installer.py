@@ -5,6 +5,29 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
+# Preserve the published 0.1.10/0.1.11 runtime location when all immutable
+# components match. The previous identifier also hashed a machine font cache.
+LEGACY_RUNTIME_IDS = {
+    "9b38f8e72395cf6dd862a1f5b69f2bbbd76aa8d9826d758158519df32c5b471b":
+        "bdb4c8e1ac7053a7c7af5c236bc62d3eff05d9d539f4ce456a7571df5a7464ee",
+}
+
+
+def runtime_content_hash(runtime: Path) -> str:
+    digest = hashlib.sha256()
+    for file in sorted(runtime.rglob("*")):
+        if file.is_symlink():
+            raise RuntimeError("Runtime cannot contain symlinks")
+        if file.is_file():
+            relative = file.relative_to(runtime).as_posix()
+            # Fontconfig regenerates these files from the user's installed fonts.
+            # They must not turn an unchanged toolchain into another runtime.
+            if relative.startswith("texlive/texmf-var/fonts/cache/"):
+                continue
+            digest.update(relative.encode())
+            digest.update(hashlib.sha256(file.read_bytes()).digest())
+    return digest.hexdigest()
+
 
 def windows_units(value: str) -> int:
     return len(value.encode("utf-16-le")) // 2
@@ -25,17 +48,11 @@ def validate_runtime_paths(runtime: Path, identity: str) -> int:
 
 def main():
     runtime = ROOT / "build/offline-runtime"
-    digest = hashlib.sha256()
-    for file in sorted(runtime.rglob("*")):
-        if file.is_symlink():
-            raise RuntimeError("Runtime cannot contain symlinks")
-        if file.is_file():
-            digest.update(file.relative_to(runtime).as_posix().encode())
-            digest.update(hashlib.sha256(file.read_bytes()).digest())
-    identity = digest.hexdigest()
+    content_hash = runtime_content_hash(runtime)
+    identity = LEGACY_RUNTIME_IDS.get(content_hash, content_hash)
     manifest_hash = hashlib.sha256((runtime / "runtime-manifest.json").read_bytes()).hexdigest()
     root_limit = validate_runtime_paths(runtime, identity)
-    descriptor = {"schema_version": "2.0", "runtime_id": identity, "manifest_sha256": manifest_hash}
+    descriptor = {"schema_version": "2.0", "runtime_id": identity, "content_sha256": content_hash, "manifest_sha256": manifest_hash}
     (ROOT / "build/offline-runtime-location.json").write_text(json.dumps(descriptor, indent=2) + "\n", encoding="utf-8")
     # Fixed app-owned location, independent of the replaceable installation folder.
     # A completion marker is written last; interrupted first installs retry extraction.
