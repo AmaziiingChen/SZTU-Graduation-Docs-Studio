@@ -397,16 +397,15 @@ function mockApi(): SztuDesktopApi {
     checkEnvironment: vi.fn().mockResolvedValue(environmentResult),
     prepareDiagnosticReport: vi.fn().mockResolvedValue({
       reportId: "11111111-1111-4111-8111-111111111111",
-      createdAt: "2026-08-31T12:00:00Z",
+      createdAt: 1788177600,
+      operation: "preview.generate",
+      files: [{ name: "renderer-input.json", sizeBytes: 2048 }, { name: "tools/001/stderr.bin", sizeBytes: 64 }],
+      missing: ["PDF 未生成"],
       sizeBytes: 4096,
-      operationCount: 12,
-      environmentCheckCount: environmentResult.checks.length,
-      sourceFieldsRemoved: 8,
-      privacyStatus: "passed",
+      uploadLimitBytes: 8 * 1024 * 1024,
     }),
     saveDiagnosticReport: vi.fn().mockResolvedValue({ saved: true }),
     sendDiagnosticReport: vi.fn().mockResolvedValue({
-      sent: true,
       reportId: "11111111-1111-4111-8111-111111111111",
       retentionDays: 30,
     }),
@@ -454,6 +453,10 @@ function mockApi(): SztuDesktopApi {
     listDocuments: vi.fn().mockResolvedValue({ documents: [], profile_id: null, deleted: false, next_cursor: null, has_more: false }),
     saveProfileDraft: vi.fn().mockImplementation(async (profileDraft) => profileDraft),
     saveProfile: vi.fn().mockResolvedValue(profile),
+    createProfile: vi.fn(),
+    selectProfile: vi.fn(),
+    deleteProfile: vi.fn(),
+    restoreProfile: vi.fn(),
     createDocument: vi.fn().mockResolvedValue(
       documentFixture({
         id: "new-document",
@@ -629,12 +632,12 @@ async function openOperationsPanel() {
 }
 
 async function openSharedThesisTitle() {
-  if (!screen.queryByRole("button", { name: "学生档案" })) {
+  if (!screen.queryByRole("button", { name: "档案与基本信息" })) {
     fireEvent.click(
       await screen.findByRole("button", { name: "Toggle Sidebar" }),
     )
   }
-  fireEvent.click(await screen.findByRole("button", { name: "学生档案" }))
+  fireEvent.click(await screen.findByRole("button", { name: "档案与基本信息" }))
   return screen.findByRole("textbox", { name: "中文题目" })
 }
 
@@ -951,7 +954,7 @@ describe("M3 workbench persistence", () => {
     const api = mockApi()
     installApi(api)
     renderApp()
-    fireEvent.click(await screen.findByRole("button", { name: "学生档案" }))
+    fireEvent.click(await screen.findByRole("button", { name: "档案与基本信息" }))
     expect(await screen.findByRole("textbox", { name: "中文题目" })).toBeInTheDocument()
     expect(screen.queryByText("中文题目")).not.toBeInTheDocument()
     expect(screen.queryByLabelText("英文题目")).not.toBeInTheDocument()
@@ -971,7 +974,7 @@ describe("M3 workbench persistence", () => {
     expect(screen.getByRole("button", { name: "预览&导出" })).toBeEnabled()
     expect(screen.queryByRole("button", { name: "导出" })).not.toBeInTheDocument()
     expect(await openSharedThesisTitle()).toHaveTextContent("合成开题报告")
-    const profileHeader = screen.getByRole("heading", { level: 1, name: "学生档案" }).closest("header")
+    const profileHeader = screen.getByRole("heading", { level: 1, name: "基本信息" }).closest("header")
     expect(within(profileHeader as HTMLElement).getByLabelText("保存状态：已保存")).toHaveClass("bg-emerald-500")
   })
 
@@ -1221,7 +1224,7 @@ describe("M3 workbench persistence", () => {
     installApi(api)
     renderApp()
 
-    fireEvent.click(await screen.findByRole("button", { name: "学生档案" }))
+    fireEvent.click(await screen.findByRole("button", { name: "档案与基本信息" }))
     const advisorTitle = screen.getByLabelText("指导教师职称")
     const graduationCohort = screen.getByLabelText("毕业届别")
     openComboboxSuggestions(advisorTitle)
@@ -1245,6 +1248,7 @@ describe("M3 workbench persistence", () => {
             advisor_title: "讲师",
             graduation_cohort: "秋季毕业批次",
           }),
+          profile.id,
         ),
       { timeout: 2_000 },
     )
@@ -1272,7 +1276,7 @@ describe("M3 workbench persistence", () => {
     installApi(api)
     renderApp()
 
-    fireEvent.click(await screen.findByRole("button", { name: "学生档案" }))
+    fireEvent.click(await screen.findByRole("button", { name: "档案与基本信息" }))
     const advisorGroup = screen.getByRole("group", { name: "指导信息" })
     expect(within(advisorGroup).getByRole("button", { name: "添加指导教师" })).toBeEnabled()
     expect(within(advisorGroup).getByRole("button", { name: "删除指导教师" })).toBeDisabled()
@@ -1314,6 +1318,7 @@ describe("M3 workbench persistence", () => {
             advisor_name: "合成教师乙、合成教师丙",
             advisor_title: "副教授、实验师",
           }),
+          profile.id,
         ),
       { timeout: 2_000 },
     )
@@ -1343,6 +1348,7 @@ describe("M3 workbench persistence", () => {
     ), { timeout: 2_000 })
     expect(api.saveProfileDraft).toHaveBeenLastCalledWith(
       expect.objectContaining({ advisor_name: "合成教师乙", advisor_title: "副教授" }),
+      profile.id,
     )
   })
 
@@ -1351,7 +1357,7 @@ describe("M3 workbench persistence", () => {
     installApi(api)
     renderApp()
 
-    fireEvent.click(await screen.findByRole("button", { name: "学生档案" }))
+    fireEvent.click(await screen.findByRole("button", { name: "档案与基本信息" }))
     const graduationCohort = screen.getByLabelText("毕业届别")
     expect(graduationCohort).toHaveAttribute("maxlength", "20")
     vi.useFakeTimers()
@@ -1369,6 +1375,7 @@ describe("M3 workbench persistence", () => {
       expect(graduationCohort).toHaveValue(expectedDraftValue)
       expect(api.saveProfileDraft).toHaveBeenCalledWith(
         expect.objectContaining({ graduation_cohort: expectedDraftValue }),
+        profile.id,
       )
       expect(api.saveProfile).toHaveBeenCalledWith(
         expect.objectContaining({ graduation_cohort: expectedProfileValue }),
@@ -1393,7 +1400,7 @@ describe("M3 workbench persistence", () => {
     expect(catalogMajor).toBeDefined()
 
     renderApp()
-    fireEvent.click(await screen.findByRole("button", { name: "学生档案" }))
+    fireEvent.click(await screen.findByRole("button", { name: "档案与基本信息" }))
     const collegeInput = screen.getByLabelText("学院")
     let majorInput = screen.getByLabelText("专业")
     let classInput = screen.getByLabelText("班级")
@@ -1459,7 +1466,7 @@ describe("M3 workbench persistence", () => {
     installApi(api)
     renderApp()
 
-    fireEvent.click(await screen.findByRole("button", { name: "学生档案" }))
+    fireEvent.click(await screen.findByRole("button", { name: "档案与基本信息" }))
     expect(screen.getByLabelText("班级")).toHaveValue("新能源2班")
 
     vi.useFakeTimers()
@@ -1470,6 +1477,7 @@ describe("M3 workbench persistence", () => {
 
     expect(api.saveProfileDraft).toHaveBeenCalledWith(
       expect.objectContaining({ class_name: "新能源2班" }),
+      profile.id,
     )
     expect(api.saveProfile).toHaveBeenCalledWith(
       expect.objectContaining({ class_name: "新能源2班" }),
@@ -1515,21 +1523,23 @@ describe("M3 workbench persistence", () => {
     expect(await openSharedThesisTitle()).toHaveTextContent("合成开题报告")
   })
 
-  it("creates and saves a privacy-scanned local diagnostic package", async () => {
+  it("creates and saves a full diagnostic package from the only entry", async () => {
     const api = mockApi()
     installApi(api)
     renderApp()
 
     await openOperationsPanel()
-    expect(screen.getByRole("button", { name: "发送诊断包" })).toBeEnabled()
+    expect(screen.queryByRole("button", { name: "发送诊断包" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "查看完整故障包" })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "创建诊断包" }))
 
     expect(
-      await screen.findByRole("dialog", { name: "诊断包已生成" }),
+      await screen.findByRole("dialog", { name: "诊断包" }),
     ).toBeInTheDocument()
-    expect(screen.getByText("12 条")).toBeInTheDocument()
-    expect(screen.getByText("4.0 KB")).toBeInTheDocument()
-    expect(screen.queryByText(/原始说明或扩展字段/)).not.toBeInTheDocument()
+    expect(await screen.findByText(/renderer-input.json/)).toBeInTheDocument()
+    expect(screen.getByText(/4\.0 KB/)).toBeInTheDocument()
+    expect(screen.getByText("PDF 未生成")).toBeInTheDocument()
+    expect(api.sendDiagnosticReport).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole("button", { name: "保存到本机" }))
     await waitFor(() =>
       expect(api.saveDiagnosticReport).toHaveBeenCalledWith(
@@ -1539,19 +1549,23 @@ describe("M3 workbench persistence", () => {
     expect(await screen.findByText("已保存到你选择的位置。")).toBeInTheDocument()
   })
 
-  it("sends a privacy-scanned diagnostic package on explicit user action", async () => {
+  it("sends the reviewed full diagnostic package on explicit user action", async () => {
     const api = mockApi()
     installApi(api)
     renderApp()
 
     await openOperationsPanel()
-    fireEvent.click(screen.getByRole("button", { name: "发送诊断包" }))
+    fireEvent.click(screen.getByRole("button", { name: "创建诊断包" }))
+    const report = await screen.findByRole("dialog", { name: "诊断包" })
+    await within(report).findByText(/renderer-input.json/)
+    expect(api.sendDiagnosticReport).not.toHaveBeenCalled()
+    fireEvent.click(within(report).getByRole("button", { name: "发送诊断包" }))
     await waitFor(() =>
       expect(api.sendDiagnosticReport).toHaveBeenCalledWith(
         "11111111-1111-4111-8111-111111111111",
       ),
     )
-    expect(screen.getByText("诊断包已发送，将在 30 天后自动删除。")).toBeInTheDocument()
+    expect(await within(report).findByText(/已提交给软件维护者/)).toBeInTheDocument()
   })
 
   it("opens the drawer and generates a paginated preview on the first action", async () => {
@@ -1732,7 +1746,7 @@ describe("M3 workbench persistence", () => {
     const api = mockApi()
     installApi(api)
     renderApp()
-    fireEvent.click(await screen.findByRole("button", { name: "学生档案", exact: true }))
+    fireEvent.click(await screen.findByRole("button", { name: "档案与基本信息", exact: true }))
     fireEvent.change(screen.getByLabelText("学生姓名", { exact: true }), { target: { value: "合成学生丙" } })
     fireEvent.click(screen.getByRole("button", { name: "新建开题报告" }))
     expect(screen.getByLabelText("文件名")).toHaveValue("合成学生丙-开题报告")
@@ -1920,7 +1934,7 @@ describe("M3 workbench persistence", () => {
     installApi(api)
     renderApp()
 
-    fireEvent.click(await screen.findByRole("button", { name: "学生档案" }))
+    fireEvent.click(await screen.findByRole("button", { name: "档案与基本信息" }))
     const advisorTitle = screen.getByLabelText("指导教师职称")
     vi.useFakeTimers()
     fireEvent.change(advisorTitle, { target: { value: "教授" } })
@@ -1945,7 +1959,7 @@ describe("M3 workbench persistence", () => {
       "本选题的意义及国内外发展状况",
     )
     replaceRichText(significance, "等待重试的正文")
-    fireEvent.click(screen.getByRole("button", { name: "学生档案" }))
+    fireEvent.click(screen.getByRole("button", { name: "档案与基本信息" }))
     fireEvent.change(screen.getByLabelText("指导教师职称"), {
       target: { value: "教授" },
     })
@@ -2118,7 +2132,7 @@ describe("M3 workbench persistence", () => {
     installApi(api)
 
     const firstRender = renderApp()
-    fireEvent.click(await screen.findByRole("button", { name: "学生档案" }))
+    fireEvent.click(await screen.findByRole("button", { name: "档案与基本信息" }))
     vi.useFakeTimers()
     fireEvent.change(screen.getByLabelText("学生姓名"), {
       target: { value: "只填写了姓名" },
@@ -2128,7 +2142,7 @@ describe("M3 workbench persistence", () => {
     expect(api.saveProfileDraft).toHaveBeenCalledWith({
       ...emptyProfileDraft,
       full_name: "只填写了姓名",
-    })
+    }, null)
     expect(api.saveProfile).not.toHaveBeenCalled()
     expect(api.saveDraft).not.toHaveBeenCalled()
     expect(screen.getByLabelText("保存状态：已保存")).toBeInTheDocument()
@@ -2136,7 +2150,7 @@ describe("M3 workbench persistence", () => {
     vi.useRealTimers()
     firstRender.unmount()
     renderApp()
-    fireEvent.click(await screen.findByRole("button", { name: "学生档案" }))
+    fireEvent.click(await screen.findByRole("button", { name: "档案与基本信息" }))
     expect(screen.getByLabelText("学生姓名")).toHaveValue("只填写了姓名")
     expect(screen.getByLabelText("学号")).toHaveValue("")
   })
@@ -2159,7 +2173,7 @@ describe("M3 workbench persistence", () => {
     installApi(api)
 
     const firstRender = renderApp()
-    fireEvent.click(await screen.findByRole("button", { name: "学生档案" }))
+    fireEvent.click(await screen.findByRole("button", { name: "档案与基本信息" }))
     vi.useFakeTimers()
     fireEvent.change(screen.getByLabelText("指导教师职称"), {
       target: { value: "" },
@@ -2169,14 +2183,14 @@ describe("M3 workbench persistence", () => {
     expect(api.saveProfileDraft).toHaveBeenCalledWith({
       ...completeProfileDraft,
       advisor_title: "",
-    })
+    }, profile.id)
     expect(api.saveProfile).not.toHaveBeenCalled()
     expect(screen.getByLabelText("保存状态：已保存")).toBeInTheDocument()
 
     vi.useRealTimers()
     firstRender.unmount()
     renderApp()
-    fireEvent.click(await screen.findByRole("button", { name: "学生档案" }))
+    fireEvent.click(await screen.findByRole("button", { name: "档案与基本信息" }))
     const restoredAdvisorTitle = screen.getByLabelText("指导教师职称")
     expect(restoredAdvisorTitle).toHaveValue("")
     expect(screen.queryByText("请输入指导教师职称。")).not.toBeInTheDocument()
@@ -2193,7 +2207,7 @@ describe("M3 workbench persistence", () => {
     installApi(api)
     renderApp()
 
-    fireEvent.click(await screen.findByRole("button", { name: "学生档案" }))
+    fireEvent.click(await screen.findByRole("button", { name: "档案与基本信息" }))
     vi.useFakeTimers()
     fireEvent.change(screen.getByLabelText("指导教师职称"), {
       target: { value: "教授" },
@@ -2203,7 +2217,7 @@ describe("M3 workbench persistence", () => {
     expect(api.saveProfileDraft).toHaveBeenCalledWith({
       ...completeProfileDraft,
       advisor_title: "教授",
-    })
+    }, profile.id)
     expect(api.saveProfile).toHaveBeenCalledWith(
       expect.objectContaining({ advisor_title: "教授" }),
     )
@@ -2248,7 +2262,7 @@ describe("M3 workbench persistence", () => {
     expect(api.checkDocument).not.toHaveBeenCalled()
     expect(
       await screen.findByText(
-        "请先打开左侧“学生档案”，补全姓名、学号、毕业届别、学院、专业、班级、指导教师和职称。",
+        "请先打开左侧“档案与基本信息”，补全姓名、学号、毕业届别、学院、专业、班级、指导教师和职称。",
       ),
     ).toBeInTheDocument()
   })
@@ -3140,8 +3154,8 @@ describe("M3 workbench persistence", () => {
     expect(screen.queryByLabelText("指导教师")).not.toBeInTheDocument()
     expect(screen.queryByText("中期检查填写边界")).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole("button", { name: "学生档案" }))
-    expect(await screen.findByRole("heading", { name: "学生档案" })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "档案与基本信息" }))
+    expect(await screen.findByRole("heading", { name: "基本信息" })).toBeInTheDocument()
     expect(screen.getByLabelText("学生姓名")).toHaveValue("合成学生甲")
     expect(screen.getByLabelText("学号")).toHaveValue("SYN-0001")
     expect(screen.getByLabelText("班级")).toHaveValue("示例一班")
@@ -3369,9 +3383,9 @@ describe("single-page assessment forms", () => {
     installApi(api)
     renderApp()
     expect(await screen.findByRole("heading", { name: label })).toBeInTheDocument()
-    expect(screen.queryByText("学生档案尚未补全")).not.toBeInTheDocument()
+    expect(screen.queryByText("基本信息尚未补全")).not.toBeInTheDocument()
     if (type === "advisor_review") {
-      fireEvent.click(screen.getByRole("button", { name: "学生档案" }))
+      fireEvent.click(screen.getByRole("button", { name: "档案与基本信息" }))
       expect(screen.getByLabelText("学生姓名")).toBeInTheDocument()
       expect(screen.queryByText("请输入班级。")).not.toBeInTheDocument()
       expect(screen.queryByText("请输入指导教师姓名。")).not.toBeInTheDocument()
@@ -3579,6 +3593,130 @@ describe("workspace lifecycle", () => {
     await screen.findByLabelText("保存状态：已保存")
     return { body, mounted }
   }
+
+  it("adds an empty student workspace and waits for its scoped draft before switching back", async () => {
+    const api = mockApi()
+    const original = workspaceSnapshot()
+    const second = {
+      ...profile, id: "profile-second", full_name: "合成学生乙", student_number: "SYN-0002",
+      class_name: null, advisor_name: null, advisor_title: null, graduation_cohort: null,
+      thesis_title: null, thesis_title_en: null,
+    }
+    const profiles = [profile, second]
+    const saving = deferred<StudentProfileDraft>()
+    vi.mocked(api.openWorkspace).mockResolvedValue({ ...original, profiles: [profile] })
+    vi.mocked(api.createProfile).mockResolvedValue({
+      ...original, profiles, profile: second, document: null,
+    })
+    vi.mocked(api.saveProfileDraft).mockReturnValue(saving.promise)
+    vi.mocked(api.saveProfile).mockResolvedValue({ ...second, full_name: "乙改名" })
+    vi.mocked(api.selectProfile).mockResolvedValue({ ...original, profiles })
+    await mountBody(api)
+    fireEvent.click(screen.getByRole("button", { name: "档案与基本信息" }))
+    fireEvent.click(screen.getByRole("button", { name: "新建档案" }))
+    const dialog = await screen.findByRole("dialog", { name: "新建档案" })
+    for (const [label, value] of [["姓名", second.full_name], ["学号", second.student_number], ["学院", second.college], ["专业", second.major]]) {
+      fireEvent.change(within(dialog).getByLabelText(label), { target: { value } })
+    }
+    fireEvent.click(within(dialog).getByRole("button", { name: "新建" }))
+    await waitFor(() => expect(screen.getByLabelText("学生姓名")).toHaveValue("合成学生乙"))
+    expect(screen.getByRole("button", { name: "虚构文档 A" })).toBeInTheDocument()
+    expect(api.createDocument).not.toHaveBeenCalled()
+
+    fireEvent.change(screen.getByLabelText("学生姓名"), { target: { value: "乙改名" } })
+    fireEvent.click(screen.getByRole("button", { name: "选择要编辑的档案" }))
+    fireEvent.click(await screen.findByRole("menuitem", { name: /合成学生甲/ }))
+    await waitFor(() => expect(api.saveProfileDraft).toHaveBeenCalledWith(expect.objectContaining({ full_name: "乙改名" }), second.id))
+    expect(api.selectProfile).not.toHaveBeenCalled()
+    await act(async () => { saving.resolve({ ...emptyProfileDraft, full_name: "乙改名" }); await saving.promise })
+    await waitFor(() => expect(screen.getByLabelText("学生姓名")).toHaveValue(profile.full_name))
+    expect(api.saveProfile).toHaveBeenCalledWith(expect.objectContaining({ id: second.id }))
+    expect(api.selectProfile).toHaveBeenCalledWith(profile.id)
+    expect(screen.getByRole("button", { name: "虚构文档 A" })).toBeInTheDocument()
+    expect(api.saveDraft).not.toHaveBeenCalled()
+  })
+
+  it("confirms deletion of the last student and restores the original documents from the deleted list", async () => {
+    const api = mockApi()
+    const original = { ...workspaceSnapshot(), profiles: [profile], deleted_profiles: [] }
+    vi.mocked(api.openWorkspace).mockResolvedValue(original)
+    vi.mocked(api.deleteProfile).mockResolvedValue({
+      ...original, profile: null, profiles: [], deleted_profiles: [profile], document: null, documents: [],
+    })
+    vi.mocked(api.restoreProfile).mockResolvedValue(original)
+    await mountBody(api)
+    fireEvent.click(screen.getByRole("button", { name: "档案与基本信息" }))
+    fireEvent.click(screen.getByRole("button", { name: "管理档案" }))
+    fireEvent.click(await screen.findByRole("menuitem", { name: "删除当前档案" }))
+    let dialog = await screen.findByRole("dialog", { name: "删除当前档案？" })
+    expect(within(dialog).getByText(/合成学生甲 · SYN-0001/)).toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole("button", { name: "取消" }))
+    expect(api.deleteProfile).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole("button", { name: "管理档案" }))
+    fireEvent.click(await screen.findByRole("menuitem", { name: "删除当前档案" }))
+    dialog = await screen.findByRole("dialog", { name: "删除当前档案？" })
+    fireEvent.click(within(dialog).getByRole("button", { name: "删除", exact: true }))
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "删除当前档案？" })).not.toBeInTheDocument())
+    fireEvent.click(screen.getByRole("button", { name: "管理档案" }))
+    fireEvent.click(await screen.findByRole("menuitem", { name: "已删除档案" }))
+    expect(api.deleteProfile).toHaveBeenCalledExactlyOnceWith(profile.id)
+    expect(screen.queryByRole("button", { name: "虚构文档 A" })).not.toBeInTheDocument()
+    expect(api.createDocument).not.toHaveBeenCalled()
+    const deleted = await screen.findByRole("dialog", { name: "已删除档案" })
+    fireEvent.click(within(deleted).getByRole("button", { name: /恢复 合成学生甲/ }))
+    await waitFor(() => expect(screen.getByLabelText("学生姓名")).toHaveValue(profile.full_name))
+    expect(api.restoreProfile).toHaveBeenCalledExactlyOnceWith(profile.id)
+    expect(screen.getByRole("button", { name: "虚构文档 A" })).toBeInTheDocument()
+  })
+
+  it("keeps the selected student when its latest profile edit cannot be saved before deletion", async () => {
+    const api = mockApi()
+    vi.mocked(api.saveProfileDraft).mockRejectedValue(new Error("合成保存失败"))
+    await mountBody(api)
+    fireEvent.click(screen.getByRole("button", { name: "档案与基本信息" }))
+    fireEvent.change(screen.getByLabelText("学生姓名"), { target: { value: "保留待保存的姓名" } })
+    fireEvent.click(screen.getByRole("button", { name: "管理档案" }))
+    fireEvent.click(await screen.findByRole("menuitem", { name: "删除当前档案" }))
+    const dialog = await screen.findByRole("dialog", { name: "删除当前档案？" })
+    fireEvent.click(within(dialog).getByRole("button", { name: "删除", exact: true }))
+    await waitFor(() => expect(screen.getByText("当前档案或草稿尚未保存，请保存后重试。")).toBeInTheDocument())
+    expect(api.deleteProfile).not.toHaveBeenCalled()
+    fireEvent.click(within(dialog).getByRole("button", { name: "取消" }))
+    expect(screen.getByLabelText("学生姓名")).toHaveValue("保留待保存的姓名")
+  })
+
+  it("creates a task book for another profile from the shared document list", async () => {
+    const api = mockApi()
+    const original = workspaceSnapshot()
+    const another = { ...profile, id: "profile-other", full_name: "合成学生乙", student_number: "SYN-0002" }
+    const profiles = [profile, another]
+    const task = taskBookDocumentFixture({ profile_id: another.id, title: "合成学生乙-任务书" })
+    vi.mocked(api.openWorkspace).mockResolvedValue({ ...original, profiles })
+    vi.mocked(api.createDocument).mockResolvedValue(task)
+    vi.mocked(api.selectDocument).mockResolvedValue({ ...original, profile: another, profiles, document: task, documents: [...original.documents, task] })
+    const { body } = await mountBody(api)
+    const saving = deferred<SaveDraftResult>()
+    vi.mocked(api.saveDraft).mockReturnValue(saving.promise)
+    replaceRichText(body, "离开前保存甲的正文")
+    fireEvent.click(screen.getByRole("button", { name: "新建任务书" }))
+    const dialog = await screen.findByRole("dialog", { name: "新建任务书" })
+    expect(within(dialog).getByRole("combobox", { name: "使用档案" })).toHaveTextContent("合成学生甲")
+    fireEvent.click(within(dialog).getByRole("combobox", { name: "使用档案" }))
+    fireEvent.click(await screen.findByRole("option", { name: "合成学生乙 · SYN-0002" }))
+    expect(within(dialog).getByLabelText("文件名")).toHaveValue("合成学生乙-任务书")
+    fireEvent.click(within(dialog).getByRole("button", { name: "新建" }))
+    await waitFor(() => expect(api.saveDraft).toHaveBeenCalledWith(expect.objectContaining({ documentId: original.document.id })))
+    expect(api.createDocument).not.toHaveBeenCalled()
+    await act(async () => { saving.resolve(saved(3)); await saving.promise })
+    await waitFor(() => expect(api.createDocument).toHaveBeenCalledWith(expect.objectContaining({
+      profile_id: another.id, document_type: "task_book", title: "合成学生乙-任务书",
+    })))
+    expect(api.selectProfile).not.toHaveBeenCalled()
+    expect(api.selectDocument).toHaveBeenCalledWith(task.id)
+    expect(await screen.findByRole("button", { name: "合成学生乙-任务书" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "虚构文档 A" })).toBeInTheDocument()
+  })
 
   it("locks edits and reentrant selection through save and selection IPC", async () => {
     const api = mockApi()
@@ -3959,20 +4097,20 @@ describe("workspace lifecycle", () => {
     const api = mockApi()
     vi.mocked(api.openWorkspace).mockResolvedValue({ mode: "persistent", profile: null, profile_draft: emptyProfileDraft, document: documentFixture(), documents: [documentFixture()], deleted_documents: [] })
     await mountBody(api)
-    fireEvent.click(screen.getByRole("button", { name: "学生档案" }))
+    fireEvent.click(screen.getByRole("button", { name: "档案与基本信息" }))
     const studentName = await screen.findByLabelText("学生姓名")
     const studentId = screen.getByLabelText("学号")
     expect(studentName).toHaveAttribute("aria-invalid", "false")
     expect(studentId).toHaveAttribute("aria-invalid", "false")
     expect(screen.getByLabelText("中文题目")).toHaveAttribute("aria-invalid", "false")
-    expect(screen.queryByText("请先补全学生档案")).not.toBeInTheDocument()
+    expect(screen.queryByText("请先补全基本信息")).not.toBeInTheDocument()
     fireEvent.focus(studentName)
     fireEvent.blur(studentName)
     expect(screen.getByText("请输入学生姓名。")).toBeInTheDocument()
     expect(studentId).toHaveAttribute("aria-invalid", "false")
     fireEvent.click(screen.getByRole("button", { name: "合成开题报告" }))
     fireEvent.click(await screen.findByRole("button", { name: "预览&导出" }))
-    expect(await screen.findByText("请先补全学生档案")).toBeInTheDocument()
+    expect(await screen.findByText("请先补全基本信息")).toBeInTheDocument()
     expect(screen.getByLabelText("学号")).toHaveAttribute("aria-invalid", "true")
     expect(screen.getByLabelText("中文题目")).toHaveAttribute("aria-invalid", "true")
   })
@@ -3989,7 +4127,7 @@ describe("student-number academic autofill", () => {
     installApi(api)
     const mounted = renderApp()
     await screen.findByLabelText("保存状态：已保存")
-    fireEvent.click(screen.getByRole("button", { name: "学生档案" }))
+    fireEvent.click(screen.getByRole("button", { name: "档案与基本信息" }))
     await screen.findByLabelText("学号")
     return mounted
   }
@@ -4017,7 +4155,7 @@ describe("student-number academic autofill", () => {
       college,
       major,
       class_name: "",
-    })
+    }, profile.id)
     expect(api.saveProfile).not.toHaveBeenCalled()
     expect(api.saveDraft).not.toHaveBeenCalled()
   })
@@ -4062,7 +4200,7 @@ describe("student-number academic autofill", () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(700) })
     fireEvent.change(screen.getByLabelText("指导教师职称"), { target: { value: "教授" } })
     await act(async () => { await vi.advanceTimersByTimeAsync(700) })
-    expect(api.saveProfileDraft).toHaveBeenLastCalledWith(expect.objectContaining({ student_number: "202300202999", graduation_cohort: "2031届", college: "人工修正学院", major: "人工修正专业", class_name: "人工修正班级" }))
+    expect(api.saveProfileDraft).toHaveBeenLastCalledWith(expect.objectContaining({ student_number: "202300202999", graduation_cohort: "2031届", college: "人工修正学院", major: "人工修正专业", class_name: "人工修正班级" }), profile.id)
     expect(api.saveProfile).toHaveBeenLastCalledWith(expect.objectContaining({ student_number: "202300202999", graduation_cohort: "2031届", college: "人工修正学院", major: "人工修正专业", class_name: "人工修正班级" }))
     expect(api.saveDraft).not.toHaveBeenCalled()
     vi.useRealTimers()
@@ -4106,7 +4244,7 @@ describe("student-number academic autofill", () => {
     fireEvent.change(screen.getByLabelText("学号"), { target: { value: "202200101999" } })
     expect(screen.getByLabelText("班级")).toHaveValue("")
     await act(async () => { await vi.advanceTimersByTimeAsync(700) })
-    expect(api.saveProfileDraft).toHaveBeenLastCalledWith(expect.objectContaining({ student_number: "202200101999", college: "中德智能制造学院", major: "机械设计制造及其自动化", class_name: "" }))
+    expect(api.saveProfileDraft).toHaveBeenLastCalledWith(expect.objectContaining({ student_number: "202200101999", college: "中德智能制造学院", major: "机械设计制造及其自动化", class_name: "" }), profile.id)
     expect(api.saveProfile).toHaveBeenLastCalledWith(expect.objectContaining({ student_number: "202200101999", college: "中德智能制造学院", major: "机械设计制造及其自动化", class_name: "" }))
     expect(api.saveDraft).not.toHaveBeenCalled()
   })

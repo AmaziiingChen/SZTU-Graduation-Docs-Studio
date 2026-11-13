@@ -1,17 +1,19 @@
 'use strict';
 
 const http = require('node:http');
+const { createHash } = require('node:crypto');
 const { validDiagnosticContext } = require('./diagnostic-context.cjs');
 
 const PORT = 9000;
 const MAX_BODY_BYTES = 256 * 1024;
+const MAX_FULL_REPORT_BYTES = 8 * 1024 * 1024;
 const MAX_EVENTS = 100;
 const RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
 const RATE_LIMIT_MAX_BATCHES = 30;
 const RATE_LIMIT_MAX_KEYS = 5000;
 const ENV_ID = process.env.CLOUDBASE_ENV_ID;
 const API_KEY = process.env.CLOUDBASE_API_KEY;
-const SERVICE_VERSION = '1.3.0';
+const SERVICE_VERSION = '1.4.0';
 const DIAGNOSTIC_RETENTION_DAYS = 30;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -37,14 +39,15 @@ const DURATION_BUCKETS = new Set(['under_100ms', '100ms_to_1s', '1s_to_5s', '5s_
 const DIAGNOSTIC_OPERATIONS = new Set([
   'app.lifecycle', 'renderer.process', 'system.ping', 'system.version',
   'environment.check', 'workspace.open', 'workspace.listDocuments', 'workspace.renameDocument', 'workspace.deleteDocument', 'workspace.restoreDocument', 'workspace.purgeDocument', 'workspace.saveProfileDraft',
-  'workspace.saveProfile', 'workspace.createDocument', 'workspace.selectDocument',
+  'workspace.saveProfile', 'workspace.createProfile', 'workspace.selectProfile', 'workspace.deleteProfile', 'workspace.restoreProfile', 'workspace.createDocument', 'workspace.selectDocument',
   'workspace.saveDraft', 'workspace.closeTemporary', 'document.check',
   'preview.generate', 'export.preflight', 'export.run', 'export.history',
   'export.deleteHistory', 'export.resolveArtifact', 'template.install', 'qa.record',
-  'diagnostic.prepare', 'diagnostic.save', 'diagnostic.send', 'telemetry.service', 'update.service',
+  'diagnostic.step', 'diagnostic.prepare', 'diagnostic.save', 'diagnostic.send', 'telemetry.service', 'update.service',
 ]);
 const ENVIRONMENT_CHECKS = new Set([
   'python', 'temporary_directory', 'document_dependencies', 'xelatex', 'pdf_tools',
+  'process_tex_packages', 'thesis_toolchain', 'thesis_tex_packages', 'core_document_fonts', 'special_document_fonts', 'task_book_docx_font',
   'office_editor', 'template_pack', 'thesis_template', 'advisor_review_engine', 'reviewer_review_engine', 'defense_record_engine', 'grade_assessment_engine', 'proposal_engine', 'midterm_engine', 'task_book_engine',
 ]);
 const rateWindows = new Map();
@@ -156,7 +159,7 @@ function validateDiagnosticReport(report) {
     'schema_version', 'report_id', 'created_at', 'application', 'device',
     'environment', 'services', 'operations', 'privacy',
   ])) return 'INVALID_DIAGNOSTIC_SHAPE';
-  if (!['1.0', '2.0'].includes(report.schema_version) || !UUID_RE.test(report.report_id) || !isDateTime(report.created_at)) {
+  if (!['1.0', '2.0', '3.0'].includes(report.schema_version) || !UUID_RE.test(report.report_id) || !isDateTime(report.created_at)) {
     return 'INVALID_DIAGNOSTIC_METADATA';
   }
   if (!exactKeys(report.application, ['version', 'electron_version', 'packaged'])
@@ -173,7 +176,7 @@ function validateDiagnosticReport(report) {
       || typeof report.environment.ready !== 'boolean'
       || !safeText(report.environment.python_version, 64, /^[0-9A-Za-z][0-9A-Za-z.+_-]*$/)
       || !Array.isArray(report.environment.checks)
-      || report.environment.checks.length > 20) return 'INVALID_DIAGNOSTIC_ENVIRONMENT';
+      || report.environment.checks.length > 30) return 'INVALID_DIAGNOSTIC_ENVIRONMENT';
   for (const check of report.environment.checks) {
     if (!exactKeys(check, ['id', 'required', 'status'])
         || !ENVIRONMENT_CHECKS.has(check.id)
@@ -185,7 +188,7 @@ function validateDiagnosticReport(report) {
       || typeof report.services.update_configured !== 'boolean') return 'INVALID_DIAGNOSTIC_SERVICES';
   if (!Array.isArray(report.operations) || report.operations.length > 200) return 'INVALID_DIAGNOSTIC_OPERATIONS';
   for (const operation of report.operations) {
-    if (!exactKeys(operation, ['occurred_at', 'operation', 'outcome', 'duration_bucket'], report.schema_version === '2.0' ? ['error_code', 'duration_ms', 'context'] : ['error_code'])
+    if (!exactKeys(operation, ['occurred_at', 'operation', 'outcome', 'duration_bucket'], report.schema_version !== '1.0' ? ['error_code', 'duration_ms', 'context'] : ['error_code'])
         || (operation.duration_ms !== undefined && (!Number.isInteger(operation.duration_ms) || operation.duration_ms < 0 || operation.duration_ms > 86400000))
         || (operation.context !== undefined && !validDiagnosticContext(operation.context))
         || !isDateTime(operation.occurred_at)
@@ -248,6 +251,7 @@ async function databaseRequest(table, options) {
     error.upstreamStatus = response.status;
     throw error;
   }
+  return response;
 }
 
 async function persistDiagnosticReport(report) {
@@ -263,6 +267,27 @@ async function persistDiagnosticReport(report) {
     },
     errorCode: 'DIAGNOSTIC_WRITE_FAILED',
   });
+}
+
+async function persistFullReport(reportId, archive, checksum) {
+  await databaseRequest('full_diagnostic_reports', {
+    method: 'POST',
+    query: '?on_conflict=report_id',
+    prefer: 'resolution=ignore-duplicates,return=minimal',
+    body: { report_id: reportId, archive_base64: archive.toString('base64'), sha256: checksum },
+    errorCode: 'DIAGNOSTIC_FULL_WRITE_FAILED',
+  });
+  const result = await databaseRequest('full_diagnostic_reports', {
+    method: 'GET',
+    query: `?report_id=eq.${reportId}&select=sha256`,
+    errorCode: 'DIAGNOSTIC_FULL_RECEIPT_FAILED',
+  });
+  const rows = await result.json();
+  if (!Array.isArray(rows) || rows.length !== 1 || rows[0].sha256 !== checksum) {
+    const error = new Error('stored archive did not match');
+    error.code = 'DIAGNOSTIC_FULL_RECEIPT_MISMATCH';
+    throw error;
+  }
 }
 
 function sendJson(res, status, payload, extraHeaders = {}) {
@@ -312,7 +337,7 @@ async function fetchCompletionCount() {
   return Number(match[1]);
 }
 
-function readBody(req) {
+function readBody(req, maxBytes = MAX_BODY_BYTES) {
   return new Promise((resolve, reject) => {
     let size = 0;
     let settled = false;
@@ -320,7 +345,7 @@ function readBody(req) {
     req.on('data', (chunk) => {
       if (settled) return;
       size += chunk.length;
-      if (size > MAX_BODY_BYTES) {
+      if (size > maxBytes) {
         settled = true;
         reject(Object.assign(new Error('body too large'), { code: 'BODY_TOO_LARGE' }));
         chunks.length = 0;
@@ -329,7 +354,7 @@ function readBody(req) {
       chunks.push(chunk);
     });
     req.on('end', () => {
-      if (!settled) resolve(Buffer.concat(chunks).toString('utf8'));
+      if (!settled) resolve(Buffer.concat(chunks));
     });
     req.on('error', (error) => {
       if (!settled) reject(error);
@@ -373,7 +398,11 @@ async function persistEvents(events) {
   }
 }
 
-const server = http.createServer(async (req, res) => {
+function handleRequest({ persistReport = persistDiagnosticReport, persistFull = persistFullReport, databaseConfigured = Boolean(ENV_ID && API_KEY) } = {}) {
+  return (req, res) => serveRequest(req, res, persistReport, persistFull, databaseConfigured);
+}
+
+async function serveRequest(req, res, persistReport, persistFull, databaseConfigured) {
   try {
     const url = new URL(req.url || '/', 'http://localhost');
     if (req.method === 'OPTIONS') {
@@ -390,12 +419,38 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 200, { ok: true, service: 'telemetry-ingest', version: SERVICE_VERSION });
       return;
     }
+    if (req.method === 'POST' && url.pathname.endsWith('/v1/full-reports')) {
+      const reportId = req.headers['x-report-id'];
+      if (req.headers['content-type'] !== 'application/zip' || typeof reportId !== 'string' || !UUID_RE.test(reportId)) {
+        sendJson(res, 400, { ok: false, code: 'INVALID_FULL_DIAGNOSTIC_REQUEST' });
+        return;
+      }
+      if (!databaseConfigured) {
+        sendJson(res, 503, { ok: false, code: 'SERVICE_UNAVAILABLE' });
+        return;
+      }
+      const retryAfter = consumeDiagnosticRateLimit();
+      if (retryAfter > 0) {
+        sendJson(res, 429, { ok: false, code: 'RATE_LIMITED' }, { 'Retry-After': String(retryAfter) });
+        return;
+      }
+      const archive = await readBody(req, MAX_FULL_REPORT_BYTES);
+      if (archive.length < 22 || archive.readUInt32LE(0) !== 0x04034b50) {
+        sendJson(res, 422, { ok: false, code: 'INVALID_FULL_DIAGNOSTIC_ARCHIVE' });
+        return;
+      }
+      // Store bytes as provided. The HTTP service never extracts uploaded files.
+      const checksum = createHash('sha256').update(archive).digest('hex');
+      await persistFull(reportId, archive, checksum);
+      sendJson(res, 202, { ok: true, report_id: reportId, sha256: checksum, retention_days: DIAGNOSTIC_RETENTION_DAYS });
+      return;
+    }
     if (req.method === 'POST' && url.pathname.endsWith('/v1/reports')) {
       if (!String(req.headers['content-type'] || '').toLowerCase().startsWith('application/json')) {
         sendJson(res, 415, { ok: false, code: 'UNSUPPORTED_MEDIA_TYPE' });
         return;
       }
-      if (!ENV_ID || !API_KEY) {
+      if (!databaseConfigured) {
         sendJson(res, 503, { ok: false, code: 'SERVICE_UNAVAILABLE' });
         return;
       }
@@ -421,7 +476,7 @@ const server = http.createServer(async (req, res) => {
         sendJson(res, 422, { ok: false, code: 'DIAGNOSTIC_PRIVACY_SCAN_FAILED' });
         return;
       }
-      await persistDiagnosticReport(report);
+      await persistReport(report);
       sendJson(res, 202, {
         ok: true,
         report_id: report.report_id,
@@ -506,15 +561,16 @@ const server = http.createServer(async (req, res) => {
     }
     sendJson(res, 503, { ok: false, code: 'INGEST_FAILED' });
   }
-});
+}
 
 if (require.main === module) {
-  server.listen(PORT, '0.0.0.0', () => {
+  http.createServer(handleRequest()).listen(PORT, '0.0.0.0', () => {
     console.log(JSON.stringify({ code: 'SERVICE_STARTED', version: SERVICE_VERSION }));
   });
 }
 
 module.exports = {
+  handleRequest,
   validateBatch,
   validateDiagnosticReport,
   scanDiagnosticReport,

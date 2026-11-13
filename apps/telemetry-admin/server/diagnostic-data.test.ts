@@ -25,7 +25,11 @@ describe("diagnostic dashboard data", () => {
         failedOperationCount: 1,
       }),
     )
-    expect(data.reports[0]?.environment.checks).toHaveLength(15)
+    expect(data.reports[0]?.environment.checks).toHaveLength(21)
+    expect(data.reports[0]?.environment.checks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "process_tex_packages" }),
+      expect.objectContaining({ id: "task_book_docx_font" }),
+    ]))
     expect(data.reports[0]?.operationSummary).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ label: "生成预览", failure: 1 }),
@@ -33,6 +37,27 @@ describe("diagnostic dashboard data", () => {
       ]),
     )
     expect(JSON.stringify(data)).not.toContain("blocked_findings")
+  })
+
+  it("shows the failing tool, stage and exit code from a version 3 report", () => {
+    const now = new Date("2026-09-04T01:00:00.000Z")
+    const rows = fixtureDiagnosticRows(now)
+    const report = rows[0]!.report as { operations: unknown[] }
+    report.operations.push({
+      occurred_at: now.toISOString(), operation: "diagnostic.step", outcome: "failure",
+      duration_bucket: "under_100ms", duration_ms: 12, error_code: "RENDER_FAILED",
+      context: {
+        stage: "preview_rasterize", tool: "pdftoppm", tool_source: "system",
+        tool_version: "26.1.0", exit_code: 23, reason: "tool_nonzero",
+        document_type: "task_book",
+      },
+    })
+    const details = buildDiagnosticDashboard(rows, 30, now).reports[0]?.recentOperations
+    expect(details).toEqual(expect.arrayContaining([
+      expect.objectContaining({ context: expect.objectContaining({
+        stage: "preview_rasterize", tool: "pdftoppm", tool_version: "26.1.0", exit_code: 23, reason: "tool_nonzero",
+      }) }),
+    ]))
   })
 
   it("defaults unsupported date ranges to 30 days", () => {

@@ -79,6 +79,8 @@ import { ToolDirectory } from "@/components/workbench/tool-directory"
 import { ThesisToolsWorkbench } from "@/components/workbench/thesis-tools-workbench"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Progress, ProgressLabel, ProgressValue } from "@/components/ui/progress"
 import {
   Card,
@@ -186,6 +188,7 @@ import type {
   StudentProfile,
   StudentProfileDraft,
   StudentProfileInput,
+  StudentProfileSummary,
   SztuDesktopApi,
   TelemetryUsageEvent,
   UpdateStatus,
@@ -271,14 +274,14 @@ type ExportState =
       cancelRequested: boolean
     }
   | { status: "succeeded"; receipt: ExportReceipt }
-  | { status: "error"; message: string }
+  | { status: "error"; message: string; caseId?: string }
 
 type PreviewState =
   | { status: "idle" }
   | { status: "checking" }
   | { status: "generating" }
   | { status: "ready"; result: PreviewResult; stale: boolean }
-  | { status: "error"; message: string }
+  | { status: "error"; message: string; caseId?: string }
 
 type ExportHistoryState =
   | { status: "loading"; jobs: ExportJobSummary[] }
@@ -451,6 +454,13 @@ function getPreviewDrawerMaxWidth(): number {
 
 function clampPreviewDrawerWidth(width: number, maxWidth: number): number {
   return Math.min(Math.max(width, PREVIEW_DRAWER_MIN_WIDTH), maxWidth)
+}
+
+function diagnosticCaseId(error: unknown): string | undefined {
+  if (error && typeof error === "object" && "details" in error) {
+    const id = recordValue(error.details).diagnostic_case_id
+    if (typeof id === "string") return id
+  }
 }
 
 function getDesktopApi(): SztuDesktopApi | undefined {
@@ -1301,10 +1311,11 @@ function draftToContent(draft: Draft, documentType: DocumentType): JsonObject {
 function draftFromRecords(
   profile: StudentProfile | null,
   profileDraft: StudentProfileDraft | null,
-  document: DocumentRecord,
+  document: DocumentRecord | null,
   fallback?: Draft,
 ): Draft {
-  const content = recordValue(document.content)
+  const content = recordValue(document?.content)
+  const documentType = documentTypeFromRecord(document?.document_type)
   const metadata = recordValue(content.metadata)
   const sections = recordValue(content.sections)
   const editorState = recordValue(content.editor_state)
@@ -1319,13 +1330,13 @@ function draftFromRecords(
     metadata.graduation_year <= 2100
       ? `${metadata.graduation_year}届`
       : ""
-  const legacyContent = isDraft(document.content) ? document.content : {}
-  const thesis = document.document_type === "thesis" ? readThesisDraft(content.thesis) : emptyThesisDraft()
+  const legacyContent = isDraft(document?.content) ? document.content : {}
+  const thesis = documentType === "thesis" ? readThesisDraft(content.thesis) : emptyThesisDraft()
   return {
     ...emptyDraft,
     ...fallback,
     ...legacyContent,
-    assessment: readAssessmentDraft(metadata, sections, isAssessmentDocumentType(document.document_type) ? document.document_type : undefined),
+    assessment: readAssessmentDraft(metadata, sections, isAssessmentDocumentType(documentType) ? documentType : undefined),
     thesis,
     title: sharedThesisTitleValue(
       profileDraft,
@@ -1427,7 +1438,7 @@ function draftFromRecords(
       fallback?.references,
     ),
     referencesBibtex:
-      document.document_type === "proposal"
+      documentType === "proposal"
         ? textValue(bibliography.source_text) ||
           legacyContent.referencesBibtex ||
           fallback?.referencesBibtex ||
@@ -1462,7 +1473,7 @@ function draftFromRecords(
     directory: Array.isArray(sections.directory)
       ? legacyDirectoryItems(sections.directory)
       : legacyDirectoryItems(legacyContent.directory ?? fallback?.directory),
-    mainResearchContent: document.document_type === "midterm" && sections.editable_headings !== true
+    mainResearchContent: documentType === "midterm" && sections.editable_headings !== true
       ? proposalBodyValue(
           midtermStarterParagraphs.mainResearchContent,
           sections.main_research_content,
@@ -1474,7 +1485,7 @@ function draftFromRecords(
           legacyContent.mainResearchContent,
           fallback?.mainResearchContent,
         ),
-    progress: document.document_type === "midterm" && sections.editable_headings !== true
+    progress: documentType === "midterm" && sections.editable_headings !== true
       ? proposalBodyValue(
           midtermStarterParagraphs.progress,
           sections.progress,
@@ -1486,7 +1497,7 @@ function draftFromRecords(
           legacyContent.progress,
           fallback?.progress,
         ),
-    midtermEditableHeadings: document.document_type === "midterm",
+    midtermEditableHeadings: documentType === "midterm",
     taskBasicContent: structuredBodyValue(
       sections.basic_content_and_requirements,
       legacyContent.taskBasicContent,
@@ -1508,7 +1519,7 @@ function draftFromRecords(
       fallback?.taskReferences,
     ),
     taskReferencesBibtex:
-      document.document_type === "task_book"
+      documentType === "task_book"
         ? textValue(bibliography.source_text) ||
           legacyContent.taskReferencesBibtex ||
           fallback?.taskReferencesBibtex ||
@@ -1820,8 +1831,14 @@ function StudentProfileEditor({
   onStructuredBodyChange,
   disabled,
   workspace,
+  unassigned,
+  unassignedHelp,
+  profileActions,
 }: {
   assessmentMode: boolean
+  unassigned: boolean
+  unassignedHelp: string
+  profileActions: ReactNode
   validationRequested: boolean
   draft: Draft
   onChange: (field: TextDraftField, value: string) => void
@@ -1912,6 +1929,19 @@ function StudentProfileEditor({
     }
   }
 
+  if (unassigned) {
+    return (
+      <ScrollArea className="h-full">
+        <div className="mx-auto grid max-w-4xl gap-6 p-6">
+          {profileActions}
+          <Alert>
+            <AlertDescription>{unassignedHelp}</AlertDescription>
+          </Alert>
+        </div>
+      </ScrollArea>
+    )
+  }
+
   return (
     <ScrollArea className="h-full">
       <div
@@ -1921,10 +1951,11 @@ function StudentProfileEditor({
           if (field) setTouched((current) => current[field] ? current : { ...current, [field]: true })
         }}
       >
+        {profileActions}
         {workspace.status === "loading" ? (
           <Alert>
             <LoaderCircleIcon className="animate-spin" />
-            <AlertTitle>正在载入学生档案</AlertTitle>
+            <AlertTitle>正在载入基本信息</AlertTitle>
             <AlertDescription>正在恢复本机保存的基础信息。</AlertDescription>
           </Alert>
         ) : null}
@@ -1932,9 +1963,9 @@ function StudentProfileEditor({
         {validationRequested && !complete && workspace.status === "ready" ? (
           <Alert>
             <TriangleAlertIcon />
-            <AlertTitle>请先补全学生档案</AlertTitle>
+            <AlertTitle>请先补全基本信息</AlertTitle>
             <AlertDescription>
-              {assessmentMode ? "当前评审表需要姓名、学号、学院、专业和论文题目。" : "开题报告、任务书和中期检查需要完整的学生档案，包括毕业届别、班级、指导教师和职称；评审表只需要姓名、学号、学院、专业和论文题目。"}
+              {assessmentMode ? "当前评审表需要姓名、学号、学院、专业和论文题目。" : "开题报告、任务书和中期检查需要完整的基本信息，包括毕业届别、班级、指导教师和职称；评审表只需要姓名、学号、学院、专业和论文题目。"}
             </AlertDescription>
           </Alert>
         ) : null}
@@ -2120,6 +2151,7 @@ function DocumentEditor({
   onRestoreRecovery,
   onDismissRecovery,
   toolbarActions,
+  needsDocumentProfile,
   validationRequested,
 }: {
   documentId: string
@@ -2151,6 +2183,7 @@ function DocumentEditor({
   onRestoreRecovery: () => void
   onDismissRecovery: () => void
   toolbarActions?: ReactNode
+  needsDocumentProfile: boolean
   validationRequested: boolean
 }) {
   const isAssessment = isAssessmentDocumentType(documentType)
@@ -2288,23 +2321,21 @@ function DocumentEditor({
         )}
       >
 
-        {!isThesis && !(isAssessment ? assessmentProfileIsComplete(draft) : profileIsComplete(draft)) && workspace.status === "ready" ? (
+        {!isThesis && !needsDocumentProfile && !(isAssessment ? assessmentProfileIsComplete(draft) : profileIsComplete(draft)) && workspace.status === "ready" ? (
           <Alert>
             <UserRoundIcon />
-            <AlertTitle>学生档案尚未补全</AlertTitle>
-            <AlertDescription>
-              请先在左侧“学生档案”填写基础信息，完成后再检查或导出当前文档。
-            </AlertDescription>
+            <AlertTitle>基本信息尚未补全</AlertTitle>
+            <AlertDescription>可先写正文，预览或导出前在左侧补全「档案与基本信息」。</AlertDescription>
           </Alert>
         ) : null}
 
-        {!isThesis && !structuredBodyPlainText(draft.title).trim() &&
+        {!isThesis && !needsDocumentProfile && !structuredBodyPlainText(draft.title).trim() &&
         workspace.status === "ready" ? (
           <Alert>
             <UserRoundIcon />
             <AlertTitle>论文题目尚未填写</AlertTitle>
             <AlertDescription>
-              请先在“学生档案”填写论文题目。
+              请在「基本信息」填写论文题目。
             </AlertDescription>
           </Alert>
         ) : null}
@@ -2314,7 +2345,7 @@ function DocumentEditor({
             <LoaderCircleIcon className="animate-spin" />
             <AlertTitle>正在载入工作区</AlertTitle>
             <AlertDescription>
-              正在恢复上次使用的学生档案和
+              正在恢复上次使用的档案和
               {documentTypeLabels[documentType]}。
             </AlertDescription>
           </Alert>
@@ -2425,7 +2456,7 @@ function DocumentEditor({
             <TriangleAlertIcon />
             <AlertTitle>毕业届别缺少年份</AlertTitle>
             <AlertDescription>
-              请在“学生档案”填写含四位年份的毕业届别，例如“2026届”。
+              请在“基本信息”填写含四位年份的毕业届别，例如“2026届”。
             </AlertDescription>
           </Alert>
         ) : null}
@@ -2974,6 +3005,7 @@ function PaginatedPreviewPanel({
               <AnimatedActionIcon icon={RefreshCwIconAnimated} />
               重新生成预览
             </Button>
+            {previewState.caseId ? <DiagnosticSupport caseId={previewState.caseId} /> : null}
           </>
         ) : null}
 
@@ -3153,7 +3185,7 @@ function InspectionPanel({
 
         <Card>
           <CardContent>
-            <DiagnosticSupport />
+            <DiagnosticSupport showSummary caseId={exportState.status === "error" ? exportState.caseId : undefined} />
           </CardContent>
         </Card>
 
@@ -3182,7 +3214,9 @@ function InspectionPanel({
           <Alert variant="destructive">
             <TriangleAlertIcon />
             <AlertTitle className="text-sm font-medium">导出失败</AlertTitle>
-            <AlertDescription className="text-xs">{exportState.message}</AlertDescription>
+            <AlertDescription className="text-xs">
+              {exportState.message}
+            </AlertDescription>
           </Alert>
         ) : null}
 
@@ -3381,6 +3415,14 @@ export default function App() {
     },
     [],
   )
+  const [profiles, setProfiles] = useState<StudentProfileSummary[]>([])
+  const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null)
+  const [deletedProfiles, setDeletedProfiles] = useState<StudentProfileSummary[]>([])
+  const [profileToDelete, setProfileToDelete] = useState<StudentProfileSummary | null>(null)
+  const [deletedProfilesOpen, setDeletedProfilesOpen] = useState(false)
+  const [createProfileOpen, setCreateProfileOpen] = useState(false)
+  const [newStudent, setNewStudent] = useState({ full_name: "", student_number: "", college: "", major: "" })
+  const [createProfileError, setCreateProfileError] = useState<string | null>(null)
   const profileRef = useRef<StudentProfile | null>(null)
   const [document, setDocument] = useState<DocumentRecord | null>(null)
   const documentRef = useRef<DocumentRecord | null>(null)
@@ -3578,7 +3620,41 @@ export default function App() {
       documentListGeneration.current += 1
       documentListsLoadingRef.current = { active: false, deleted: false }
       setDocumentListsLoading({ active: false, deleted: false })
+      setSelectedProfileId(snapshot.profile?.id ?? null)
+      setProfiles(snapshot.profiles ?? (snapshot.profile ? [snapshot.profile] : []))
+      setDeletedProfiles(snapshot.deleted_profiles ?? [])
       let activeDocument = snapshot.document
+      if (!activeDocument && (snapshot.profiles?.length || snapshot.deleted_profiles?.length)) {
+        const resolved = draftFromRecords(snapshot.profile, snapshot.profile_draft, null)
+        profileRef.current = snapshot.profile
+        documentRef.current = null
+        activeDocumentIdRef.current = null
+        revisionRef.current = 0
+        draftRef.current = resolved
+        setDraft(resolved)
+        setDocument(null)
+        setDocuments(snapshot.documents)
+        setDeletedDocuments(snapshot.deleted_documents ?? [])
+        const pages = { active: snapshot.documents_page ?? null, deleted: snapshot.deleted_documents_page ?? null }
+        documentPagesRef.current = pages
+        setDocumentPages(pages)
+        editVersion.current = 0
+        const fingerprints = autosaveFingerprintsForDraft(resolved, "proposal")
+        autosaveVersions.current = createAutosaveVersionState({ profileFingerprint: fingerprints.profile, documentFingerprint: fingerprints.document })
+        setProfileValidationRequested(false)
+        setPreviewState({ status: "idle" })
+        setPreviewOpen(false)
+        setExportState({ status: "idle" })
+        setHistory({ status: "ready", jobs: [] })
+        appliedRecovery.current = null
+        setRecoveryRestored(false)
+        setRecovery(null)
+        setSaveState("saved")
+        workspaceReadyRef.current = true
+        setWorkspace({ status: "ready" })
+        setActivePane("profile")
+        return
+      }
       const createdProposal = !activeDocument
       if (!activeDocument) {
         const initial = fallback ?? newProposalDraft()
@@ -3651,7 +3727,8 @@ export default function App() {
       // A profile draft may have been saved while an older document's additional
       // required fields were empty. Assessment printing needs the basic profile
       // persisted and linked, even when the draft itself is already saved.
-      const shouldPromoteAssessmentProfile = isAssessmentDocumentType(resolvedDocument.document_type) &&
+      const shouldPromoteAssessmentProfile = (snapshot.profile || (!snapshot.profiles?.length && !snapshot.deleted_profiles?.length)) &&
+        isAssessmentDocumentType(resolvedDocument.document_type) &&
         assessmentProfileIsComplete(resolvedDraft) && (
           !snapshot.profile || initialFingerprints.profile !== autosaveFingerprint(profileDraftFromDraft(
             draftFromRecords(snapshot.profile, null, resolvedDocument),
@@ -3758,8 +3835,9 @@ export default function App() {
     setHistory((current) => ({ status: "loading", jobs: current.jobs }))
     try {
       const result = await api.listExportHistory({ documentId: activeDocumentId, limit: 10 })
-      setHistory({ status: "ready", jobs: result.history })
+      if (activeDocumentIdRef.current === activeDocumentId) setHistory({ status: "ready", jobs: result.history })
     } catch (error) {
+      if (activeDocumentIdRef.current !== activeDocumentId) return
       setHistory((current) => ({
         status: "error",
         jobs: current.jobs,
@@ -3825,17 +3903,18 @@ export default function App() {
     (reason: "auto" | "manual" = "auto"): Promise<boolean> => {
       const api = getDesktopApi()
       const activeDocument = documentRef.current
-      if (!api || !activeDocument || !workspaceReadyRef.current || saving.current) {
+      if (!api || !workspaceReadyRef.current || saving.current) {
         return Promise.resolve(false)
       }
 
       const versionAtStart = editVersion.current
       const draftAtStart = draftRef.current
       const documentAtStart = activeDocument
+      const profileAtStart = profileRef.current
       const expectedRevision = revisionRef.current
       const fingerprints = autosaveFingerprintsForDraft(
         draftAtStart,
-        documentTypeFromRecord(documentAtStart.document_type),
+        documentTypeFromRecord(documentAtStart?.document_type),
       )
       autosaveVersions.current = reconcileAutosaveFingerprints(
         autosaveVersions.current,
@@ -3848,12 +3927,14 @@ export default function App() {
       const task = (async () => {
         try {
           if (savePlan.profile !== null) {
-            await api.saveProfileDraft(profileDraftFromDraft(draftAtStart))
-            let savedProfile = profileRef.current
-            if (isAssessmentDocumentType(documentAtStart.document_type) ? assessmentProfileIsComplete(draftAtStart) : profileIsComplete(draftAtStart)) {
-              savedProfile = await api.saveProfile(
-                profileFromDraft(draftAtStart, profileRef.current),
-              )
+            await api.saveProfileDraft(profileDraftFromDraft(draftAtStart), profileAtStart?.id ?? null)
+            let savedProfile = profileAtStart
+            const minimumProfileComplete = [draftAtStart.studentName, draftAtStart.studentId, draftAtStart.college, draftAtStart.major].every(value => value.trim())
+            const complete = documentAtStart
+              ? (isAssessmentDocumentType(documentAtStart.document_type) ? assessmentProfileIsComplete(draftAtStart) : profileIsComplete(draftAtStart))
+              : minimumProfileComplete
+            if (complete) {
+              savedProfile = await api.saveProfile(profileFromDraft(draftAtStart, profileAtStart))
             }
             autosaveVersions.current = acknowledgeAutosave(
               autosaveVersions.current,
@@ -3862,14 +3943,30 @@ export default function App() {
               fingerprints.profile,
             )
             profileRef.current = savedProfile
+            if (savedProfile) {
+              setSelectedProfileId(savedProfile.id)
+              const summary = { id: savedProfile.id, full_name: savedProfile.full_name, student_number: savedProfile.student_number }
+              setProfiles(items => [summary, ...items.filter(item => item.id !== summary.id)])
+              if (!profileAtStart && documentAtStart) {
+                const linked = { ...documentAtStart, profile_id: savedProfile.id }
+                documentRef.current = linked
+                setDocument(linked)
+                setDocuments(items => items.map(item => item.profile_id === null ? { ...item, profile_id: savedProfile.id } : item))
+                const page = documentPagesRef.current.active
+                if (page) {
+                  documentPagesRef.current = { ...documentPagesRef.current, active: { ...page, profile_id: savedProfile.id } }
+                  setDocumentPages(documentPagesRef.current)
+                }
+              }
+            }
           }
 
-          if (savePlan.document !== null) {
+          if (savePlan.document !== null && documentAtStart) {
             const result = await api.saveDraft({
               documentId: documentAtStart.id,
               content: draftToContent(
                 draftAtStart,
-                documentTypeFromRecord(documentAtStart.document_type),
+                documentTypeFromRecord(documentAtStart?.document_type),
               ),
               expectedRevision,
               reason,
@@ -3883,7 +3980,8 @@ export default function App() {
             revisionRef.current = result.revision
             const savedDocument = {
               ...documentAtStart,
-              content: draftToContent(draftAtStart, documentTypeFromRecord(documentAtStart.document_type)),
+              profile_id: profileRef.current?.id ?? documentAtStart.profile_id,
+              content: draftToContent(draftAtStart, documentTypeFromRecord(documentAtStart?.document_type)),
               current_revision: result.revision,
               saved_at: result.saved_at,
             }
@@ -3893,7 +3991,7 @@ export default function App() {
           const savedCurrentRevision = editVersion.current === versionAtStart
           setSaveState(savedCurrentRevision ? "saved" : "dirty")
           const recovered = appliedRecovery.current
-          if (savedCurrentRevision && recovered?.documentId === documentAtStart.id && removeWorkspaceRecovery(recovered)) {
+          if (savedCurrentRevision && recovered?.documentId === documentAtStart?.id && recovered && removeWorkspaceRecovery(recovered)) {
             appliedRecovery.current = null
             setRecoveryRestored(false)
             setRecovery(null)
@@ -3950,6 +4048,78 @@ export default function App() {
     return flushPendingChanges()
   }
 
+  const selectStudentProfile = async (profileId: string) => {
+    if (selectedProfileId === profileId || documentTransitioningRef.current || closingRef.current) return
+    try {
+      await runWorkspaceTransition(async () => {
+        const api = getDesktopApi()
+        if (!api || !(await prepareForDocumentChange())) {
+          throw new Error("当前档案或草稿尚未保存，已留在原档案。")
+        }
+        const snapshot = await api.selectProfile(profileId)
+        await applyWorkspace(snapshot)
+        setPreviewOpen(false)
+        setActivePane("profile")
+      })
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "档案切换失败，请重试。")
+    }
+  }
+
+  const openCreateProfile = () => {
+    setNewStudent({ full_name: "", student_number: "", college: "", major: "" })
+    setCreateProfileError(null)
+    setCreateProfileOpen(true)
+  }
+
+  const createStudentProfile = async () => {
+    if (documentTransitioningRef.current || closingRef.current) return
+    setCreateProfileError(null)
+    try {
+      await runWorkspaceTransition(async () => {
+        const api = getDesktopApi()
+        if (!api || !(await prepareForDocumentChange())) {
+          throw new Error("当前档案或草稿尚未保存，暂时无法新建档案。")
+        }
+        const fields = {
+          full_name: newStudent.full_name.trim(), student_number: newStudent.student_number.trim(),
+          college: newStudent.college.trim(), major: newStudent.major.trim(),
+        }
+        if (Object.values(fields).some(value => !value)) {
+          setCreateProfileError("请填写姓名、学号、学院和专业。")
+          return
+        }
+        await applyWorkspace(await api.createProfile(fields))
+        setPreviewOpen(false)
+        setActivePane("profile")
+        setCreateProfileOpen(false)
+      })
+    } catch (error) {
+      setCreateProfileError(error instanceof Error ? error.message : "新建档案失败，请重试。")
+    }
+  }
+
+  const changeDeletedProfile = async (action: "delete" | "restore", profileId: string) => {
+    if (documentTransitioningRef.current || closingRef.current) return
+    try {
+      await runWorkspaceTransition(async () => {
+        const api = getDesktopApi()
+        if (!api || !(await prepareForDocumentChange())) {
+          throw new Error("当前档案或草稿尚未保存，请保存后重试。")
+        }
+        const snapshot = await (action === "delete" ? api.deleteProfile(profileId) : api.restoreProfile(profileId))
+        await applyWorkspace(snapshot)
+        setPreviewOpen(false)
+        setActivePane("profile")
+        setProfileToDelete(null)
+        setDeletedProfilesOpen(false)
+        toast.success(action === "delete" ? "档案已移到「已删除档案」" : "已恢复档案")
+      })
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "操作失败，请重试。")
+    }
+  }
+
   const selectDocumentFile = async (documentId: string) => {
     if (documentTransitioningRef.current || closingRef.current) return
     if (documentId === activeDocumentId) {
@@ -3978,7 +4148,7 @@ export default function App() {
         throw new Error("当前内容尚未保存，暂时无法新建文档。")
       }
       const created = await api.createDocument({
-        profile_id: profileRef.current?.id ?? null,
+        profile_id: request.profileId,
         document_type: request.type,
         template_version:
           request.type === "thesis" ? "0.1.0-authoring" :
@@ -4185,7 +4355,7 @@ export default function App() {
     commitDraftEdit(current => ({ ...current, taskSchedule: value }), "document")
   }
 
-  const checkContent = async (): Promise<boolean> => {
+  const checkContent = async (onDiagnosticCase?: (id: string) => void): Promise<boolean> => {
     if (activeDocumentType === "thesis") return false
     const api = getDesktopApi()
     if (!api || !document || workspace.status !== "ready") return false
@@ -4209,10 +4379,15 @@ export default function App() {
     ) {
       return false
     }
+    if (document.profile_id === null && (profiles.length || deletedProfiles.length)) {
+      setPreviewOpen(false)
+      toast.error("这份旧草稿没有档案。请新建同类文档，在「使用档案」选人，在「初始内容」选这份草稿。")
+      return false
+    }
     if (!(isAssessmentDocumentType(activeDocumentType) ? assessmentProfileIsComplete(draft) : profileIsComplete(draft))) {
       const message = isAssessmentDocumentType(activeDocumentType)
-        ? "请先打开左侧“学生档案”，补全姓名、学号、学院和专业。"
-        : "请先打开左侧“学生档案”，补全姓名、学号、毕业届别、学院、专业、班级、指导教师和职称。"
+        ? "请先打开左侧“档案与基本信息”，补全姓名、学号、学院和专业。"
+        : "请先打开左侧“档案与基本信息”，补全姓名、学号、毕业届别、学院、专业、班级、指导教师和职称。"
       setActivePane("profile")
       recordTelemetry({
         name: "document_action",
@@ -4227,8 +4402,8 @@ export default function App() {
     const thesisTitle = structuredBodyPlainText(draft.title).trim()
     if (!thesisTitle || thesisTitle.length > THESIS_TITLE_MAX_LENGTH) {
       const message = !thesisTitle
-        ? "请先打开左侧“学生档案”，填写论文题目。"
-        : `学生档案中的论文题目最多 ${THESIS_TITLE_MAX_LENGTH} 个字符。`
+        ? "请先打开左侧“档案与基本信息”，填写论文题目。"
+        : `基本信息中的论文题目最多 ${THESIS_TITLE_MAX_LENGTH} 个字符。`
       navigateToCheck({ pane: "profile", selector: '[aria-label="中文题目"]' })
       recordTelemetry({
         name: "document_action",
@@ -4245,7 +4420,7 @@ export default function App() {
       graduationYearFromCohort(draft.graduationCohort) === null
     ) {
       const message =
-        "毕业届别须包含四位年份，请在“学生档案”中修改，例如“2026届”。"
+        "毕业届别须包含四位年份，请在“基本信息”中修改，例如“2026届”。"
       navigateToCheck({ pane: "profile", selector: "#graduationCohort" })
       recordTelemetry({
         name: "document_action",
@@ -4301,6 +4476,7 @@ export default function App() {
           ? checkNavigationTarget(activeDocumentType, failedCheck)
           : null
         if (target) navigateToCheck(target)
+        if (result.diagnostic_case_id) onDiagnosticCase?.(result.diagnostic_case_id)
         toast.error(failedCheck?.message ?? "内容检查未通过。")
       }
       return passed
@@ -4308,6 +4484,8 @@ export default function App() {
       if (!isCurrentSavedRevision(documentIdAtStart, versionAtStart)) {
         return false
       }
+      const caseId = diagnosticCaseId(error)
+      if (caseId) onDiagnosticCase?.(caseId)
       const message = error instanceof Error ? error.message : "内容检查失败。"
       recordTelemetry({
         name: "document_action",
@@ -4344,7 +4522,8 @@ export default function App() {
     const documentIdAtStart = document.id
     const versionAtStart = editVersion.current
     setPreviewState({ status: "checking" })
-    const passed = await checkContent()
+    let caseId: string | undefined
+    const passed = await checkContent(id => { caseId = id })
     if (
       !passed ||
       !isCurrentSavedRevision(documentIdAtStart, versionAtStart)
@@ -4352,6 +4531,7 @@ export default function App() {
       if (activeDocumentIdRef.current === documentIdAtStart) {
         setPreviewState({
           status: "error",
+          caseId,
           message:
             editVersion.current === versionAtStart
               ? "内容检查未通过，请根据页面提示修正后重试。"
@@ -4392,7 +4572,7 @@ export default function App() {
         return
       }
       const message = error instanceof Error ? error.message : "排版预览生成失败。"
-      setPreviewState({ status: "error", message })
+      setPreviewState({ status: "error", message, caseId: diagnosticCaseId(error) })
       recordTelemetry({
         name: "document_action",
         action: "preview",
@@ -4561,7 +4741,7 @@ export default function App() {
         : error instanceof Error
           ? error.message
           : "导出失败。"
-      setExportState({ status: "error", message })
+      setExportState({ status: "error", message, caseId: diagnosticCaseId(error) })
       recordTelemetry({
         name: "document_action",
         action: "export",
@@ -4669,7 +4849,7 @@ export default function App() {
           ? { ...current, stale: true } : current)
       }
       const message = error instanceof Error ? error.message : "导出预检失败。"
-      setExportState({ status: "error", message })
+      setExportState({ status: "error", message, caseId: diagnosticCaseId(error) })
       recordTelemetry({
         name: "document_action",
         action: "export",
@@ -4848,7 +5028,49 @@ export default function App() {
         (releaseAnnouncement && releaseAnnouncement.id !== dismissedAnnouncementId)),
   )
 
-  const documentActions = activeDocumentType !== "thesis" ? (
+  const selectedProfile = profiles.find(item => item.id === selectedProfileId)
+  const profileActionsDisabled = workspaceDisabled || previewBusy || exportState.status === "exporting"
+  const hasProfileRecords = profiles.length > 0 || deletedProfiles.length > 0
+  const isDetachedScope = hasProfileRecords && selectedProfileId === null
+  const needsDocumentProfile = isDetachedScope && document?.profile_id === null
+
+  const profileActions = (
+    <div className="flex flex-wrap items-center gap-2">
+      {profiles.length ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger render={
+            <Button variant="outline" aria-label="选择要编辑的档案" disabled={profileActionsDisabled} />
+          }>
+            <span className="max-w-48 truncate">{selectedProfile?.full_name ?? "选择档案"}</span>
+            <ChevronDownIcon />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="min-w-52">
+            {profiles.map(item => (
+              <DropdownMenuItem key={item.id} disabled={item.id === selectedProfileId} onClick={() => void selectStudentProfile(item.id)}>
+                <span className="min-w-0 truncate">{item.full_name} · {item.student_number}</span>
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : null}
+      <Button variant="outline" onClick={openCreateProfile} disabled={profileActionsDisabled}>新建档案</Button>
+      {selectedProfile || deletedProfiles.length ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger render={<Button variant="ghost" size="icon" aria-label="管理档案" disabled={profileActionsDisabled} />}>
+            <AnimatedActionIcon icon={EllipsisIcon} />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {deletedProfiles.length ? <DropdownMenuItem onClick={() => setDeletedProfilesOpen(true)}>已删除档案</DropdownMenuItem> : null}
+            {selectedProfile ? (
+              <DropdownMenuItem variant="destructive" onClick={() => setProfileToDelete(selectedProfile)}>删除当前档案</DropdownMenuItem>
+            ) : null}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : null}
+    </div>
+  )
+
+  const documentActions = document && activeDocumentType !== "thesis" ? (
     <Button
       size={isMobile ? "icon" : "default"}
       aria-label="预览&导出"
@@ -4869,7 +5091,11 @@ export default function App() {
   const editor =
     activePane === "profile" ? (
       <StudentProfileEditor
+        key={selectedProfileId ?? "unassigned"}
+        profileActions={profileActions}
         assessmentMode={isAssessmentDocumentType(activeDocumentType)}
+        unassigned={isDetachedScope}
+        unassignedHelp={profiles.length ? "选择一份档案查看或编辑基本信息。" : "可新建档案，也可恢复已删除的档案。"}
         validationRequested={profileValidationRequested}
         draft={draft}
         onChange={updateDraft}
@@ -4880,6 +5106,7 @@ export default function App() {
     ) : (
       <DocumentEditor
         validationRequested={profileValidationRequested}
+        needsDocumentProfile={needsDocumentProfile}
         documentId={document?.id ?? ""}
         documentType={activeDocumentType}
         activeSection={activeSection}
@@ -5011,10 +5238,77 @@ export default function App() {
         } as React.CSSProperties
       }
     >
+      <Dialog open={createProfileOpen} onOpenChange={open => { if (!documentTransitioningRef.current) setCreateProfileOpen(open) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>新建档案</DialogTitle>
+            <DialogDescription>档案中的姓名、学号等信息会用于关联的文档。</DialogDescription>
+          </DialogHeader>
+          <form className="grid gap-3" onSubmit={event => { event.preventDefault(); void createStudentProfile() }}>
+            {([
+              ["full_name", "姓名", 100], ["student_number", "学号", 64],
+              ["college", "学院", 200], ["major", "专业", 200],
+            ] as const).map(([field, label, maximum]) => (
+              <div key={field} className="grid gap-2">
+                <Label htmlFor={`new-student-${field}`}>{label}</Label>
+                <Input id={`new-student-${field}`} required maxLength={maximum} disabled={documentTransitioning}
+                  value={newStudent[field]} onChange={event => setNewStudent({ ...newStudent, [field]: event.target.value })} />
+              </div>
+            ))}
+            {createProfileError ? <Alert variant="destructive"><AlertDescription>{createProfileError}</AlertDescription></Alert> : null}
+            <DialogFooter>
+              <Button type="button" variant="outline" disabled={documentTransitioning} onClick={() => setCreateProfileOpen(false)}>取消</Button>
+              <Button type="submit" disabled={documentTransitioning}>新建</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={profileToDelete !== null} onOpenChange={open => {
+        if (!open && !documentTransitioningRef.current) setProfileToDelete(null)
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>删除当前档案？</DialogTitle>
+            <DialogDescription>
+              {profileToDelete?.full_name} · {profileToDelete?.student_number}
+              的档案和文档将从工作台移除，可在「已删除档案」中恢复。已导出的文件仍保存在原位置。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" disabled={documentTransitioning} onClick={() => setProfileToDelete(null)}>取消</Button>
+            <Button variant="destructive" disabled={documentTransitioning} onClick={() => {
+              if (profileToDelete) void changeDeletedProfile("delete", profileToDelete.id)
+            }}>删除</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={deletedProfilesOpen} onOpenChange={open => {
+        if (!documentTransitioningRef.current) setDeletedProfilesOpen(open)
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>已删除档案</DialogTitle>
+            <DialogDescription>恢复后会打开档案并显示原有文档。</DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="max-h-64">
+            <ul className="grid gap-2">
+              {deletedProfiles.map(item => (
+                <li key={item.id} className="flex items-center justify-between gap-3">
+                  <span className="min-w-0 break-words">{item.full_name} · {item.student_number}</span>
+                  <Button variant="outline" disabled={documentTransitioning} aria-label={`恢复 ${item.full_name} · ${item.student_number}`}
+                    onClick={() => void changeDeletedProfile("restore", item.id)}>恢复</Button>
+                </li>
+              ))}
+            </ul>
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
       <AppSidebar
         studentName={draft.studentName}
         variant="inset"
         profileActive={activePane === "profile"}
+        profiles={profiles}
+        activeProfileId={selectedProfileId}
         toolsActive={activePane === "tools"}
         appearanceActive={activePane === "appearance"}
         inspectionActive={activePane === "inspection"}
@@ -5060,7 +5354,7 @@ export default function App() {
         {activePane !== "document" ? <SiteHeader
           title={
             activePane === "profile"
-              ? "学生档案"
+              ? "基本信息"
               : activePane === "tools"
                 ? "效率工具"
               : activePane === "appearance"

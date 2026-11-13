@@ -1,3 +1,4 @@
+import { FullDiagnosticError, FullDiagnostics } from "./full-diagnostics.js"
 import { mkdirSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { diagnosticContext, documentStructure, type DiagnosticContext } from "./diagnostic-context.js"
@@ -58,6 +59,7 @@ let telemetry: TelemetryService | undefined
 let updateService: UpdateService | undefined
 let midtermDatePolicyService: MidtermDatePolicyService | undefined
 let diagnostics: DiagnosticService | undefined
+let fullDiagnostics: FullDiagnostics | undefined
 let remoteServicesStarted = false
 let shutdownStarted = false
 let quitApproved = false
@@ -480,13 +482,15 @@ function assertExportFormats(value: unknown): asserts value is Array<"docx" | "p
 }
 
 function bridgeFailure(error: unknown): BridgeResponse<never> {
-  if (error instanceof SidecarError || error instanceof IpcValidationError || error instanceof ThesisTemplateError) {
+  if (error instanceof SidecarError || error instanceof IpcValidationError || error instanceof ThesisTemplateError || error instanceof FullDiagnosticError) {
     return {
       ok: false,
       error: {
         code: error.code,
         message: error.message,
-        ...(error instanceof SidecarError && error.details ? { details: error.details } : {}),
+        ...(error instanceof SidecarError && (error.details || error.diagnosticCaseId) ? {
+          details: { ...error.details, ...(error.diagnosticCaseId ? { diagnostic_case_id: error.diagnosticCaseId } : {}) },
+        } : {}),
       },
     }
   }
@@ -682,6 +686,8 @@ async function initializeRemoteServices(): Promise<void> {
     console.error("Remote services configuration was rejected.")
   }
   const resolved = config as Awaited<ReturnType<typeof loadRemoteServicesConfig>>
+  fullDiagnostics = new FullDiagnostics(app.getPath("userData"), resolved.diagnosticEndpoint)
+  await fullDiagnostics.removeExpired().catch(() => console.error("Could not remove expired local diagnostic cases."))
   diagnostics = new DiagnosticService({
     userDataPath: app.getPath("userData"),
     appVersion: app.getVersion(),
@@ -709,6 +715,7 @@ async function initializeRemoteServices(): Promise<void> {
     manifestUrl: resolved.updateManifestUrl,
     publicKeyPem: resolved.updatePublicKeyPem,
     onOutcome: (outcome, version) => telemetry?.recordUpdate(outcome, version),
+    onDiagnostic: (outcome, duration, code, context) => diagnostics?.record("diagnostic.step", outcome, duration, code, context),
   })
   updateService.onStatus((status) => {
     mainWindow?.webContents.send("sztu:update-status", status)
@@ -788,39 +795,49 @@ function registerIpc(): void {
     return runBridge(checkWorkbenchEnvironment)
   })
 
-  ipcMain.handle("sztu:diagnostic-prepare", async (event) => {
+  ipcMain.handle("sztu:diagnostic-prepare", (event, reportId: unknown) => {
     assertTrustedSender(event)
     return runBridge(async () => {
-      if (!diagnostics) throw new Error("Diagnostics service is not initialized.")
-      const environment = await checkWorkbenchEnvironment()
-      const privacy = privacyNoticeStatus()
-      return diagnostics.prepare(environment, {
-        telemetryConfigured: privacy.telemetryConfigured,
-        updateConfigured: privacy.updateConfigured,
-      })
+      if (!fullDiagnostics) throw new IpcValidationError("诊断服务尚未初始化。")
+      if (reportId !== undefined) {
+        assertRequestId(reportId, "诊断包编号")
+        const existing = await fullDiagnostics.get(reportId)
+        if (!existing) throw new FullDiagnosticError("本次故障的诊断材料已失效，请重现问题后再创建诊断包。")
+        return existing
+      }
+      const recent = await fullDiagnostics.latest()
+      if (recent) return recent
+      const result = await requestSidecar<{ diagnostic_case_id?: string }>("diagnostic.prepare", {}, 90_000)
+      const prepared = result.diagnostic_case_id && await fullDiagnostics.get(result.diagnostic_case_id)
+      if (!prepared) throw new FullDiagnosticError("诊断包创建失败，请重试。")
+      return prepared
     })
   })
 
   ipcMain.handle("sztu:diagnostic-save", async (event, reportId: unknown) => {
     assertTrustedSender(event)
     return runBridge(async () => {
-      if (!diagnostics) throw new Error("Diagnostics service is not initialized.")
-      assertRequestId(reportId, "诊断报告编号")
+      assertRequestId(reportId, "故障包编号")
+      if (!fullDiagnostics) throw new IpcValidationError("故障包服务尚未初始化。")
       const options: SaveDialogOptions = {
-        title: "保存故障诊断包",
-        defaultPath: path.join(
-          app.getPath("documents"),
-          `SZTU-诊断-${reportId.slice(0, 8).toUpperCase()}.json`,
-        ),
-        filters: [{ name: "JSON 诊断包", extensions: ["json"] }],
+        title: "保存诊断包",
+        defaultPath: path.join(app.getPath("documents"), `SZTU-诊断包-${reportId}.zip`),
+        filters: [{ name: "ZIP 诊断包", extensions: ["zip"] }],
         properties: ["createDirectory", "showOverwriteConfirmation"],
       }
-      const result = mainWindow
-        ? await dialog.showSaveDialog(mainWindow, options)
-        : await dialog.showSaveDialog(options)
+      const result = mainWindow ? await dialog.showSaveDialog(mainWindow, options) : await dialog.showSaveDialog(options)
       if (result.canceled || !result.filePath) return { saved: false }
-      await diagnostics.save(reportId, result.filePath)
+      await fullDiagnostics.save(reportId, result.filePath)
       return { saved: true }
+    })
+  })
+
+  ipcMain.handle("sztu:diagnostic-send", (event, reportId: unknown) => {
+    assertTrustedSender(event)
+    return runBridge(() => {
+      assertRequestId(reportId, "故障包编号")
+      if (!fullDiagnostics) throw new IpcValidationError("故障包服务尚未初始化。")
+      return fullDiagnostics.send(reportId)
     })
   })
 
@@ -841,15 +858,6 @@ function registerIpc(): void {
         return result.canceled || !result.filePath ? null : result.filePath
       },
     ))
-  })
-
-  ipcMain.handle("sztu:diagnostic-send", async (event, reportId: unknown) => {
-    assertTrustedSender(event)
-    return runBridge(async () => {
-      if (!diagnostics) throw new Error("Diagnostics service is not initialized.")
-      assertRequestId(reportId, "诊断报告编号")
-      return diagnostics.send(reportId)
-    })
   })
 
   ipcMain.handle("sztu:privacy-status", (event) => {
@@ -1077,7 +1085,7 @@ function registerIpc(): void {
       if (mode !== "persistent" && mode !== "temporary") {
         throw new IpcValidationError("工作区模式无效。")
       }
-      return requestSidecar("workspace.open", { mode, initialize_reference: mode === "persistent" })
+      return requestSidecar("workspace.open", { mode, initialize_reference: mode === "persistent", all_documents: true })
     })
   })
 
@@ -1124,13 +1132,47 @@ function registerIpc(): void {
     })
   })
 
-  ipcMain.handle("sztu:workspace-save-profile-draft", async (event, profile: unknown) => {
-      assertTrustedSender(event)
-      return runBridge(() => {
-        assertProfileDraft(profile)
-        return requestSidecar("workspace.saveProfileDraft", { profile })
-      })
+  ipcMain.handle("sztu:workspace-save-profile-draft", async (event, profile: unknown, profileId: unknown) => {
+    assertTrustedSender(event)
+    return runBridge(() => {
+      assertProfileDraft(profile)
+      if (profileId !== undefined && profileId !== null) assertResourceId(profileId, "学生档案编号")
+      return requestSidecar("workspace.saveProfileDraft", { profile, ...(profileId !== undefined ? { profile_id: profileId } : {}) })
     })
+  })
+
+  ipcMain.handle("sztu:workspace-create-profile", async (event, profile: unknown) => {
+    assertTrustedSender(event)
+    return runBridge(() => {
+      assertProfile(profile)
+      if (profile.id !== undefined) throw new IpcValidationError("新增档案不能指定已有档案编号。")
+      return requestSidecar("workspace.createProfile", { profile })
+    })
+  })
+
+  ipcMain.handle("sztu:workspace-select-profile", async (event, profileId: unknown) => {
+    assertTrustedSender(event)
+    return runBridge(() => {
+      if (profileId !== null) assertResourceId(profileId, "学生档案编号")
+      return requestSidecar("workspace.selectProfile", { profile_id: profileId })
+    })
+  })
+
+  ipcMain.handle("sztu:workspace-delete-profile", async (event, profileId: unknown) => {
+    assertTrustedSender(event)
+    return runBridge(() => {
+      assertResourceId(profileId, "学生档案编号")
+      return requestSidecar("workspace.deleteProfile", { profile_id: profileId })
+    })
+  })
+
+  ipcMain.handle("sztu:workspace-restore-profile", async (event, profileId: unknown) => {
+    assertTrustedSender(event)
+    return runBridge(() => {
+      assertResourceId(profileId, "学生档案编号")
+      return requestSidecar("workspace.restoreProfile", { profile_id: profileId })
+    })
+  })
 
   ipcMain.handle("sztu:workspace-create-document", async (event, document: unknown) => {
     assertTrustedSender(event)
@@ -1246,6 +1288,8 @@ function registerIpc(): void {
       await mkdir(path.dirname(marker), { recursive: true, mode: 0o700 })
       await removeCancellationMarker(marker)
       activePreviewCancellationFiles.set(input.requestId, marker)
+      let verificationStarted: number | undefined
+      const verificationContext = { ...activeDiagnosticContext, stage: "preview_verify", request_id: input.requestId }
       try {
         const result = await requestSidecar<unknown>(
           "preview.generate",
@@ -1257,6 +1301,7 @@ function registerIpc(): void {
           },
           120_000,
         )
+        verificationStarted = Date.now()
         if (!isRecord(result)) {
           throw new SidecarError("INVALID_SIDECAR_RESULT", "Sidecar returned an invalid preview.")
         }
@@ -1358,6 +1403,8 @@ function registerIpc(): void {
             ),
           })
         }
+        void sidecar?.request("diagnostic.finishPreview", { case_id: input.requestId }, 30_000).catch(() => undefined)
+        diagnostics?.record("diagnostic.step", "success", Date.now() - verificationStarted, undefined, verificationContext)
         return {
           schema_version: "1.0" as const,
           preview_id: result.preview_id,
@@ -1369,6 +1416,19 @@ function registerIpc(): void {
           checks: result.checks,
           generated_at: result.generated_at,
         }
+      } catch (error) {
+        if (verificationStarted !== undefined) {
+          await sidecar?.request("diagnostic.finishPreview", {
+            case_id: input.requestId,
+            error: { stack: error instanceof Error ? error.stack : String(error), code: stableDiagnosticErrorCode(error) },
+          }, 30_000).catch(() => undefined)
+          const failure = error instanceof SidecarError ? error : new SidecarError("PREVIEW_VERIFY_FAILED", "预览文件验证失败。")
+          failure.diagnosticCaseId = input.requestId
+          diagnostics?.record("diagnostic.step", "failure", Date.now() - verificationStarted,
+            stableDiagnosticErrorCode(error), verificationContext)
+          throw failure
+        }
+        throw error
       } finally {
         activePreviewCancellationFiles.delete(input.requestId)
         await removeCancellationMarker(marker)
@@ -1666,15 +1726,18 @@ async function requestSidecar<T>(
   const requestId = diagnosticContext({ request_id: params.request_id }).request_id ?? randomUUID()
   const operationContext = { ...activeDiagnosticContext, request_id: requestId }
   sidecar ??= new SidecarChannels(
-    new SidecarClient(backendRoot(), app.getPath("userData"), undefined, { role: "control", retryRequests: false }),
-    new SidecarClient(backendRoot(), app.getPath("userData"), undefined, { role: "render", retryRequests: false }),
+    new SidecarClient(backendRoot(), app.getPath("userData"), undefined, { role: "control", retryRequests: false, appVersion: app.getVersion() }),
+    new SidecarClient(backendRoot(), app.getPath("userData"), undefined, { role: "render", retryRequests: false, appVersion: app.getVersion() }),
     app.getPath("userData"),
   )
   try {
-    const result = await sidecar.request<T>(method, params, timeoutMs)
+    const result = await sidecar.request<T>(method, params, timeoutMs, ({ outcome, duration_ms, error_code, ...context }) => {
+      if (outcome === "started") return
+      diagnostics?.record("diagnostic.step", outcome, duration_ms, error_code, { ...operationContext, ...context })
+    })
     if (method === "workspace.saveProfile" || method === "workspace.saveProfileDraft") {
       telemetry?.setAcademicProfile(params.profile)
-    } else if (["workspace.open", "workspace.selectDocument", "workspace.deleteDocument", "workspace.restoreDocument", "workspace.purgeDocument"].includes(method)) {
+    } else if (["workspace.open", "workspace.createProfile", "workspace.selectProfile", "workspace.deleteProfile", "workspace.restoreProfile", "workspace.selectDocument", "workspace.deleteDocument", "workspace.restoreDocument", "workspace.purgeDocument"].includes(method)) {
       const snapshot = result as Record<string, unknown> | null
       telemetry?.setAcademicProfile(snapshot?.profile_draft ?? snapshot?.profile)
     } else if (method === "workspace.closeTemporary") {
@@ -1683,15 +1746,33 @@ async function requestSidecar<T>(
     if (result && typeof result === "object") {
       const snapshot = result as Record<string, unknown>
       const document = (snapshot.document ?? (method === "workspace.saveDraft" || method === "workspace.createDocument" ? snapshot : null)) as Record<string, unknown> | null
-      if (["workspace.open", "workspace.selectDocument", "workspace.deleteDocument", "workspace.restoreDocument", "workspace.purgeDocument"].includes(method) || method === "workspace.closeTemporary") activeDiagnosticContext = {}
+      if (["workspace.open", "workspace.createProfile", "workspace.selectProfile", "workspace.deleteProfile", "workspace.restoreProfile", "workspace.selectDocument", "workspace.deleteDocument", "workspace.restoreDocument", "workspace.purgeDocument"].includes(method) || method === "workspace.closeTemporary") activeDiagnosticContext = {}
       if (document) activeDiagnosticContext = diagnosticContext({ document_type: document.document_type, structure: documentStructure(document.content) })
     }
-    diagnostics?.record(method as DiagnosticOperation, "success", Date.now() - startedAt, undefined, { ...activeDiagnosticContext, request_id: requestId })
+    const envelope = isRecord(result) ? result : undefined
+    const checks = Array.isArray(envelope?.checks) ? envelope.checks : []
+    const failedCheck = method === "document.check"
+      ? checks.find(check => isRecord(check) && check.status !== "pass")
+      : undefined
+    const rejected = failedCheck !== undefined || (method === "environment.check" && envelope?.ready === false)
+    diagnostics?.record(
+      method as DiagnosticOperation, rejected ? "failure" : "success", Date.now() - startedAt,
+      isRecord(failedCheck) && typeof failedCheck.code === "string" ? failedCheck.code :
+        rejected ? (method === "document.check" ? "CONTENT_CHECK_FAILED" : "ENVIRONMENT_NOT_READY") : undefined,
+      {
+        ...(method === "document.check" ? { stage: "content_validation" } : method === "environment.check" ? { stage: "environment_probe" } : {}),
+        ...activeDiagnosticContext, request_id: requestId,
+        ...diagnosticContext(isRecord(failedCheck) && isRecord(failedCheck.details) ? { field: failedCheck.details.field } : {}),
+      },
+    )
     return result
   } catch (error) {
+    if (error instanceof SidecarError && error.diagnosticCaseId) {
+      await sidecar.request("diagnostic.recover", { case_id: error.diagnosticCaseId }, 30_000).catch(() => undefined)
+    }
     diagnostics?.record(
       method as DiagnosticOperation,
-      "failure",
+      error instanceof SidecarError && ["EXPORT_CANCELLED", "PREVIEW_CANCELLED", "REQUEST_CANCELLED"].includes(error.code) ? "cancelled" : "failure",
       Date.now() - startedAt,
       stableDiagnosticErrorCode(error),
       {

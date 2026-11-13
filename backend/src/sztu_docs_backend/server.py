@@ -5,9 +5,12 @@ from __future__ import annotations
 import json
 import logging
 import sys
+import os
 from collections.abc import Iterator
 from typing import IO, Any
 
+from .diagnostic_steps import emitter
+from .full_diagnostics import CAPTURE_METHODS, Case, capture_engine_stderr, current_case, record_machine
 from .errors import DUPLICATE_REQUEST_ID, MESSAGE_TOO_LARGE
 from .protocol import ProtocolSession, canonical_request_id, error_response
 
@@ -54,6 +57,7 @@ def _bounded_lines(input_stream: IO[str]) -> Iterator[tuple[str | None, bool]]:
 
 def serve(input_stream: IO[str], output_stream: IO[str]) -> None:
     session = ProtocolSession()
+    capture_enabled = bool(os.environ.get("SZTU_DOCS_DATA_DIR"))
     seen_request_ids: set[str] = set()
     try:
         for raw_line, too_large in _bounded_lines(input_stream):
@@ -109,7 +113,46 @@ def serve(input_stream: IO[str], output_stream: IO[str]) -> None:
                 continue
             if canonical_id is not None:
                 seen_request_ids.add(canonical_id)
-            _write_response(output_stream, session.dispatch(payload))
+            def emit_step(value: dict[str, Any]) -> None:
+                capture = current_case.get()
+                if capture is not None:
+                    capture.stage(value)
+                _write_response(output_stream, {
+                    "protocol": "1.0", "event": "request.diagnostic",
+                    "request_id": canonical_id, "step": value,
+                })
+
+            token = emitter.set(emit_step if canonical_id is not None and isinstance(payload, dict) and payload.get("diagnostics") is True else None)
+            try:
+                # Opt in at the transport boundary; older clients keep their
+                # one-response protocol and existing result shapes.
+                request = {key: value for key, value in payload.items() if key != "diagnostics"} if isinstance(payload, dict) and payload.get("diagnostics") is True else payload
+                method = request.get("method") if isinstance(request, dict) else None
+                case = None
+                if capture_enabled and canonical_id is not None and isinstance(method, str) and method in CAPTURE_METHODS and request is not payload:
+                    capture_id = canonical_request_id(request.get("params", {}).get("request_id")) if isinstance(request.get("params"), dict) and method == "preview.generate" else None
+                    case = Case(capture_id or canonical_id, method)
+                    case.write("request.json", raw_line.encode("utf-8"))
+                    record_machine(case)
+                capture_token = current_case.set(case)
+                try:
+                    with capture_engine_stderr(case):
+                        response = session.dispatch(request)
+                    if case is not None:
+                        try:
+                            case.finish(response, defer_success=method == "preview.generate" and capture_id is not None)
+                        except OSError:
+                            LOGGER.error("Unable to finish local diagnostic case.")
+                    if case is not None and (case.failed or method == "diagnostic.prepare") and (case.path / "manifest.json").is_file():
+                        if response["ok"] and isinstance(response.get("result"), dict):
+                            response["result"]["diagnostic_case_id"] = case.case_id
+                        elif not response["ok"]:
+                            response["error"].setdefault("details", {})["diagnostic_case_id"] = case.case_id
+                    _write_response(output_stream, response)
+                finally:
+                    current_case.reset(capture_token)
+            finally:
+                emitter.reset(token)
     finally:
         session.close()
 

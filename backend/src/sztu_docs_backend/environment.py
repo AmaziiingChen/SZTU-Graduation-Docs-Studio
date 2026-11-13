@@ -349,15 +349,27 @@ def _check_tex_packages(
             "message": f"未找到 kpsewhich，无法检查{label}。",
             "details": {"kpsewhich": None, "missing": list(filenames)},
         }
+    from .full_diagnostics import current_case, record_exception
+
+    command = [kpsewhich, *filenames]
+    case = current_case.get()
+    prefix = None
+    if case is not None:
+        case.counter += 1
+        prefix = f"tools/{case.counter:03d}"
+        case.json(f"{prefix}/invocation.json", {"argv": command, "cwd": os.getcwd()})
     try:
         completed = subprocess.run(
-            [kpsewhich, *filenames],
+            command,
             check=False,
             capture_output=True,
-            text=True,
             timeout=15,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
+        if case is not None and prefix is not None and isinstance(exc, subprocess.TimeoutExpired):
+            case.write(f"{prefix}/stdout.bin", exc.output or b"")
+            case.write(f"{prefix}/stderr.bin", exc.stderr or b"")
+        record_exception(exc)
         return {
             "id": check_id,
             "required": required,
@@ -365,7 +377,12 @@ def _check_tex_packages(
             "message": f"{label}检查未完成。",
             "details": {"error_type": type(exc).__name__, "missing": list(filenames)},
         }
-    outputs = completed.stdout.splitlines()[: len(filenames)]
+    if case is not None and prefix is not None:
+        case.write(f"{prefix}/stdout.bin", completed.stdout)
+        case.write(f"{prefix}/stderr.bin", completed.stderr)
+        case.json(f"{prefix}/exit.json", {"exit_code": completed.returncode})
+    stdout = completed.stdout.decode("utf-8", errors="replace") if isinstance(completed.stdout, bytes) else completed.stdout
+    outputs = stdout.splitlines()[: len(filenames)]
     outputs.extend([""] * (len(filenames) - len(outputs)))
     missing = [
         filename
@@ -673,26 +690,40 @@ def _check_template_packs() -> dict[str, Any]:
 
 
 def check_environment() -> dict[str, Any]:
-    fonts = _font_index()
-    checks = [
-        _check_python(),
-        _check_temp_directory(),
-        _check_document_dependencies(),
-        _check_xelatex(),
-        _check_process_tex_packages(),
-        _check_thesis_toolchain(),
-        _check_thesis_tex_packages(),
-        _check_pdf_tools(),
-        _check_core_document_fonts(fonts),
-        _check_special_document_fonts(fonts),
-        _check_office_editor(),
-        _check_template_packs(),
-        _check_proposal_engine(),
-        _check_midterm_engine(),
-        _check_task_book_engine(),
-        *(_check_assessment_engine(kind) for kind in sorted(ASSESSMENT_DOCUMENT_TYPES)),
-        _check_task_book_docx_font(),
+    from .diagnostic_steps import step
+
+    with step("environment_font_discovery"):
+        fonts = _font_index()
+    probes = [
+        ("environment_python", _check_python),
+        ("environment_temp", _check_temp_directory),
+        ("environment_dependencies", _check_document_dependencies),
+        ("environment_tex_tool", _check_xelatex),
+        ("environment_tex_packages", _check_process_tex_packages),
+        ("environment_tex_tool", _check_thesis_toolchain),
+        ("environment_tex_packages", _check_thesis_tex_packages),
+        ("environment_pdf_tools", _check_pdf_tools),
+        ("environment_fonts", lambda: _check_core_document_fonts(fonts)),
+        ("environment_fonts", lambda: _check_special_document_fonts(fonts)),
+        ("environment_editor", _check_office_editor),
+        ("environment_template", _check_template_packs),
+        ("environment_template", _check_proposal_engine),
+        ("environment_template", _check_midterm_engine),
+        ("environment_template", _check_task_book_engine),
+        *(("environment_template", lambda kind=kind: _check_assessment_engine(kind)) for kind in sorted(ASSESSMENT_DOCUMENT_TYPES)),
+        ("environment_fonts", _check_task_book_docx_font),
     ]
+    checks = []
+    for name, probe in probes:
+        with step(name) as evidence:
+            check = probe()
+            checks.append(check)
+            evidence["check_id"] = check["id"]
+            if check["status"] != "pass":
+                evidence["outcome"] = "failure"
+                evidence["error_code"] = (
+                    "ENVIRONMENT_CHECK_FAILED" if check["status"] == "fail" else "ENVIRONMENT_CHECK_WARNING"
+                )
     ready = not any(
         check["required"] and check["status"] == "fail" for check in checks
     )

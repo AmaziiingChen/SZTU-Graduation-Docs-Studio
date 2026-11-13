@@ -1,6 +1,7 @@
 import { createHash, createPublicKey, randomUUID, verify } from "node:crypto"
 import { mkdir, open, rename, stat, unlink } from "node:fs/promises"
 import path from "node:path"
+import type { DiagnosticContext } from "./diagnostic-context.js"
 
 export const UPDATE_INTERVAL_MS = 30 * 60 * 1000
 const MAX_MANIFEST_BYTES = 128 * 1024
@@ -326,6 +327,7 @@ export class UpdateService {
       publicKeyPem?: string
       fetchImpl?: FetchLike
       now?: () => Date
+      onDiagnostic?: (outcome: "success" | "failure", duration: number, code: string | undefined, context: DiagnosticContext) => void
       onOutcome?: (
         outcome: "up_to_date" | "available" | "downloaded" | "failed",
         version?: string,
@@ -376,6 +378,10 @@ export class UpdateService {
       state: "checking",
       ...(this.currentControl ? { control: this.currentControl } : {}),
     })
+    const requestId = randomUUID()
+    let stage = "manifest_fetch", started = Date.now()
+    const mark = (outcome: "success" | "failure", code?: string, reason?: string) =>
+      this.options.onDiagnostic?.(outcome, Date.now() - started, code, { stage, request_id: requestId, ...(reason ? { reason } : {}) })
     try {
       const bytes = await this.fetchWithTimeout(this.options.manifestUrl, 10_000, async (response, signal) => {
         if (!response.ok || !response.body) throw new Error("Manifest request failed.")
@@ -395,6 +401,9 @@ export class UpdateService {
           return Buffer.concat(chunks, size)
         } finally { void reader.cancel().catch(() => undefined); reader.releaseLock() }
       })
+      mark("success")
+      stage = "manifest_verify"
+      started = Date.now()
       let manifest: UpdateManifestPayload
       try {
         manifest = parseAndVerifyManifest(
@@ -402,6 +411,7 @@ export class UpdateService {
           this.options.publicKeyPem,
         )
       } catch {
+        mark("failure", "MANIFEST_INVALID")
         this.setStatus({ state: "error", code: "MANIFEST_INVALID", ...(this.currentControl ? { control: this.currentControl } : {}) })
         await this.options.onOutcome?.("failed")
         return this.status
@@ -415,11 +425,13 @@ export class UpdateService {
             this.options.now?.() ?? new Date(),
           )
         } catch {
+          mark("failure", "MANIFEST_INVALID")
           this.setStatus({ state: "error", code: "MANIFEST_INVALID", ...(this.currentControl ? { control: this.currentControl } : {}) })
           await this.options.onOutcome?.("failed")
           return this.status
         }
       }
+      mark("success")
       this.currentControl = control
       if (compareSemver(manifest.version, this.options.currentVersion) <= 0 ||
           (manifest.schema_version === "2.0" && manifest.artifacts.length === 0)) {
@@ -432,11 +444,14 @@ export class UpdateService {
         await this.options.onOutcome?.("up_to_date")
         return this.status
       }
+      stage = "platform_match"
+      started = Date.now()
       const artifact = manifest.artifacts.find(
         (item) =>
           item.platform === this.options.platform && item.arch === this.options.arch,
       )
       if (!artifact) throw new Error("No update artifact for this platform.")
+      mark("success")
       if (
         this.downloadedVersion === manifest.version &&
         this.downloadedSha256 === artifact.sha256 &&
@@ -464,6 +479,7 @@ export class UpdateService {
       if (!alreadyKnown) await this.options.onOutcome?.("available", manifest.version)
       return this.status
     } catch {
+      mark("failure", "CHECK_FAILED", stage === "platform_match" ? "artifact_unavailable" : "network_failure")
       this.setStatus({ state: "error", code: "CHECK_FAILED", ...(this.currentControl ? { control: this.currentControl } : {}) })
       await this.options.onOutcome?.("failed")
       return this.status
@@ -478,14 +494,25 @@ export class UpdateService {
     this.downloading = true
     const control = this.currentControl
     this.setStatus({ state: "downloading", version, downloadedBytes: 0, sizeBytes: artifact.size_bytes, phase: "transferring", ...(control ? { control } : {}) })
+    const requestId = randomUUID()
+    let stage = "update_download", started = Date.now()
+    let reason = "transfer_failed"
+    const advance = (next: string) => {
+      this.options.onDiagnostic?.("success", Date.now() - started, undefined, { stage, request_id: requestId })
+      stage = next
+      started = Date.now()
+      reason = next === "update_verify" ? "hash_mismatch" : "output_write_failed"
+    }
     try {
-      this.downloadedPath = await this.downloadArtifact(version, artifact)
+      this.downloadedPath = await this.downloadArtifact(version, artifact, advance, value => { reason = value })
+      this.options.onDiagnostic?.("success", Date.now() - started, undefined, { stage, request_id: requestId })
       this.downloadedVersion = version
       this.downloadedSha256 = artifact.sha256
       this.downloadedAt = (this.options.now?.() ?? new Date()).toISOString()
       this.setStatus({ state: "downloaded", version, downloadedAt: this.downloadedAt, ...(control ? { control } : {}) })
       await this.options.onOutcome?.("downloaded", version)
     } catch {
+      this.options.onDiagnostic?.("failure", Date.now() - started, "UPDATE_DOWNLOAD_FAILED", { stage, request_id: requestId, reason })
       this.setStatus({ state: "available", version, sizeBytes: artifact.size_bytes, downloadFailed: true, ...(control ? { control } : {}) })
       await this.options.onOutcome?.("failed", version)
     } finally {
@@ -549,9 +576,15 @@ export class UpdateService {
   private async downloadArtifact(
     version: string,
     artifact: UpdateArtifact,
+    advance: (stage: string) => void,
+    classify: (reason: string) => void,
   ): Promise<string> {
     return this.fetchWithTimeout(artifact.url, 60_000, async (response, signal) => {
-      if (!response.ok || !response.body) throw new Error("Update download failed.")
+      if (!response.ok || !response.body) {
+        classify("http_rejected")
+        throw new Error("Update download failed.")
+      }
+      classify("output_write_failed")
       const directory = path.join(this.options.userDataPath, "updates")
       await mkdir(directory, { recursive: true, mode: 0o700 })
       if (signal.aborted) throw new Error("Update request timed out.")
@@ -568,13 +601,16 @@ export class UpdateService {
       const reader = response.body.getReader()
       try {
         while (true) {
+          classify("transfer_failed")
           const chunk = await this.readChunk(reader, signal)
           if (chunk.done) break
           size += chunk.value.byteLength
           if (size > artifact.size_bytes || size > MAX_ARTIFACT_BYTES) {
+            classify("size_mismatch")
             throw new Error("Update artifact exceeded the signed size.")
           }
           hash.update(chunk.value)
+          classify("output_write_failed")
           await handle.write(chunk.value)
           const now = Date.now()
           if (now - lastProgressAt >= 200 || size === artifact.size_bytes) {
@@ -584,9 +620,12 @@ export class UpdateService {
         }
         await handle.close()
         this.setStatus({ state: "downloading", version, downloadedBytes: size, sizeBytes: artifact.size_bytes, phase: "verifying", ...(this.currentControl ? { control: this.currentControl } : {}) })
+        advance("update_verify")
         if (size !== artifact.size_bytes || hash.digest("hex") !== artifact.sha256) {
+          classify(size !== artifact.size_bytes ? "size_mismatch" : "hash_mismatch")
           throw new Error("Update artifact integrity verification failed.")
         }
+        advance("update_write")
         if (signal.aborted) throw new Error("Update request timed out.")
         // Replace the existing cache only after complete signature-bound verification.
         await rename(temporary, target)

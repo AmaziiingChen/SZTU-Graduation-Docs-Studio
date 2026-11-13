@@ -1,4 +1,7 @@
 import { EventEmitter } from "node:events"
+import { mkdtempSync, readFileSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import path from "node:path"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { SidecarClient } from "../electron/sidecar-client"
 
@@ -13,16 +16,32 @@ class FakeChild extends EventEmitter {
   exitCode: number | null = null
   signalCode: string | null = null
   kill = vi.fn((_signal?: string) => { this.killed = true; return true })
-  finish() { this.exitCode = 0; this.emit("exit", 0, null) }
+  finish() { this.exitCode = 0; this.emit("exit", 0, null); this.emit("close", 0, null) }
   id() { return JSON.parse(this.stdin.write.mock.calls.at(-1)![0]).id as string }
-  success(result: unknown) { this.stdout.emit("data", `${JSON.stringify({ protocol: "1.0", id: this.id(), ok: true, result })}\n`) }
-  cancelled() { this.stdout.emit("data", `${JSON.stringify({ protocol: "1.0", id: this.id(), ok: false, error: { code: "EXPORT_CANCELLED", message: "cancelled" } })}\n`) }
+  success(result: unknown) { this.stdout.emit("data", Buffer.from(`${JSON.stringify({ protocol: "1.0", id: this.id(), ok: true, result })}\n`)) }
+  cancelled() { this.stdout.emit("data", Buffer.from(`${JSON.stringify({ protocol: "1.0", id: this.id(), ok: false, error: { code: "EXPORT_CANCELLED", message: "cancelled" } })}\n`)) }
 }
 
 beforeEach(() => { vi.useFakeTimers(); mock.spawn.mockReset() })
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers() })
 
 describe("sidecar deadlines and confirmed process termination", () => {
+  it("retains the raw malformed protocol line for an isolated request", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "sztu-protocol-fault-"))
+    try {
+      const child = new FakeChild()
+      mock.spawn.mockReturnValue(child)
+      const client = new SidecarClient("/backend", root, "python", { retryRequests: false })
+      const request = client.request("document.check", {}, 100, { onDiagnostic: vi.fn() })
+      const malformed = Buffer.from([0xff, 0xfe, 10])
+      child.stdout.emit("data", malformed)
+      await expect(request).rejects.toMatchObject({ code: "INVALID_SIDECAR_JSON", diagnosticCaseId: child.id() })
+      expect(readFileSync(path.join(root, "diagnostics", "full", child.id(), "engine-protocol-fragment.bin"))).toEqual(malformed)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it("does not reject a queued draft until the control worker has exited", async () => {
     const child = new FakeChild(); mock.spawn.mockReturnValue(child)
     const client = new SidecarClient("/backend", "/data", "python", { role: "control", retryRequests: false })

@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from .environment import check_environment
+from .diagnostic_steps import checkpoint, step
 from .exporter import (
     build_export_document,
     capture_export_source,
@@ -24,6 +25,7 @@ from .exporter import (
     list_export_history,
     preflight_export,
     record_qa,
+    resolve_engine,
     resolve_artifact,
     run_export,
 )
@@ -35,7 +37,8 @@ from .errors import (
     WORKSPACE_NOT_OPEN,
     ProtocolError,
 )
-from .storage import StorageError, Workspace
+from .storage import StorageError, ValidationError, Workspace
+from .full_diagnostics import current_case, finalize_desktop_case, record_exception, record_input, recover_interrupted_case
 from .template_engine import TemplateEngineError, install_engine, sha256_file
 from .version import BACKEND_VERSION, PROTOCOL_VERSION
 
@@ -53,6 +56,16 @@ STORAGE_MESSAGES = {
 }
 
 
+def _trusted_trace_module(frame: Any) -> str | None:
+    # Frozen code objects use relative paths; module identity survives packaging.
+    module = frame.f_globals.get("__name__")
+    if not isinstance(module, str) or not module.startswith("sztu_docs_backend."):
+        return None
+    name = module.rsplit(".", 1)[-1] + ".py"
+    allowed = {"protocol.py", "exporter.py", "docx_inspector.py", "template_engine.py", "storage.py", "validation.py", "environment.py", "database.py", "workspace.py", "profiles.py", "profile_drafts.py", "documents.py"}
+    return name if name in allowed else None
+
+
 def _diagnostic_details(exc: Exception, details: dict[str, Any] | None = None) -> dict[str, Any]:
     result = dict(details or {})
     frames: list[dict[str, Any]] = []
@@ -63,18 +76,16 @@ def _diagnostic_details(exc: Exception, details: dict[str, Any] | None = None) -
         seen.add(id(current))
         trace = current.__traceback__
         while trace is not None:
-            source = Path(trace.tb_frame.f_code.co_filename)
-            if source.parent == Path(__file__).parent and source.name in {
-                "protocol.py", "exporter.py", "docx_inspector.py", "template_engine.py", "storage.py", "validation.py"
-            }:
-                frames.append({"module": source.name, "line": trace.tb_lineno})
-                if source.name == "docx_inspector.py":
+            source = _trusted_trace_module(trace.tb_frame)
+            if source is not None:
+                frames.append({"module": source, "line": trace.tb_lineno})
+                if source == "docx_inspector.py":
                     stage = "docx_inspection"
-                elif source.name == "storage.py":
+                elif source in {"storage.py", "database.py", "workspace.py", "profiles.py", "profile_drafts.py", "documents.py"}:
                     stage = "storage"
-                elif source.name == "template_engine.py":
+                elif source == "template_engine.py":
                     stage = "template"
-                elif source.name == "exporter.py":
+                elif source == "exporter.py":
                     stage = {
                         "content_check": "content_validation", "validate_document": "content_validation",
                         "_run": "external_render", "_check_pdf": "pdf_validation",
@@ -86,7 +97,7 @@ def _diagnostic_details(exc: Exception, details: dict[str, Any] | None = None) -
     for frame_exc in [exc, exc.__cause__]:
         trace = frame_exc.__traceback__ if frame_exc else None
         while trace is not None:
-            if Path(trace.tb_frame.f_code.co_filename) == Path(__file__).with_name("exporter.py"):
+            if _trusted_trace_module(trace.tb_frame) == "exporter.py":
                 descriptor = trace.tb_frame.f_locals.get("descriptor")
                 version = getattr(descriptor, "version", None)
                 if isinstance(version, str) and re.fullmatch(r"\d{1,4}\.\d{1,4}(?:\.\d{1,4})?(?:\+(?:workspace\.)?[0-9a-f]{7,64})?", version):
@@ -194,7 +205,8 @@ def _version(params: dict[str, Any]) -> dict[str, Any]:
 
 def _environment(params: dict[str, Any]) -> dict[str, Any]:
     _no_params(params)
-    return check_environment()
+    with step("environment_probe"):
+        return check_environment()
 
 
 SYSTEM_METHODS: dict[str, Method] = {
@@ -342,6 +354,7 @@ class ProtocolSession:
     def __init__(self) -> None:
         self.workspace: Workspace | None = None
         self.mode: str | None = None
+        self.all_documents = False
         self.preflight_tokens: dict[str, dict[str, Any]] = {}
         self.render_only = os.environ.get("SZTU_DOCS_SIDECAR_ROLE") == "render"
         # The Electron control process owns one startup recovery. A render
@@ -359,12 +372,41 @@ class ProtocolSession:
             handler = SYSTEM_METHODS.get(method)
             if handler is not None:
                 result = handler(params)
+            elif method == "diagnostic.prepare":
+                result = self._prepare_diagnostic(params)
             else:
-                result = self._dispatch_workspace(method, params)
+                if method in {"diagnostic.recover", "diagnostic.finishPreview"}:
+                    _shape_params(params, required={"case_id"}, optional={"error"} if method == "diagnostic.finishPreview" else None)
+                    case_id = _string_param(params, "case_id")
+                    if canonical_request_id(case_id) != case_id:
+                        raise ProtocolError(INVALID_PARAMS, "故障包编号无效。")
+                    if method == "diagnostic.finishPreview":
+                        error = params.get("error")
+                        if error is not None and not isinstance(error, dict):
+                            raise ProtocolError(INVALID_PARAMS, "故障详情无效。")
+                        finalize_desktop_case(case_id, error=error)
+                    else:
+                        recover_interrupted_case(case_id)
+                    return success_response(request_id, {"recovered": True})
+                stage = {
+                    "workspace.open": "workspace_open", "workspace.saveProfileDraft": "profile_save",
+                    "workspace.saveProfile": "profile_save", "workspace.createProfile": "profile_save",
+                    "workspace.selectProfile": "profile_select", "workspace.saveDraft": "draft_save",
+                    "workspace.deleteProfile": "profile_save", "workspace.restoreProfile": "profile_save",
+                    "workspace.createDocument": "document_create", "workspace.selectDocument": "document_select",
+                    "workspace.listDocuments": "document_list", "template.install": "template",
+                }.get(method)
+                if stage:
+                    with step(stage):
+                        result = self._dispatch_workspace(method, params)
+                else:
+                    result = self._dispatch_workspace(method, params)
             return success_response(request_id, result)
         except ProtocolError as exc:
+            record_exception(exc)
             return error_response(request_id, exc.code, exc.message, _diagnostic_details(exc, exc.details))
         except StorageError as exc:
+            record_exception(exc)
             return error_response(
                 request_id,
                 exc.code,
@@ -372,10 +414,13 @@ class ProtocolSession:
                 _diagnostic_details(exc, _safe_storage_details(exc.details)),
             )
         except ExportError as exc:
+            record_exception(exc)
             return error_response(request_id, exc.code, exc.message, _diagnostic_details(exc, exc.details))
         except TemplateEngineError as exc:
+            record_exception(exc)
             return error_response(request_id, exc.code, exc.message, _diagnostic_details(exc, exc.details))
         except Exception as exc:
+            record_exception(exc)
             LOGGER.error("Unhandled protocol error (%s)", type(exc).__name__)
             return error_response(
                 request_id, "INTERNAL_ERROR", "An internal error occurred.", _diagnostic_details(exc)
@@ -390,6 +435,10 @@ class ProtocolSession:
             "workspace.close": self._workspace_close,
             "workspace.saveProfileDraft": self._save_profile_draft,
             "workspace.saveProfile": self._save_profile,
+            "workspace.createProfile": self._create_profile,
+            "workspace.selectProfile": self._select_profile,
+            "workspace.deleteProfile": self._delete_profile,
+            "workspace.restoreProfile": self._restore_profile,
             "workspace.createDocument": self._create_document,
             "workspace.listDocuments": self._list_documents,
             "workspace.selectDocument": self._select_document,
@@ -439,7 +488,7 @@ class ProtocolSession:
         return workspace.bind_unassigned_profile(profile_id)
 
     def _workspace_open(self, params: dict[str, Any]) -> dict[str, Any]:
-        _shape_params(params, required={"mode"}, optional={"initialize_reference"})
+        _shape_params(params, required={"mode"}, optional={"initialize_reference", "all_documents"})
         initialize_reference = params.get("initialize_reference", False)
         if not isinstance(initialize_reference, bool):
             raise ProtocolError(
@@ -468,6 +517,10 @@ class ProtocolSession:
             # particular, do not call _selection while the control process is
             # saving or changing its own selection.
             return {"mode": "persistent", "render_ready": True}
+        all_documents = params.get("all_documents", self.all_documents)
+        if not isinstance(all_documents, bool):
+            raise ProtocolError(INVALID_PARAMS, "文档列表范围无效。")
+        self.all_documents = all_documents
         if self.workspace is not None and self.mode == mode:
             return self._selection()
         if self.workspace is not None and self.mode == "persistent" and mode == "temporary":
@@ -508,33 +561,113 @@ class ProtocolSession:
     def _save_profile(self, params: dict[str, Any]) -> dict[str, Any]:
         _shape_params(params, required={"profile"})
         workspace = self._require_workspace()
-        profile = workspace.save_profile(_object_param(params, "profile"))
-        self._bind_unassigned_documents(workspace, profile["id"])
+        payload = _object_param(params, "profile")
         active = workspace.load_active()
-        active_document = active.get("document")
+        current = active["profile"]
+        expected = current["id"] if current else None
+        if payload.get("id") != expected:
+            raise ProtocolError("PROFILE_SELECTION_CHANGED", "当前学生档案已切换，请重新加载后保存。")
+        first_profile = (
+            current is None
+            and not workspace.list_profiles(limit=1)
+            and not workspace.profiles.list_summaries(deleted=True)
+        )
+        if current is None and not first_profile:
+            raise ProtocolError("PROFILE_SELECTION_CHANGED", "请先选择要保存的学生档案。")
+        profile = workspace.save_profile(payload)
+        if first_profile:
+            # Keep the original single-student first-use flow. Switching to an
+            # existing or additional student never claims legacy drafts.
+            self._bind_unassigned_documents(workspace, profile["id"])
+        active_document = active["document"]
         document_id = None
-        if isinstance(active_document, dict):
-            active_profile_id = active_document.get("profile_id")
-            if active_profile_id is None:
-                active_document = workspace.assign_profile(
-                    active_document["id"], profile["id"]
-                )
-                document_id = active_document["id"]
-            elif active_profile_id == profile["id"]:
-                document_id = active_document.get("id")
+        if isinstance(active_document, dict) and (
+            active_document["profile_id"] == profile["id"]
+            or (first_profile and active_document["profile_id"] is None)
+        ):
+            document_id = active_document["id"]
         workspace.save_active(profile_id=profile["id"], document_id=document_id)
         return profile
 
-    def _save_profile_draft(self, params: dict[str, Any]) -> dict[str, Any]:
+    def _create_profile(self, params: dict[str, Any]) -> dict[str, Any]:
         _shape_params(params, required={"profile"})
-        return self._require_workspace().save_profile_draft(
-            _object_param(params, "profile")
-        )
+        workspace = self._require_workspace()
+        if self.mode != "persistent":
+            raise ProtocolError(INVALID_PARAMS, "临时工作区不支持添加学生档案。")
+        payload = _object_param(params, "profile")
+        if len(workspace.list_profiles(limit=500)) == 500:
+            raise ProtocolError("PROFILE_LIMIT_REACHED", "本机最多保存 500 份学生档案。")
+        if "id" in payload:
+            raise ProtocolError(INVALID_PARAMS, "新增档案不能指定已有档案编号。")
+        try:
+            profile = workspace.save_profile(payload)
+        except ValidationError as exc:
+            if exc.details == {"field": "student_number", "reason": "must_be_unique"}:
+                if workspace.profiles.has_deleted_student_number(payload["student_number"].strip()):
+                    raise ProtocolError("PROFILE_IN_TRASH", "此学号的档案在「已删除档案」中，请恢复原档案。") from exc
+                raise ProtocolError("PROFILE_NUMBER_IN_USE", "此学号已有学生档案。") from exc
+            raise
+        workspace.save_active(profile_id=profile["id"], document_id=None)
+        return self._selection()
+
+    def _select_profile(self, params: dict[str, Any]) -> dict[str, Any]:
+        _shape_params(params, required={"profile_id"})
+        workspace = self._require_workspace()
+        profile_id = params["profile_id"]
+        if profile_id is not None:
+            profile_id = _string_param(params, "profile_id")
+            workspace.get_profile(profile_id)
+        workspace.save_active(profile_id=profile_id, document_id=None)
+        return self._selection()
+
+    def _delete_profile(self, params: dict[str, Any]) -> dict[str, Any]:
+        _shape_params(params, required={"profile_id"})
+        workspace = self._require_workspace()
+        profile_id = _string_param(params, "profile_id")
+        current = workspace.load_active(include_document=False)["profile"]
+        if current is None or current["id"] != profile_id:
+            raise ProtocolError("PROFILE_SELECTION_CHANGED", "当前学生档案已切换，请重新选择要删除的学生。")
+        workspace.profiles.soft_delete(profile_id)
+        return self._selection()
+
+    def _restore_profile(self, params: dict[str, Any]) -> dict[str, Any]:
+        _shape_params(params, required={"profile_id"})
+        workspace = self._require_workspace()
+        profile_id = _string_param(params, "profile_id")
+        if len(workspace.list_profiles(limit=500)) == 500:
+            raise ProtocolError("PROFILE_LIMIT_REACHED", "本机最多使用 500 份学生档案，请先删除一份再恢复。")
+        workspace.profiles.restore(profile_id)
+        workspace.save_active(profile_id=profile_id, document_id=None)
+        return self._selection()
+
+    def _save_profile_draft(self, params: dict[str, Any]) -> dict[str, Any]:
+        _shape_params(params, required={"profile"}, optional={"profile_id"})
+        workspace = self._require_workspace()
+        active = workspace.load_active()["profile"]
+        expected = active["id"] if active else None
+        if "profile_id" in params and params["profile_id"] != expected:
+            raise ProtocolError("PROFILE_SELECTION_CHANGED", "当前学生档案已切换，请重新加载后保存。")
+        return workspace.save_profile_draft(_object_param(params, "profile"), profile_id=expected)
+
+    @staticmethod
+    def _require_visible_document(workspace: Workspace, document_id: str, *, deleted: bool = False) -> dict[str, Any]:
+        document = workspace.documents.get(document_id, include_deleted=deleted)
+        if document["profile_id"] is not None:
+            workspace.get_profile(document["profile_id"])
+        return document
+
+    def _require_active_document_scope(self, workspace: Workspace, document_id: str, *, deleted: bool = False) -> dict[str, Any]:
+        document = workspace.documents.get(document_id, include_deleted=deleted)
+        active = workspace.load_active(include_document=False)["profile"]
+        if document["profile_id"] != (active["id"] if active else None):
+            raise ProtocolError("DOCUMENT_PROFILE_MISMATCH", "此文档不属于当前学生档案。")
+        return document
 
     def _create_document(self, params: dict[str, Any]) -> dict[str, Any]:
         _shape_params(params, required={"document"})
         workspace = self._require_workspace()
         payload = _object_param(params, "document")
+
         document_type = payload.get("document_type")
         if document_type not in {"proposal", "midterm", "task_book", "thesis", "advisor_review", "reviewer_review", "defense_record", "grade_assessment"}:
             raise ProtocolError(
@@ -551,8 +684,11 @@ class ProtocolSession:
     def _rename_document(self, params: dict[str, Any]) -> dict[str, Any]:
         _shape_params(params, required={"document_id", "title"})
         workspace = self._require_workspace()
+        document_id = _string_param(params, "document_id")
+        document_scope = self._require_visible_document if self.all_documents else self._require_active_document_scope
+        document_scope(workspace, document_id)
         workspace.rename_document(
-            _string_param(params, "document_id"),
+            document_id,
             _string_param(params, "title"),
         )
         return self._selection()
@@ -563,9 +699,18 @@ class ProtocolSession:
             required={"profile_id", "deleted"},
             optional={"cursor", "limit"},
         )
-        return self._require_workspace().list_document_page(
-            profile_id=params["profile_id"],
+        workspace = self._require_workspace()
+        active = workspace.load_active()["profile"]
+        profile_id = params["profile_id"]
+        if profile_id is not None and (not isinstance(profile_id, str) or not profile_id or len(profile_id) > 128):
+            raise ValidationError("profile_id", "must_be_text")
+        if profile_id != (None if self.all_documents else (active["id"] if active else None)):
+            raise ProtocolError("PROFILE_SELECTION_CHANGED", "当前学生档案已切换，请重新读取文档列表。")
+        return workspace.list_document_page(
+            profile_id=profile_id,
             deleted=params["deleted"],
+            unassigned_only=profile_id is None and not self.all_documents,
+            active_owners_only=self.all_documents,
             cursor=params.get("cursor"),
             limit=params.get("limit", 100),
         )
@@ -573,13 +718,19 @@ class ProtocolSession:
     def _delete_document(self, params: dict[str, Any]) -> dict[str, Any]:
         _shape_params(params, required={"document_id"})
         workspace = self._require_workspace()
-        workspace.delete_document(_string_param(params, "document_id"))
+        document_id = _string_param(params, "document_id")
+        document_scope = self._require_visible_document if self.all_documents else self._require_active_document_scope
+        document_scope(workspace, document_id, deleted=False)
+        workspace.delete_document(document_id)
         return self._selection()
 
     def _restore_document(self, params: dict[str, Any]) -> dict[str, Any]:
         _shape_params(params, required={"document_id"})
         workspace = self._require_workspace()
-        document = workspace.restore_document(_string_param(params, "document_id"))
+        document_id = _string_param(params, "document_id")
+        document_scope = self._require_visible_document if self.all_documents else self._require_active_document_scope
+        document_scope(workspace, document_id, deleted=True)
+        document = workspace.restore_document(document_id)
         workspace.save_active(
             profile_id=document["profile_id"], document_id=document["id"]
         )
@@ -588,26 +739,21 @@ class ProtocolSession:
     def _purge_document(self, params: dict[str, Any]) -> dict[str, Any]:
         _shape_params(params, required={"document_id"})
         workspace = self._require_workspace()
-        workspace.purge_document(_string_param(params, "document_id"))
+        document_id = _string_param(params, "document_id")
+        document_scope = self._require_visible_document if self.all_documents else self._require_active_document_scope
+        document_scope(workspace, document_id, deleted=True)
+        workspace.purge_document(document_id)
         return self._selection()
 
     def _select_document(self, params: dict[str, Any]) -> dict[str, Any]:
         _shape_params(params, required={"document_id"})
         workspace = self._require_workspace()
-        document = workspace.get_document(_string_param(params, "document_id"))
-        profile = None
-        if document.get("profile_id"):
-            profile = workspace.get_profile(document["profile_id"])
-        else:
-            active = workspace.load_active()
-            active_profile = active.get("profile")
-            if isinstance(active_profile, dict):
-                profile = active_profile
-                document = workspace.assign_profile(document["id"], profile["id"])
-        workspace.save_active(
-            profile_id=profile.get("id") if isinstance(profile, dict) else None,
-            document_id=document["id"],
+        document_id = _string_param(params, "document_id")
+        document = (
+            self._require_visible_document(workspace, document_id)
+            if self.all_documents else self._require_active_document_scope(workspace, document_id)
         )
+        workspace.save_active(profile_id=document["profile_id"], document_id=document["id"])
         return self._selection()
 
     def _save_draft(self, params: dict[str, Any]) -> dict[str, Any]:
@@ -618,6 +764,7 @@ class ProtocolSession:
         )
         workspace = self._require_workspace()
         document_id = _string_param(params, "document_id")
+        self._require_active_document_scope(workspace, document_id)
         content = _object_param(params, "content")
         expected_revision = _integer_param(params, "expected_revision")
         reason = params.get("reason", "auto")
@@ -662,16 +809,55 @@ class ProtocolSession:
     def _check_document(self, params: dict[str, Any]) -> dict[str, Any]:
         _shape_params(params, required={"document_id"})
         workspace = self._require_workspace()
-        document = workspace.get_document(_string_param(params, "document_id"))
+        document = self._require_active_document_scope(workspace, _string_param(params, "document_id"))
+        document, profile = capture_export_source(workspace, document["id"])
+        record_input("document-check-input.json", {"document": document, "profile": profile})
         try:
-            proposal: Any = build_export_document(workspace, document)
+            proposal: Any = build_export_document(workspace, document, profile_snapshot=profile)
         except ExportError as exc:
+            record_exception(exc)
             return {
                 "checks": [
                     failed_content_check(exc, str(document["document_type"]))
                 ]
             }
         return {"checks": [content_check(proposal, document["document_type"])]}
+
+    def _prepare_diagnostic(self, params: dict[str, Any]) -> dict[str, Any]:
+        _no_params(params)
+        case = current_case.get()
+        if case is None:
+            raise ProtocolError(INVALID_PARAMS, "当前无法创建完整诊断包。")
+        try:
+            record_input("environment.json", _environment({}))
+        except Exception as exc:
+            record_exception(exc)
+            case.missing.append("环境检查未完成")
+        if self.workspace is None:
+            case.missing.append("工作区尚未打开")
+            return {}
+        active = self.workspace.load_active()
+        document = active["document"]
+        profile = active["profile"]
+        if document is None or document["profile_id"] != (profile["id"] if profile else None):
+            record_input("profile.json", profile)
+            case.missing.append("没有打开可采集的文档")
+            return {}
+        document, profile = capture_export_source(self.workspace, document["id"])
+        document_type = document["document_type"]
+        try:
+            resolve_engine(document_type)
+        except ExportError as exc:
+            record_exception(exc)
+            case.missing.append("当前文档的模板不可用")
+        try:
+            proposal = build_export_document(self.workspace, document, profile_snapshot=profile)
+            record_input("renderer-input.json", proposal)
+            record_input("content-check.json", content_check(proposal, document_type))
+        except ExportError as exc:
+            record_exception(exc)
+            case.missing.append("当前文档未能生成渲染输入")
+        return {}
 
     def _generate_preview(self, params: dict[str, Any]) -> dict[str, Any]:
         _shape_params(
@@ -700,9 +886,11 @@ class ProtocolSession:
                 "Application version is invalid.",
                 {"field": "app_version"},
             )
+        document_id = _string_param(params, "document_id")
+        self._require_active_document_scope(workspace, document_id)
         return generate_preview(
             workspace,
-            document_id=_string_param(params, "document_id"),
+            document_id=document_id,
             request_id=request_id,
             cancellation_file=_string_param(params, "cancellation_file"),
             app_version=app_version,
@@ -771,7 +959,7 @@ class ProtocolSession:
             or preflight["formats"] != frozenset(formats)
         ):
             raise ExportError("PREFLIGHT_MISMATCH", "导出参数与最近一次预检不一致。")
-        document = workspace.get_document(document_id)
+        document = self._require_active_document_scope(workspace, document_id)
         if document["current_revision"] != preflight["document_revision"]:
             raise ExportError("PREFLIGHT_STALE", "草稿在预检后发生变化，请重新检查。")
         return run_export(
@@ -811,6 +999,7 @@ class ProtocolSession:
                 "Preview id must be a UUID.",
                 {"field": "preview_id"},
             )
+        self._require_active_document_scope(workspace, document_id)
         source_snapshot = capture_export_source(workspace, document_id)
         document = source_snapshot[0]
         result = preflight_export(
@@ -876,9 +1065,11 @@ class ProtocolSession:
             raise ProtocolError(
                 INVALID_PARAMS, "History limit must be between 1 and 100.", {"field": "limit"}
             )
+        document_id = _string_param(params, "document_id")
+        self._require_active_document_scope(workspace, document_id)
         result = list_export_history(
             workspace,
-            document_id=_string_param(params, "document_id"),
+            document_id=document_id,
             limit=limit,
         )
         safe_history: list[dict[str, Any]] = []
@@ -942,9 +1133,12 @@ class ProtocolSession:
 
     def _delete_export_history(self, params: dict[str, Any]) -> dict[str, Any]:
         _shape_params(params, required={"document_id", "export_id"})
+        workspace = self._require_workspace()
+        document_id = _string_param(params, "document_id")
+        self._require_active_document_scope(workspace, document_id)
         return delete_export_history_record(
-            self._require_workspace(),
-            document_id=_string_param(params, "document_id"),
+            workspace,
+            document_id=document_id,
             export_id=_string_param(params, "export_id"),
         )
 
@@ -952,15 +1146,14 @@ class ProtocolSession:
         _shape_params(params, required={"artifact_id"})
         workspace = self._require_workspace()
         artifact_id = _string_param(params, "artifact_id")
-        result = resolve_artifact(
-            workspace,
-            artifact_id=artifact_id,
-        )
-        artifact = workspace.database.connection.execute(
-            "SELECT format FROM export_artifacts WHERE id = ?", (artifact_id,)
-        ).fetchone()
+        artifact = workspace.database.connection.execute("""
+            SELECT a.format, j.document_id FROM export_artifacts a
+            JOIN export_jobs j ON j.id = a.export_job_id WHERE a.id = ?
+        """, (artifact_id,)).fetchone()
         if artifact is None or artifact["format"] not in {"docx", "pdf", "tex"}:
             raise ExportError("ARTIFACT_NOT_FOUND", "未找到可打开的导出文件。")
+        self._require_active_document_scope(workspace, artifact["document_id"])
+        result = resolve_artifact(workspace, artifact_id=artifact_id)
         return {
             **result,
             "format": artifact["format"],
@@ -1034,37 +1227,45 @@ class ProtocolSession:
         active = workspace.load_active()
         profile = active.get("profile")
         document = active.get("document")
-        if profile is None:
-            profiles = workspace.list_profiles(limit=1)
-            profile = profiles[0] if profiles else None
-        if document is None:
-            profile_id = profile.get("id") if isinstance(profile, dict) else None
-            documents = workspace.list_documents(profile_id=profile_id, limit=1)
-            if not documents and profile_id is not None:
-                documents = workspace.list_documents(limit=1)
-            document = workspace.get_document(documents[0]["id"]) if documents else None
-        if profile is None and isinstance(document, dict) and document.get("profile_id"):
-            profile = workspace.get_profile(document["profile_id"])
-        profile_id = profile.get("id") if isinstance(profile, dict) else None
-        if profile_id is not None:
-            assigned = self._bind_unassigned_documents(workspace, profile_id)
-            if assigned and isinstance(document, dict) and document.get("profile_id") is None:
-                document = workspace.get_document(document["id"])
-        documents_page = workspace.list_document_page(profile_id=profile_id)
-        if not documents_page["documents"] and profile_id is not None:
-            documents_page = workspace.list_document_page()
-        deleted_documents_page = workspace.list_document_page(profile_id=profile_id, deleted=True)
-        if not deleted_documents_page["documents"] and profile_id is not None:
-            deleted_documents_page = workspace.list_document_page(deleted=True)
-        if profile is not None or document is not None:
-            workspace.save_active(
-                profile_id=profile_id,
-                document_id=document.get("id") if isinstance(document, dict) else None,
+        profiles = workspace.profiles.list_summaries()
+        deleted_profiles = workspace.profiles.list_summaries(deleted=True)
+        # A deleted selection can be left behind by interruption. An explicit
+        # null selection still belongs to the unassigned workspace.
+        has_active = workspace.has_setting("workbench.active")
+        previous = workspace.get_setting("workbench.active")["value"] if has_active else None
+        deleted_selection = isinstance(previous, dict) and any(
+            previous.get("profile_id") == row["id"] for row in deleted_profiles
+        )
+        if profile is None and profiles and (not has_active or deleted_selection):
+            profile = workspace.get_profile(profiles[0]["id"])
+        profile_id = profile["id"] if profile else None
+        # The null selection is the explicit unassigned workspace, including
+        # on restart; it must never fall back to another student's documents.
+        if document is not None and document["profile_id"] != profile_id:
+            document = None
+        scoped_documents = workspace.list_document_page(profile_id=profile_id, unassigned_only=profile_id is None)
+        if document is None and scoped_documents["documents"]:
+            document = workspace.get_document(scoped_documents["documents"][0]["id"])
+        if self.all_documents:
+            documents_page = workspace.list_document_page(active_owners_only=True)
+            deleted_documents_page = workspace.list_document_page(deleted=True, active_owners_only=True)
+        else:
+            documents_page = scoped_documents
+            deleted_documents_page = workspace.list_document_page(
+                profile_id=profile_id, deleted=True, unassigned_only=profile_id is None
             )
+        if profile is not None or document is not None or deleted_selection:
+            workspace.save_active(profile_id=profile_id, document_id=document["id"] if document else None)
         return {
             "mode": self.mode,
             "profile": profile,
-            "profile_draft": workspace.load_profile_draft(),
+            "profiles": profiles,
+            "deleted_profiles": deleted_profiles,
+            "profile_draft": (
+                workspace.load_profile_draft(profile_id=profile_id)
+                if profile_id is not None or not (profiles or deleted_profiles)
+                else None
+            ),
             "document": document,
             "documents": documents_page["documents"],
             "deleted_documents": deleted_documents_page["documents"],

@@ -21,6 +21,8 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from .diagnostic_steps import checkpoint, emitter, failure_reason, step, traced
+from .full_diagnostics import capture_workspace, current_case, record_exception, record_input
 from .bibtex_gate import BibtexValidationError, count_valid_bibtex_entries
 from .storage.database import utc_now
 from .storage.paths import protect_private_file
@@ -160,9 +162,27 @@ def _allocate_output_filenames(
         version += 1
 
 
+@traced("template")
 def resolve_engine(document_type: str = "proposal") -> EngineDescriptor:
     try:
-        return _resolve_engine(document_type)
+        descriptor = _resolve_engine(document_type)
+        case = current_case.get()
+        if case is not None:
+            case.json(f"template-{document_type}.json", vars(descriptor))
+            from .template_engine import _workspace_source
+
+            if descriptor.root.parent.name == "templates":
+                selected = descriptor.root.parent.parent
+            else:
+                selected = descriptor.root
+            try:
+                source = _workspace_source(selected, document_type)
+                for name, candidate in source.files:
+                    case.file(f"templates/{document_type}/{name}", candidate)
+            except (TemplateEngineError, OSError):
+                case.missing.append(f"{document_type}: 无法取得已验证的模板文件清单")
+            case.file(f"templates/validation/{document_type}/{descriptor.validator.name}", descriptor.validator)
+        return descriptor
     except TemplateEngineError as exc:
         raise ExportError(exc.code, exc.message, exc.details) from exc
 
@@ -1808,6 +1828,7 @@ def _render_content_without_editor_state(
     }
 
 
+@traced("snapshot")
 def capture_export_source(
     workspace: Any, document_id: str
 ) -> tuple[dict[str, Any], dict[str, Any] | None]:
@@ -1827,6 +1848,37 @@ def capture_export_source(
             if isinstance(profile_id, str) and profile_id
             else None
         )
+    case = current_case.get()
+    if case is not None:
+        # A preview's internal temporary workspace creates a second document
+        # ID. Keep the real user revision as well as the internal renderer input.
+        prefix = "preview-render-" if workspace.is_temporary and case.method == "preview.generate" else ""
+        case.json(f"{prefix}document.json", record)
+        case.json(f"{prefix}profile.json", profile)
+        data_root = workspace.database.data_directory
+        if data_root is not None:
+            asset_root = data_root / "document-assets"
+            def copy_assets(value, *, figure_item=False):
+                if isinstance(value, dict):
+                    image = value.get("path")
+                    if (figure_item or value.get("type") in {"image", "figure"}) and isinstance(image, str):
+                        source = Path(image)
+                        if not source.is_absolute():
+                            source = asset_root / source
+                        if source.parent.resolve() == asset_root.resolve():
+                            case.file(f"document-assets/{source.name}", source)
+                        else:
+                            case.missing.append(f"文档引用的图片不在受管目录内: {image}")
+                    for key, child in value.items():
+                        if key == "items" and value.get("type") == "figure_group" and isinstance(child, list):
+                            for item in child:
+                                copy_assets(item, figure_item=True)
+                        else:
+                            copy_assets(child)
+                elif isinstance(value, list):
+                    for child in value:
+                        copy_assets(child)
+            copy_assets(record.get("content"))
     return record, profile
 
 
@@ -1942,6 +1994,7 @@ def content_check(
     *,
     engine: EngineDescriptor | None = None,
 ) -> dict[str, Any]:
+    record_input("renderer-input.json", document)
     checked_at = utc_now()
     try:
         validate_document(document_type, document)
@@ -1952,6 +2005,7 @@ def content_check(
                 engine or resolve_engine(document_type),
             )
     except ExportError as exc:
+        record_exception(exc)
         return failed_content_check(exc, document_type, checked_at=checked_at)
     return {
         "schema_version": "1.0",
@@ -2103,7 +2157,7 @@ def _require_task_book_docx_font(
     )
 
 
-def _terminate_process(process: subprocess.Popen[str]) -> None:
+def _terminate_process(process: subprocess.Popen[bytes]) -> None:
     if process.poll() is not None:
         return
     try:
@@ -2123,56 +2177,191 @@ def _terminate_process(process: subprocess.Popen[str]) -> None:
         process.wait(timeout=3)
 
 
+_TOOL_STAGES = {
+    "pdfinfo": "pdf_structure", "pdffonts": "pdf_fonts",
+    "pdftoppm": "preview_rasterize",
+}
+
+
+def _external_reason(output: str) -> str:
+    checks = (
+        (r"(?:LaTeX Error: File .* not found|I can't find file)", "dependency_missing"),
+        (r"fontspec Error|cannot be found.*font|missing.*font", "font_unavailable"),
+        (r"Undefined control sequence|Missing \$ inserted|Runaway argument", "tex_input_rejected"),
+        (r"Permission denied|Access is denied", "permission_denied"),
+        (r"No space left on device|disk full", "disk_full"),
+        (r"I can't write on file|Unable to write|Could not write", "output_write_failed"),
+    )
+    for pattern, reason in checks:
+        if re.search(pattern, output, flags=re.IGNORECASE):
+            return reason
+    return "tool_nonzero"
+
+
 def _run(
+    command: list[str], *, cwd: Path, timeout: int = RENDER_TIMEOUT_SECONDS,
+    cancellation_file: Path | None = None, environment: dict[str, str] | None = None,
+    diagnostic_stage: str | None = None,
+) -> str:
+    executable = Path(command[0]).stem.lower()
+    if executable in _TOOL_STAGES:
+        stage, tool = _TOOL_STAGES[executable], executable
+    elif diagnostic_stage:
+        stage, tool = diagnostic_stage, "python_renderer"
+    else:
+        stage, tool = "external_render", "other"
+    effective_env = _renderer_environment(environment)
+    resolved = shutil.which(command[0], path=effective_env.get("PATH"))
+    origin = "unresolved"
+    if resolved:
+        parts = {part.lower() for part in Path(resolved).parts}
+        origin = "bundled" if parts & {"offline-runtime", "runtimes"} or getattr(sys, "frozen", False) and Path(resolved) == Path(sys.executable) else "system"
+    with step(stage, tool=tool, tool_source=origin) as evidence:
+        if tool == "python_renderer":
+            evidence["tool_version"] = platform.python_version()
+        elif resolved and emitter.get() is not None and executable in _TOOL_STAGES:
+            case = current_case.get()
+            prefix = None
+            if case is not None:
+                case.counter += 1
+                prefix = f"tools/{case.counter:03d}"
+                case.json(f"{prefix}/invocation.json", {"argv": [resolved, "-v"], "cwd": str(cwd), "environment": effective_env})
+            try:
+                version_probe = subprocess.run([resolved, "-v"], cwd=cwd, env=effective_env,
+                    capture_output=True, timeout=1.5,
+                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+                if case is not None and prefix is not None:
+                    case.write(f"{prefix}/stdout.bin", version_probe.stdout)
+                    case.write(f"{prefix}/stderr.bin", version_probe.stderr)
+                    case.json(f"{prefix}/exit.json", {"exit_code": version_probe.returncode})
+                match = re.search(r"(?im)^" + executable + r" version (\d+(?:\.\d+){1,4})",
+                                  (version_probe.stdout + b"\n" + version_probe.stderr).decode("utf-8", errors="replace"))
+                if version_probe.returncode == 0 and match:
+                    evidence["tool_version"] = match.group(1)
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                if case is not None and prefix is not None:
+                    case.json(f"{prefix}/exit.json", {"exception": repr(exc)})
+                    if isinstance(exc, subprocess.TimeoutExpired):
+                        case.write(f"{prefix}/stdout.bin", exc.stdout or b"")
+                        case.write(f"{prefix}/stderr.bin", exc.stderr or b"")
+        return _run_process(command, cwd=cwd, timeout=timeout, cancellation_file=cancellation_file,
+                            environment=environment, evidence=evidence)
+
+
+def _deadline_requested(marker: Path) -> bool:
+    try:
+        with marker.open("rb") as stream:
+            return stream.read(16) == b"timeout\n"
+    except OSError:
+        return False
+
+
+def _run_process(
     command: list[str],
     *,
     cwd: Path,
     timeout: int = RENDER_TIMEOUT_SECONDS,
     cancellation_file: Path | None = None,
     environment: dict[str, str] | None = None,
+    evidence: dict[str, Any],
 ) -> str:
-    try:
-        process = subprocess.Popen(
-            command,
-            cwd=cwd,
-            env=_renderer_environment(environment),
-            shell=False,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            # Native Windows tools may emit legacy-encoded console diagnostics.
-            # A decode error in Popen's reader thread must not break communicate().
-            encoding="utf-8",
-            errors="replace",
-            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
-            start_new_session=os.name != "nt",
-        )
-    except OSError as exc:
-        raise ExportError(
-            "RENDER_START_FAILED",
-            "文档生成服务启动失败，请查看环境检查结果。",
-        ) from exc
+    effective_env = _renderer_environment(environment)
+    case = current_case.get()
+    tool_number = None
+    if case is not None:
+        case.counter += 1
+        tool_number = f"tools/{case.counter:03d}"
+        effective_env["SZTU_DOCS_RENDER_EVIDENCE_DIR"] = str(case.path / tool_number / "nested")
+        case.json(f"{tool_number}/invocation.json", {
+            "argv": command, "cwd": str(cwd), "environment": effective_env,
+            "resolved_executable": shutil.which(command[0], path=effective_env.get("PATH")),
+            "timeout_seconds": timeout,
+        })
+    from contextlib import ExitStack
 
-    deadline = time.monotonic() + timeout
-    while True:
+    with ExitStack() as stack:
+        raw_stdout = case.raw_stream(f"{tool_number}/stdout.bin") if case is not None and tool_number else None
+        raw_stderr = case.raw_stream(f"{tool_number}/stderr.bin") if case is not None and tool_number else None
+        for stream in (raw_stdout, raw_stderr):
+            if stream is not None:
+                stack.enter_context(stream)
         try:
-            stdout, stderr = process.communicate(timeout=0.1)
-            break
-        except subprocess.TimeoutExpired:
-            if cancellation_file is not None and cancellation_file.is_file():
-                _terminate_process(process)
-                raise ExportError(
-                    "EXPORT_CANCELLED",
-                    "已取消本次导出，未保留半成品。",
-                )
-            if time.monotonic() >= deadline:
-                _terminate_process(process)
-                raise ExportError(
-                    "RENDER_TIMEOUT",
-                    "文档生成超时，导出已终止，请重试。",
-                )
+            process = subprocess.Popen(
+                command,
+                cwd=cwd,
+                env=effective_env,
+                shell=False,
+                stdout=raw_stdout if raw_stdout is not None else subprocess.PIPE,
+                stderr=raw_stderr if raw_stderr is not None else subprocess.PIPE,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+                start_new_session=os.name != "nt",
+            )
+        except OSError as exc:
+            evidence["reason"] = failure_reason(exc) or "tool_start_failed"
+            raise ExportError(
+                "RENDER_START_FAILED",
+                "文档生成服务启动失败，请查看环境检查结果。",
+            ) from exc
+
+        if case is not None and tool_number is not None:
+            case.json(f"{tool_number}/process.json", {"pid": process.pid})
+        deadline = time.monotonic() + timeout
+        while True:
+            try:
+                stdout, stderr = process.communicate(timeout=0.1)
+                break
+            except subprocess.TimeoutExpired:
+                if cancellation_file is not None and cancellation_file.is_file():
+                    _terminate_process(process)
+                    timed_out = _deadline_requested(cancellation_file)
+                    if case is not None and tool_number is not None:
+                        case.json(f"{tool_number}/exit.json", {"exit_code": process.returncode, "reason": "timeout" if timed_out else "cancelled"})
+                    evidence["reason"] = "tool_timeout" if timed_out else "cancel_requested"
+                    _check_cancelled(cancellation_file)
+                    raise ExportError("EXPORT_CANCELLED", "已取消本次导出，未保留半成品。")
+                if time.monotonic() >= deadline:
+                    _terminate_process(process)
+                    if case is not None and tool_number is not None:
+                        case.json(f"{tool_number}/exit.json", {"exit_code": process.returncode, "reason": "timeout"})
+                    evidence["reason"] = "tool_timeout"
+                    raise ExportError(
+                        "RENDER_TIMEOUT",
+                        "文档生成超时，导出已终止，请重试。",
+                    )
+        if raw_stdout is not None:
+            raw_stdout.seek(0)
+            stdout = raw_stdout.read()
+        if raw_stderr is not None:
+            raw_stderr.seek(0)
+            stderr = raw_stderr.read()
+        if case is not None and tool_number is not None:
+            if raw_stdout is None:
+                case.write(f"{tool_number}/stdout.bin", stdout)
+            if raw_stderr is None:
+                case.write(f"{tool_number}/stderr.bin", stderr)
+            case.json(f"{tool_number}/exit.json", {"exit_code": process.returncode})
+    # Decode only for application-side classification. The capture retains
+    # the original bytes even for Windows tools using a legacy code page.
+    stdout = stdout.decode("utf-8", errors="replace").replace("\r\n", "\n").replace("\r", "\n")
+    stderr = stderr.decode("utf-8", errors="replace").replace("\r\n", "\n").replace("\r", "\n")
+    if case is not None and "Could not retain " in stderr:
+        case.missing.append("模板报告有材料写入失败，详细原因见工具标准错误")
+    evidence["exit_code"] = process.returncode
+    diagnostic = stdout + "\n" + stderr
+    xe = re.search(r"(?m)^This is XeTeX, Version ([0-9.]+)", diagnostic) if evidence.get("tool") == "python_renderer" else None
+    if xe is not None:
+        xe_path = shutil.which("xelatex", path=_renderer_environment(environment).get("PATH"))
+        child_exit = re.search(r"returned non-zero exit status (\d{1,5})", diagnostic)
+        checkpoint(
+            "pdf_compile", "success" if process.returncode == 0 else "failure",
+            tool="xelatex", tool_version=xe.group(1),
+            tool_source="bundled" if xe_path and {part.lower() for part in Path(xe_path).parts} & {"offline-runtime", "runtimes"}
+                else "system" if xe_path else "unresolved",
+            **({"exit_code": int(child_exit.group(1))} if child_exit else {}),
+            **({"reason": _external_reason(diagnostic)} if process.returncode != 0 else {}),
+        )
     if process.returncode != 0:
-        diagnostic = stdout + "\n" + stderr
+        evidence["reason"] = _external_reason(diagnostic)
         if "SINGLE_PAGE_OVERFLOW" in diagnostic:
             # Renderer diagnostics may contain private text. Only translate
             # allowlisted field identifiers, never forward the diagnostic.
@@ -2235,6 +2424,7 @@ def _run(
     return (stdout + "\n" + stderr)[-20_000:]
 
 
+@traced("pdf_validation")
 def _check_pdf(
     path: Path,
     cancellation_file: Path | None = None,
@@ -2285,6 +2475,7 @@ def _check_pdf(
     ]
 
 
+@traced("glyph_validation")
 def _run_cjk_gate(
     pdf: Path,
     validator: Path,
@@ -2295,6 +2486,7 @@ def _run_cjk_gate(
         cwd=pdf.parent,
         timeout=45,
         cancellation_file=cancellation_file,
+        diagnostic_stage="glyph_validation",
     )
     return {
         "schema_version": "1.0",
@@ -2327,6 +2519,7 @@ def _not_checked(check_id: str, gate: str, message: str) -> dict[str, Any]:
     }
 
 
+@traced("export_input")
 def _validate_export_request(
     workspace: Any,
     document_id: str,
@@ -2345,6 +2538,7 @@ def _validate_export_request(
             "INVALID_EXPORT_FORMAT",
             "请选择 Word、PDF、LaTeX 源码包，或它们的组合。",
         )
+    record, profile = source_snapshot or capture_export_source(workspace, document_id)
     output = Path(output_directory).expanduser()
     if not output.is_absolute() or not output.is_dir() or output.is_symlink():
         raise ExportError(
@@ -2357,7 +2551,6 @@ def _validate_export_request(
             "OUTPUT_DIRECTORY_UNWRITABLE",
             "所选输出文件夹不可写。",
         )
-    record, profile = source_snapshot or capture_export_source(workspace, document_id)
     document_type = record["document_type"]
     if document_type == "thesis" and formats != ["pdf"]:
         raise ExportError("INVALID_EXPORT_FORMAT", "毕业论文当前支持 PDF 导出。")
@@ -2367,11 +2560,13 @@ def _validate_export_request(
             "当前文档尚未保存完整内容。",
         )
     proposal = build_export_document(workspace, record, profile_snapshot=profile)
+    record_input("renderer-input.json", proposal)
     validate_document(document_type, proposal)
     ordered_formats = [item for item in SUPPORTED_FORMATS if item in formats]
     return output, record, proposal, ordered_formats, profile
 
 
+@traced("export_preflight")
 def preflight_export(
     workspace: Any,
     *,
@@ -2405,7 +2600,10 @@ def preflight_export(
             workspace, document_id, output_directory, formats,
             source_snapshot=source_snapshot,
         )
+    record_input("renderer-input.json", proposal)
     descriptor = engine or resolve_engine(record["document_type"])
+    checkpoint("template", template_version=descriptor.version, document_type=record["document_type"],
+               template_source=descriptor.source)
     validate_template_renderability(record["document_type"], proposal, descriptor)
     if preview_id is not None:
         _verified_preview_pdf(
@@ -2645,6 +2843,8 @@ def _complete_job(
 
 def _check_cancelled(cancellation_file: Path | None) -> None:
     if cancellation_file is not None and cancellation_file.is_file():
+        if _deadline_requested(cancellation_file):
+            raise ExportError("RENDER_TIMEOUT", "文档生成超时，已终止本次任务。")
         raise ExportError("EXPORT_CANCELLED", "已取消本次导出，未保留半成品。")
 
 
@@ -2889,6 +3089,7 @@ def _cached_preview_result(
     }
 
 
+@traced("preview_cache")
 def _verified_preview_pdf(
     workspace: Any,
     *,
@@ -2934,6 +3135,7 @@ def _verified_preview_pdf(
     return pdf_path
 
 
+@traced("preview_publish")
 def _write_preview_manifest(
     preview_directory: Path,
     *,
@@ -2972,6 +3174,7 @@ def _write_preview_manifest(
     protect_private_file(manifest_path)
 
 
+@traced("preview")
 def generate_preview(
     workspace: Any,
     *,
@@ -3000,11 +3203,14 @@ def generate_preview(
     if not isinstance(source_content, dict):
         raise ExportError("DOCUMENT_NOT_READY", "当前文档尚未保存完整内容。")
     descriptor = resolve_engine(source_record["document_type"])
+    checkpoint("template", template_version=descriptor.version, document_type=source_record["document_type"],
+               template_source=descriptor.source)
     proposal = build_export_document(
         workspace, source_record, profile_snapshot=source_profile
     )
     if not isinstance(proposal, dict):
         raise ExportError("DOCUMENT_NOT_READY", "当前文档尚未保存完整内容。")
+    record_input("renderer-input.json", proposal)
     input_sha256 = hashlib.sha256(canonical_json(proposal)).hexdigest()
     cache_key, preview_id = _preview_cache_identity(
         document_id,
@@ -3027,7 +3233,12 @@ def generate_preview(
         descriptor=descriptor,
     )
     if cached is not None:
+        checkpoint("preview_cache", reason="cache_hit")
+        case = current_case.get()
+        if case is not None:
+            case.tree("preview-work", preview_directory)
         return cached
+    checkpoint("preview_cache", reason="cache_miss")
     if preview_directory.exists():
         if preview_directory.is_symlink() or not preview_directory.is_dir():
             raise ExportError("PREVIEW_PATH_INVALID", "预览缓存路径无效。")
@@ -3176,8 +3387,14 @@ def generate_preview(
             if old_preview.is_dir():
                 shutil.rmtree(old_preview)
 
+        case = current_case.get()
+        if case is not None:
+            case.tree("preview-work", preview_directory)
         return result
     except Exception:
+        case = current_case.get()
+        if case is not None:
+            case.tree("preview-work", preview_directory)
         shutil.rmtree(preview_directory, ignore_errors=True)
         raise
 
@@ -3286,6 +3503,7 @@ def record_qa(
     }
 
 
+@traced("export")
 def run_export(
     workspace: Any,
     *,
@@ -3304,8 +3522,12 @@ def run_export(
     output, record, proposal, ordered_formats, profile = _validate_export_request(
         workspace, document_id, output_directory, formats
     )
+    record_input("renderer-input.json", proposal)
     descriptor = engine or resolve_engine(record["document_type"])
-    validate_template_renderability(record["document_type"], proposal, descriptor)
+    checkpoint("template", template_version=descriptor.version, document_type=record["document_type"],
+               template_source=descriptor.source)
+    with step("content_validation"):
+        validate_template_renderability(record["document_type"], proposal, descriptor)
     _require_task_book_docx_font(
         record["document_type"], ordered_formats, descriptor
     )
@@ -3320,6 +3542,9 @@ def run_export(
         if preview_id is not None
         else None
     )
+    case = current_case.get()
+    if case is not None and preview_pdf is not None:
+        case.file("cached-preview.pdf", preview_pdf)
     if preflight_token is not None:
         current_preflight = preflight_export(
             workspace,
@@ -3372,10 +3597,11 @@ def run_export(
     staged_paths: list[Path] = []
 
     try:
-        with tempfile.TemporaryDirectory(prefix=f"sztu-export-{export_id[:12]}-") as temp:
+        with tempfile.TemporaryDirectory(prefix=f"sztu-export-{export_id[:12]}-") as temp, capture_workspace("render-work", Path(temp)):
             work = Path(temp)
             data_path = work / f"{record['document_type']}.json"
-            data_path.write_bytes(canonical_json(proposal))
+            with step("render_input_write"):
+                data_path.write_bytes(canonical_json(proposal))
             generated: dict[str, Path] = {}
             live_workspace = descriptor.source in {
                 "development-workspace",
@@ -3428,6 +3654,7 @@ def run_export(
                     cwd=work,
                     cancellation_file=cancel_path,
                     environment=_engine_renderer_environment(descriptor),
+                    diagnostic_stage="word_render",
                 )
                 try:
                     from .docx_inspector import DocxInspectionError, inspect_docx
@@ -3446,15 +3673,16 @@ def run_export(
                             shared_module = importlib.util.module_from_spec(spec)
                             spec.loader.exec_module(shared_module)
                         return shared_module.normalize_paragraph(value, field, maximum, **options)
-                    checks.append(
-                        inspect_docx(
-                            docx_path,
-                            proposal,
-                            document_type=record["document_type"],
-                            normalize_paragraph=normalize_expected,
-                            layout=_assessment_docx_layout(assessment_spec, data_path, effective_layout_path) if record["document_type"] in ASSESSMENT_DOCUMENT_TYPES else None,
+                    with step("docx_inspection"):
+                        checks.append(
+                            inspect_docx(
+                                docx_path,
+                                proposal,
+                                document_type=record["document_type"],
+                                normalize_paragraph=normalize_expected,
+                                layout=_assessment_docx_layout(assessment_spec, data_path, effective_layout_path) if record["document_type"] in ASSESSMENT_DOCUMENT_TYPES else None,
+                            )
                         )
-                    )
                 except DocxInspectionError as exc:
                     raise ExportError(exc.code, exc.message, exc.details) from exc
                 except ExportError:
@@ -3496,6 +3724,7 @@ def run_export(
                     cancellation_file=cancel_path,
                     environment=_engine_renderer_environment(descriptor),
                     timeout=300 if record["document_type"] == "thesis" else RENDER_TIMEOUT_SECONDS,
+                    diagnostic_stage="pdf_compile" if "pdf" in ordered_formats and preview_pdf is None else "latex_source",
                 )
 
             if "pdf" in ordered_formats:
@@ -3555,63 +3784,76 @@ def run_export(
                 output, record, ordered_formats
             )
             artifacts: list[dict[str, Any]] = []
-            for format_name in ordered_formats:
-                _check_cancelled(cancel_path)
-                source = generated[format_name]
-                destination = output / output_filenames[format_name]
-                if destination.is_symlink():
-                    raise ExportError(
-                        "OUTPUT_TARGET_INVALID",
-                        "目标文件不能是符号链接。",
-                        {"format": format_name},
+            with step("output_write"):
+                for format_name in ordered_formats:
+                    _check_cancelled(cancel_path)
+                    source = generated[format_name]
+                    destination = output / output_filenames[format_name]
+                    if destination.is_symlink():
+                        raise ExportError(
+                            "OUTPUT_TARGET_INVALID",
+                            "目标文件不能是符号链接。",
+                            {"format": format_name},
+                        )
+                    staging = output / f".sztu-{export_id}-{format_name}.tmp"
+                    staged_paths.append(staging)
+                    try:
+                        with source.open("rb") as source_stream, staging.open("xb") as target_stream:
+                            shutil.copyfileobj(source_stream, target_stream)
+                    except FileExistsError as exc:
+                        raise ExportError(
+                            "OUTPUT_STAGING_CONFLICT",
+                            "输出目录中存在冲突的临时文件。",
+                        ) from exc
+                    except Exception:
+                        case = current_case.get()
+                        if case is not None and staging.is_file():
+                            case.file(f"output-staging/{format_name}.partial", staging)
+                        staging.unlink(missing_ok=True)
+                        raise
+                    try:
+                        os.link(staging, destination)
+                    except OSError as exc:
+                        case = current_case.get()
+                        if case is not None and staging.is_file():
+                            case.file(f"output-staging/{format_name}.partial", staging)
+                        if isinstance(exc, FileExistsError):
+                            raise ExportError(
+                                "OUTPUT_TARGET_RACE",
+                                "输出文件名刚被其他程序占用，请重新导出以自动使用下一版本号。",
+                                {"format": format_name},
+                            ) from exc
+                        raise
+                    finally:
+                        staging.unlink(missing_ok=True)
+                    placements.append((destination, None))
+                    shared_check_ids = {"full-page-layout"}
+                    if format_name == "docx":
+                        format_check_ids = {"docx-deep-structure", "docx-structure", "target-editor"}
+                    elif format_name == "pdf":
+                        format_check_ids = {"pdf-structure", "pdf-cjk-glyph"}
+                    else:
+                        format_check_ids = {"latex-bundle-structure", "latex-bundle"}
+                    artifact_checks = [
+                        check
+                        for check in checks
+                        if check["check_id"] in shared_check_ids | format_check_ids
+                    ]
+                    artifacts.append(
+                        {
+                            "artifact_id": new_id(),
+                            "format": format_name,
+                            "path": str(destination),
+                            "sha256": sha256_file(destination),
+                            "size_bytes": destination.stat().st_size,
+                            "checks": artifact_checks,
+                            "replaced_existing": False,
+                        }
                     )
-                staging = output / f".sztu-{export_id}-{format_name}.tmp"
-                staged_paths.append(staging)
-                try:
-                    with source.open("rb") as source_stream, staging.open("xb") as target_stream:
-                        shutil.copyfileobj(source_stream, target_stream)
-                except FileExistsError as exc:
-                    raise ExportError(
-                        "OUTPUT_STAGING_CONFLICT",
-                        "输出目录中存在冲突的临时文件。",
-                    ) from exc
-                except Exception:
-                    staging.unlink(missing_ok=True)
-                    raise
-                try:
-                    os.link(staging, destination)
-                except FileExistsError as exc:
-                    raise ExportError(
-                        "OUTPUT_TARGET_RACE",
-                        "输出文件名刚被其他程序占用，请重新导出以自动使用下一版本号。",
-                        {"format": format_name},
-                    ) from exc
-                finally:
-                    staging.unlink(missing_ok=True)
-                placements.append((destination, None))
-                shared_check_ids = {"full-page-layout"}
-                if format_name == "docx":
-                    format_check_ids = {"docx-deep-structure", "docx-structure", "target-editor"}
-                elif format_name == "pdf":
-                    format_check_ids = {"pdf-structure", "pdf-cjk-glyph"}
-                else:
-                    format_check_ids = {"latex-bundle-structure", "latex-bundle"}
-                artifact_checks = [
-                    check
-                    for check in checks
-                    if check["check_id"] in shared_check_ids | format_check_ids
-                ]
-                artifacts.append(
-                    {
-                        "artifact_id": new_id(),
-                        "format": format_name,
-                        "path": str(destination),
-                        "sha256": sha256_file(destination),
-                        "size_bytes": destination.stat().st_size,
-                        "checks": artifact_checks,
-                        "replaced_existing": False,
-                    }
-                )
+
+            case = current_case.get()
+            if case is not None:
+                case.tree("render-work", work)
 
         generated_at = utc_now()
         runtime_check = {

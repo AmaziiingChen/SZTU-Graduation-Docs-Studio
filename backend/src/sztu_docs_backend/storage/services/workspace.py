@@ -104,15 +104,21 @@ class Workspace:
                     else profile.get(field_name) or ""
                 )
                 for field_name in PROFILE_DRAFT_FIELDS
-            }
+            },
+            profile["id"],
         )
         return profile
 
-    def save_profile_draft(self, payload: Mapping[str, Any]) -> dict[str, Any]:
-        return self.profile_drafts.save(payload)
+    def _active_profile_id(self) -> str | None:
+        profile = self.load_active()["profile"]
+        return profile["id"] if profile else None
 
-    def load_profile_draft(self) -> dict[str, Any] | None:
-        return self.profile_drafts.get()
+    def save_profile_draft(self, payload: Mapping[str, Any], *, profile_id: str | None = None) -> dict[str, Any]:
+        return self.profile_drafts.save(payload, profile_id or self._active_profile_id())
+
+    def load_profile_draft(self, *, profile_id: str | None = None) -> dict[str, Any] | None:
+        target = profile_id or self._active_profile_id()
+        return self.profile_drafts.get(target)
 
     def get_profile(self, profile_id: str) -> dict[str, Any]:
         return self.profiles.get(profile_id)
@@ -141,11 +147,14 @@ class Workspace:
         *,
         profile_id: str | None = None,
         deleted: bool = False,
+        unassigned_only: bool = False,
+        active_owners_only: bool = False,
         cursor: Mapping[str, Any] | None = None,
         limit: int = 100,
     ) -> dict[str, Any]:
         return self.documents.list_page(
-            profile_id=profile_id, deleted=deleted, cursor=cursor, limit=limit
+            profile_id=profile_id, deleted=deleted, unassigned_only=unassigned_only,
+            active_owners_only=active_owners_only, cursor=cursor, limit=limit
         )
 
     def rename_document(self, document_id: str, title: str) -> dict[str, Any]:
@@ -205,6 +214,13 @@ class Workspace:
 
     def get_setting(self, key: str) -> dict[str, Any]:
         return self.settings.get(key)
+
+    def has_setting(self, key: str) -> bool:
+        try:
+            self.settings.get(key)
+        except NotFoundError:
+            return False
+        return True
 
     def create_export_job(
         self,
@@ -306,7 +322,7 @@ class Workspace:
         self.settings.set("workbench.active", active)
         return active
 
-    def load_active(self) -> dict[str, Any]:
+    def load_active(self, *, include_document: bool = True) -> dict[str, Any]:
         try:
             value = self.settings.get("workbench.active")["value"]
         except NotFoundError:
@@ -320,7 +336,7 @@ class Workspace:
                 profile = self.get_profile(profile_id)
             except NotFoundError:
                 pass
-        if document_id is not None:
+        if include_document and document_id is not None:
             try:
                 document = self.get_document(document_id)
             except NotFoundError:

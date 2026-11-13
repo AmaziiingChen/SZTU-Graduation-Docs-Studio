@@ -13,6 +13,7 @@ from . import (
     v0004_student_profile_thesis_title,
     v0005_document_recycle_bin,
     v0006_student_profile_english_thesis_title,
+    v0007_scoped_profile_drafts,
 )
 
 MigrationFunction = Callable[[sqlite3.Connection], None]
@@ -44,6 +45,7 @@ DEFAULT_MIGRATIONS = (
         v0005_document_recycle_bin.apply,
     ),
     Migration(6, "student_profile_english_thesis_title", v0006_student_profile_english_thesis_title.apply),
+    Migration(7, "scoped_profile_drafts", v0007_scoped_profile_drafts.apply),
 )
 
 

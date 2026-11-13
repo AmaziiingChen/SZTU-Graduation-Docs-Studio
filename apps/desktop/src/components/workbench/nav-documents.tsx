@@ -54,7 +54,7 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
 } from "@/components/ui/sidebar"
-import type { DocumentRecord, DocumentType } from "@/types/desktop-api"
+import type { DocumentRecord, DocumentType, StudentProfileSummary } from "@/types/desktop-api"
 import { thesisToolOptions, type ThesisToolId } from "@/lib/thesis-tools"
 import { assessmentDocumentRegistry } from "@/lib/assessment-documents"
 import { defaultDocumentTitle } from "@/lib/document-names"
@@ -79,6 +79,7 @@ function ThesisToolIcon({ toolId }: { toolId: ThesisToolId }) {
 export type CreateDocumentRequest = {
   type: DocumentType
   title: string
+  profileId: string | null
   sourceDocumentId?: string
 }
 
@@ -96,6 +97,8 @@ export function NavDocuments({
   activeThesisTool,
   activeDocumentId,
   documents,
+  profiles,
+  activeProfileId,
   deletedDocuments,
   documentsHasMore = false,
   deletedDocumentsHasMore = false,
@@ -119,6 +122,8 @@ export function NavDocuments({
   activeThesisTool: ThesisToolId
   activeDocumentId: string | null
   documents: DocumentRecord[]
+  profiles: StudentProfileSummary[]
+  activeProfileId: string | null
   deletedDocuments: DocumentRecord[]
   documentsHasMore?: boolean
   deletedDocumentsHasMore?: boolean
@@ -165,6 +170,8 @@ export function NavDocuments({
   const [trashExpanded, setTrashExpanded] = useState(false)
   const [createType, setCreateType] = useState<DocumentType | null>(null)
   const [createTitle, setCreateTitle] = useState("")
+  const [customTitle, setCustomTitle] = useState(false)
+  const [createProfileId, setCreateProfileId] = useState<string | null>(null)
   const [createSource, setCreateSource] = useState("blank")
   const [renameTarget, setRenameTarget] = useState<DocumentRecord | null>(null)
   const [renameTitle, setRenameTitle] = useState("")
@@ -185,9 +192,26 @@ export function NavDocuments({
 
   const openCreate = (type: DocumentType) => {
     setCreateType(type)
-    setCreateTitle(defaultDocumentTitle(type, studentName))
+    const profile = profiles.find(item => item.id === activeProfileId) ?? (profiles.length === 1 ? profiles[0] : null)
+    setCreateProfileId(profile?.id ?? null)
+    setCustomTitle(false)
+    const name = profile?.id === activeProfileId && studentName.trim() ? studentName
+      : profile?.full_name ?? (profiles.length ? "" : studentName)
+    setCreateTitle(defaultDocumentTitle(type, name))
     setCreateSource("blank")
     setError(null)
+  }
+
+  const initialContentOptions = createType && (createProfileId || profiles.length === 0)
+    ? groupedDocuments[createType].filter(item => item.profile_id === createProfileId || item.profile_id === null)
+    : []
+
+  const changeCreateProfile = (id: string | null) => {
+    setCreateProfileId(id)
+    setCreateSource("blank")
+    if (createType && !customTitle) {
+      setCreateTitle(defaultDocumentTitle(createType, profiles.find(item => item.id === id)?.full_name ?? ""))
+    }
   }
 
   const run = async (operation: () => Promise<void>, onSuccess: () => void) => {
@@ -454,13 +478,37 @@ export function NavDocuments({
             <DialogDescription>{createType === "thesis" ? "下载 LaTeX 模板后，可在 LaTeX 编辑器或 Agent 中撰写论文。" : "新建空白文档，或复制一份已有内容后独立编辑。"}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-3">
+            {profiles.length > 0 ? (
+              <Field>
+                <FieldLabel htmlFor={`${componentFieldId}-profile`}>使用档案</FieldLabel>
+                <Select value={createProfileId} onValueChange={changeCreateProfile} disabled={pending}>
+                  <SelectTrigger id={`${componentFieldId}-profile`} className="w-full">
+                    <SelectValue placeholder="选择档案">
+                      {value => {
+                        const selected = profiles.find(item => item.id === value)
+                        return selected ? `${selected.full_name} · ${selected.student_number}` : "选择档案"
+                      }}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {profiles.map(item => (
+                      <SelectItem key={item.id} value={item.id} onClick={() => {
+                        if (item.id !== createProfileId) changeCreateProfile(item.id)
+                      }}>
+                        {item.full_name} · {item.student_number}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+            ) : null}
             <Field>
                   <FieldLabel htmlFor={`${componentFieldId}-1`}>文件名</FieldLabel>
-                  <Input id={`${componentFieldId}-1`} value={createTitle} maxLength={240} onChange={(event) => setCreateTitle(event.target.value)} />
+                  <Input id={`${componentFieldId}-1`} value={createTitle} maxLength={240} onChange={(event) => { setCustomTitle(true); setCreateTitle(event.target.value) }} />
                 </Field>
             <Field>
                   <FieldLabel htmlFor={`${componentFieldId}-2`}>初始内容</FieldLabel>
-                  <Select value={createSource} onValueChange={(value) => setCreateSource(value ?? "blank")}>
+                  <Select value={createSource} disabled={pending || (profiles.length > 0 && !createProfileId)} onValueChange={(value) => setCreateSource(value ?? "blank")}>
                 <SelectTrigger id={`${componentFieldId}-2`} className="w-full">
                   <SelectValue>
                     {createSource === "blank" ? "空白文档" : `基于：${documents.find(item => item.id === createSource)?.title ?? "已有文档"}`}
@@ -471,7 +519,7 @@ export function NavDocuments({
                     <AnimatedActionIcon icon={PlusIcon} />
                     空白文档
                   </SelectItem>
-                  {(createType ? groupedDocuments[createType] : []).map((item) => (
+                  {initialContentOptions.map((item) => (
                     <SelectItem
                       key={item.id}
                       value={item.id}
@@ -488,13 +536,14 @@ export function NavDocuments({
           <DialogFooter>
             <Button variant="outline" disabled={pending} onClick={() => setCreateType(null)}>取消</Button>
             <Button
-              disabled={pending || !createType || !createTitle.trim()}
+              disabled={pending || !createType || !createTitle.trim() || (profiles.length > 0 && !createProfileId)}
               onClick={() => {
                 if (!createType) return
                 void run(
                   () => onCreateDocument({
                     type: createType,
                     title: createTitle.trim(),
+                    profileId: createProfileId,
                     sourceDocumentId: createSource === "blank" ? undefined : createSource,
                   }),
                   () => {

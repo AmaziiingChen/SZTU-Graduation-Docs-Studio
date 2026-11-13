@@ -187,8 +187,9 @@ class ExportPipelineTests(unittest.TestCase):
         timeout: int = 90,
         cancellation_file: Path | None = None,
         environment: dict[str, str] | None = None,
+        diagnostic_stage: str | None = None,
     ) -> str:
-        del cwd, timeout, cancellation_file, environment
+        del cwd, timeout, cancellation_file, environment, diagnostic_stage
         if "--output" in command:
             output = Path(command[command.index("--output") + 1])
             output.write_bytes(b"synthetic-docx-render-v2")

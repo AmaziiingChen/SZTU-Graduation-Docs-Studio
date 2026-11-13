@@ -148,3 +148,50 @@ test('accepts v2 bounded diagnostic evidence while retaining v1', () => {
   report.operations[0].context.trace[0].module = '/Users/private/file.py';
   assert.equal(validateDiagnosticReport(report), 'INVALID_DIAGNOSTIC_OPERATION');
 });
+
+test('accepts structured v3 failure evidence and rejects raw reasons and paths', () => {
+  const report = validDiagnosticReport();
+  report.schema_version = '3.0';
+  report.environment.checks.push({ id: 'core_document_fonts', required: true, status: 'pass' });
+  Object.assign(report.operations[0], { operation: 'diagnostic.step', outcome: 'failure',
+    error_code: 'RENDER_FAILED', duration_ms: 225,
+    context: { stage: 'preview_rasterize', tool: 'pdftoppm', tool_source: 'bundled',
+      tool_version: '26.1.0', exit_code: 23, reason: 'tool_nonzero' } });
+  assert.equal(validateDiagnosticReport(report), null);
+  assert.equal(scanDiagnosticReport(report), true);
+  for (const [key, value] of [['tool', '/Users/private/tool'], ['reason', 'private compilation output'], ['exit_code', '23']]) {
+    const previous = report.operations[0].context[key];
+    report.operations[0].context[key] = value;
+    assert.equal(validateDiagnosticReport(report), 'INVALID_DIAGNOSTIC_OPERATION');
+    report.operations[0].context[key] = previous;
+  }
+});
+
+test('stores the original bytes of an explicitly uploaded full fault archive', async () => {
+  const http = require('node:http');
+  const { handleRequest } = require('./index');
+  const reports = new Map();
+  const server = http.createServer(handleRequest({
+    databaseConfigured: true,
+    persistFull: async (id, archive) => reports.set(id, archive),
+  }));
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const url = `http://127.0.0.1:${server.address().port}/v1/full-reports`;
+    const archive = Buffer.concat([Buffer.from([0x50, 0x4b, 0x03, 0x04]), Buffer.from('synthetic /Users/example/学号和正文'), Buffer.from([255, 254])]);
+    const id = '435565ec-38c5-4917-94e6-0e7bf1fa7763';
+    const response = await fetch(url, {
+      method: 'POST', body: archive,
+      headers: { 'Content-Type': 'application/zip', 'X-Report-Id': id },
+    });
+    assert.equal(response.status, 202);
+    assert.equal((await response.json()).report_id, id);
+    assert.deepEqual(reports.get(id), archive);
+    const rejected = await fetch(url, { method: 'POST', body: archive });
+    assert.equal(rejected.status, 400);
+    assert.equal(reports.size, 1);
+  } finally {
+    server.closeAllConnections();
+    await new Promise(resolve => server.close(resolve));
+  }
+});

@@ -213,6 +213,12 @@ function ReportDetails({ report }: { report: DiagnosticReportItem }) {
                     <TableCell className="max-w-sm whitespace-normal break-all text-xs tabular-nums">{item.errorCode ?? "—"}
                       {item.context?.request_id ? <div>请求：{item.context.request_id}</div> : null}
                       {item.context?.stage ? <div>阶段：{item.context.stage}</div> : null}
+                      {item.context?.check_id ? <div>检查项：{item.context.check_id}</div> : null}
+                      {item.context?.tool ? <div>工具：{[item.context.tool, item.context.tool_version, item.context.tool_source].filter(Boolean).join(" · ")}</div> : null}
+                      {item.context?.exit_code !== undefined ? <div>退出码：{item.context.exit_code}</div> : null}
+                      {item.context?.reason ? <div>原因：{item.context.reason}</div> : null}
+                      {item.context?.http_status !== undefined ? <div>HTTP 状态：{item.context.http_status}</div> : null}
+                      {item.context?.template_source ? <div>模板来源：{item.context.template_source}</div> : null}
                       {item.context?.document_type ? <div>文档：{item.context.document_type}</div> : null}
                       {item.context?.template_version ? <div>模板：{item.context.template_version}</div> : null}
                       {item.context?.field ? <div>字段：{item.context.field}</div> : null}

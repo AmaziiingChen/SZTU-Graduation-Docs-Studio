@@ -1,3 +1,4 @@
+import type { DiagnosticContext } from "../../desktop/electron/diagnostic-context.js"
 export type TelemetryKpis = {
   activeInstallations: number
   sessions: number
@@ -105,7 +106,7 @@ export type DiagnosticOperation = {
   operation: string
   label: string
   outcome: DiagnosticOutcome
-  context?: { stage?: string; request_id?: string; document_type?: string; template_version?: string; field?: string; trace?: Array<{ module: string; line: number }>; structure?: Record<string, number> }
+  context?: DiagnosticContext
   durationMs?: number
   durationBucket: string
   durationLabel: string

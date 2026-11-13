@@ -179,6 +179,20 @@ class ProfileService:
         )
         return profile
 
+    def list_summaries(self, *, deleted: bool = False) -> list[dict[str, str]]:
+        state = "IS NOT NULL" if deleted else "IS NULL"
+        rows = self.database.connection.execute(f"""
+            SELECT id, full_name, student_number FROM student_profiles
+            WHERE soft_deleted_at {state}
+            ORDER BY updated_at DESC, id ASC
+        """).fetchall()
+        return [dict(row) for row in rows]
+
+    def has_deleted_student_number(self, student_number: str) -> bool:
+        return self.database.connection.execute("""
+            SELECT 1 FROM student_profiles WHERE student_number = ? AND soft_deleted_at IS NOT NULL
+        """, (student_number,)).fetchone() is not None
+
     def soft_delete(self, profile_id: str) -> dict[str, Any]:
         now = utc_now()
         with self.database.transaction(immediate=True) as connection:
@@ -193,3 +207,13 @@ class ProfileService:
             if cursor.rowcount != 1:
                 raise NotFoundError("student_profile", profile_id)
         return {"id": profile_id, "deleted": True}
+
+    def restore(self, profile_id: str) -> dict[str, Any]:
+        with self.database.transaction(immediate=True) as connection:
+            cursor = connection.execute("""
+                UPDATE student_profiles SET soft_deleted_at = NULL, updated_at = ?
+                WHERE id = ? AND soft_deleted_at IS NOT NULL
+            """, (utc_now(), profile_id))
+            if cursor.rowcount != 1:
+                raise NotFoundError("student_profile", profile_id)
+        return self.get(profile_id)

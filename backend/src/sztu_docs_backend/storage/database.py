@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from .errors import MigrationError
+from ..diagnostic_steps import step
 from .migrations import DEFAULT_MIGRATIONS, Migration, validate_migration_plan
 from .paths import prepare_private_directory, protect_private_file, resolve_data_directory
 
@@ -52,11 +53,12 @@ class Database:
         *,
         migrations: tuple[Migration, ...] = DEFAULT_MIGRATIONS,
     ) -> Database:
-        directory = resolve_data_directory(data_dir)
-        prepare_private_directory(directory)
-        database_path = directory / DATABASE_FILENAME
-        existed_before = database_path.exists()
-        connection = sqlite3.connect(database_path, isolation_level=None, timeout=5.0)
+        with step("database_open"):
+            directory = resolve_data_directory(data_dir)
+            prepare_private_directory(directory)
+            database_path = directory / DATABASE_FILENAME
+            existed_before = database_path.exists()
+            connection = sqlite3.connect(database_path, isolation_level=None, timeout=5.0)
         database = cls(
             connection,
             data_directory=directory,
@@ -66,7 +68,8 @@ class Database:
         try:
             database._configure_connection(persistent=True)
             protect_private_file(database_path)
-            database._migrate(migrations, backup_existing=existed_before)
+            with step("migration"):
+                database._migrate(migrations, backup_existing=existed_before)
             return database
         except Exception:
             connection.close()

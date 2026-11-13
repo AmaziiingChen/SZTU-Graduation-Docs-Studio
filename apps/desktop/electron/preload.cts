@@ -36,7 +36,7 @@ contextBridge.exposeInMainWorld("sztuDesktop", {
   getAppInfo: () => invoke("sztu:app-info"),
   downloadThesisTemplate: () => invoke("sztu:thesis-template-download"),
   checkEnvironment: () => invoke("sztu:environment-check"),
-  prepareDiagnosticReport: () => invoke("sztu:diagnostic-prepare"),
+  prepareDiagnosticReport: (reportId?: unknown) => invoke("sztu:diagnostic-prepare", reportId),
   saveDiagnosticReport: (reportId: unknown) =>
     invoke("sztu:diagnostic-save", reportId),
   sendDiagnosticReport: (reportId: unknown) =>
@@ -89,8 +89,12 @@ contextBridge.exposeInMainWorld("sztuDesktop", {
   },
   openWorkspace: (mode: unknown) => invoke("sztu:workspace-open", mode),
   listDocuments: (input: unknown) => invoke("sztu:workspace-list-documents", input),
-  saveProfileDraft: (profile: unknown) =>
-    invoke("sztu:workspace-save-profile-draft", profile),
+  saveProfileDraft: (profile: unknown, profileId?: string | null) =>
+    invoke("sztu:workspace-save-profile-draft", profile, profileId),
+  createProfile: (profile: unknown) => invoke("sztu:workspace-create-profile", profile),
+  selectProfile: (profileId: unknown) => invoke("sztu:workspace-select-profile", profileId),
+  deleteProfile: (profileId: unknown) => invoke("sztu:workspace-delete-profile", profileId),
+  restoreProfile: (profileId: unknown) => invoke("sztu:workspace-restore-profile", profileId),
   saveProfile: (profile: unknown) => invoke("sztu:workspace-save-profile", profile),
   createDocument: (document: unknown) => invoke("sztu:workspace-create-document", document),
   selectDocument: (documentId: unknown) => invoke("sztu:workspace-select-document", documentId),

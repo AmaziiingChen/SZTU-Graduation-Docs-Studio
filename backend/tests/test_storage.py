@@ -108,7 +108,7 @@ class StorageTests(unittest.TestCase):
             version = database.connection.execute(
                 "SELECT MAX(version) FROM schema_migrations"
             ).fetchone()[0]
-            self.assertEqual(version, 6)
+            self.assertEqual(version, 7)
 
     def test_environment_variable_supplies_persistent_data_directory(self) -> None:
         with patch.dict(os.environ, {DATA_DIR_ENV: str(self.data_dir)}):
@@ -397,7 +397,7 @@ class StorageTests(unittest.TestCase):
             )
             profile = workspace.save_profile(synthetic_profile())
             self.assertEqual(
-                workspace.load_profile_draft(),
+                workspace.load_profile_draft(profile_id=profile["id"]),
                 {
                     field: profile.get(field) if field in {"thesis_title", "thesis_title_en"} else profile.get(field) or ""
                     for field in synthetic_profile_draft()
@@ -573,7 +573,7 @@ class StorageTests(unittest.TestCase):
             version = migrated.connection.execute(
                 "SELECT MAX(version) FROM schema_migrations"
             ).fetchone()[0]
-            self.assertEqual(version, 6)
+            self.assertEqual(version, 7)
             self.assertEqual(row["status"], "failed")
             self.assertEqual(row["progress"], 100)
             self.assertEqual(row["error_code"], "EXPORT_INTERRUPTED")
@@ -765,6 +765,20 @@ class StorageTests(unittest.TestCase):
                 "student_profiles", "documents", "draft_revisions", "settings"
             )))
 
+    def test_v6_shared_draft_migrates_only_to_the_previously_active_student(self) -> None:
+        with Workspace(Database.open_persistent(self.data_dir, migrations=DEFAULT_MIGRATIONS[:6])) as old:
+            first = old.profiles.save(synthetic_profile())
+            second = old.profiles.save({**synthetic_profile(), "student_number": "SYN-V6-SECOND"})
+            old.save_active(profile_id=first["id"], document_id=None)
+            old.settings.set("workbench.profile_draft", synthetic_profile_draft(full_name="迁移前的合成草稿"))
+
+        with Workspace.open_persistent(self.data_dir) as upgraded:
+            self.assertEqual(upgraded.load_profile_draft()["full_name"], "迁移前的合成草稿")
+            upgraded.save_active(profile_id=second["id"], document_id=None)
+            self.assertIsNone(upgraded.load_profile_draft())
+            upgraded.save_active(profile_id=None, document_id=None)
+            self.assertIsNone(upgraded.load_profile_draft())
+
     def test_migration_failure_rolls_back_old_database_and_keeps_backup(self) -> None:
         with Workspace.open_persistent(self.data_dir) as workspace:
             profile = workspace.save_profile(synthetic_profile())
@@ -776,7 +790,7 @@ class StorageTests(unittest.TestCase):
             raise RuntimeError("synthetic migration failure")
 
         plan = DEFAULT_MIGRATIONS + (
-            Migration(7, "synthetic_failure", failing_migration),
+            Migration(8, "synthetic_failure", failing_migration),
         )
         with self.assertRaises(MigrationError) as caught:
             Database.open_persistent(self.data_dir, migrations=plan)
@@ -795,7 +809,7 @@ class StorageTests(unittest.TestCase):
             raw.close()
         self.assertEqual(major, "示例专业")
         self.assertIsNone(partial)
-        self.assertEqual(version, 6)
+        self.assertEqual(version, 7)
 
         backups = list((self.data_dir / "backups").glob(f"{BACKUP_PREFIX}*.sqlite3"))
         self.assertEqual(len(backups), 1)

@@ -1,7 +1,8 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process"
 import { randomUUID } from "node:crypto"
-import { existsSync } from "node:fs"
+import { existsSync, mkdirSync, writeFileSync } from "node:fs"
 import path from "node:path"
+import { diagnosticContext, validDiagnosticContext, type DiagnosticContext } from "./diagnostic-context.js"
 import { offlineRuntimePaths } from "./offline-runtime.js"
 import { documentFontDirectories } from "./document-fonts.js"
 
@@ -10,11 +11,18 @@ type RequestId = string
 export type SidecarMethod =
   | "system.ping"
   | "system.version"
+  | "diagnostic.recover"
+  | "diagnostic.prepare"
+  | "diagnostic.finishPreview"
   | "environment.check"
   | "workspace.open"
   | "workspace.listDocuments"
   | "workspace.saveProfileDraft"
   | "workspace.saveProfile"
+  | "workspace.createProfile"
+  | "workspace.selectProfile"
+  | "workspace.deleteProfile"
+  | "workspace.restoreProfile"
   | "workspace.createDocument"
   | "workspace.selectDocument"
   | "workspace.renameDocument"
@@ -33,7 +41,14 @@ export type SidecarMethod =
   | "template.install"
   | "qa.record"
 
+const FULL_DIAGNOSTIC_METHODS = new Set<SidecarMethod>([
+  "environment.check", "document.check", "preview.generate", "export.preflight", "export.run",
+  "workspace.saveDraft", "workspace.saveProfile", "workspace.saveProfileDraft",
+  "workspace.createDocument", "workspace.open", "template.install", "diagnostic.prepare",
+])
+
 const MAX_MESSAGE_BYTES = 1_048_576
+const MAX_STARTUP_STDERR_BYTES = 256 * 1024
 const MAX_PENDING_REQUESTS = 32
 const MAX_SETTLED_IDS = 128
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -41,11 +56,18 @@ const ERROR_CODE_PATTERN = /^[A-Z][A-Z0-9_]{1,63}$/
 const ALLOWED_METHODS = new Set<SidecarMethod>([
   "system.ping",
   "system.version",
+  "diagnostic.recover",
+  "diagnostic.prepare",
+  "diagnostic.finishPreview",
   "environment.check",
   "workspace.open",
   "workspace.listDocuments",
   "workspace.saveProfileDraft",
   "workspace.saveProfile",
+  "workspace.createProfile",
+  "workspace.selectProfile",
+  "workspace.deleteProfile",
+  "workspace.restoreProfile",
   "workspace.createDocument",
   "workspace.selectDocument",
   "workspace.renameDocument",
@@ -155,24 +177,50 @@ type ProgressEnvelope = {
   }
 }
 
+type DiagnosticStep = DiagnosticContext & {
+  outcome: "started" | "success" | "failure" | "cancelled"
+  duration_ms: number
+  error_code?: string
+}
+
+export type SidecarDiagnosticObserver = (step: DiagnosticStep) => void
+
+function parseDiagnosticStep(value: unknown): DiagnosticStep | undefined {
+  if (!isRecord(value)) return
+  const { outcome, duration_ms, error_code, ...context } = value
+  if ((outcome !== "started" && outcome !== "success" && outcome !== "failure" && outcome !== "cancelled") ||
+      typeof duration_ms !== "number" || !Number.isInteger(duration_ms) || duration_ms < 0 || duration_ms > 86400000 ||
+      (error_code !== undefined && (typeof error_code !== "string" || !ERROR_CODE_PATTERN.test(error_code))) ||
+      typeof context.stage !== "string" || !validDiagnosticContext(context)) return
+  return { ...diagnosticContext(context), outcome, duration_ms, ...(error_code ? { error_code } : {}) }
+}
+
 type PendingRequest = {
   resolve: (value: unknown) => void
   reject: (error: Error) => void
   timeout: NodeJS.Timeout
   deadlineReached?: boolean
+  onDiagnostic?: SidecarDiagnosticObserver
+  diagnosticCaseId?: string
+  method: SidecarMethod
+  request: string
+  activeSteps: Array<{ step: DiagnosticStep; started: number }>
 }
 
 export type SidecarRequestOptions = {
   onDeadline?: () => Promise<void>
   cancellationGraceMs?: number
+  onDiagnostic?: SidecarDiagnosticObserver
 }
 
 export type SidecarClientOptions = {
   role?: "control" | "render"
+  appVersion?: string
   retryRequests?: boolean
 }
 
 export class SidecarError extends Error {
+  diagnosticCaseId?: string
   readonly code: string
   readonly details?: Record<string, unknown>
 
@@ -246,8 +294,13 @@ export function isSidecarProgressEnvelope(value: unknown): value is ProgressEnve
 
 export class SidecarClient {
   private process: ChildProcessWithoutNullStreams | undefined
-  private buffer = ""
+  private buffer = Buffer.alloc(0)
+  private protocolFailureBytes: Buffer | undefined
   private generation = 0
+  private engineResponded = false
+  private startupStderr: Buffer[] = []
+  private startupStderrBytes = 0
+  private startupStderrTruncated = false
   private readonly pending = new Map<RequestId, PendingRequest>()
   private readonly settledIds = new Set<RequestId>()
   private readonly pythonExecutable: string
@@ -294,7 +347,7 @@ export class SidecarClient {
     options: SidecarRequestOptions,
   ): Promise<T> {
     const id = randomUUID()
-    const message = `${JSON.stringify({ protocol: "1.0", id, method, params })}\n`
+    const message = `${JSON.stringify({ protocol: "1.0", id, method, params, ...(options.onDiagnostic ? { diagnostics: true } : {}) })}\n`
     if (Buffer.byteLength(message, "utf8") > MAX_MESSAGE_BYTES) {
       return Promise.reject(new SidecarError("MESSAGE_TOO_LARGE", "Sidecar request exceeds the size limit."))
     }
@@ -310,12 +363,19 @@ export class SidecarClient {
         resolve: resolve as (value: unknown) => void,
         reject,
         timeout,
+        onDiagnostic: options.onDiagnostic,
+        diagnosticCaseId: FULL_DIAGNOSTIC_METHODS.has(method)
+          ? method === "preview.generate" && typeof params.request_id === "string" ? params.request_id : id
+          : undefined,
+        method,
+        request: message,
+        activeSteps: [],
       })
       child.stdin.write(message, "utf8", (error) => {
         if (!error) return
         const request = this.pending.get(id)
         if (!request) return
-        this.failProcess("SIDECAR_WRITE_FAILED")
+        this.failProcess("SIDECAR_WRITE_FAILED", error)
       })
     })
   }
@@ -325,7 +385,7 @@ export class SidecarClient {
       this.process.kill()
     }
     this.process = undefined
-    this.buffer = ""
+    this.buffer = Buffer.alloc(0)
     this.generation += 1
     this.rejectAll(new SidecarError("SIDECAR_STOPPED", "Sidecar stopped."))
   }
@@ -338,11 +398,10 @@ export class SidecarClient {
     this.stopError = error
     this.stopping = new Promise<void>((resolve) => {
       const finish = () => { clearTimeout(forceKill); resolve() }
-      child.once("exit", finish)
+      child.once("close", finish)
       const forceKill = setTimeout(() => { child.kill("SIGKILL") }, 1_000)
       forceKill.unref?.()
-      if (child.exitCode !== null || child.signalCode !== null) finish()
-      else child.kill()
+      if (child.exitCode === null && child.signalCode === null) child.kill()
     })
     try { await this.stopping } finally { this.stopping = undefined; this.stopError = undefined }
   }
@@ -376,8 +435,13 @@ export class SidecarClient {
       this.backendRoot,
       "../bundled-template-engines",
     )
-    this.buffer = ""
+    this.buffer = Buffer.alloc(0)
+    this.protocolFailureBytes = undefined
     const generation = ++this.generation
+    this.engineResponded = false
+    this.startupStderr = []
+    this.startupStderrBytes = 0
+    this.startupStderrTruncated = false
     const packagedSidecar = path.basename(this.pythonExecutable).startsWith("sztu-docs-backend")
     const sidecarArguments = packagedSidecar ? [] : ["-m", "sztu_docs_backend"]
     const child = spawn(this.pythonExecutable, sidecarArguments, {
@@ -402,6 +466,7 @@ export class SidecarClient {
         PYTHONUTF8: "1",
         PYTHONIOENCODING: "utf-8",
         SZTU_DOCS_DATA_DIR: this.dataRoot,
+        SZTU_DOCS_APP_VERSION: this.options.appVersion,
         SZTU_DOCS_SIDECAR_ROLE: this.options.role ?? "control",
         SZTU_DOCS_RECOVER_INTERRUPTED: this.options.role === "render" || generation > 1 ? "0" : "1",
         SZTU_DOCS_TEMPLATE_PACKS_DIR: path.resolve(this.backendRoot, "../template-packs"),
@@ -430,41 +495,55 @@ export class SidecarClient {
       stdio: ["pipe", "pipe", "pipe"],
     })
 
-    child.stdout.setEncoding("utf8")
-    child.stdout.on("data", (chunk: string) => {
+    child.stdout.on("data", (chunk: Buffer) => {
       if (generation === this.generation) this.handleStdout(chunk)
     })
-    child.stderr.setEncoding("utf8")
-    child.stderr.on("data", () => {
-      console.error("[document-engine] A diagnostic was emitted; details are suppressed.")
+    // The engine records request stderr itself. Keep boot errors before
+    // the engine is able to start handling requests.
+    child.stderr.on("data", (chunk: Buffer) => {
+      if (generation !== this.generation || this.engineResponded) return
+      const remaining = MAX_STARTUP_STDERR_BYTES - this.startupStderrBytes
+      if (remaining > 0) {
+        const part = Buffer.from(chunk.subarray(0, remaining))
+        this.startupStderr.push(part)
+        this.startupStderrBytes += part.length
+      }
+      this.startupStderrTruncated ||= chunk.length > remaining
     })
-    child.on("error", () => { if (generation === this.generation) this.failProcess("SIDECAR_START_FAILED") })
-    child.on("exit", (code, signal) => {
+    child.on("error", error => { if (generation === this.generation) this.failProcess("SIDECAR_START_FAILED", error) })
+    child.on("close", (code, signal) => {
       if (generation !== this.generation) return
       this.process = undefined
-      this.buffer = ""
       const errorCode = code === 0 && signal === null ? "SIDECAR_CLOSED" : "SIDECAR_EXITED"
-      this.rejectAll(this.stopError ?? new SidecarError(errorCode, "Sidecar process exited."))
+      if (this.buffer.length) this.protocolFailureBytes = this.buffer
+      this.buffer = Buffer.alloc(0)
+      this.rejectAll(this.stopError ?? new SidecarError(errorCode, "Sidecar process exited."), { code, signal })
     })
 
     this.process = child
     return child
   }
 
-  private handleStdout(chunk: string): void {
-    this.buffer += chunk
-    if (Buffer.byteLength(this.buffer, "utf8") > MAX_MESSAGE_BYTES) {
+  private handleStdout(chunk: Buffer): void {
+    this.buffer = Buffer.concat([this.buffer, chunk])
+    if (this.buffer.length > MAX_MESSAGE_BYTES) {
+      this.protocolFailureBytes = this.buffer.subarray(0, MAX_MESSAGE_BYTES)
       this.failProcess("MESSAGE_TOO_LARGE")
       return
     }
-    let newlineIndex = this.buffer.indexOf("\n")
+    const generation = this.generation
+    let newlineIndex = this.buffer.indexOf(10)
     while (newlineIndex >= 0) {
-      const line = this.buffer.slice(0, newlineIndex).trim()
-      this.buffer = this.buffer.slice(newlineIndex + 1)
+      const rawLine = this.buffer.subarray(0, newlineIndex + 1)
+      const line = rawLine.toString("utf8").trim()
+      this.buffer = this.buffer.subarray(newlineIndex + 1)
       if (line) {
+        this.protocolFailureBytes = rawLine
         this.handleLine(line)
+        if (generation !== this.generation) return
+        this.protocolFailureBytes = undefined
       }
-      newlineIndex = this.buffer.indexOf("\n")
+      newlineIndex = this.buffer.indexOf(10)
     }
   }
 
@@ -476,10 +555,34 @@ export class SidecarClient {
       this.failProcess("INVALID_SIDECAR_JSON")
       return
     }
+    const declaredId = isRecord(candidate) ? candidate.id ?? candidate.request_id : undefined
+    if (isUuid(declaredId) && !this.pending.has(declaredId)) this.protocolFailureBytes = undefined
+
+    if (isRecord(candidate) && candidate.event === "request.diagnostic") {
+      if (candidate.protocol !== "1.0" || !hasExactKeys(candidate, ["protocol", "event", "request_id", "step"]) || !isUuid(candidate.request_id)) {
+        this.failProcess("INVALID_SIDECAR_RESPONSE")
+        return
+      }
+      this.markEngineResponded()
+      const pending = this.pending.get(candidate.request_id)
+      const step = parseDiagnosticStep(candidate.step)
+      if (pending?.onDiagnostic && step) {
+        if (step.outcome === "started") {
+          if (pending.activeSteps.length < 16) pending.activeSteps.push({ step, started: Date.now() })
+        } else {
+          const index = pending.activeSteps.findLastIndex(active => active.step.stage === step.stage && active.step.tool === step.tool)
+          if (index >= 0) pending.activeSteps.splice(index, 1)
+          pending.onDiagnostic(step)
+        }
+      }
+      return
+    }
 
     if (isSidecarProgressEnvelope(candidate)) {
       if (!this.pending.has(candidate.request_id) && !this.settledIds.has(candidate.request_id)) {
         this.failProcess("UNKNOWN_RESPONSE_ID")
+      } else {
+        this.markEngineResponded()
       }
       return
     }
@@ -501,6 +604,7 @@ export class SidecarClient {
       return
     }
     clearTimeout(pending.timeout)
+    this.markEngineResponded()
     this.pending.delete(envelope.id)
     this.rememberSettled(envelope.id)
 
@@ -509,26 +613,76 @@ export class SidecarClient {
       return
     }
     if (pending.deadlineReached && ["EXPORT_CANCELLED", "PREVIEW_CANCELLED", "REQUEST_CANCELLED"].includes(envelope.error.code)) {
-      pending.reject(new SidecarError("REQUEST_TIMEOUT", "操作超时，已取消本次任务。", { cancellation_confirmed: true }))
+      pending.reject(new SidecarError("REQUEST_TIMEOUT", "操作超时，已取消本次任务。", { ...envelope.error.details, cancellation_confirmed: true }))
     } else pending.reject(new SidecarError(envelope.error.code, envelope.error.message, envelope.error.details))
   }
 
-  private rejectAll(error: Error): void {
+  private rejectAll(error: Error, processFailure?: unknown): void {
+    const onlyRequest = this.pending.size === 1
     for (const [id, request] of this.pending) {
+      const last = request.activeSteps.at(-1)
+      if (last) request.onDiagnostic?.({
+        ...last.step, outcome: "failure", reason: "interrupted",
+        duration_ms: Math.min(86400000, Math.max(0, Date.now() - last.started)),
+        error_code: error instanceof SidecarError ? error.code : "SIDECAR_STOPPED",
+      })
       clearTimeout(request.timeout)
-      request.reject(error)
+      if (error instanceof SidecarError) {
+        const rejected = new SidecarError(error.code, error.message, error.details)
+        const caseId = request.diagnosticCaseId
+        if (request.onDiagnostic && caseId && UUID_PATTERN.test(caseId) && error.code !== "SIDECAR_STOPPED") {
+          rejected.diagnosticCaseId = caseId
+          const directory = path.join(this.dataRoot, "diagnostics", "full", caseId)
+          try {
+            mkdirSync(directory, { recursive: true, mode: 0o700 })
+            const started = path.join(directory, "capture-start.json")
+            if (!existsSync(started)) {
+              writeFileSync(started, JSON.stringify({ reportId: caseId, operation: request.method, createdAt: Date.now() / 1000 }), { mode: 0o600 })
+              writeFileSync(path.join(directory, "request.json"), request.request, { mode: 0o600 })
+              if (onlyRequest && this.startupStderrBytes > 0) {
+                writeFileSync(path.join(directory, "engine-startup-stderr.bin"), Buffer.concat(this.startupStderr), { mode: 0o600 })
+                if (this.startupStderrTruncated) {
+                  writeFileSync(path.join(directory, "engine-startup-stderr-truncated"), "", { mode: 0o600 })
+                }
+              }
+            }
+            const protocolFragmentCaptured = onlyRequest && this.protocolFailureBytes !== undefined
+            if (protocolFragmentCaptured && this.protocolFailureBytes) {
+              writeFileSync(path.join(directory, "engine-protocol-fragment.bin"), this.protocolFailureBytes, { mode: 0o600 })
+            }
+            writeFileSync(path.join(directory, "engine-interruption.json"), JSON.stringify({
+              code: error.code, executable: this.pythonExecutable, cwd: this.backendRoot,
+              detail: processFailure instanceof Error ? processFailure.stack : processFailure,
+              protocol_fragment: this.protocolFailureBytes ? protocolFragmentCaptured ? "captured" : "multiple_pending_requests" : undefined,
+            }), { mode: 0o600 })
+          } catch { /* Preserve the original request failure. */ }
+        }
+        request.reject(rejected)
+      } else request.reject(error)
       this.rememberSettled(id)
     }
     this.pending.clear()
+    this.startupStderr = []
+    this.startupStderrBytes = 0
+    this.startupStderrTruncated = false
+    this.protocolFailureBytes = undefined
   }
 
-  private failProcess(code: string): void {
+  private markEngineResponded(): void {
+    if (this.engineResponded) return
+    this.engineResponded = true
+    this.startupStderr = []
+    this.startupStderrBytes = 0
+    this.startupStderrTruncated = false
+  }
+
+  private failProcess(code: string, cause?: Error): void {
     const child = this.process
     this.process = undefined
-    this.buffer = ""
+    this.buffer = Buffer.alloc(0)
     this.generation += 1
     if (child && !child.killed) child.kill()
-    this.rejectAll(new SidecarError(code, "Sidecar protocol validation failed."))
+    this.rejectAll(new SidecarError(code, "Sidecar protocol validation failed."), cause)
   }
 
   private rememberSettled(id: RequestId): void {

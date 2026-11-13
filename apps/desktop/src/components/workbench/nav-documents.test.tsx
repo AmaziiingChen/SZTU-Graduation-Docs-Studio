@@ -71,6 +71,8 @@ function renderNavigation({
               activeThesisTool="three_line_table"
               activeDocumentId={nextDocuments[0]?.id ?? null}
               documents={nextDocuments}
+              profiles={[]}
+              activeProfileId={null}
               deletedDocuments={deletedDocuments}
               documentsHasMore={documentsHasMore}
               deletedDocumentsHasMore={deletedDocumentsHasMore}
@@ -102,7 +104,7 @@ describe("NavDocuments file tree", () => {
     expect(screen.getByLabelText("文件名")).toHaveValue(`合成学生乙-${filenameLabel}`)
     fireEvent.click(screen.getByRole("button", { name: "新建", exact: true }))
     await waitFor(() => expect(callbacks.onCreateDocument).toHaveBeenCalledWith({
-      type, title: `合成学生乙-${filenameLabel}`, sourceDocumentId: undefined,
+      type, title: `合成学生乙-${filenameLabel}`, profileId: null, sourceDocumentId: undefined,
     }))
   })
 
@@ -187,7 +189,7 @@ describe("NavDocuments file tree", () => {
   })
 
   it("creates an independent file from blank or existing content", async () => {
-    const callbacks = renderNavigation()
+    const callbacks = renderNavigation({ documents: [{ ...documentRecord("proposal-a", "开题报告第一版"), profile_id: null }] })
     fireEvent.click(screen.getByRole("button", { name: "新建开题报告" }))
     expect(screen.getByRole("dialog", { name: "新建开题报告" })).toBeInTheDocument()
     expect(screen.getByLabelText("文件名")).toHaveValue("合成学生甲-开题报告")
@@ -203,6 +205,7 @@ describe("NavDocuments file tree", () => {
       expect(callbacks.onCreateDocument).toHaveBeenCalledWith({
         type: "proposal",
         title: "开题报告第二版",
+        profileId: null,
         sourceDocumentId: "proposal-a",
       }),
     )

@@ -29,12 +29,14 @@ import {
   SidebarSeparator,
   useSidebar,
 } from "@/components/ui/sidebar"
-import type { DocumentRecord } from "@/types/desktop-api"
+import type { DocumentRecord, StudentProfileSummary } from "@/types/desktop-api"
 import type { ThesisToolId } from "@/lib/thesis-tools"
 
 export function AppSidebar({
   studentName,
   profileActive,
+  profiles,
+  activeProfileId,
   toolsActive,
   appearanceActive,
   inspectionActive,
@@ -68,6 +70,8 @@ export function AppSidebar({
 }: React.ComponentProps<typeof Sidebar> & {
   studentName: string
   profileActive: boolean
+  profiles: StudentProfileSummary[]
+  activeProfileId: string | null
   toolsActive: boolean
   appearanceActive: boolean
   inspectionActive: boolean
@@ -130,11 +134,8 @@ export function AppSidebar({
         <SidebarSeparator className="mx-auto mt-2 w-3/4 opacity-60" />
       </SidebarHeader>
       <SidebarContent>
-        <NavMain
-          profileActive={profileActive}
-          disabled={disabled}
-          onSelectProfile={() => finishNavigation(onSelectProfile)}
-        />
+        <NavMain profileActive={profileActive} disabled={disabled}
+          onSelectProfile={() => finishNavigation(onSelectProfile)} />
         <SidebarSeparator className="mx-4 w-auto opacity-60" />
         <NavDocuments
           studentName={studentName}
@@ -145,6 +146,8 @@ export function AppSidebar({
           activeThesisTool={activeThesisTool}
           activeDocumentId={activeDocumentId}
           documents={documents}
+          profiles={profiles}
+          activeProfileId={activeProfileId}
           deletedDocuments={deletedDocuments}
           documentsHasMore={documentsHasMore}
           deletedDocumentsHasMore={deletedDocumentsHasMore}

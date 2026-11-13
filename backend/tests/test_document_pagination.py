@@ -20,6 +20,7 @@ class DocumentPaginationTests(unittest.TestCase):
             "college": "测试学院", "major": "测试专业",
         }
         self.profile = self.workspace.save_profile(self.profile_payload)
+        self.workspace.save_active(profile_id=self.profile["id"], document_id=None)
 
     def tearDown(self):
         self.session.close()
@@ -66,7 +67,7 @@ class DocumentPaginationTests(unittest.TestCase):
         self.assertTrue(all("content" not in row for row in all_rows))
         self.assertEqual([row["id"] for row in all_rows[:-1]], sorted(row["id"] for row in all_rows[:-1]))
 
-    def test_recycle_bin_fallback_keeps_its_actual_profile_scope_on_later_pages(self):
+    def test_recycle_bin_pages_are_isolated_to_the_selected_student(self):
         active = self.create(self.profile["id"], 1)[0]
         other = self.workspace.save_profile({**self.profile_payload, "student_number": "PAGE-002"})
         recycled = self.create(other["id"], 105)
@@ -75,32 +76,34 @@ class DocumentPaginationTests(unittest.TestCase):
         self.workspace.save_active(profile_id=self.profile["id"], document_id=active["id"])
         snapshot = self.request("workspace.load", {})["result"]
         self.assertEqual(snapshot["documents_page"]["profile_id"], self.profile["id"])
+        self.assertEqual(snapshot["deleted_documents"], [])
+        self.assertEqual(snapshot["deleted_documents_page"]["profile_id"], self.profile["id"])
+        snapshot = self.request("workspace.selectProfile", {"profile_id": other["id"]})["result"]
         metadata = snapshot["deleted_documents_page"]
-        self.assertIsNone(metadata["profile_id"])
+        self.assertEqual(metadata["profile_id"], other["id"])
         self.assertTrue(metadata["has_more"])
         second = self.page(metadata["profile_id"], deleted=True, cursor=metadata["next_cursor"])
         rows = snapshot["deleted_documents"] + second["documents"]
         self.assertEqual({row["id"] for row in rows}, {row["id"] for row in recycled})
         self.assertTrue(all(row["profile_id"] == other["id"] for row in rows))
-        self.assertEqual(self.page(self.profile["id"], deleted=True)["documents"], [])
         self.assertEqual(self.page(other["id"])["documents"], [])
 
-    def test_more_than_500_unassigned_documents_are_bound_without_touching_deleted_or_other_profiles(self):
+    def test_first_profile_binds_more_than_500_unassigned_documents_except_deleted(self):
+        self.workspace.save_active(profile_id=None, document_id=None)
+        with self.workspace.database.transaction() as connection:
+            connection.execute("DELETE FROM student_profiles WHERE id = ?", (self.profile["id"],))
         documents = self.create(None, 503)
         deleted = self.create(None, 1)[0]
         self.workspace.delete_document(deleted["id"])
-        other = self.workspace.save_profile({**self.profile_payload, "student_number": "PAGE-002"})
-        other_document = self.create(other["id"], 1)[0]
         response = self.request("workspace.saveProfile", {
-            "profile": {**self.profile_payload, "id": self.profile["id"]},
+            "profile": {**self.profile_payload, "student_number": "PAGE-FIRST"},
         })
         self.assertTrue(response["ok"], response)
         rows = self.workspace.database.connection.execute(
-            "SELECT id FROM documents WHERE profile_id = ?", (self.profile["id"],)
+            "SELECT id FROM documents WHERE profile_id = ?", (response["result"]["id"],)
         ).fetchall()
         self.assertEqual({row["id"] for row in rows}, {row["id"] for row in documents})
         self.assertIsNone(self.workspace.documents.get(deleted["id"], include_deleted=True)["profile_id"])
-        self.assertEqual(self.workspace.get_document(other_document["id"])["profile_id"], other["id"])
 
     def test_cursor_and_limit_boundaries_are_rejected_without_echoing_input(self):
         valid = {"updated_at": "2026-10-03T00:00:00.000Z", "id": "a" * 32}
@@ -119,7 +122,7 @@ class DocumentPaginationTests(unittest.TestCase):
                 self.assertFalse(response["ok"], response)
                 self.assertEqual(response["error"]["code"], "VALIDATION")
                 self.assertNotIn("private-input", str(response))
-        self.assertEqual(self.page(None, cursor=valid, limit=1)["documents"], [])
+        self.assertEqual(self.page(self.profile["id"], cursor=valid, limit=1)["documents"], [])
 
     def test_workspace_refresh_resets_cursor_after_a_save_moves_an_old_document(self):
         documents = self.create(self.profile["id"], 3)

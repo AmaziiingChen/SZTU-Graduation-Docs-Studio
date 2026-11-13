@@ -24,14 +24,15 @@ export function NavMain({
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
-              tooltip="学生档案"
+              tooltip="档案与基本信息"
+              aria-label="档案与基本信息"
               className="pl-8"
               isActive={profileActive}
               disabled={disabled}
               onClick={onSelectProfile}
             >
               <AnimatedActionIcon icon={IdCardIcon} />
-              <span>学生档案</span>
+              <span>档案与基本信息</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

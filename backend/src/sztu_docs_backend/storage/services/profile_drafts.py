@@ -98,14 +98,18 @@ class ProfileDraftService:
     def __init__(self, settings: SettingsService) -> None:
         self.settings = settings
 
-    def save(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+    def save(self, payload: Mapping[str, Any], profile_id: str | None = None) -> dict[str, Any]:
         draft = normalize_profile_draft(payload)
-        self.settings.set(PROFILE_DRAFT_KEY, draft)
+        self.settings.set(self.key(profile_id), draft)
         return draft
 
-    def get(self) -> dict[str, Any] | None:
+    @staticmethod
+    def key(profile_id: str | None) -> str:
+        return f"{PROFILE_DRAFT_KEY}.{profile_id}" if profile_id else PROFILE_DRAFT_KEY
+
+    def get(self, profile_id: str | None = None) -> dict[str, Any] | None:
         try:
-            value = self.settings.get(PROFILE_DRAFT_KEY)["value"]
+            value = self.settings.get(self.key(profile_id))["value"]
         except NotFoundError:
             return None
         if not isinstance(value, dict):

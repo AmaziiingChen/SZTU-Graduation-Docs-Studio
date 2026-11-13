@@ -58,7 +58,7 @@ class DocumentService:
                     ).fetchone()
                     if source is None:
                         raise NotFoundError("document", source_document_id)
-                    if source["profile_id"] != profile_id:
+                    if source["profile_id"] is not None and source["profile_id"] != profile_id:
                         raise ValidationError("source_document_id", "does_not_belong_to_profile")
                     if source["document_type"] != document_type:
                         raise ValidationError("source_document_id", "document_type_mismatch")
@@ -198,6 +198,8 @@ class DocumentService:
         *,
         profile_id: str | None = None,
         deleted: bool = False,
+        unassigned_only: bool = False,
+        active_owners_only: bool = False,
         cursor: Mapping[str, Any] | None = None,
         limit: int = 100,
     ) -> dict[str, Any]:
@@ -236,6 +238,10 @@ class DocumentService:
         if profile_id is not None:
             where.append("profile_id = ?")
             parameters.append(profile_id)
+        elif unassigned_only:
+            where.append("profile_id IS NULL")
+        if active_owners_only:
+            where.append("(profile_id IS NULL OR profile_id IN (SELECT id FROM student_profiles WHERE soft_deleted_at IS NULL))")
         if cursor is not None:
             where.append("(updated_at < ? OR (updated_at = ? AND id > ?))")
             parameters.extend([cursor["updated_at"], cursor["updated_at"], cursor["id"]])

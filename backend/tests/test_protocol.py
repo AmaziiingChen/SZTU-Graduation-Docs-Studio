@@ -489,7 +489,7 @@ class ProtocolTests(unittest.TestCase):
 
     def test_export_history_is_allowlisted_and_strips_paths_and_snapshots(self) -> None:
         self.open()
-        document_id = uuid.uuid4().hex
+        document_id = self.request("workspace.createDocument", {"document": document_payload()})["result"]["id"]
         artifact_id = uuid.uuid4().hex
         export_id = uuid.uuid4().hex
         unsafe = {
@@ -555,7 +555,7 @@ class ProtocolTests(unittest.TestCase):
 
     def test_export_history_delete_is_scoped_and_returns_no_paths(self) -> None:
         self.open()
-        document_id = uuid.uuid4().hex
+        document_id = self.request("workspace.createDocument", {"document": document_payload()})["result"]["id"]
         export_id = uuid.uuid4().hex
         with patch(
             "sztu_docs_backend.protocol.delete_export_history_record",
@@ -667,7 +667,7 @@ class ProtocolTests(unittest.TestCase):
             "workspace.saveProfileDraft",
             {"profile": profile_draft_payload(full_name=secret)},
         )
-        document_id = uuid.uuid4().hex
+        document_id = self.request("workspace.createDocument", {"document": document_payload()})["result"]["id"]
         with patch(
             "sztu_docs_backend.protocol.list_export_history",
             return_value={"schema_version": "1.0", "history": []},
@@ -682,6 +682,8 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(opened["result"], {
             "mode": "persistent",
             "profile": None,
+            "profiles": [],
+            "deleted_profiles": [],
             "profile_draft": None,
             "document": None,
             "documents": [],
@@ -724,6 +726,164 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(reopened["profile"]["graduation_cohort"], "2027届")
         self.assertEqual(reopened["document"]["id"], document["id"])
         self.assertEqual(reopened["document"]["content"], {"body": "第二版合成正文"})
+
+    def test_multiple_profiles_keep_drafts_documents_and_trash_separate(self) -> None:
+        self.open()
+        first = self.request("workspace.saveProfile", {"profile": profile_payload()})["result"]
+        first_document = self.request("workspace.createDocument", {
+            "document": document_payload(first["id"]),
+        })["result"]
+        self.assertTrue(self.request("workspace.saveDraft", {
+            "document_id": first_document["id"], "content": {"body": "甲档案正文"},
+            "expected_revision": 0,
+        })["ok"])
+        trashed = self.request("workspace.createDocument", {
+            "document": document_payload(first["id"]),
+        })["result"]
+        self.assertTrue(self.request("workspace.deleteDocument", {"document_id": trashed["id"]})["ok"])
+        self.assertTrue(self.request("workspace.saveProfileDraft", {
+            "profile_id": first["id"], "profile": profile_draft_payload(full_name="甲待保存档案"),
+        })["ok"])
+
+        unassigned = self.request("workspace.selectProfile", {"profile_id": None})["result"]
+        self.assertEqual(unassigned["documents"], [])
+        legacy = self.request("workspace.createDocument", {"document": document_payload()})["result"]
+        added = self.request("workspace.createProfile", {
+            "profile": {**profile_payload("PROTO-0002"), "full_name": "协议合成学生乙"},
+        })["result"]
+        second = added["profile"]
+        self.assertIsNone(added["document"])
+        self.assertEqual(added["documents"], [])
+        self.assertEqual(added["deleted_documents"], [])
+        self.assertEqual(added["profile_draft"]["full_name"], second["full_name"])
+        self.assertEqual({item["id"] for item in added["profiles"]}, {first["id"], second["id"]})
+        self.assertEqual(self.request("workspace.saveProfileDraft", {
+            "profile_id": first["id"], "profile": profile_draft_payload(full_name="迟到的甲档案"),
+        })["error"]["code"], "PROFILE_SELECTION_CHANGED")
+        self.assertEqual(self.request("workspace.selectDocument", {
+            "document_id": first_document["id"],
+        })["error"]["code"], "DOCUMENT_PROFILE_MISMATCH")
+        self.assertEqual(self.request("workspace.saveDraft", {
+            "document_id": first_document["id"], "content": {"body": "跨档写入"}, "expected_revision": 1,
+        })["error"]["code"], "DOCUMENT_PROFILE_MISMATCH")
+        self.assertFalse(self.request("workspace.createDocument", {
+            "document": {**document_payload(second["id"]), "source_document_id": first_document["id"]},
+        })["ok"])
+        second_document = self.request("workspace.createDocument", {
+            "document": document_payload(second["id"]),
+        })["result"]
+        self.assertTrue(self.request("workspace.saveDraft", {
+            "document_id": second_document["id"], "content": {"body": "乙档案正文"},
+            "expected_revision": 0,
+        })["ok"])
+        self.assertTrue(self.request("workspace.saveProfileDraft", {
+            "profile_id": second["id"], "profile": profile_draft_payload(full_name="乙待保存档案"),
+        })["ok"])
+
+        self.session.close()
+        self.session = ProtocolSession()
+        reopened = self.open()["result"]
+        self.assertEqual(reopened["profile"]["id"], second["id"])
+        self.assertEqual(reopened["profile_draft"]["full_name"], "乙待保存档案")
+        self.assertEqual(reopened["document"]["content"], {"body": "乙档案正文"})
+        switched = self.request("workspace.selectProfile", {"profile_id": first["id"]})["result"]
+        self.assertEqual(switched["profile_draft"]["full_name"], "甲待保存档案")
+        self.assertEqual(switched["document"]["content"], {"body": "甲档案正文"})
+        self.assertEqual([item["id"] for item in switched["documents"]], [first_document["id"]])
+        self.assertEqual([item["id"] for item in switched["deleted_documents"]], [trashed["id"]])
+        unassigned = self.request("workspace.selectProfile", {"profile_id": None})["result"]
+        self.assertEqual([item["id"] for item in unassigned["documents"]], [legacy["id"]])
+        self.assertIsNone(unassigned["profile_draft"])
+        self.assertEqual(self.request("workspace.saveProfile", {
+            "profile": profile_payload("PROTO-0003"),
+        })["error"]["code"], "PROFILE_SELECTION_CHANGED")
+
+    def test_creates_documents_for_selected_profiles_in_one_list(self) -> None:
+        self.request("workspace.open", {"mode": "persistent", "all_documents": True})
+        legacy = self.request("workspace.createDocument", {"document": document_payload()})["result"]
+        self.assertTrue(self.request("workspace.saveDraft", {
+            "document_id": legacy["id"], "content": {"body": "旧草稿正文"}, "expected_revision": 0,
+        })["ok"])
+        first = self.request("workspace.createProfile", {"profile": profile_payload()})["result"]["profile"]
+        second = self.request("workspace.createProfile", {"profile": profile_payload("PROTO-0002")})["result"]["profile"]
+        task_book = {"document_type": "task_book", "title": "甲任务书"}
+        first_doc = self.request("workspace.createDocument", {
+            "document": {**document_payload(first["id"]), **task_book},
+        })["result"]
+        self.assertTrue(self.request("workspace.saveDraft", {
+            "document_id": first_doc["id"], "content": {"body": "甲正文"}, "expected_revision": 0,
+        })["ok"])
+        second_doc = self.request("workspace.createDocument", {
+            "document": {**document_payload(second["id"]), "source_document_id": legacy["id"]},
+        })["result"]
+        self.assertNotEqual(second_doc["id"], legacy["id"])
+        self.assertEqual(second_doc["content"], {"body": "旧草稿正文"})
+        snapshot = self.request("workspace.load")["result"]
+        self.assertEqual({row["profile_id"] for row in snapshot["documents"]}, {None, first["id"], second["id"]})
+        self.assertEqual(snapshot["document"]["id"], second_doc["id"])
+        selected = self.request("workspace.selectDocument", {"document_id": first_doc["id"]})["result"]
+        self.assertEqual(selected["profile"]["id"], first["id"])
+        self.assertEqual(selected["document"]["content"], {"body": "甲正文"})
+        self.assertTrue(self.request("workspace.deleteProfile", {"profile_id": first["id"]})["ok"])
+        self.assertEqual(self.request("workspace.selectDocument", {
+            "document_id": first_doc["id"],
+        })["error"]["code"], "NOT_FOUND")
+        page = self.request("workspace.listDocuments", {"profile_id": None, "deleted": False})["result"]
+        self.assertEqual({row["id"] for row in page["documents"]}, {legacy["id"], second_doc["id"]})
+
+    def test_deleted_profiles_keep_documents_isolated_and_restore_after_restart(self) -> None:
+        self.open()
+        self.assertTrue(self.request("workspace.saveProfileDraft", {
+            "profile": profile_draft_payload(full_name="第一次填写时的未分配档案草稿"),
+        })["ok"])
+        first = self.request("workspace.saveProfile", {"profile": profile_payload()})["result"]
+        document = self.request("workspace.createDocument", {"document": document_payload(first["id"])})["result"]
+        self.assertTrue(self.request("workspace.saveDraft", {
+            "document_id": document["id"], "content": {"body": "原合成草稿"}, "expected_revision": 0,
+        })["ok"])
+        trash = self.request("workspace.createDocument", {"document": document_payload(first["id"])})["result"]
+        self.assertTrue(self.request("workspace.deleteDocument", {"document_id": trash["id"]})["ok"])
+        draft = profile_draft_payload(full_name="未完成的学生档案")
+        self.assertTrue(self.request("workspace.saveProfileDraft", {
+            "profile_id": first["id"], "profile": draft,
+        })["ok"])
+        second = self.request("workspace.createProfile", {"profile": profile_payload("PROTO-0002")})["result"]["profile"]
+        self.assertEqual(self.request("workspace.deleteProfile", {
+            "profile_id": first["id"],
+        })["error"]["code"], "PROFILE_SELECTION_CHANGED")
+        self.assertTrue(self.request("workspace.selectProfile", {"profile_id": first["id"]})["ok"])
+        removed = self.request("workspace.deleteProfile", {"profile_id": first["id"]})["result"]
+        self.assertEqual(removed["profile"]["id"], second["id"])
+        self.assertEqual(removed["documents"], [])
+        self.assertEqual(removed["deleted_documents"], [])
+        self.assertEqual([item["id"] for item in removed["deleted_profiles"]], [first["id"]])
+        for method in ("document.check", "workspace.selectDocument", "export.history"):
+            self.assertEqual(self.request(method, {
+                "document_id": document["id"],
+            })["error"]["code"], "DOCUMENT_PROFILE_MISMATCH")
+        self.assertEqual(self.request("workspace.createProfile", {
+            "profile": profile_payload(),
+        })["error"]["code"], "PROFILE_IN_TRASH")
+
+        removed_last = self.request("workspace.deleteProfile", {"profile_id": second["id"]})["result"]
+        self.assertIsNone(removed_last["profile"])
+        self.assertEqual(removed_last["profiles"], [])
+        self.assertEqual(removed_last["documents"], [])
+        self.assertIsNone(removed_last["profile_draft"])
+        self.assertEqual(self.request("workspace.saveProfile", {
+            "profile": profile_payload("PROTO-NEW"),
+        })["error"]["code"], "PROFILE_SELECTION_CHANGED")
+        self.session.close()
+        self.session = ProtocolSession()
+        reopened = self.open()["result"]
+        self.assertIsNone(reopened["profile"])
+        self.assertEqual({item["id"] for item in reopened["deleted_profiles"]}, {first["id"], second["id"]})
+        recovered = self.request("workspace.restoreProfile", {"profile_id": first["id"]})["result"]
+        self.assertEqual(recovered["profile"]["id"], first["id"])
+        self.assertEqual(recovered["profile_draft"], draft)
+        self.assertEqual(recovered["document"]["content"], {"body": "原合成草稿"})
+        self.assertEqual([item["id"] for item in recovered["deleted_documents"]], [trash["id"]])
+        self.assertEqual([item["id"] for item in recovered["deleted_profiles"]], [second["id"]])
 
     def test_open_falls_back_to_most_recent_records_without_active_setting(self) -> None:
         with Workspace.open_persistent(self.data_dir) as direct:

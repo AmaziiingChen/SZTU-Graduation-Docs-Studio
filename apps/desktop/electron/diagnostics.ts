@@ -27,7 +27,8 @@ export const DIAGNOSTIC_OPERATIONS = [
   "workspace.restoreDocument",
   "workspace.purgeDocument",
   "workspace.saveProfileDraft",
-  "workspace.saveProfile",
+  "workspace.saveProfile", "workspace.createProfile", "workspace.selectProfile",
+  "workspace.deleteProfile", "workspace.restoreProfile",
   "workspace.createDocument",
   "workspace.selectDocument",
   "workspace.saveDraft",
@@ -41,6 +42,7 @@ export const DIAGNOSTIC_OPERATIONS = [
   "export.resolveArtifact",
   "template.install",
   "qa.record",
+  "diagnostic.step",
   "diagnostic.prepare",
   "diagnostic.save",
   "diagnostic.send",
@@ -87,7 +89,7 @@ export type DiagnosticEnvironmentInput = {
 }
 
 export type DiagnosticReport = {
-  schema_version: "2.0"
+  schema_version: "3.0"
   report_id: string
   created_at: string
   application: {
@@ -151,6 +153,12 @@ const KNOWN_ENVIRONMENT_CHECKS = new Set([
   "document_dependencies",
   "xelatex",
   "pdf_tools",
+  "process_tex_packages",
+  "thesis_toolchain",
+  "thesis_tex_packages",
+  "core_document_fonts",
+  "special_document_fonts",
+  "task_book_docx_font",
   "office_editor",
   "template_pack",
   "thesis_template",
@@ -331,8 +339,15 @@ export class DiagnosticService {
       ...(context ? { context: diagnosticContext(context) } : {}),
       ...(normalizedCode ? { error_code: normalizedCode } : {}),
     }
-    this.operations = [...this.operations, entry].slice(-MAX_OPERATION_ENTRIES)
-    while (Buffer.byteLength(JSON.stringify(this.operations), "utf8") > MAX_PERSISTED_BYTES) this.operations.shift()
+    this.operations.push(entry)
+    while (this.operations.length > MAX_OPERATION_ENTRIES || Buffer.byteLength(JSON.stringify(this.operations), "utf8") > MAX_PERSISTED_BYTES) {
+      // Prefer retaining the most recent failures over routine successful steps.
+      // Keep chronological order and cap the protected portion.
+      const failures = this.operations.filter(item => item.outcome === "failure")
+      const protectedFailures = new Set(failures.slice(-40))
+      const removable = this.operations.findIndex(item => !protectedFailures.has(item))
+      this.operations.splice(Math.max(0, removable), 1)
+    }
     this.writeChain = this.writeChain
       .then(() => this.writeOperations())
       .catch(() => undefined)
@@ -361,7 +376,7 @@ export class DiagnosticService {
         : "linux"
     const architecture = this.options.arch === "arm64" ? "arm64" : "x64"
     const report: DiagnosticReport = {
-      schema_version: "2.0",
+      schema_version: "3.0",
       report_id: randomUUID(),
       created_at: this.now().toISOString(),
       application: {
@@ -422,9 +437,16 @@ export class DiagnosticService {
 
   async send(reportId: string): Promise<DiagnosticSendResult> {
     const startedAt = Date.now()
-    const prepared = this.requirePrepared(reportId)
-    scanReport(prepared.report)
-    if (!this.options.endpoint) throw new Error("DIAGNOSTIC_REMOTE_UNCONFIGURED")
+    const request_id = randomUUID()
+    let prepared: PreparedReport
+    try {
+      prepared = this.requirePrepared(reportId)
+      scanReport(prepared.report)
+      if (!this.options.endpoint) throw new Error("DIAGNOSTIC_REMOTE_UNCONFIGURED")
+    } catch (error) {
+      this.record("diagnostic.send", "failure", Date.now() - startedAt, stableDiagnosticErrorCode(error), { stage: "report_prepare", request_id })
+      throw error
+    }
     let response: Response
     try {
       response = await fetch(this.options.endpoint, {
@@ -435,24 +457,26 @@ export class DiagnosticService {
         signal: AbortSignal.timeout(10_000),
       })
     } catch {
-      this.record("diagnostic.send", "failure", Date.now() - startedAt, "NETWORK_ERROR")
+      this.record("diagnostic.send", "failure", Date.now() - startedAt, "NETWORK_ERROR", { stage: "report_send", request_id, reason: "network_failure" })
       throw new Error("DIAGNOSTIC_SEND_FAILED")
     }
     if (response.status !== 202) {
-      this.record("diagnostic.send", "failure", Date.now() - startedAt, "REMOTE_REJECTED")
+      this.record("diagnostic.send", "failure", Date.now() - startedAt, "REMOTE_REJECTED", { stage: "report_send", request_id, reason: "http_rejected", http_status: response.status })
       throw new Error("DIAGNOSTIC_SEND_FAILED")
     }
-    const payload = (await response.json()) as unknown
+    const receiptStarted = Date.now()
+    this.record("diagnostic.step", "success", receiptStarted - startedAt, undefined, { stage: "report_send", request_id, http_status: response.status })
+    const payload = await response.json().catch(() => null) as unknown
     if (
       !isRecord(payload) ||
       payload.ok !== true ||
       payload.report_id !== reportId ||
       payload.retention_days !== 30
     ) {
-      this.record("diagnostic.send", "failure", Date.now() - startedAt, "REMOTE_INVALID")
+      this.record("diagnostic.send", "failure", Date.now() - startedAt, "REMOTE_INVALID", { stage: "report_receipt", request_id, reason: "receipt_invalid", http_status: response.status })
       throw new Error("DIAGNOSTIC_SEND_FAILED")
     }
-    this.record("diagnostic.send", "success", Date.now() - startedAt)
+    this.record("diagnostic.send", "success", Date.now() - receiptStarted, undefined, { stage: "report_receipt", request_id, http_status: response.status })
     return { sent: true, reportId, retentionDays: 30 }
   }
 

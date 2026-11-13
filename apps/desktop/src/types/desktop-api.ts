@@ -29,14 +29,15 @@ export type AppInfo = {
   platform: string
 }
 
-export type DiagnosticSummary = {
+export type FullDiagnosticCase = {
   reportId: string
-  createdAt: string
+  operation: string
+  createdAt: number
+  files: { name: string; sizeBytes: number }[]
+  missing: string[]
+  excluded?: string[]
   sizeBytes: number
-  operationCount: number
-  environmentCheckCount: number
-  sourceFieldsRemoved: number
-  privacyStatus: "passed"
+  uploadLimitBytes: number
 }
 
 export type DiagnosticSaveResult = {
@@ -44,7 +45,6 @@ export type DiagnosticSaveResult = {
 }
 
 export type DiagnosticSendResult = {
-  sent: true
   reportId: string
   retentionDays: number
 }
@@ -255,9 +255,13 @@ export type DocumentListResult = DocumentListPageState & {
   deleted: boolean
 }
 
+export type StudentProfileSummary = Pick<StudentProfile, "id" | "full_name" | "student_number">
+
 export type WorkspaceState = {
   mode: WorkspaceMode
   profile: StudentProfile | null
+  profiles?: StudentProfileSummary[]
+  deleted_profiles?: StudentProfileSummary[]
   profile_draft: StudentProfileDraft | null
   document: DocumentRecord | null
   documents: DocumentRecord[]
@@ -308,6 +312,7 @@ export type CheckResult = {
 
 export type DocumentCheckResult = {
   checks: CheckResult[]
+  diagnostic_case_id?: string
 }
 
 export type PreviewGenerateInput = {
@@ -502,7 +507,7 @@ export type SztuDesktopApi = {
   downloadThesisTemplate: () => Promise<{ saved: boolean }>
   getAppInfo: () => Promise<AppInfo>
   checkEnvironment: () => Promise<EnvironmentResult>
-  prepareDiagnosticReport: () => Promise<DiagnosticSummary>
+  prepareDiagnosticReport: (reportId?: string) => Promise<FullDiagnosticCase>
   saveDiagnosticReport: (reportId: string) => Promise<DiagnosticSaveResult>
   sendDiagnosticReport: (reportId: string) => Promise<DiagnosticSendResult>
   getPrivacyNoticeStatus: () => Promise<PrivacyNoticeStatus>
@@ -534,7 +539,11 @@ export type SztuDesktopApi = {
   onMidtermDatePolicyStatus: (callback: (status: MidtermDatePolicyStatus) => void) => () => void
   openWorkspace: (mode: WorkspaceMode) => Promise<WorkspaceState>
   listDocuments: (input: DocumentListInput) => Promise<DocumentListResult>
-  saveProfileDraft: (profile: StudentProfileDraft) => Promise<StudentProfileDraft>
+  saveProfileDraft: (profile: StudentProfileDraft, profileId?: string | null) => Promise<StudentProfileDraft>
+  createProfile: (profile: StudentProfileInput) => Promise<WorkspaceState>
+  selectProfile: (profileId: string | null) => Promise<WorkspaceState>
+  deleteProfile: (profileId: string) => Promise<WorkspaceState>
+  restoreProfile: (profileId: string) => Promise<WorkspaceState>
   saveProfile: (profile: StudentProfileInput) => Promise<StudentProfile>
   createDocument: (document: DocumentInput) => Promise<DocumentRecord>
   selectDocument: (documentId: string) => Promise<WorkspaceState>
