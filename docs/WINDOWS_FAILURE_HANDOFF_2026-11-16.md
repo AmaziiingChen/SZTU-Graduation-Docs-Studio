@@ -2,6 +2,8 @@
 
 交接日期：2026-11-16，北京时间。接手目标是先解决已收到的 Windows 预览失败，补齐能解释底层失败原因的证据，再处理跨平台更新下载。不要把下一次公开发布当作采集信息的试验。
 
+2026-11-16 后续验证：任务书报告 `d67e88f0-497c-4f8d-a6e6-00ea96959d1f` 对应的环境处理缺陷已完成旧版/候选版实际 Windows 对照，旧版复现同一错误，候选版同条件通过；生产诊断 ZIP 已完整读回。详见 [验证记录](evidence/WINDOWS_TASK_BOOK_FIX_0.1.15.md)。以下保留当时原始证据；中文路径的另一份故障仍单独待处理。
+
 ## 接手状态与代码基线
 
 - 应用仓库：[SZTU-Graduation-Docs-Studio](https://github.com/AmaziiingChen/SZTU-Graduation-Docs-Studio)，分支 `codex/thesis-workbench`。本次交接前远端最新提交为 `6d0ada287610863c4484dbb2a7d0da77e07c7203`，已包含 Windows 0.1.14 发布记录。
