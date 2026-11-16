@@ -8,6 +8,7 @@ import shutil
 import tempfile
 import unittest
 import uuid
+from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import patch
 
@@ -40,6 +41,33 @@ FIXTURE = (
 
 def proposal_fixture() -> dict:
     return json.loads(FIXTURE.read_text(encoding="utf-8"))
+
+
+@contextmanager
+def retain_synthetic_render_failure():
+    """Keep raw evidence before the integration test's temporary workspace disappears."""
+    from sztu_docs_backend.full_diagnostics import Case, current_case, record_exception
+    case = Case(str(uuid.uuid4()), "preview.generate")
+    token = current_case.set(case)
+    try:
+        yield
+    except Exception as exc:
+        record_exception(exc)
+        # Synthetic fixtures only; no real workspace or submission is accessed.
+        for stderr in sorted(case.path.glob("tools/*/stderr.bin")):
+            print(f"\n{stderr.relative_to(case.path)}:\n{stderr.read_bytes().decode('utf-8', errors='replace')}")
+        for log in sorted(case.path.glob("render-work/**/main.log")):
+            print("\nTeX log tail:\n" + "\n".join(log.read_text(encoding="utf-8", errors="replace").splitlines()[-100:]))
+        case.finish({"ok": False, "error": {"code": getattr(exc, "code", type(exc).__name__), "message": str(exc)}})
+        if os.environ.get("CI") and (case.path / "case.zip").is_file():
+            destination = REPOSITORY_ROOT / "tmp/ci-acceptance/source-proposal-failure.zip"
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(case.path / "case.zip", destination)
+        raise
+    else:
+        case.finish({"ok": True})
+    finally:
+        current_case.reset(token)
 
 
 class ProposalContractTests(unittest.TestCase):
@@ -904,7 +932,7 @@ class ProposalExportIntegrationTests(unittest.TestCase):
                     os.environ,
                     {"SZTU_DOCS_DATA_DIR": str(root_path / "data")},
                     clear=False,
-                ):
+                ), retain_synthetic_render_failure():
                     engine = resolve_engine()
                     profile = workspace.save_profile(
                         {
