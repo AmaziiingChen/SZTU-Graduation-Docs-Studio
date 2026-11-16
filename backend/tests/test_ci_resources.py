@@ -24,7 +24,9 @@ class PrivateCIArchiveTests(unittest.TestCase):
             with self.subTest(name=name), tempfile.TemporaryDirectory() as d:
                 archive = Path(d) / 'input.zip'
                 with zipfile.ZipFile(archive, 'w') as z:
-                    z.writestr(name, 'private')
+                    entry = zipfile.ZipInfo('placeholder')
+                    entry.filename = name  # Preserve the raw header on Windows as well.
+                    z.writestr(entry, 'private')
                 with self.assertRaises(RuntimeError):
                     ci.extract_zip(archive, Path(d) / 'out')
                 self.assertFalse((Path(d) / 'out').exists())

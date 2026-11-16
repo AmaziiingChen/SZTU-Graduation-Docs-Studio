@@ -22,8 +22,10 @@ def digest(path: Path) -> str:
 def extract_zip(archive: Path, target: Path) -> None:
     with zipfile.ZipFile(archive) as bundle:
         for member in bundle.infolist():
-            name = PurePosixPath(member.filename)
-            if ('\\' in member.filename or ':' in member.filename or name.is_absolute()
+            # ZipInfo.filename normalizes backslashes on Windows; audit the original header.
+            raw_name = member.orig_filename
+            name = PurePosixPath(raw_name)
+            if ('\\' in raw_name or ':' in raw_name or name.is_absolute()
                     or '..' in name.parts or (member.external_attr >> 16) & 0o170000 == 0o120000):
                 raise RuntimeError('Unsafe CI archive member')
             destination = target.joinpath(*name.parts)
