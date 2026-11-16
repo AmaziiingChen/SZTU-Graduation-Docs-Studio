@@ -22,6 +22,9 @@ function run(command, args) {
   if (result.error) throw result.error
   if (result.status !== 0) process.exit(result.status ?? 1)
 }
+// Electron 44 downloads its binary on demand, not during dependency installation.
+// A clean Windows host must prepare it before the explicit electronDist check below.
+run(process.execPath, [pnpmScript, "--filter", "@sztu-docs/desktop", "exec", "install-electron"])
 run("python", ["scripts/setup_backend_runtime.py"])
 run(python, ["scripts/stage_macos_template_engines.py", "--check"])
 if (offline) run(python, ["scripts/verify_windows_offline_runtime.py", "build/offline-runtime"])
