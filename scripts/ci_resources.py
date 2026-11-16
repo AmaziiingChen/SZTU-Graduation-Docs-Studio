@@ -75,6 +75,11 @@ def main() -> None:
     for font in fonts.glob('*.ttf'):
         shutil.copyfile(font, user_fonts / font.name)
     if sys.platform == 'win32':
+        # Source-level integration tests also invoke TeX/Poppler before an app is installed.
+        # This declares tool locations; the production-path regression later replaces PATH.
+        with Path(os.environ['GITHUB_PATH']).open('a', encoding='utf-8') as stream:
+            for relative in ('texlive/bin/windows', 'poppler/Library/bin'):
+                stream.write(f'{ROOT / "build/offline-runtime" / relative}\n')
         # The portable fontconfig also scans the system font directory for family lookup.
         destination = Path(os.environ['SYSTEMROOT']) / 'Fonts/simsun.ttf'
         if not destination.exists():
