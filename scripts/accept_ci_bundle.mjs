@@ -101,8 +101,18 @@ try {
     const preflight = await call('export.preflight', params)
     await call('export.run', { ...params, request_id: randomUUID(), preflight_token: preflight.preflight_token,
       overwrite_confirmed: false, cancellation_file: previewParams(document).cancellation_file, app_version: version })
-    for (const item of preflight.targets) await access(item.path)
-    report.documents.push({ kind, preview_pages: preview.pages.length, export_formats: ['docx', 'pdf'] })
+    for (const item of preflight.targets) {
+      await access(item.path)
+      if (item.format === 'pdf') {
+        const qa = spawnSync(python, [path.join(root, 'scripts/validate_cjk_render.py'), item.path,
+          '--dpi', '150', '--min-cjk-words', '2'], { encoding: 'utf8',
+          env: { ...process.env, PATH: [...runtime, process.env.PATH].join(path.delimiter) } })
+        await writeFile(path.join(target, 'glyph-check.txt'), qa.stdout + qa.stderr)
+        assert.equal(qa.status, 0, qa.stdout + qa.stderr)
+      }
+    }
+    report.documents.push({ kind, preview_pages: preview.pages.length, export_formats: ['docx', 'pdf'],
+      content_extracted: true, renderer_glyph_valid: true, full_page_layout_inspected: false, target_editor_verified: false })
     await checkpoint()
     console.log(`PASS installed ${kind}: preview + PDF + Word`)
     if (kind === 'task_book') task = document
@@ -113,6 +123,31 @@ try {
     }
   }
   await client.stop()
+  if (process.platform === 'win32') {
+    // Reproduce the production environment gap without a test harness fixing PATH.
+    const oldPath = process.env.PATH, oldComspec = process.env.COMSPEC
+    try {
+      delete process.env.COMSPEC
+      process.env.PATH = '%SystemRoot%\\system32;%SystemRoot%'
+      start()
+      await call('workspace.open', { mode: 'persistent' })
+      await call('workspace.selectProfile', { profile_id: profile.id })
+      task = await call('workspace.saveDraft', { document_id: task.id,
+        content: { ...task.content, sections: { ...task.content.sections,
+          basic_content_and_requirements: ['合成系统路径回归测试。'] } },
+        expected_revision: task.current_revision, reason: 'manual' })
+      const checked = await call('preview.generate', previewParams(task))
+      assert.ok(checked.pages.length > 0)
+      report.windows_environment = { missing_comspec: 'pass', unexpanded_system_path: 'pass',
+        native_preview_pages: checked.pages.length }
+    } finally {
+      await client.stop()
+      process.env.PATH = oldPath
+      if (oldComspec === undefined) delete process.env.COMSPEC
+      else process.env.COMSPEC = oldComspec
+    }
+    await checkpoint()
+  }
   // A native fault tool is used on Windows; a .cmd is not equivalent to a native executable.
   const faultDir = path.join(output, 'fault-tool')
   await mkdir(faultDir)

@@ -72,6 +72,11 @@ def main() -> None:
     user_fonts.mkdir(parents=True, exist_ok=True)
     for font in fonts.glob('*.ttf'):
         shutil.copyfile(font, user_fonts / font.name)
+    if sys.platform == 'win32':
+        # The portable fontconfig also scans the system font directory for family lookup.
+        destination = Path(os.environ['SYSTEMROOT']) / 'Fonts/simsun.ttf'
+        if not destination.exists():
+            shutil.copyfile(fonts / 'simsun.ttf', destination)
     if sys.platform == 'darwin':
         entry = config['macos_tex']
         archive = cache / 'tex.tar.xz'
@@ -89,6 +94,7 @@ def main() -> None:
         bindir = managers[0].parent
         with Path(os.environ['GITHUB_PATH']).open('a', encoding='utf-8') as stream:
             stream.write(f'{bindir}\n')
+        subprocess.run([str(managers[0]), 'update', '--self'], check=True)
         subprocess.run([str(managers[0]), 'install', *config['macos_tex_packages']], check=True)
 
 

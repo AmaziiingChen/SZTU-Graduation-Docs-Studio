@@ -2,10 +2,25 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
-from sztu_docs_backend.runtime_paths import windows_tool_path, offline_tex_environment
+from unittest.mock import patch
+from sztu_docs_backend.runtime_paths import windows_tool_path, offline_tex_environment, windows_process_environment
 
 
 class RuntimePathTests(unittest.TestCase):
+    def test_other_platform_does_not_rewrite_process_environment(self):
+        if os.name != "nt":
+            value = {"PATH": "/synthetic/tools"}
+            self.assertEqual(windows_process_environment(value), value)
+
+    @unittest.skipUnless(os.name == "nt", "Windows PDF driver environment")
+    def test_actual_renderer_repairs_missing_interpreter_and_expands_system_path(self):
+        from sztu_docs_backend.exporter import _renderer_environment
+        with patch.dict(os.environ, {"COMSPEC": "", "PATH": r"%SystemRoot%\system32"}):
+            result = _renderer_environment()
+        self.assertTrue(Path(result["COMSPEC"]).is_file())
+        self.assertNotIn("%SystemRoot%", result["PATH"])
+        self.assertIn(str(Path(os.environ["SYSTEMROOT"]) / "System32").casefold(), result["PATH"].casefold())
+
     def test_plain_path_keeps_semantics(self):
         value = os.pathsep.join(("nonexistent/tools", "nonexistent/other"))
         self.assertEqual(windows_tool_path(value), value)

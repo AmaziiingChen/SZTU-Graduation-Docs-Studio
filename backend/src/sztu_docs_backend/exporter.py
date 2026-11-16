@@ -38,7 +38,7 @@ from .template_engine import (
     sha256_file,
 )
 from .version import BACKEND_VERSION
-from .runtime_paths import windows_tool_path, offline_tex_environment
+from .runtime_paths import windows_tool_path, offline_tex_environment, windows_process_environment
 
 SUPPORTED_FORMATS = ("docx", "pdf", "tex")
 DOCUMENT_OUTPUT_LABELS = {
@@ -2041,6 +2041,8 @@ def _renderer_environment(
         "USERPROFILE",
         "LOCALAPPDATA",
         "SYSTEMROOT",
+        "COMSPEC",
+        "PATHEXT",
         "WINDIR",
         "TEMP",
         "TMP",
@@ -2065,6 +2067,7 @@ def _renderer_environment(
         environment.update(offline_tex_environment(environment["PATH"]))
     if overrides:
         environment.update(overrides)
+    environment = windows_process_environment(environment)
     # Windows ships the same STXingkai family under the shortened STXINGKA filename.
     # Older trusted template policies recognize only its macOS filename.
     if os.name == "nt" and not environment.get("SZTU_STXINGKAI_FONT"):

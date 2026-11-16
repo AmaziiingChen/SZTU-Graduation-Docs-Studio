@@ -9,6 +9,8 @@ export default defineConfig({
     },
   },
   test: {
+    // Hosted runners have 2–3 cores; keep DOM integration tests from competing for all memory.
+    ...(process.env.CI ? { maxWorkers: 2, testTimeout: 15_000 } : {}),
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
     clearMocks: true,

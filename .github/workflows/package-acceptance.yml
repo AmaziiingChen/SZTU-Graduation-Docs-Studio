@@ -2,6 +2,7 @@ name: Package acceptance
 on:
   push:
     branches: [main, 'codex/**']
+    paths-ignore: ['**/*.md']
   workflow_dispatch:
 permissions:
   contents: read

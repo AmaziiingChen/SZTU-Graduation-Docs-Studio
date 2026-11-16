@@ -52,7 +52,8 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="sztu-offline-cjk-") as directory:
         work = Path(directory)
         (work / "smoke.tex").write_text(
-            "\\documentclass{ctexart}\n\\usepackage{fontspec,tabularray,tcolorbox,adjustbox}\n"
+            # This smoke test requires SimSun explicitly, not unrelated Office font families.
+            "\\documentclass[fontset=none]{ctexart}\n\\usepackage{fontspec,tabularray,tcolorbox,adjustbox}\n"
             "\\setCJKmainfont{SimSun}\n\\begin{document}\n"
             "离线依赖验证。中文字体与分页预览测试。\n\n"
             "此内容完全虚构。运行环境无需在线安装宏包。\n\n"
