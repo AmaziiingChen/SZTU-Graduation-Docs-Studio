@@ -1,43 +1,41 @@
 name: CI
-
 on:
   push:
-    branches: [main]
+    branches: [main, 'codex/**']
   pull_request:
-
+  workflow_dispatch:
 permissions:
   contents: read
-
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
-  desktop:
-    name: Desktop / ${{ matrix.os }}
+  checks:
+    name: Checks / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        os: [macos-15, windows-2025]
+    defaults:
+      run:
+        working-directory: app
     steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/setup@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          runtime: node@24.14.0
-          cache: true
-          require-lockfile: true
-      - run: pnpm lint
-      - run: pnpm test
-      - run: pnpm build
-
-  backend:
-    name: Backend / ${{ matrix.os }} / Python ${{ matrix.python }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-latest, windows-latest]
-        python: ["3.12", "3.14"]
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+          path: app
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
-          python-version: ${{ matrix.python }}
-      - run: python scripts/run_backend_tests.py
+          node-version: '24.14.0'
+      - uses: pnpm/action-setup@f53f5227a9e83886ab598c617f3c170fab62f0d3 # v6
+        with:
+          package_json_file: app/package.json
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: '3.14'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm verify
+      - name: Receiver tests
+        run: node --test cloudbase/functions/sztu-telemetry-ingest/test.js

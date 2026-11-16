@@ -1,0 +1,112 @@
+name: Package acceptance
+on:
+  push:
+    branches: [main, 'codex/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: packages-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  package:
+    name: Package and exercise / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, windows-2025]
+    defaults:
+      run:
+        working-directory: app
+        shell: bash
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          path: app
+          persist-credentials: false
+      - name: Preserve template LF bytes
+        working-directory: .
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: AmaziiingChen/SZTU-Thesis-Latex-Template
+          ref: 35f4b0ffc97fce5ebe36fc58a962da9138370386
+          path: Thesis
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '24.14.0'
+      - uses: pnpm/action-setup@f53f5227a9e83886ab598c617f3c170fab62f0d3 # v6
+        with:
+          package_json_file: app/package.json
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: '3.14'
+      - name: Install project dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Fetch verified private test inputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/ci_resources.py
+      - name: Prepare macOS PDF tools
+        if: runner.os == 'macOS'
+        run: brew list poppler >/dev/null 2>&1 || brew install poppler
+      - name: Build native macOS installer
+        if: runner.os == 'macOS'
+        run: pnpm package:mac
+      - name: Build native Windows offline installer
+        if: runner.os == 'Windows'
+        run: pnpm package:win:offline
+      - name: Install Windows package into disposable VM
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem release/offline/*-offline.exe | Select-Object -First 1
+          if (!$exe) { throw 'Offline installer was not created' }
+          $target = Join-Path $env:RUNNER_TEMP 'SZTU-CI-Install'
+          $p = Start-Process -FilePath $exe.FullName -ArgumentList @('/S', "/D=$target") -PassThru
+          if (!$p.WaitForExit(300000)) { throw 'Installer timed out' }
+          if ($p.ExitCode -ne 0) { throw "Installer exited $($p.ExitCode)" }
+          "CI_BUNDLE=$target" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Mount macOS installer read-only
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p "$RUNNER_TEMP/SZTU-CI-Mount"
+          hdiutil verify release/*.dmg
+          hdiutil attach release/*.dmg -readonly -nobrowse -mountpoint "$RUNNER_TEMP/SZTU-CI-Mount"
+          echo "CI_BUNDLE=$RUNNER_TEMP/SZTU-CI-Mount/SZTU文档工作台.app" >> "$GITHUB_ENV"
+      - name: Exercise installed native engine and full diagnostic transport
+        run: node scripts/accept_ci_bundle.mjs "$CI_BUNDLE" tmp/ci-acceptance
+      - name: Record artifact hashes
+        if: always()
+        run: python scripts/ci_artifact_summary.py
+      - name: Save internal installers
+        if: success()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: internal-installers-${{ runner.os }}-${{ github.sha }}
+          path: |
+            app/release/*.dmg
+            app/release/*.zip
+            app/release/offline/*-offline.exe
+          if-no-files-found: error
+          retention-days: 3
+      - name: Save synthetic acceptance evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: acceptance-evidence-${{ runner.os }}-${{ github.sha }}
+          path: app/tmp/ci-acceptance
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Unmount macOS installer
+        if: always() && runner.os == 'macOS'
+        run: |
+          if mount | grep -F "$RUNNER_TEMP/SZTU-CI-Mount"; then
+            hdiutil detach "$RUNNER_TEMP/SZTU-CI-Mount"
+          fi
