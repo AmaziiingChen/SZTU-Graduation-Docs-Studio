@@ -9,6 +9,10 @@ on:
         description: Compare the reported task-book failure using existing installers
         type: boolean
         default: false
+      windows_only:
+        description: Build and verify only Windows after Windows-specific packaging changes
+        type: boolean
+        default: false
 permissions:
   contents: read
   actions: read
@@ -23,7 +27,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ inputs.compare_windows && fromJSON('["windows-2025"]') || fromJSON('["macos-15", "windows-2025"]') }}
+        os: ${{ (inputs.compare_windows || inputs.windows_only) && fromJSON('["windows-2025"]') || fromJSON('["macos-15", "windows-2025"]') }}
     defaults:
       run:
         working-directory: app
