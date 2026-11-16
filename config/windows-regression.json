@@ -1,0 +1,18 @@
+{
+  "repository": "AmaziiingChen/SZTU-Graduation-Docs-Studio",
+  "baseline": {
+    "version": "0.1.14",
+    "url_env": "SZTU_LEGACY_INSTALLER_URL",
+    "size_bytes": 429438195,
+    "sha256": "46ad47cb87a9a6539988f9b91b2c9183bbb63d659048b3c693cad2f10d803ca8",
+    "native_sha256": "a213a46a9115ee57a8ea66fab624c36ff664ae6f0e28af786b09348656bd64db"
+  },
+  "candidate": {
+    "version": "0.1.14-internal",
+    "source_commit": "b3e0c67adb1aefe0fbca2dbe023f85b10830d64f",
+    "artifact_id": 14197623127,
+    "size_bytes": 428903812,
+    "sha256": "233aa81db7cbf6a0f6f91a0fb27f22c6ff01b30db849cb50019fc1e5736f50bd",
+    "native_sha256": "cd689c56e2102a5ed695e8bb2accb301c7baef3f4d7f04286acd234c3a26f38f"
+  }
+}

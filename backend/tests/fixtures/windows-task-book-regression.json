@@ -1,0 +1,157 @@
+{
+  "schema_version": "0.1",
+  "metadata": {
+    "advisor": "合成指导教师",
+    "class_name": "合成班级",
+    "college": "合成学院",
+    "graduation_year": 2026,
+    "major": "合成专业",
+    "student_id": "CI-REPLAY-001",
+    "student_name": "合成验收学生",
+    "title": "合成任务书故障回归题目"
+  },
+  "sections": {
+    "basic_content_and_requirements": [
+      "验验验验验验验验验验验验验验、验验验验验验验验验验验验验，验验验验验验验验验验验验验验验验验验验验，验验验、验验验、验验验验验验验验验验验验。验验验验验验验验验验验验验验验验验验验，验验验验验验验验验验验验，验验验验验验验验验验验验验验验。验验验验验验验验验验验验验验验验验验验验验验验验，验验验验验验验验验：",
+      {
+        "items": [
+          {
+            "content": "验验验验验验验验，验验验验验验验验验验验验。"
+          },
+          {
+            "content": "验验验验验验验验验验验验验验验验验验验，验验验验验验验验验验验验验验验。"
+          },
+          {
+            "content": "验验验验验验验验验验验验验验验验验验验验验验验验。"
+          },
+          {
+            "content": "验验验验验验验验验验验验验验验验验，验验验验验验验验验验。"
+          },
+          {
+            "content": "验验验验验验验验验验，验验验验验验验验验验验验验。"
+          }
+        ],
+        "type": "ordered_list"
+      }
+    ],
+    "references": [
+      {
+        "runs": [
+          {
+            "text": "[1] xxx xxxx, xxxxxxxx xxxx, xxxxxxxx xxxxx x., xx xx.. xxx-xxxxxxx xxxxxxx xxxxxxxx xxxxx xxxxxxxxxxx xxxx xxxxxx xxxxxxxx[x]. xxxxxxx, 1111, 111(1111): 1111-1111."
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "[1] xx xxxxxxxx, xxxxx xxxxx, xxxxxxxxxx xxxxxxxxx x., xx xx.. xxxxxxxxxxx xxxxxxx xxxxxxxxx xx xxxx xxxxx[x]. xxxxxx xxxxxxxxxxxxxx, 1111, 11: 1111."
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "[1] xxx x., xxxx x., xx x., xx xx.. xxxxxx xx xxxxxxxxxxx xxxx xxxxxx xxxxxxxx[x]. xxxxxxx xx xxx xxxxxxx xxxxxxx xx xxxxxxx x, 1111, 11(11): 1111-1111."
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "[1] xxxxx xxxxx, xxxx xx, xxxxxxxx xxxxx x., xx xx.. xxxxxxxx xx xxxxxxxxxxx xxxxxxx xxxxxx xxxxxxxx xxx xxxxx xxxxxxxxxxx xxxx xxxxxxxxxx xxxxxx xxxxxxxx[x]. xxxx xxxxxxx xx xxxxxxxx xxxxxx xx xxxxxxx xxxxxxxxxxx, 1111, 11(1): 1111111."
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "[1] xxxxx xxxxx. xxxxxxxx xxxxxxxxxxx xx xxx xxx-xxxx xxxxxxx xxxxxxxx xxxxx xxxxx xxxxxxxxxxx[x]. xxxxxxx xx xxxxxxx: xxxxxxxxxx xxxxxx, 1111, 111: 111111."
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "[1] xxxxx xxxxxxx, xxxxxx xxxxx, xxxxxx xxxxxxxx, xx xx.. xxxxxx: xx xxxxxxxxx xx xxxxx xx xxxxxxxxxxx xxxxxxx[x]. 1111."
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "[1] xxxx xxx, xxxxx xxxxxx, xxxxxxxx xxxxxx. xxxxxxx-xxxxx: x xxxxx xxxxx xxxxxxx xxx xxxxxxxxxxxx xxxxxxx xxxxxxxx xxxxxxxxxx[x]. 1111."
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "[1] 验验, 验验验, 验验, 验. 验验验验验验验验验验验验验验验验[x]. 验验验验, 1111, 11(11): 111111."
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "[1] 验验验, 验验验, 验验验, 验. 验验验验验验验验验验验验验验验验[x]. 验验验验验, 1111, 11(1): 111-111."
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "[11] 验验验, 验验验, 验验验, 验. 验验验验验验验验验验验验验验验验验验[x]. 验验验验, 1111, 11(1): 1111111."
+          }
+        ],
+        "type": "paragraph"
+      }
+    ],
+    "required_materials": [],
+    "schedule": [
+      {
+        "content": "验验验验验验、验验验验验验验验验。",
+        "period": "1111验11验1验—1111验11验11验"
+      },
+      {
+        "content": "验验验验验验验验验验，验验验验验验验验验验验验验验验验验验验。",
+        "period": "1111验1验1验—1111验1验11验"
+      },
+      {
+        "content": "验验验验验验，验验验验验验验验。",
+        "period": "1111验1验1验—1111验1验11验"
+      },
+      {
+        "content": "验验验验验验，验验验验验验验验验。",
+        "period": "1111验1验1验—1111验1验11验"
+      },
+      {
+        "content": "验验验验验验验验验验，验验验验验验验验验，验验验验。",
+        "period": "1111验1验1验—1111验1验11验"
+      },
+      {
+        "content": "验验验验验验验验验，验验验验验验。",
+        "period": "1111验1验1验—1111验1验11验"
+      }
+    ],
+    "topic_information": {
+      "nature": "graduation_thesis",
+      "source": {
+        "research_project": {
+          "level": "national",
+          "project_number": "11111111"
+        },
+        "type": "research_project"
+      }
+    }
+  }
+}

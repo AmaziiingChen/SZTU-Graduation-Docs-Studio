@@ -4,8 +4,14 @@ on:
     branches: [main, 'codex/**']
     paths-ignore: ['**/*.md']
   workflow_dispatch:
+    inputs:
+      compare_windows:
+        description: Compare the reported task-book failure using existing installers
+        type: boolean
+        default: false
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: packages-${{ github.ref }}
   cancel-in-progress: true
@@ -17,7 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-15, windows-2025]
+        os: ${{ inputs.compare_windows && fromJSON('["windows-2025"]') || fromJSON('["macos-15", "windows-2025"]') }}
     defaults:
       run:
         working-directory: app
@@ -61,12 +67,29 @@ jobs:
         if: runner.os == 'macOS'
         run: pnpm package:mac
       - name: Build native Windows offline installer
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && !inputs.compare_windows
         # Git Bash prepends its bundled Xpdf, shadowing the verified Poppler tools.
         shell: pwsh
         run: pnpm package:win:offline
+      - name: Fetch existing installers for Windows task-book comparison
+        if: inputs.compare_windows
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SZTU_LEGACY_INSTALLER_URL: ${{ secrets.SZTU_LEGACY_INSTALLER_URL }}
+        run: |
+          pnpm setup:backend
+          python scripts/fetch_windows_regression_inputs.py
+          foreach ($label in @('baseline', 'candidate')) {
+            $exe = Join-Path $PWD "build/windows-regression-inputs/$label.exe"
+            $target = Join-Path $env:RUNNER_TEMP "SZTU-$label"
+            $p = Start-Process -FilePath $exe -ArgumentList @('/S', "/D=$target") -PassThru
+            if (!$p.WaitForExit(300000)) { throw "$label install timed out" }
+            if ($p.ExitCode -ne 0) { throw "$label install failed: $($p.ExitCode)" }
+            "$($label.ToUpper())_BUNDLE=$target" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          }
       - name: Install Windows package into disposable VM
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && !inputs.compare_windows
         shell: pwsh
         run: |
           $exe = Get-ChildItem release/offline/*-offline.exe | Select-Object -First 1
@@ -87,14 +110,18 @@ jobs:
         if: runner.os == 'macOS'
         run: node scripts/accept_ci_bundle.mjs "$CI_BUNDLE" tmp/ci-acceptance
       - name: Exercise installed Windows engine and full diagnostic transport
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && !inputs.compare_windows
         shell: pwsh
         run: node scripts/accept_ci_bundle.mjs "$env:CI_BUNDLE" tmp/ci-acceptance
+      - name: Compare the reported task-book failure with the installed native engines
+        if: inputs.compare_windows
+        shell: pwsh
+        run: node scripts/verify_windows_failure.mjs "$env:BASELINE_BUNDLE" "$env:CANDIDATE_BUNDLE"
       - name: Record artifact hashes
         if: always()
         run: python scripts/ci_artifact_summary.py
       - name: Save internal installers
-        if: success()
+        if: success() && !inputs.compare_windows
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: internal-installers-${{ runner.os }}-${{ github.sha }}
@@ -109,7 +136,9 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: acceptance-evidence-${{ runner.os }}-${{ github.sha }}
-          path: app/tmp/ci-acceptance
+          path: |
+            app/tmp/ci-acceptance
+            app/tmp/windows-failure-verification
           if-no-files-found: warn
           retention-days: 7
       - name: Unmount macOS installer
