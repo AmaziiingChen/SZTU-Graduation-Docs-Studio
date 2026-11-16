@@ -88,6 +88,13 @@ jobs:
             $p = Start-Process -FilePath $exe -ArgumentList @('/S', "/D=$target") -PassThru
             if (!$p.WaitForExit(300000)) { throw "$label install timed out" }
             if ($p.ExitCode -ne 0) { throw "$label install failed: $($p.ExitCode)" }
+            if (!(Test-Path "$target/resources/app.asar")) { throw "$label app resources were not installed at the expected location" }
+            if ($label -eq 'baseline') {
+              # Both packages have the same app ID: the second installer removes the first.
+              # Preserve the actually installed baseline before exercising the upgrade.
+              Copy-Item -Path $target -Destination "$target-snapshot" -Recurse
+              $target = "$target-snapshot"
+            }
             "$($label.ToUpper())_BUNDLE=$target" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           }
       - name: Install Windows package into disposable VM
