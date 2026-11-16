@@ -62,6 +62,8 @@ jobs:
         run: pnpm package:mac
       - name: Build native Windows offline installer
         if: runner.os == 'Windows'
+        # Git Bash prepends its bundled Xpdf, shadowing the verified Poppler tools.
+        shell: pwsh
         run: pnpm package:win:offline
       - name: Install Windows package into disposable VM
         if: runner.os == 'Windows'
@@ -81,8 +83,13 @@ jobs:
           hdiutil verify release/*.dmg
           hdiutil attach release/*.dmg -readonly -nobrowse -mountpoint "$RUNNER_TEMP/SZTU-CI-Mount"
           echo "CI_BUNDLE=$RUNNER_TEMP/SZTU-CI-Mount/SZTU文档工作台.app" >> "$GITHUB_ENV"
-      - name: Exercise installed native engine and full diagnostic transport
+      - name: Exercise mounted macOS engine and full diagnostic transport
+        if: runner.os == 'macOS'
         run: node scripts/accept_ci_bundle.mjs "$CI_BUNDLE" tmp/ci-acceptance
+      - name: Exercise installed Windows engine and full diagnostic transport
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: node scripts/accept_ci_bundle.mjs "$env:CI_BUNDLE" tmp/ci-acceptance
       - name: Record artifact hashes
         if: always()
         run: python scripts/ci_artifact_summary.py
