@@ -7,7 +7,7 @@
 - 应用仓库：[SZTU-Graduation-Docs-Studio](https://github.com/AmaziiingChen/SZTU-Graduation-Docs-Studio)，分支 `codex/thesis-workbench`。本次交接前远端最新提交为 `6d0ada287610863c4484dbb2a7d0da77e07c7203`，已包含 Windows 0.1.14 发布记录。
 - 模板仓库：[SZTU-Thesis-Latex-Template](https://github.com/AmaziiingChen/SZTU-Thesis-Latex-Template)，同分支，提交 `35f4b0ffc97fce5ebe36fc58a962da9138370386`。两个仓库并列，模板目录名为 `Thesis`。
 - 当前公开稳定更新清单已经是双平台 `0.1.14`。此前“Windows 尚未上传、清单仍为 0.1.13”的描述已过时。
-- macOS 端本次只整理交接文档，没有修复下述故障代码，也没有生成或发布新安装包。
+- 本交接初稿只整理证据；随后已增加共享渲染环境对 COMSPEC 缺失、系统 PATH 未展开的修复，以及 GitHub 双系统原生构建与安装包验收。当前验证结果见 [云端构建与安装包验收](CI_ACCEPTANCE.md)。初稿中的现场根因判断仍以原始证据为界，不能推定原用户电脑已确认修复。
 - 现有 [Windows 0.1.14 验收记录](evidence/WINDOWS_ACCEPTANCE_0.1.14.md) 说明构建机曾成功运行；不能据此推断以下用户环境已覆盖。
 
 在 Windows 的共同父目录运行。先检查本机改动，已有未提交内容应保留；分支分叉时检查差异，不强制覆盖。
