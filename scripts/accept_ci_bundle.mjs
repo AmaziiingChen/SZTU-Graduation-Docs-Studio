@@ -45,10 +45,25 @@ const workspace = path.join(output, 'synthetic-workspace')
 let client
 const start = () => client = new SidecarClient(path.join(resources, 'backend'), workspace, native,
   { retryRequests: false, appVersion: version })
-const call = (method, params = {}) => client.request(method, params, 240_000)
+// Production main attaches an observer, which also enables per-request raw capture.
+const call = (method, params = {}) => client.request(method, params, 240_000, { onDiagnostic: () => {} })
 const checkpoint = () => writeFile(path.join(output, 'acceptance.json'), JSON.stringify(report, null, 2))
 const previewParams = document => ({ document_id: document.id, request_id: randomUUID(),
   cancellation_file: path.join(workspace, 'cancellations', randomUUID()), app_version: version })
+async function verifiedPreview(document) {
+  const params = previewParams(document)
+  const result = await call('preview.generate', params)
+  assert.ok(result.pages.length > 0)
+  for (const item of [result.pdf, ...result.pages]) {
+    const relative = path.relative(workspace, item.absolute_path)
+    assert.ok(relative && !relative.startsWith('..') && !path.isAbsolute(relative))
+    const bytes = await readFile(item.absolute_path)
+    assert.equal(bytes.length, item.size_bytes)
+    assert.equal(createHash('sha256').update(bytes).digest('hex'), item.sha256)
+  }
+  await call('diagnostic.finishPreview', { case_id: params.request_id })
+  return result
+}
 async function checkCase(caseId, expected, marker) {
   const service = new FullDiagnostics(workspace, `http://127.0.0.1:${server.address().port}/api/diagnostics/v1/reports`)
   const item = await service.get(caseId)
@@ -92,7 +107,7 @@ try {
       document_type: kind, template_version: 'ci-acceptance', schema_version: data.schema_version, title: `合成验收-${kind}` } })
     document = await call('workspace.saveDraft', { document_id: document.id,
       content: { metadata: data.metadata, sections: data.sections }, expected_revision: 0, reason: 'manual' })
-    const preview = await call('preview.generate', previewParams(document))
+    const preview = await verifiedPreview(document)
     assert.ok(preview.pages.length > 0)
     const target = path.join(output, 'exports', kind)
     await mkdir(target, { recursive: true })
@@ -136,7 +151,7 @@ try {
         content: { ...task.content, sections: { ...task.content.sections,
           basic_content_and_requirements: ['合成系统路径回归测试。'] } },
         expected_revision: task.current_revision, reason: 'manual' })
-      const checked = await call('preview.generate', previewParams(task))
+      const checked = await verifiedPreview(task)
       assert.ok(checked.pages.length > 0)
       report.windows_environment = { missing_comspec: 'pass', unexpanded_system_path: 'pass',
         native_preview_pages: checked.pages.length }
