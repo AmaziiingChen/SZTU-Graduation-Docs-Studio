@@ -79,7 +79,9 @@ jobs:
           SZTU_LEGACY_INSTALLER_URL: ${{ secrets.SZTU_LEGACY_INSTALLER_URL }}
         run: |
           pnpm setup:backend
+          if ($LASTEXITCODE -ne 0) { throw 'Backend setup failed' }
           python scripts/fetch_windows_regression_inputs.py
+          if ($LASTEXITCODE -ne 0) { throw 'Comparison installer verification failed' }
           foreach ($label in @('baseline', 'candidate')) {
             $exe = Join-Path $PWD "build/windows-regression-inputs/$label.exe"
             $target = Join-Path $env:RUNNER_TEMP "SZTU-$label"
@@ -135,7 +137,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          name: acceptance-evidence-${{ runner.os }}-${{ github.sha }}
+          name: acceptance-evidence-${{ runner.os }}-${{ github.sha }}-${{ github.run_attempt }}
           path: |
             app/tmp/ci-acceptance
             app/tmp/windows-failure-verification

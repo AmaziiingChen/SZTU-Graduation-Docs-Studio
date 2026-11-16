@@ -10,6 +10,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 assert.equal(process.platform,'win32')
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..')
 const output=path.join(root,'tmp/windows-failure-verification')
+await mkdir(path.dirname(output),{recursive:true})
 await mkdir(output,{recursive:false})
 const require=createRequire(path.join(root,'apps/desktop/package.json'))
 const builder=createRequire(require.resolve('electron-builder'))
