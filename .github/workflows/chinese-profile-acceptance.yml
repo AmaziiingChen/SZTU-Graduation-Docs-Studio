@@ -79,14 +79,17 @@ jobs:
           # The scheduled task inherits the machine PATH, not this job's, so pin Node down.
           $node = (Get-Command node).Source
           Write-Host "node: $node"
+          # Every stage leaves a marker, so a stall is localised instead of only reported as a timeout.
           @(
             '@echo off',
             "whoami /user > `"$work\whoami.txt`" 2>&1",
             "set > `"$work\environment.txt`"",
+            "echo started=%DATE% %TIME% > `"$work\stage-1-started.txt`"",
             "`"$($installer.FullName)`" /S /D=$work\app16",
-            "if errorlevel 1 (echo install-failed=%errorlevel% >> `"$log`" & echo 1 > `"$work\accept.exit`" & exit /b 1)",
+            "echo install-exit=%errorlevel% >> `"$work\stage-2-installed.txt`"",
             "cd /d $work\app",
             "`"$node`" scripts\accept_ci_bundle.mjs `"$work\app16`" `"$work\app\tmp\ci-acceptance`" >> `"$log`" 2>&1",
+            "echo accept-exit=%errorlevel% >> `"$work\stage-3-accepted.txt`"",
             "echo %errorlevel% > `"$work\accept.exit`""
           ) | Set-Content -Path $script -Encoding ascii
           icacls $script /grant "${cjk}:RX" /Q | Out-Null
@@ -94,11 +97,23 @@ jobs:
           schtasks /create /tn 'SZTU-CI-Accept' /tr "cmd /c $script" /sc once /st 00:00 /ru $cjk /rp $env:CJK_PASSWORD /f | Out-Null
           if ($LASTEXITCODE -ne 0) { throw 'Could not schedule the acceptance run' }
           schtasks /run /tn 'SZTU-CI-Accept' | Out-Null
-          $deadline = (Get-Date).AddMinutes(45)
+          $started = Get-Date
+          $deadline = $started.AddMinutes(50)
           $exit = Join-Path $work 'accept.exit'
           while (-not (Test-Path $exit)) {
-            if ((Get-Date) -gt $deadline) { throw 'The Chinese-profile acceptance run timed out' }
-            Start-Sleep -Seconds 20
+            if ((Get-Date) -gt $deadline) {
+              Write-Host '--- timed out, collecting what the scheduled task reached ---'
+              Get-ChildItem -Path $work -Filter 'stage-*.txt' -ErrorAction SilentlyContinue |
+                ForEach-Object { Write-Host ($_.Name + ': ' + (Get-Content $_.FullName -Raw)) }
+              Get-Process -ErrorAction SilentlyContinue |
+                Where-Object { $_.ProcessName -match 'sztu|node|Un_A|installer|nsis' } |
+                Select-Object ProcessName, Id, StartTime | Format-Table | Out-String | Write-Host
+              if (Test-Path $log) { Write-Host '--- acceptance log (tail) ---'; Get-Content $log -Tail 80 }
+              throw 'The Chinese-profile acceptance run timed out'
+            }
+            Start-Sleep -Seconds 15
+            $elapsed = [int]((Get-Date) - $started).TotalMinutes
+            if ($elapsed % 2 -eq 0) { Write-Host "waiting $elapsed min" }
           }
           Write-Host '--- whoami ---'
           Get-Content (Join-Path $work 'whoami.txt')
