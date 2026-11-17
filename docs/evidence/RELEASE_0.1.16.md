@@ -50,6 +50,7 @@
 
 - 文件：`handoff/SZTU-接管-2026-11-17/候选清单-0.1.16/manifest.candidate.json`，1128 字节，SHA-256 `92251da1212377f1735ef4b3eb10c1356def76ed541c24b70755c55673729f05`
 - 用固定公钥（`config/remote-services.production.json` 的 `update_public_key_pem`）按 `update-service.ts` 的 `canonicalJson` 规则验签：`valid: true`，ed25519，签名 64 字节，`schema_version 2.0`、`channel stable`、`version 0.1.16`，两个产物字节数与 SHA-256 与本地整包一致。
+- 另外用应用自身的 `parseAndVerifyManifest()` 严格解析器跑过一遍：正常清单解析成功，把 `version` 改成 0.1.17 的篡改副本被拒绝（临时测试文件已删除）。
 - `published_at` 是签名当时的时间，正式发布时会重新生成，`releases/stable/manifest.json` 目前仍是 0.1.15，未做任何上传。
 
 ## 尚未完成
