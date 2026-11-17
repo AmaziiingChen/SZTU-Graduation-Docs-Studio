@@ -158,11 +158,20 @@ describe("offline signed updates and response bodies", () => {
       }))
     } })
     await service.checkNow()
+    // Capture the real timer before the clock is faked: the transfer's file writes still need
+    // real turns to land, and a fixed number of fake-clock advances can outrun them.
+    const realTimer = setTimeout
     vi.useFakeTimers()
     try {
       let settled: unknown
-      void service.downloadNow().then((value) => { settled = value })
-      for (let step = 0; step < 100 && !settled; step += 1) await vi.advanceTimersByTimeAsync(1_000)
+      let failure: unknown
+      void service.downloadNow().then((value) => { settled = value }, (error) => { failure = error })
+      for (let step = 0; step < 500 && settled === undefined && failure === undefined; step += 1) {
+        // One byte every 25 s, so only a transfer that stops moving may hit the 45 s stall limit.
+        await vi.advanceTimersByTimeAsync(25_000)
+        await new Promise((resolve) => realTimer(resolve, 2))
+      }
+      if (failure) throw failure
       expect(settled).toMatchObject({ state: "downloaded" })
       expect((await readFile(service.revealDownloadedPath()!)).toString()).toBe("ABC")
     } finally {
