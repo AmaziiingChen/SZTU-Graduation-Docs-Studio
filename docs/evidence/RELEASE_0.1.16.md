@@ -44,9 +44,18 @@
   - macOS：从 DMG 挂载后执行包内引擎，同样 7 类文档、11 页，逐份中文字形检查通过。
 - 两份 `acceptance.json` 的 `status` 均为 `pass`，`version` 均为 `0.1.16`。CI 验收只走本机回环，不向生产云上传（`production_cloud_verified: false`）。
 
+## 候选发布清单（已生成，未上传）
+
+用仓库自带的 `scripts/create_update_manifest.mjs` 以既有 Ed25519 私钥签了一份 0.1.16 候选清单，沿用当前推荐更新策略（`update_policy: recommended`、`service_status: normal`、无最低版本、无公告）：
+
+- 文件：`handoff/SZTU-接管-2026-11-17/候选清单-0.1.16/manifest.candidate.json`，1128 字节，SHA-256 `92251da1212377f1735ef4b3eb10c1356def76ed541c24b70755c55673729f05`
+- 用固定公钥（`config/remote-services.production.json` 的 `update_public_key_pem`）按 `update-service.ts` 的 `canonicalJson` 规则验签：`valid: true`，ed25519，签名 64 字节，`schema_version 2.0`、`channel stable`、`version 0.1.16`，两个产物字节数与 SHA-256 与本地整包一致。
+- `published_at` 是签名当时的时间，正式发布时会重新生成，`releases/stable/manifest.json` 目前仍是 0.1.15，未做任何上传。
+
 ## 尚未完成
 
-- **中文用户名与非管理员安装的端到端验收还没跑成。** 工作流 `.github/workflows/chinese-profile-acceptance.yml` 已写好：创建名为 `林振宇` 的标准用户，用计划任务以该账号静默安装并跑完整验收，再断言引擎落在 `C:\ProgramData`、路径逐字符 ASCII、legacy 用户目录未被使用。第一次运行（[44128583611](https://github.com/AmaziiingChen/SZTU-Graduation-Docs-Studio/actions/runs/44128583611)）在等待阶段超时，未留下阶段标记；已补上逐阶段标记与超时现场转储。重跑时被 GitHub 账号的计费限制挡住：作业未启动，注解为 "The job was not started because recent account payments have failed or your spending limit needs to be increased"。这条验收因此仍是缺口，需要在计费恢复后重跑，或在真实中文用户名 Windows 机器上手工执行。
+- **中文用户名与非管理员安装的端到端验收还没跑成。** 工作流 `.github/workflows/chinese-profile-acceptance.yml` 已写好：创建名为 `林振宇` 的标准用户，用计划任务以该账号静默安装并跑完整验收，再断言引擎落在 `C:\ProgramData`、路径逐字符 ASCII、legacy 用户目录未被使用。第一次运行（[44128583611](https://github.com/AmaziiingChen/SZTU-Graduation-Docs-Studio/actions/runs/44128583611)）在等待阶段超时，未留下阶段标记；已补上逐阶段标记与超时现场转储。之后两次尝试（[44143655472](https://github.com/AmaziiingChen/SZTU-Graduation-Docs-Studio/actions/runs/44143655472) 与 44148170560）都是作业未启动即失败，注解一致为 "The job was not started because recent account payments have failed or your spending limit needs to be increased"，属账号计费问题，与代码无关。这条验收因此仍是缺口，需要在计费恢复后重跑，或在真实中文用户名 Windows 机器上手工执行 —— 后者所需的安装包与 `verify-engine.ps1` 自动核对脚本已放在 `handoff/SZTU-接管-2026-11-17/候选安装包-0.1.16/`。
+- **多账户安装限制**：引擎安装在机器级目录，由第一个完成安装的账户拥有；换另一个 Windows 账户再装一次会因写权限不足失败（不会破坏已有安装）。单人使用的学生电脑不受影响，但若要支持多账户，需要安装器在进入解压前先探测可写性并给出明确提示。
 - 安装包验收只做内容提取与中文字形检查，**未做逐页人工版式检查，也未做 Word/WPS 目标编辑器验收**。
 - 生产云端入库核对只覆盖了诊断报告读取（见接管计划目录下的只读核查结果），发布链路本身尚未执行。
 
