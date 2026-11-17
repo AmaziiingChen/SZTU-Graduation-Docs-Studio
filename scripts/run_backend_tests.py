@@ -25,7 +25,12 @@ def main() -> int:
             check=False,
         ).returncode
     sys.path.insert(0, str(BACKEND_SOURCE))
-    suite = unittest.defaultTestLoader.discover(str(BACKEND_TESTS))
+    suite = unittest.TestSuite((
+        unittest.defaultTestLoader.discover(str(BACKEND_TESTS)),
+        # Packaging guards for the Windows runtime live next to the scripts they cover.
+        unittest.defaultTestLoader.discover(str(REPOSITORY_ROOT / "scripts"), pattern="test_*.py",
+                                            top_level_dir=str(REPOSITORY_ROOT / "scripts")),
+    ))
     result = unittest.TextTestRunner(verbosity=2).run(suite)
     return 0 if result.wasSuccessful() else 1
 

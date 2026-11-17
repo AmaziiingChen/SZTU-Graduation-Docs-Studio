@@ -7,6 +7,8 @@ import { SidecarClient } from "../electron/sidecar-client"
 
 const mock = vi.hoisted(() => ({ spawn: vi.fn() }))
 vi.mock("node:child_process", () => ({ spawn: mock.spawn, default: { spawn: mock.spawn } }))
+const offline = vi.hoisted(() => ({ offlineRuntimePaths: vi.fn((): string[] => []) }))
+vi.mock("../electron/offline-runtime", () => offline)
 
 class FakeChild extends EventEmitter {
   stdout = Object.assign(new EventEmitter(), { setEncoding: vi.fn() })
@@ -23,9 +25,22 @@ class FakeChild extends EventEmitter {
 }
 
 beforeEach(() => { vi.useFakeTimers(); mock.spawn.mockReset() })
-afterEach(() => { vi.clearAllTimers(); vi.useRealTimers() })
+afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); offline.offlineRuntimePaths.mockImplementation(() => []) })
 
 describe("sidecar deadlines and confirmed process termination", () => {
+  it("names an unusable offline engine instead of failing as an unknown error", async () => {
+    offline.offlineRuntimePaths.mockImplementation(() => {
+      throw new Error("Offline runtime is installed outside an ASCII path; rerun the installer")
+    })
+    const client = new SidecarClient("/backend", mkdtempSync(path.join(tmpdir(), "sztu-engine-")), "python", { retryRequests: false })
+
+    await expect(client.request("document.check", {}, 100)).rejects.toMatchObject({
+      code: "RENDER_ENGINE_UNAVAILABLE",
+      details: { reason: "Offline runtime is installed outside an ASCII path; rerun the installer" },
+    })
+    expect(mock.spawn).not.toHaveBeenCalled()
+  })
+
   it("retains the raw malformed protocol line for an isolated request", async () => {
     const root = mkdtempSync(path.join(tmpdir(), "sztu-protocol-fault-"))
     try {

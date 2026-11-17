@@ -444,11 +444,20 @@ export class SidecarClient {
     this.startupStderrTruncated = false
     const packagedSidecar = path.basename(this.pythonExecutable).startsWith("sztu-docs-backend")
     const sidecarArguments = packagedSidecar ? [] : ["-m", "sztu_docs_backend"]
+    let runtimePaths: string[]
+    try {
+      runtimePaths = offlineRuntimePaths(this.backendRoot)
+    } catch (error) {
+      // A missing or mislocated engine is not a crash: name it so the student can repair it.
+      throw new SidecarError("RENDER_ENGINE_UNAVAILABLE",
+        "编译环境缺失或安装在不支持的位置（例如包含中文的路径），分页预览和 PDF 导出不可用；请运行最新安装包修复后重启应用。",
+        { reason: error instanceof Error ? error.message : String(error) })
+    }
     const child = spawn(this.pythonExecutable, sidecarArguments, {
       cwd: this.backendRoot,
       windowsHide: true,
       env: {
-        PATH: [...offlineRuntimePaths(this.backendRoot), resolveSidecarPath()].join(path.delimiter),
+        PATH: [...runtimePaths, resolveSidecarPath()].join(path.delimiter),
         LANG: process.env.LANG,
         LC_ALL: process.env.LC_ALL,
         HOME: process.env.HOME,

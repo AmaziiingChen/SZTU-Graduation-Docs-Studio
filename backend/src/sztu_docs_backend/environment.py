@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -19,8 +20,10 @@ from .exporter import (
     _find_task_book_checkbox_font,
     resolve_engine,
 )
+from .runtime_paths import offline_tex_environment, portable_tex_root, windows_process_environment
 from .template_catalog import discover_trusted_template_packs
 from .template_engine import ASSESSMENT_DOCUMENT_TYPES
+from .tool_output import decode_tool_output
 
 
 CORE_DOCUMENT_FONT_GROUPS = {
@@ -137,18 +140,100 @@ def _check_temp_directory() -> dict[str, Any]:
     }
 
 
+TEX_PROBE_DOCUMENT = "\n".join((
+    "\\documentclass{article}",
+    "\\begin{document}",
+    "probe",
+    "\\end{document}",
+    "",
+))
+
+TEX_FAILURE_MARKERS = (
+    ("texmf.cnf not found", "ENV_TEX_CONFIG_MISSING"),
+    ("can't find the format file", "ENV_TEX_FORMAT_MISSING"),
+    ("cannot find the format file", "ENV_TEX_FORMAT_MISSING"),
+)
+
+TEX_FAILURE_MESSAGES = {
+    "ENV_TEX_CONFIG_MISSING": "编译环境缺少配置文件（texmf.cnf），分页预览和 PDF 导出不可用；请运行安装包完成修复。",
+    "ENV_TEX_FORMAT_MISSING": "编译环境缺少格式文件（xelatex.fmt），分页预览和 PDF 导出不可用；请运行安装包完成修复。",
+    "ENV_TEX_LAUNCH_FAILED": "无法启动 XeLaTeX；分页预览和 PDF 导出不可用，请重新安装应用。",
+    "ENV_TEX_FAILED": "XeLaTeX 无法编译测试文档；分页预览和 PDF 导出不可用，请重新安装应用。",
+}
+
+
+def _tex_failure_code(output: str) -> str:
+    """Name why XeLaTeX refused to start instead of reporting a generic failure."""
+    lowered = output.lower()
+    for marker, code in TEX_FAILURE_MARKERS:
+        if marker in lowered:
+            return code
+    return "ENV_TEX_FAILED"
+
+
+def _probe_xelatex(executable: str) -> dict[str, Any]:
+    """Compile a one-page document; resolving the binary proves nothing by itself.
+
+    A run is the only truthful check: `shutil.which` finds an installed XeLaTeX even
+    when kpathsea cannot read `texmf.cnf`, which is exactly the 0.1.15 failure.
+    """
+    environment = windows_process_environment(dict(os.environ))
+    environment.update(offline_tex_environment(environment.get("PATH", "")))
+    with tempfile.TemporaryDirectory(prefix="sztu-tex-probe-") as directory:
+        workspace = Path(directory)
+        (workspace / "probe.tex").write_text(TEX_PROBE_DOCUMENT, encoding="utf-8")
+        try:
+            completed = subprocess.run(
+                [executable, "-no-shell-escape", "-interaction=nonstopmode", "-halt-on-error", "probe.tex"],
+                cwd=workspace,
+                env=environment,
+                capture_output=True,
+                timeout=120,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return {"code": "ENV_TEX_LAUNCH_FAILED", "version": None, "reason": repr(exc)}
+        output = decode_tool_output(completed.stdout + b"\n" + completed.stderr)
+        if completed.returncode == 0 and (workspace / "probe.pdf").is_file():
+            version = re.search(r"This is XeTeX, Version (\S+)", output)
+            return {"code": "ENV_TEX_OK", "version": version.group(1) if version else None, "reason": ""}
+        return {"code": _tex_failure_code(output), "version": None, "reason": output.strip()[-600:]}
+
+
 def _check_xelatex() -> dict[str, Any]:
     executable = shutil.which("xelatex")
+    if not executable:
+        return {
+            "id": "xelatex",
+            "required": True,
+            "status": "fail",
+            "message": "未找到 XeLaTeX；分页预览和 PDF 导出不可用，请重新安装应用。",
+            "details": {"code": "ENV_TEX_MISSING"},
+        }
+    root = portable_tex_root(os.environ.get("PATH", ""))
+    if root is not None and not str(root).isascii():
+        return {
+            "id": "xelatex",
+            "required": True,
+            "status": "fail",
+            "message": "编译环境安装在包含中文的路径下，XeLaTeX 无法读取自己的配置；请运行最新安装包，把编译环境装到 ProgramData 后重启应用。",
+            "details": {"code": "ENV_TEX_PATH_UNSUPPORTED", "path": str(root)},
+        }
+    probe = _probe_xelatex(executable)
+    if probe["code"] == "ENV_TEX_OK":
+        return {
+            "id": "xelatex",
+            "required": True,
+            "status": "pass",
+            "message": "XeLaTeX 可正常编译。",
+            "details": {"code": "ENV_TEX_OK", "executable": executable, "version": probe["version"]},
+        }
     return {
         "id": "xelatex",
         "required": True,
-        "status": "pass" if executable else "fail",
-        "message": (
-            "XeLaTeX is available."
-            if executable
-            else "未找到 XeLaTeX；分页预览和 PDF 导出不可用。"
-        ),
-        "details": {"executable": executable},
+        "status": "fail",
+        "message": TEX_FAILURE_MESSAGES.get(probe["code"], TEX_FAILURE_MESSAGES["ENV_TEX_FAILED"]),
+        "details": {"code": probe["code"], "executable": executable, "reason": probe["reason"]},
     }
 
 

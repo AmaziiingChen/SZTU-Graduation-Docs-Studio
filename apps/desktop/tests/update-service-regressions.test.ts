@@ -142,6 +142,34 @@ describe("offline signed updates and response bodies", () => {
     expect((await service.checkNow()).state).toBe("up_to_date")
   })
 
+  it("keeps a slow installer alive while bytes keep arriving", async () => {
+    // A 400 MB download can exceed the former 60 s whole-transfer limit; only a stall counts.
+    const f = await fixture(), bytes = Buffer.from("ABC")
+    const service = new UpdateService({ ...f.options, fetchImpl: async (url) => {
+      if (url.endsWith("manifest.json")) return f.response(f.payload(bytes))
+      let index = 0
+      // Built here so the stream's own timers live inside the faked clock.
+      return new Response(new ReadableStream<Uint8Array>({
+        async pull(controller) {
+          if (index >= bytes.length) { controller.close(); return }
+          await new Promise((resolve) => setTimeout(resolve, 25_000))
+          controller.enqueue(new Uint8Array([bytes[index++]!]))
+        },
+      }))
+    } })
+    await service.checkNow()
+    vi.useFakeTimers()
+    try {
+      let settled: unknown
+      void service.downloadNow().then((value) => { settled = value })
+      for (let step = 0; step < 100 && !settled; step += 1) await vi.advanceTimersByTimeAsync(1_000)
+      expect(settled).toMatchObject({ state: "downloaded" })
+      expect((await readFile(service.revealDownloadedPath()!)).toString()).toBe("ABC")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("aborts a stalled installer body and removes its partial file", async () => {
     const f = await fixture(), bytes = Buffer.from("AAA"), cancelled = vi.fn()
     let signal!: AbortSignal, began!: () => void

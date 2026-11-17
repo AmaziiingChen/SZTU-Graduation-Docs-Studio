@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import stat
 import unittest
 import tempfile
 import sys
@@ -217,3 +219,75 @@ class EnvironmentTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class XelatexProbeTests(unittest.TestCase):
+    def test_failure_output_is_classified_instead_of_collapsed(self):
+        self.assertEqual(
+            environment_module._tex_failure_code(
+                "warning: kpathsea: configuration file texmf.cnf not found in these directories: /x"
+            ),
+            "ENV_TEX_CONFIG_MISSING",
+        )
+        self.assertEqual(
+            environment_module._tex_failure_code("I can't find the format file `xelatex.fmt'!"),
+            "ENV_TEX_FORMAT_MISSING",
+        )
+        self.assertEqual(environment_module._tex_failure_code("! Undefined control sequence."), "ENV_TEX_FAILED")
+
+    def test_a_missing_binary_is_reported_without_running_a_probe(self):
+        with patch.object(environment_module.shutil, "which", return_value=None), patch.object(
+            environment_module, "_probe_xelatex"
+        ) as probe:
+            check = environment_module._check_xelatex()
+
+        probe.assert_not_called()
+        self.assertEqual(check["status"], "fail")
+        self.assertEqual(check["details"]["code"], "ENV_TEX_MISSING")
+
+    def test_a_non_ascii_engine_root_is_named_before_compiling(self):
+        with tempfile.TemporaryDirectory() as directory:
+            engine = Path(directory) / "引擎" / "texlive"
+            with patch.object(environment_module.shutil, "which", return_value="/usr/bin/xelatex"), patch.object(
+                environment_module, "portable_tex_root", return_value=engine
+            ), patch.object(environment_module, "_probe_xelatex") as probe:
+                check = environment_module._check_xelatex()
+
+        probe.assert_not_called()
+        self.assertEqual(check["status"], "fail")
+        self.assertEqual(check["details"]["code"], "ENV_TEX_PATH_UNSUPPORTED")
+        self.assertEqual(check["details"]["path"], str(engine))
+
+    @unittest.skipIf(os.name == "nt", "a POSIX shell stub cannot run on Windows")
+    def test_a_failing_binary_is_classified_from_its_own_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            stub = Path(directory) / "xelatex"
+            stub.write_text(
+                "#!/bin/sh\n"
+                'echo "warning: kpathsea: configuration file texmf.cnf not found in these directories: /none" >&2\n'
+                "echo \"I can't find the format file \\`xelatex.fmt'!\" >&2\n"
+                "exit 1\n",
+                encoding="utf-8",
+            )
+            stub.chmod(stub.stat().st_mode | stat.S_IXUSR)
+            probe = environment_module._probe_xelatex(str(stub))
+
+        self.assertEqual(probe["code"], "ENV_TEX_CONFIG_MISSING")
+        self.assertIn("texmf.cnf not found", probe["reason"])
+
+    @unittest.skipIf(os.name == "nt", "a POSIX shell stub cannot run on Windows")
+    def test_a_successful_compile_reports_the_running_version(self):
+        with tempfile.TemporaryDirectory() as directory:
+            stub = Path(directory) / "xelatex"
+            stub.write_text(
+                "#!/bin/sh\n"
+                "printf '' > probe.pdf\n"
+                'echo "This is XeTeX, Version 3.141592653-2.6-0.999997 (TeX Live 2025)"\n'
+                "exit 0\n",
+                encoding="utf-8",
+            )
+            stub.chmod(stub.stat().st_mode | stat.S_IXUSR)
+            probe = environment_module._probe_xelatex(str(stub))
+
+        self.assertEqual(probe["code"], "ENV_TEX_OK")
+        self.assertEqual(probe["version"], "3.141592653-2.6-0.999997")

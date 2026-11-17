@@ -37,8 +37,15 @@ from .template_engine import (
     resolve_engine as _resolve_engine,
     sha256_file,
 )
+from .tool_output import decode_tool_output
 from .version import BACKEND_VERSION
-from .runtime_paths import windows_tool_path, offline_tex_environment, windows_process_environment
+from .runtime_paths import (
+    bundled_tool_root,
+    offline_tex_environment,
+    portable_tex_root,
+    windows_process_environment,
+    windows_tool_path,
+)
 
 SUPPORTED_FORMATS = ("docx", "pdf", "tex")
 DOCUMENT_OUTPUT_LABELS = {
@@ -2217,8 +2224,8 @@ def _run(
     resolved = shutil.which(command[0], path=effective_env.get("PATH"))
     origin = "unresolved"
     if resolved:
-        parts = {part.lower() for part in Path(resolved).parts}
-        origin = "bundled" if parts & {"offline-runtime", "runtimes"} or getattr(sys, "frozen", False) and Path(resolved) == Path(sys.executable) else "system"
+        origin = "bundled" if bundled_tool_root(resolved) is not None or (
+            getattr(sys, "frozen", False) and Path(resolved) == Path(sys.executable)) else "system"
     with step(stage, tool=tool, tool_source=origin) as evidence:
         if tool == "python_renderer":
             evidence["tool_version"] = platform.python_version()
@@ -2238,7 +2245,7 @@ def _run(
                     case.write(f"{prefix}/stderr.bin", version_probe.stderr)
                     case.json(f"{prefix}/exit.json", {"exit_code": version_probe.returncode})
                 match = re.search(r"(?im)^" + executable + r" version (\d+(?:\.\d+){1,4})",
-                                  (version_probe.stdout + b"\n" + version_probe.stderr).decode("utf-8", errors="replace"))
+                                  decode_tool_output(version_probe.stdout + b"\n" + version_probe.stderr))
                 if version_probe.returncode == 0 and match:
                     evidence["tool_version"] = match.group(1)
             except (OSError, subprocess.TimeoutExpired) as exc:
@@ -2343,10 +2350,10 @@ def _run_process(
             if raw_stderr is None:
                 case.write(f"{tool_number}/stderr.bin", stderr)
             case.json(f"{tool_number}/exit.json", {"exit_code": process.returncode})
-    # Decode only for application-side classification. The capture retains
-    # the original bytes even for Windows tools using a legacy code page.
-    stdout = stdout.decode("utf-8", errors="replace").replace("\r\n", "\n").replace("\r", "\n")
-    stderr = stderr.decode("utf-8", errors="replace").replace("\r\n", "\n").replace("\r", "\n")
+    # Decode only for application-side classification. The capture retains the
+    # original bytes, so a Chinese console code page must not turn into U+FFFD.
+    stdout = decode_tool_output(stdout).replace("\r\n", "\n").replace("\r", "\n")
+    stderr = decode_tool_output(stderr).replace("\r\n", "\n").replace("\r", "\n")
     if case is not None and "Could not retain " in stderr:
         case.missing.append("模板报告有材料写入失败，详细原因见工具标准错误")
     evidence["exit_code"] = process.returncode
@@ -2358,7 +2365,7 @@ def _run_process(
         checkpoint(
             "pdf_compile", "success" if process.returncode == 0 else "failure",
             tool="xelatex", tool_version=xe.group(1),
-            tool_source="bundled" if xe_path and {part.lower() for part in Path(xe_path).parts} & {"offline-runtime", "runtimes"}
+            tool_source="bundled" if bundled_tool_root(xe_path) is not None
                 else "system" if xe_path else "unresolved",
             **({"exit_code": int(child_exit.group(1))} if child_exit else {}),
             **({"reason": _external_reason(diagnostic)} if process.returncode != 0 else {}),
@@ -2418,6 +2425,16 @@ def _run_process(
                 "TEMPLATE_ENGINE_INCOMPLETE",
                 "模板文件不完整，请重新选择模板。",
                 {"exit_code": process.returncode},
+            )
+        if "texmf.cnf not found" in diagnostic or "can't find the format file" in diagnostic:
+            root = portable_tex_root(effective_env.get("PATH", ""))
+            unsupported = root is not None and not str(root).isascii()
+            raise ExportError(
+                "ENGINE_PATH_UNSUPPORTED" if unsupported else "ENGINE_CONFIGURATION_MISSING",
+                "编译环境无法读取自己的配置，分页预览和 PDF 导出不可用；请运行最新安装包把编译环境装到 ProgramData 后重启应用。"
+                if unsupported
+                else "编译环境缺少配置文件或格式文件，分页预览和 PDF 导出不可用；请运行安装包完成修复。",
+                {"exit_code": process.returncode, "engine_root": str(root) if root is not None else None},
             )
         raise ExportError(
             "RENDER_FAILED",

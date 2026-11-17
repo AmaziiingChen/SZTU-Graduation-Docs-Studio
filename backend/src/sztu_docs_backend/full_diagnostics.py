@@ -18,6 +18,7 @@ from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
 
+from .runtime_paths import offline_tex_environment, portable_tex_root
 from .storage.paths import prepare_private_directory, protect_private_file, resolve_data_directory
 from .version import BACKEND_VERSION
 
@@ -300,6 +301,23 @@ def capture_workspace(name: str, root: Path):
         raise
 
 
+def _engine_report() -> dict[str, Any]:
+    """Describe the bundled engine so a failure names its path instead of only its symptom."""
+    path_value = os.environ.get("PATH", "")
+    root = portable_tex_root(path_value)
+    report: dict[str, Any] = {"root": None, "ascii": None, "texmf_cnf": None, "xelatex_fmt": None}
+    if root is not None:
+        report = {
+            "root": str(root),
+            "ascii": str(root).isascii(),
+            "texmf_cnf": (root / "texmf.cnf").is_file(),
+            "xelatex_fmt": (root / "texmf-var" / "web2c" / "xetex" / "xelatex.fmt").is_file(),
+        }
+    report["configuration"] = offline_tex_environment(path_value)
+    report["variable"] = os.environ.get("SZTU_ENGINE_ROOT")
+    return report
+
+
 def record_machine(case: Case) -> None:
     case.json("capture-start.json", {"reportId": case.case_id, "operation": case.method, "createdAt": case.started_at})
     sidecar_hash = _frozen_digest()
@@ -310,7 +328,8 @@ def record_machine(case: Case) -> None:
         "executable": sys.executable, "frozen": getattr(sys, "frozen", False),
         "cwd": os.getcwd(), "sidecar_sha256": sidecar_hash, "backend_version": BACKEND_VERSION,
         "application_version": os.environ.get("SZTU_DOCS_APP_VERSION"),
-        "environment": {key: os.environ[key] for key in ("PATH", "HOME", "USERPROFILE", "TEMP", "TMP", "LANG", "LC_ALL", "SZTU_FONT_DIR", "SZTU_DOCS_DATA_DIR") if key in os.environ},
+        "engine": _engine_report(),
+        "environment": {key: os.environ[key] for key in ("PATH", "HOME", "USERPROFILE", "TEMP", "TMP", "LANG", "LC_ALL", "SZTU_FONT_DIR", "SZTU_DOCS_DATA_DIR", "SZTU_ENGINE_ROOT", "PROGRAMDATA") if key in os.environ},
     })
 
 

@@ -5,6 +5,10 @@ import type { DiagnosticContext } from "./diagnostic-context.js"
 
 export const UPDATE_INTERVAL_MS = 30 * 60 * 1000
 const MAX_MANIFEST_BYTES = 128 * 1024
+// A 400 MB installer legitimately takes minutes. Give up on a connection that never
+// answers, or on a transfer that stops making progress, instead of on total elapsed time.
+const CONNECT_TIMEOUT_MS = 30_000
+const STALL_TIMEOUT_MS = 45_000
 const MAX_ARTIFACT_BYTES = 1024 * 1024 * 1024
 const MAX_NOTICE_TITLE_LENGTH = 80
 const MAX_NOTICE_BODY_LENGTH = 1_000
@@ -561,6 +565,52 @@ export class UpdateService {
     }
   }
 
+  /** Connect deadline plus a no-progress deadline; every received chunk re-arms the latter. */
+  private async fetchWithProgressTimeout<T>(
+    url: string,
+    connectMs: number,
+    stallMs: number,
+    consume: (response: Response, signal: AbortSignal, touch: () => void) => Promise<T>,
+  ): Promise<T> {
+    const controller = new AbortController()
+    let responseBody: ReadableStream<Uint8Array> | null = null
+    let rejectDeadline!: (error: Error) => void
+    const deadline = new Promise<never>((_resolve, reject) => { rejectDeadline = reject })
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const stale = () => {
+      if (timer) clearTimeout(timer)
+      timer = undefined
+      controller.abort()
+      if (responseBody && !responseBody.locked) void responseBody.cancel().catch(() => undefined)
+      rejectDeadline(new Error("Update request timed out."))
+    }
+    const arm = (ms: number) => {
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(stale, ms)
+      timer.unref?.()
+    }
+    arm(connectMs)
+    try {
+      const operation = (this.options.fetchImpl ?? fetch)(url, {
+        method: "GET",
+        credentials: "omit",
+        redirect: "error",
+        signal: controller.signal,
+      }).then((response) => {
+        responseBody = response.body
+        if (controller.signal.aborted) {
+          void response.body?.cancel().catch(() => undefined)
+          throw new Error("Update request timed out.")
+        }
+        arm(stallMs)
+        return consume(response, controller.signal, () => arm(stallMs))
+      })
+      return await Promise.race([operation, deadline])
+    } finally {
+      if (timer) clearTimeout(timer)
+    }
+  }
+
   private readChunk(reader: ReadableStreamDefaultReader<Uint8Array>, signal: AbortSignal): Promise<ReadableStreamReadResult<Uint8Array>> {
     if (signal.aborted) return Promise.reject(new Error("Update request timed out."))
     return new Promise((resolve, reject) => {
@@ -579,7 +629,7 @@ export class UpdateService {
     advance: (stage: string) => void,
     classify: (reason: string) => void,
   ): Promise<string> {
-    return this.fetchWithTimeout(artifact.url, 60_000, async (response, signal) => {
+    return this.fetchWithProgressTimeout(artifact.url, CONNECT_TIMEOUT_MS, STALL_TIMEOUT_MS, async (response, signal, touch) => {
       if (!response.ok || !response.body) {
         classify("http_rejected")
         throw new Error("Update download failed.")
@@ -604,6 +654,7 @@ export class UpdateService {
           classify("transfer_failed")
           const chunk = await this.readChunk(reader, signal)
           if (chunk.done) break
+          touch()
           size += chunk.value.byteLength
           if (size > artifact.size_bytes || size > MAX_ARTIFACT_BYTES) {
             classify("size_mismatch")

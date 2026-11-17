@@ -30,7 +30,10 @@ def main() -> int:
     os.environ["PATH"] = windows_tool_path(os.pathsep.join((str(texbin), str(pdfbin), str(Path(os.environ["SYSTEMROOT"]) / "System32"))))
     for name in ("TEXMFCNF", "TEXMFROOT", "TEXMFDIST", "TEXMF", "TEXINPUTS", "FONTCONFIG_FILE", "FONTCONFIG_PATH"):
         os.environ.pop(name, None)
-    os.environ.update(offline_tex_environment(os.environ["PATH"]))
+    configuration = offline_tex_environment(os.environ["PATH"])
+    if not configuration:
+        raise RuntimeError("Offline runtime root is missing from PATH or is not ASCII")
+    os.environ.update(configuration)
     def run(command: list[str], cwd: Path | None = None) -> str:
         command = [windows_tool_path(command[0]), *command[1:]]
         completed = subprocess.run(command, cwd=cwd, capture_output=True, timeout=60)

@@ -55,3 +55,76 @@ it.each(["1.0", "2.0"])("resolves layout %s and rejects interrupted installs", (
   writeFileSync(path.join(root, "offline-runtime-location.json"), JSON.stringify({ schema_version: "1.0", runtime_id: "../escape", manifest_sha256: "b".repeat(64) }))
   expect(() => offlineRuntimePaths(backend, "win32", "x64", root)).toThrow("invalid")
 })
+
+it("prefers the machine-wide engine and falls back to a legacy per-user copy", () => {
+  const { root, backend } = fixture()
+  const id = "c".repeat(64)
+  const programData = path.join(root, "programdata")
+  const localAppData = path.join(root, "local")
+  const engine = path.join(programData, "SZTU-Docs/engine", id.slice(0, 16))
+  const legacy = path.join(localAppData, "SZTU-Docs/r", id.slice(0, 16))
+  const manifest = JSON.stringify({ schema_version: "1.0", platform: "win32", architecture: "x64" })
+  const install = (runtime: string) => {
+    const bins = [path.join(runtime, "texlive/bin/windows"), path.join(runtime, "poppler/Library/bin")]
+    for (const bin of bins) mkdirSync(bin, { recursive: true })
+    writeFileSync(path.join(bins[0], "xelatex.exe"), "fixture")
+    writeFileSync(path.join(bins[1], "pdftoppm.exe"), "fixture")
+    writeFileSync(path.join(runtime, "runtime-manifest.json"), manifest)
+    writeFileSync(path.join(runtime, "complete.txt"), id)
+    return bins
+  }
+  writeFileSync(path.join(root, "offline-runtime-location.json"), JSON.stringify({
+    schema_version: "3.0",
+    runtime_id: id,
+    manifest_sha256: createHash("sha256").update(manifest).digest("hex"),
+    roots: [
+      { kind: "env", name: "SZTU_ENGINE_ROOT" },
+      { kind: "path", value: "%PROGRAMDATA%/SZTU-Docs/engine/" + id.slice(0, 16) },
+      { kind: "path", value: "%LOCALAPPDATA%/SZTU-Docs/r/" + id.slice(0, 16) },
+    ],
+  }))
+  const resolve = (environment: NodeJS.ProcessEnv = {}) =>
+    offlineRuntimePaths(backend, "win32", "x64", localAppData, programData, environment)
+  expect(() => resolve()).toThrow("incomplete")
+  const legacyBins = install(legacy)
+  expect(resolve()).toEqual(legacyBins)
+  const engineBins = install(engine)
+  expect(resolve()).toEqual(engineBins)
+  const custom = path.join(root, "engine-env")
+  const customBins = install(custom)
+  expect(resolve({ SZTU_ENGINE_ROOT: custom })).toEqual(customBins)
+})
+
+it("names a non-ASCII runtime path instead of reporting an incomplete install", () => {
+  const { root, backend } = fixture()
+  const id = "d".repeat(64)
+  const programData = path.join(root, "程序数据")
+  const localAppData = path.join(root, "local")
+  const engine = path.join(programData, "SZTU-Docs/engine", id.slice(0, 16))
+  const legacy = path.join(localAppData, "SZTU-Docs/r", id.slice(0, 16))
+  const manifest = JSON.stringify({ schema_version: "1.0", platform: "win32", architecture: "x64" })
+  const install = (runtime: string) => {
+    const bins = [path.join(runtime, "texlive/bin/windows"), path.join(runtime, "poppler/Library/bin")]
+    for (const bin of bins) mkdirSync(bin, { recursive: true })
+    writeFileSync(path.join(bins[0], "xelatex.exe"), "fixture")
+    writeFileSync(path.join(bins[1], "pdftoppm.exe"), "fixture")
+    writeFileSync(path.join(runtime, "runtime-manifest.json"), manifest)
+    writeFileSync(path.join(runtime, "complete.txt"), id)
+    return bins
+  }
+  writeFileSync(path.join(root, "offline-runtime-location.json"), JSON.stringify({
+    schema_version: "3.0",
+    runtime_id: id,
+    manifest_sha256: createHash("sha256").update(manifest).digest("hex"),
+    roots: [
+      { kind: "path", value: "%PROGRAMDATA%/SZTU-Docs/engine/" + id.slice(0, 16) },
+      { kind: "path", value: "%LOCALAPPDATA%/SZTU-Docs/r/" + id.slice(0, 16) },
+    ],
+  }))
+  const resolve = () => offlineRuntimePaths(backend, "win32", "x64", localAppData, programData, {})
+  install(engine)
+  expect(resolve).toThrow("outside an ASCII path")
+  // An ASCII legacy copy is still preferred over an unusable machine-wide one.
+  const legacyBins = install(legacy)
+  expect(resolve()).toEqual(legacyBins)
+})
