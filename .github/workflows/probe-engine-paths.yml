@@ -1,0 +1,41 @@
+name: Probe engine paths
+# Throwaway diagnostic workflow: proves whether a non-ASCII runtime root reproduces the
+# reported Windows preview failure, before any production code changes.
+on:
+  push:
+    branches: ['exp/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: probe-engine-paths-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  probe:
+    name: Probe / windows-2025
+    runs-on: windows-2025
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: app
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          path: app
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: '3.14'
+      - name: Fetch verified private runtime
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/ci_resources.py
+      - name: Probe engine path scenarios
+        run: python scripts/probe_windows_engine_paths.py --engine-root build/offline-runtime
+      - name: Print probe report
+        if: always()
+        run: |
+          if (Test-Path build/probe-report.json) { Get-Content build/probe-report.json -Raw }
