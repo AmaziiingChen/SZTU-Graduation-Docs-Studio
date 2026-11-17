@@ -1,0 +1,154 @@
+name: Chinese profile acceptance
+on:
+  push:
+    branches: ['exp/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: chinese-profile-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  windows:
+    name: Install and render as a Chinese-named standard user
+    runs-on: windows-2025
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: app
+        shell: bash
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
+      CJK_USER: 林振宇
+      CJK_PASSWORD: 'Sztu-CI-2026!'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          path: app
+          persist-credentials: false
+      - name: Preserve template LF bytes
+        working-directory: .
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: AmaziiingChen/SZTU-Thesis-Latex-Template
+          ref: 35f4b0ffc97fce5ebe36fc58a962da9138370386
+          path: Thesis
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '24.14.0'
+      - uses: pnpm/action-setup@f53f5227a9e83886ab598c617f3c170fab62f0d3 # v6
+        with:
+          package_json_file: app/package.json
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: '3.14'
+      - name: Install project dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Fetch verified private test inputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/ci_resources.py
+      - name: Build native Windows offline installer
+        shell: pwsh
+        run: pnpm package:win:offline
+      - name: Prepare a workspace the test account can reach
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $cjk = $env:CJK_USER
+          # A profile directory named after a Chinese account is what the 0.1.15 report showed.
+          # `net user` exists on every supported Windows image, unlike the LocalAccounts module.
+          net user $cjk $env:CJK_PASSWORD /add /comment:"SZTU CI acceptance" 2>&1 | Out-Null
+          if ($LASTEXITCODE -ne 0) {
+            (net user $cjk | Out-String) -match $cjk | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw 'Could not create the Chinese-named test account' }
+          }
+          $work = 'C:\sztu-ci'
+          New-Item -ItemType Directory -Path $work -Force | Out-Null
+          Copy-Item -Path $env:GITHUB_WORKSPACE\* -Destination $work -Recurse -Force
+          # The account is a standard user: no elevation anywhere in this job.
+          icacls $work /grant "${cjk}:(OI)(CI)M" /T /Q | Out-Null
+          $installer = Get-ChildItem -Path "$work\app\release\offline\*-offline.exe" | Select-Object -First 1
+          if (-not $installer) { throw 'Offline installer was not created' }
+          $log = Join-Path $work 'accept.log'
+          $script = Join-Path $work 'run-accept.cmd'
+          # The scheduled task inherits the machine PATH, not this job's, so pin Node down.
+          $node = (Get-Command node).Source
+          Write-Host "node: $node"
+          @(
+            '@echo off',
+            "whoami /user > `"$work\whoami.txt`" 2>&1",
+            "set > `"$work\environment.txt`"",
+            "`"$($installer.FullName)`" /S /D=$work\app16",
+            "if errorlevel 1 (echo install-failed=%errorlevel% >> `"$log`" & echo 1 > `"$work\accept.exit`" & exit /b 1)",
+            "cd /d $work\app",
+            "`"$node`" scripts\accept_ci_bundle.mjs `"$work\app16`" `"$work\app\tmp\ci-acceptance`" >> `"$log`" 2>&1",
+            "echo %errorlevel% > `"$work\accept.exit`""
+          ) | Set-Content -Path $script -Encoding ascii
+          icacls $script /grant "${cjk}:RX" /Q | Out-Null
+          # Scheduled tasks run with the account's own profile, which is how the failure appears.
+          schtasks /create /tn 'SZTU-CI-Accept' /tr "cmd /c $script" /sc once /st 00:00 /ru $cjk /rp $env:CJK_PASSWORD /f | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Could not schedule the acceptance run' }
+          schtasks /run /tn 'SZTU-CI-Accept' | Out-Null
+          $deadline = (Get-Date).AddMinutes(45)
+          $exit = Join-Path $work 'accept.exit'
+          while (-not (Test-Path $exit)) {
+            if ((Get-Date) -gt $deadline) { throw 'The Chinese-profile acceptance run timed out' }
+            Start-Sleep -Seconds 20
+          }
+          Write-Host '--- whoami ---'
+          Get-Content (Join-Path $work 'whoami.txt')
+          Write-Host '--- profile and program data ---'
+          Write-Host ('profile: ' + (Join-Path 'C:\Users' $cjk))
+          Get-ChildItem -Path 'C:\Users' | Select-Object -ExpandProperty Name
+          Get-ChildItem -Path 'C:\ProgramData\SZTU-Docs' -Recurse -Depth 2 -ErrorAction SilentlyContinue |
+            Select-Object -First 20 -ExpandProperty FullName
+          Write-Host '--- acceptance log ---'
+          Get-Content $log
+          $code = (Get-Content $exit | Select-Object -First 1).Trim()
+          if ($code -ne '0') { throw "Acceptance exited $code" }
+      - name: Assert the engine left the Chinese profile
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $descriptor = 'C:\sztu-ci\app16\resources\offline-runtime-location.json'
+          if (-not (Test-Path $descriptor)) { throw 'The installer did not ship an engine descriptor' }
+          $data = Get-Content $descriptor -Raw | ConvertFrom-Json
+          if ($data.schema_version -ne '3.0') { throw "Unexpected descriptor schema $($data.schema_version)" }
+          $sequence = ($data.roots | ForEach-Object { if ($_.kind -eq 'path') { $_.value } else { "%$($_.name)%" } }) -join ' -> '
+          Write-Host "engine roots: $sequence"
+          $engine = Join-Path 'C:\ProgramData\SZTU-Docs\engine' $data.runtime_id.Substring(0, 16)
+          Write-Host "engine: $engine"
+          if (-not (Test-Path (Join-Path $engine 'complete.txt'))) { throw 'The machine-wide engine was not completed' }
+          if (-not (Test-Path (Join-Path $engine 'texlive\texmf.cnf'))) { throw 'The machine-wide engine is missing its TeX configuration' }
+          if (-not (Test-Path (Join-Path $engine 'texlive\texmf-var\web2c\xetex\xelatex.fmt'))) { throw 'The machine-wide engine is missing its format file' }
+          foreach ($path in @($engine, $engine + '\texlive')) {
+            $ascii = -not ($path.ToCharArray() | Where-Object { [int]$_ -gt 126 })
+            if (-not $ascii) { throw "Engine path is not ASCII: $path" }
+          }
+          # The per-user copy must not be what the app resolved.
+          $legacy = Join-Path 'C:\Users\林振宇\AppData\Local\SZTU-Docs\r' $data.runtime_id.Substring(0, 16)
+          Write-Host "legacy per-user copy present: $(Test-Path $legacy)"
+          $acceptance = Get-Content 'C:\sztu-ci\app\tmp\ci-acceptance\acceptance.json' -Raw | ConvertFrom-Json
+          Write-Host "version: $($acceptance.version) status: $($acceptance.status) documents: $($acceptance.documents.Count)"
+          if ($acceptance.status -ne 'pass') { throw "Acceptance status $($acceptance.status)" }
+          if ($acceptance.version -notlike '0.1.16*') { throw "Unexpected app version $($acceptance.version)" }
+          if ($acceptance.documents.Count -lt 7) { throw 'Not every document type was exercised' }
+          if ($acceptance.windows_environment.missing_comspec -ne 'pass') { throw 'The COMSPEC regression did not run' }
+          $pages = ($acceptance.documents | Measure-Object -Property preview_pages -Sum).Sum
+          Write-Host "PASS chinese-profile acceptance: $($acceptance.documents.Count) documents, $pages pages, version $($acceptance.version)"
+      - name: Save acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: chinese-profile-acceptance-${{ github.sha }}
+          path: |
+            C:\sztu-ci\accept.log
+            C:\sztu-ci\acceptance.json
+            C:\sztu-ci\app\tmp\ci-acceptance\acceptance.json
+            C:\sztu-ci\whoami.txt
+          if-no-files-found: warn
