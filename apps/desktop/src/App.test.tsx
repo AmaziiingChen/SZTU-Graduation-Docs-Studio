@@ -2044,7 +2044,7 @@ describe("M3 workbench persistence", () => {
 
     expect(
       screen.getByText(
-        "[1] 张三, 李四. 合成参考文献[J]. 深圳技术大学学报, 2026, 2(1): 1-8.",
+        "[1] 张三，李四． 合成参考文献[J]．深圳技术大学学报，2026，2（1）：1-8．",
       ),
     ).toBeInTheDocument()
     await waitFor(() => expect(api.saveDraft).toHaveBeenCalledTimes(1))
@@ -2064,7 +2064,7 @@ describe("M3 workbench persistence", () => {
             type: "paragraph",
             runs: [
               {
-                text: "[1] 张三, 李四. 合成参考文献[J]. 深圳技术大学学报, 2026, 2(1): 1-8.",
+                text: "[1] 张三，李四． 合成参考文献[J]．深圳技术大学学报，2026，2（1）：1-8．",
               },
             ],
           },

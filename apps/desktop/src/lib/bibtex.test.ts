@@ -36,9 +36,9 @@ describe("BibTeX reference import", () => {
 
     const formatted = formatBibtex(source).references
     expect(formatted[0].text).toContain(
-      "[1] 张三, 李四, 王五, 等. H_2 储能系统研究[J]. 深圳技术大学学报, 2025, 3(2): 10-18.",
+      "[1] 张三，李四，王五，等． H_2 储能系统研究[J]．深圳技术大学学报，2025，3（2）：10-18．",
     )
-    expect(formatted[0].text).toContain("DOI: 10.1000/synthetic.")
+    expect(formatted[0].text).toContain("DOI: 10.1000/synthetic．")
     expect(formatted[0].paragraph.runs[0].text).toMatch(/H$/)
     expect(formatted[0].paragraph.runs).toEqual(
       expect.arrayContaining([
@@ -46,7 +46,7 @@ describe("BibTeX reference import", () => {
       ]),
     )
     expect(formatted[1].text).toContain(
-      "[2] Smith Alex. A Robust Method[D]. Shenzhen: Synthetic University, 2024.",
+      "[2] Smith A. A Robust Method[D]. Shenzhen: Synthetic University, 2024.",
     )
   })
 
@@ -204,7 +204,7 @@ describe("BibTeX reference import", () => {
 
     expect(result.issues).toEqual([])
     expect(result.references[0].text).toBe(
-      "[1] 合成作者. 微通道散热研究[J]. 合成期刊, 2026.",
+      "[1] 合成作者． 微通道散热研究[J]．合成期刊，2026．",
     )
     expect(result.references[0].text).not.toContain("abstract")
     expect(result.entries[0].fields.abstract).toContain("\\sourceonly")
@@ -240,13 +240,38 @@ describe("BibTeX reference import", () => {
     expect(result.issues).toEqual([])
     expect(result.entries[0].fields.journal).toBe("计算机工程与应用")
     expect(result.references[0].text).toContain(
-      "CO_2 排放预测方法研究[J]. 计算机工程与应用, 2025, 61(1): 1-8.",
+      "CO_2 排放预测方法研究[J]．计算机工程与应用，2025，61（1）：1-8．",
     )
     expect(result.references[0].text).not.toContain("\\mathrm")
     expect(result.references[0].paragraph.runs).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ text: "2", script: "sub" }),
       ]),
+    )
+  })
+
+  it("strips trailing sentence punctuation that exporters leave inside fields", () => {
+    const latin = formatBibtex(String.raw`
+@article{dots, author={Smith, John T. and Doe, Jane and Roe, Richard and Poe, Ed},
+  title={Trailing period title.}, journal={Journal of Dots.}, year={2020.},
+  volume={1.}, number={2.}, pages={3--4.}, doi={10.1000/abc.}}`)
+
+    expect(latin.references[0].text).toBe(
+      "[1] Smith J. T., Doe J., Roe R., et al. Trailing period title[J]. Journal of Dots, 2020, 1(2): 3-4. DOI: 10.1000/abc.",
+    )
+
+    const chinese = formatBibtex(String.raw`
+@article{cn, author={张三}, title={带句号的题名。}, journal={合成期刊。}, year={2020}}`)
+
+    expect(chinese.references[0].text).toBe(
+      "[1] 张三． 带句号的题名[J]．合成期刊，2020．",
+    )
+
+    const online = formatBibtex(String.raw`
+@online{web, author={张三}, title={资料}, year={2020}, url={https://example.com/a.}}`)
+
+    expect(online.references[0].text).toBe(
+      "[1] 张三． 资料[EB/OL]．（2020）． https://example.com/a．",
     )
   })
 
@@ -291,11 +316,11 @@ describe("BibTeX reference import", () => {
 
     expect(result.issues).toEqual([])
     expect(result.references.map((item) => item.text)).toEqual([
-      "[1] 张三. 结构化文档工程[M]. 李四, 译. 2版, 北京: 测试出版社, 2026, 10-20.",
-      "[2] 王五. 连续表格分页[M]//文档自动化手册. 3版, 上海: 合成出版社, 2025, 30-45.",
-      "[3] 赵六. 本地排版研究[C]//文档工程会议论文集. 深圳: 测试学会, 2026, 50-60.",
-      "[4] 陈七, 编. 文档工程会议论文集[C]. 深圳: 测试学会, 2026.",
-      "[5] 信息与文献 参考文献著录规则: GB/T 7714-2025[S]. 国家标准委, 2025.",
+      "[1] 张三． 结构化文档工程[M]．李四，译． 2版． 北京：测试出版社，2026，10-20．",
+      "[2] 王五． 连续表格分页[M]//文档自动化手册．3版． 上海：合成出版社，2025，30-45．",
+      "[3] 赵六． 本地排版研究[C]//文档工程会议论文集．深圳：测试学会，2026，50-60．",
+      "[4] 陈七，编． 文档工程会议论文集[C]．深圳：测试学会，2026．",
+      "[5] GB/T 7714-2025 信息与文献 参考文献著录规则[S]．国家标准委，2025．",
     ])
   })
 
@@ -320,11 +345,11 @@ describe("BibTeX reference import", () => {
 
     expect(result.issues).toEqual([])
     expect(result.references.map((item) => item.text)).toEqual([
-      "[1] 测试作者. 本地文档指南[EB/OL]. 2026-08-01. https://example.invalid/guide [2026-09-02].",
-      "[2] 电子资料[EB/OL]. 2025. https://example.invalid/archive.",
-      "[3] 网站资料[EB/OL]. 2024. https://example.invalid/site.",
-      "[4] 带网址的其他资料[EB/OL]. 2023. https://example.invalid/misc.",
-      "[5] 未分类内部资料[Z]. 2022.",
+      "[1] 测试作者． 本地文档指南[EB/OL]．（2026-08-01）[2026-09-02]． https://example.invalid/guide．",
+      "[2] 电子资料[EB/OL]．（2025）． https://example.invalid/archive．",
+      "[3] 网站资料[EB/OL]．（2024）． https://example.invalid/site．",
+      "[4] 带网址的其他资料[EB/OL]．（2023）． https://example.invalid/misc．",
+      "[5] 未分类内部资料[Z]．2022．",
     ])
   })
 
@@ -340,13 +365,13 @@ describe("BibTeX reference import", () => {
     expect(reference.paragraph).toEqual({
       type: "paragraph",
       runs: [
-        { text: "[1] 张三. " },
+        { text: "[1] 张三． " },
         { text: "CO", bold: true },
         { text: "2", script: "sub" },
         { text: " 与 " },
         { text: "R", italic: true },
         { text: "2", script: "super" },
-        { text: " 模型[J]. 合成期刊, 2026." },
+        { text: " 模型[J]．合成期刊，2026．" },
       ],
     })
   })

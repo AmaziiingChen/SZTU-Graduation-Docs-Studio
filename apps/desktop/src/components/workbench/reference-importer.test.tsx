@@ -57,7 +57,7 @@ describe("ReferenceImporter", () => {
       "py-1",
     )
     expect(
-      screen.getByText("[1] 张三. 合成论文[J]. 合成期刊, 2026."),
+      screen.getByText("[1] 张三． 合成论文[J]．合成期刊，2026．"),
     ).toBeInTheDocument()
     expect(screen.queryByText("@article{demo")).not.toBeInTheDocument()
     expect(
@@ -86,8 +86,8 @@ describe("ReferenceImporter", () => {
       String.raw`@article{rich, author={张三}, title={{\textbf{CO}}_{2} 与 \emph{R}^{2} 模型}, journal={合成期刊}, year={2026}}`,
     )
 
-    expect(screen.getByText(/\[1\] 张三\./)).toHaveTextContent(
-      "[1] 张三. CO2 与 R2 模型[J]. 合成期刊, 2026.",
+    expect(screen.getByText(/\[1\] 张三．/)).toHaveTextContent(
+      "[1] 张三． CO2 与 R2 模型[J]．合成期刊，2026．",
     )
     expect(container.querySelector("strong")).toHaveTextContent("CO")
     expect(container.querySelector("em")).toHaveTextContent("R")
@@ -101,7 +101,7 @@ describe("ReferenceImporter", () => {
         source={
           '@article{valid, author={张三}, title={可用条目}, journal={合成期刊}, year={2026}}\n@article{broken, title={缺少字段}}'
         }
-        legacyReferences={["[1] 已保存的有效文献[J]."]}
+        legacyReferences={["[1] 已保存的有效文献[J]．"]}
         maximumEntries={50}
         maximumReferenceLength={1000}
         onChange={vi.fn()}
@@ -110,9 +110,9 @@ describe("ReferenceImporter", () => {
 
     expect(screen.getByText("BibTeX 尚未通过检查")).toBeInTheDocument()
     expect(
-      screen.getByText("[1] 张三. 可用条目[J]. 合成期刊, 2026."),
+      screen.getByText("[1] 张三． 可用条目[J]．合成期刊，2026．"),
     ).toBeInTheDocument()
-    expect(screen.queryByText("[1] 已保存的有效文献[J].")).not.toBeInTheDocument()
+    expect(screen.queryByText("[1] 已保存的有效文献[J]．")).not.toBeInTheDocument()
     expect(screen.getByText(/已保留上次保存的参考文献/)).toBeInTheDocument()
   })
 

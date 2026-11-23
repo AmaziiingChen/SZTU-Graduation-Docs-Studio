@@ -1000,26 +1000,87 @@ function referenceParagraph(
   return { type: "paragraph", runs }
 }
 
-function authors(value: string | undefined): string {
+// GB/T 7714—2025 的著录符号按语种区分：中文条目用全角，西文条目用半角。
+// 与论文模板的 bst（control.bib.punct = bylanguage）保持一致。
+interface PublishingPunctuation {
+  comma: string
+  colon: string
+  period: string
+}
+
+const CJK_PUNCTUATION: PublishingPunctuation = {
+  comma: "，",
+  colon: "：",
+  period: "．",
+}
+
+const LATIN_PUNCTUATION: PublishingPunctuation = {
+  comma: ", ",
+  colon: ": ",
+  period: ".",
+}
+
+// .bib 字段只应存内容，句点由样式补。导出工具或手工录入常把结尾句点带进来，
+// 这里统一剥掉，避免拼出 "et al.."、"[J]." 两连点或 "DOI: 10.1/x.."。
+// 只处理结尾的句读，不动字段中间的标点，也不动作者/版次（首字母与 Jr. 合法带点）。
+const TRAILING_SENTENCE_PUNCTUATION = /[\s.。．,，;；、:：]+$/
+
+function trimField(value: string): string {
+  return value.replace(TRAILING_SENTENCE_PUNCTUATION, "")
+}
+
+function containsCjk(value: string): boolean {
+  return /[\u3400-\u9fff]/.test(value)
+}
+
+function punctuationFor(
+  fields: Record<string, string>,
+  title: string,
+): PublishingPunctuation {
+  const sample = `${fields.author ?? ""}${fields.editor ?? ""}${title}${fields.journal ?? ""}${fields.booktitle ?? ""}`
+  return containsCjk(sample) ? CJK_PUNCTUATION : LATIN_PUNCTUATION
+}
+
+// GB/T 7714—2025：西文责任者写姓 + 名首字母（Lamport L.），中文责任者保持全名。
+function initials(given: string): string {
+  if (containsCjk(given)) return given
+  const parts = given
+    .split(/[\s.]+/)
+    .filter(Boolean)
+    .flatMap((part) => part.split("-"))
+  return parts
+    .filter(Boolean)
+    .map((part) => `${part[0].toUpperCase()}.`)
+    .join(" ")
+}
+
+function authors(
+  value: string | undefined,
+  punctuation: PublishingPunctuation,
+): string {
   if (!value) return ""
   const names = value
     .split(/\s+and\s+/i)
     .map(decodeBibtexText)
     .map((name) => {
       const [family, given] = name.split(/\s*,\s*/, 2)
-      return given ? `${family} ${given}` : name
+      return given ? `${family} ${initials(given)}` : name
     })
     .filter(Boolean)
-  if (names.length <= 3) return names.join(", ")
-  const chinese = names.slice(0, 3).some((name) => /[\u3400-\u9fff]/.test(name))
-  return `${names.slice(0, 3).join(", ")}${chinese ? ", 等" : ", et al."}`
+  if (names.length <= 3) return names.join(punctuation.comma)
+  const chinese = names.slice(0, 3).some(containsCjk)
+  const listed = names.slice(0, 3).join(punctuation.comma)
+  return `${listed}${punctuation.comma}${chinese ? "等" : "et al."}`
 }
 
-function creator(fields: Record<string, string>): string {
-  if (fields.author) return authors(fields.author)
+function creator(
+  fields: Record<string, string>,
+  punctuation: PublishingPunctuation,
+): string {
+  if (fields.author) return authors(fields.author, punctuation)
   if (fields.editor) {
-    const editor = authors(fields.editor)
-    return editor ? `${editor}, 编` : ""
+    const editor = authors(fields.editor, punctuation)
+    return editor ? `${editor}${punctuation.comma}编` : ""
   }
   return ""
 }
@@ -1028,68 +1089,127 @@ function joinNonEmpty(parts: Array<string | undefined>, separator: string): stri
   return parts.filter((part): part is string => Boolean(part?.trim())).join(separator)
 }
 
-function locationAndPublisher(fields: Record<string, string>): string {
-  const place = decodeBibtexText(fields.address ?? fields.location ?? "")
-  const publisher = decodeBibtexText(fields.publisher ?? fields.institution ?? fields.school ?? "")
-  return place && publisher ? `${place}: ${publisher}` : place || publisher
+function locationAndPublisher(
+  fields: Record<string, string>,
+  punctuation: PublishingPunctuation,
+): string {
+  const place = trimField(decodeBibtexText(fields.address ?? fields.location ?? ""))
+  const publisher = trimField(
+    decodeBibtexText(fields.publisher ?? fields.institution ?? fields.school ?? ""),
+  )
+  if (place && publisher) return `${place}${punctuation.colon}${publisher}`
+  // 出版地或出版者缺项时按 GB/T 7714 补齐占位，而不是静默省略。
+  const unknownPlace = punctuation.period === "." ? "S.l." : "出版地不详"
+  const unknownPublisher = punctuation.period === "." ? "s.n." : "出版者不详"
+  return `${place || unknownPlace}${punctuation.colon}${publisher || unknownPublisher}`
 }
 
 function publicationDate(fields: Record<string, string>): string {
-  const date = decodeBibtexText(fields.date ?? "")
+  const date = trimField(decodeBibtexText(fields.date ?? ""))
   if (date) return date
   return joinNonEmpty(
-    [decodeBibtexText(fields.year ?? ""), decodeBibtexText(fields.month ?? "")],
+    [
+      trimField(decodeBibtexText(fields.year ?? "")),
+      trimField(decodeBibtexText(fields.month ?? "")),
+    ],
     "-",
   )
 }
 
+function ordinal(value: string): string {
+  if (!/^\d+$/.test(value)) return value
+  const number = Number(value)
+  const suffix =
+    number % 100 >= 11 && number % 100 <= 13
+      ? "th"
+      : number % 10 === 1
+        ? "st"
+        : number % 10 === 2
+          ? "nd"
+          : number % 10 === 3
+            ? "rd"
+            : "th"
+  return `${number}${suffix}`
+}
+
 function edition(fields: Record<string, string>, title: string): string {
   const value = decodeBibtexText(fields.edition ?? "")
-  if (!value || /版|\bed(?:ition)?\.?$/i.test(value)) return value
-  return /[\u3400-\u9fff]/.test(title) ? `${value}版` : `${value} ed.`
+  if (!value) return value
+  const chinese = /[\u3400-\u9fff]/.test(title)
+  if (chinese) return /版$/.test(value) ? value : `${value}版`
+  const bare = value.replace(/\s*ed(?:ition)?\.?$/i, "")
+  return bare === value && /ed/i.test(value) ? value : `${ordinal(bare)} ed.`
 }
 
 function publicationDetails(
   fields: Record<string, string>,
   title: string,
+  punctuation: PublishingPunctuation,
   includePages = false,
 ): string {
-  return joinNonEmpty(
-    [
-      edition(fields, title),
-      locationAndPublisher(fields),
-      publicationDate(fields),
-      includePages
-        ? decodeBibtexText(fields.pages ?? "").replace(/--/g, "-")
-        : "",
-    ],
-    ", ",
+  const editionValue = edition(fields, title)
+  const editionPeriod = editionValue.endsWith(".") ? "" : punctuation.period
+  const head = editionValue ? `${editionValue}${editionPeriod} ` : ""
+  return (
+    head +
+    joinNonEmpty(
+      [
+        locationAndPublisher(fields, punctuation),
+        publicationDate(fields),
+        includePages
+          ? trimField(decodeBibtexText(fields.pages ?? "")).replace(/--/g, "-")
+          : "",
+      ],
+      punctuation.comma,
+    )
   )
 }
 
-function volumeIssuePages(fields: Record<string, string>): string {
-  const volume = decodeBibtexText(fields.volume ?? "")
-  const number = decodeBibtexText(fields.number ?? fields.issue ?? "")
-  const pages = decodeBibtexText(fields.pages ?? "").replace(/--/g, "-")
-  const volumeIssue = `${volume}${number ? `(${number})` : ""}`
-  if (volumeIssue && pages) return `${volumeIssue}: ${pages}`
+function volumeIssuePages(
+  fields: Record<string, string>,
+  punctuation: PublishingPunctuation,
+): string {
+  const volume = trimField(decodeBibtexText(fields.volume ?? ""))
+  const number = trimField(decodeBibtexText(fields.number ?? fields.issue ?? ""))
+  const pages = trimField(decodeBibtexText(fields.pages ?? "")).replace(/--/g, "-")
+  const latin = punctuation.period === "."
+  const volumeIssue = `${volume}${number ? `${latin ? "(" : "（"}${number}${latin ? ")" : "）"}` : ""}`
+  if (volumeIssue && pages) return `${volumeIssue}${punctuation.colon}${pages}`
   return volumeIssue || pages
 }
 
-function appendIdentifier(text: string, fields: Record<string, string>): string {
-  const doi = decodeBibtexText(fields.doi ?? "")
-  const url = decodeBibtexText(fields.url ?? "")
-  if (doi) return `${text} DOI: ${doi}.`
-  if (url) {
-    const accessed = decodeBibtexText(fields.urldate ?? fields.accessed ?? "")
-    return `${text} ${url}${accessed ? ` [${accessed}]` : ""}.`
-  }
+function appendIdentifier(
+  text: string,
+  fields: Record<string, string>,
+  punctuation: PublishingPunctuation,
+): string {
+  const doi = trimField(decodeBibtexText(fields.doi ?? ""))
+  const url = trimField(decodeBibtexText(fields.url ?? ""))
+  if (doi) return `${text} DOI: ${doi}${punctuation.period}`
+  if (url) return `${text} ${url}${punctuation.period}`
   return text
 }
 
-function terminal(value: string): string {
+// 网络资源的出版年按 GB/T 7714—2025 用圆括号包裹：(2026-08-01)。
+function publicationStamp(
+  year: string,
+  punctuation: PublishingPunctuation,
+): string {
+  if (!year) return ""
+  const latin = punctuation.period === "."
+  return `${latin ? "(" : "（"}${year}${latin ? ")" : "）"}`
+}
+
+// 网络资源的引用日期紧跟出版日期，如 (2026-08-01)[2026-09-02]。
+function accessStamp(fields: Record<string, string>): string {
+  const accessed = trimField(decodeBibtexText(fields.urldate ?? fields.accessed ?? ""))
+  return accessed ? `[${accessed}]` : ""
+}
+
+function terminal(value: string, punctuation: PublishingPunctuation): string {
   const trimmed = value.trim()
-  return /[。.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`
+  const closing = punctuation.period === "." ? /[.。!?]$/ : /[。．!?！？]$/
+  return closing.test(trimmed) ? trimmed : `${trimmed}${punctuation.period}`
 }
 
 export function formatBibtexEntry(
@@ -1097,90 +1217,105 @@ export function formatBibtexEntry(
   index: number,
 ): FormattedReference {
   const fields = entry.fields
-  const formattedCreator = creator(fields)
-  const rawTitle = fields.title ?? entry.citationKey
+  // 题名同样剥掉结尾句点，并让富文本片段用同一份原始串，避免文本与段落不一致。
+  const rawTitle = trimField(fields.title ?? "").trim() || entry.citationKey
   const title = decodeBibtexText(rawTitle)
+  const punctuation = punctuationFor(fields, title)
+  const latin = punctuation.period === "."
+  const comma = punctuation.comma
+  const period = punctuation.period
+
+  const formattedCreator = creator(fields, punctuation)
   const year = publicationDate(fields)
-  const journal = decodeBibtexText(fields.journal ?? "")
-  const booktitle = decodeBibtexText(fields.booktitle ?? "")
-  const pages = decodeBibtexText(fields.pages ?? "").replace(/--/g, "-")
-  const prefix = `[${index + 1}] ${formattedCreator ? `${formattedCreator}. ` : ""}`
-  const translator = authors(fields.translator)
-  const translatedResponsibility = translator ? `${translator}, 译. ` : ""
+  const journal = trimField(decodeBibtexText(fields.journal ?? ""))
+  const booktitle = trimField(decodeBibtexText(fields.booktitle ?? ""))
+  const pages = trimField(decodeBibtexText(fields.pages ?? "")).replace(/--/g, "-")
+  // 西文姓名首字母本身以句点结尾（Lamport L.），不再重复加句点。
+  const creatorPeriod = formattedCreator.endsWith(".") ? "" : period
+  const prefix = `[${index + 1}] ${formattedCreator ? `${formattedCreator}${creatorPeriod} ` : ""}`
+  const translator = authors(fields.translator, punctuation)
+  const translatedResponsibility = translator ? `${translator}${comma}译${period} ` : ""
+  // 类型标识之后：西文条目留一个空格，中文条目直接接下一个著录项。
+  const afterTag = `${period}${latin ? " " : ""}`
   const formatWithTitle = (formattedTitle: string): string => {
     let body: string
     switch (entry.type) {
       case "article":
-        body = `${prefix}${formattedTitle}[J]. ${joinNonEmpty(
-          [journal, year, volumeIssuePages(fields)],
-          ", ",
-        )}.`
+        body = `${prefix}${formattedTitle}[J]${afterTag}${joinNonEmpty(
+          [journal, year, volumeIssuePages(fields, punctuation)],
+          comma,
+        )}`
         break
       case "book":
-        body = `${prefix}${formattedTitle}[M]. ${translatedResponsibility}${publicationDetails(fields, title, true)}.`
+        body = `${prefix}${formattedTitle}[M]${afterTag}${translatedResponsibility}${publicationDetails(fields, title, punctuation, true)}`
         break
       case "inbook":
       case "incollection":
-        body = `${prefix}${formattedTitle}[M]//${booktitle}. ${publicationDetails(fields, booktitle || title, true)}.`
+        body = `${prefix}${formattedTitle}[M]//${booktitle}${afterTag}${publicationDetails(fields, booktitle || title, punctuation, true)}`
         break
       case "inproceedings":
       case "conference":
-        body = `${prefix}${formattedTitle}[C]//${booktitle}. ${joinNonEmpty(
-          [locationAndPublisher(fields), year, pages],
-          ", ",
-        )}.`
+        body = `${prefix}${formattedTitle}[C]//${booktitle}${afterTag}${joinNonEmpty(
+          [locationAndPublisher(fields, punctuation), year, pages],
+          comma,
+        )}`
         break
       case "proceedings":
-        body = `${prefix}${formattedTitle}[C]. ${publicationDetails(fields, title, true)}.`
+        body = `${prefix}${formattedTitle}[C]${afterTag}${publicationDetails(fields, title, punctuation, true)}`
         break
       case "mastersthesis":
       case "phdthesis":
-        body = `${prefix}${formattedTitle}[D]. ${joinNonEmpty(
-          [locationAndPublisher(fields), year],
-          ", ",
-        )}.`
+        body = `${prefix}${formattedTitle}[D]${afterTag}${joinNonEmpty(
+          [locationAndPublisher(fields, punctuation), year],
+          comma,
+        )}`
         break
       case "techreport":
-        body = `${prefix}${formattedTitle}[R]. ${joinNonEmpty(
-          [locationAndPublisher(fields), year],
-          ", ",
-        )}.`
+        body = `${prefix}${formattedTitle}[R]${afterTag}${joinNonEmpty(
+          [
+            locationAndPublisher(fields, punctuation),
+            year,
+            trimField(decodeBibtexText(fields.number ?? "")),
+          ],
+          comma,
+        )}`
         break
       case "patent":
-        body = `${prefix}${formattedTitle}[P]. ${joinNonEmpty(
-          [decodeBibtexText(fields.number ?? ""), year],
-          ", ",
-        )}.`
+        body = `${prefix}${formattedTitle}[P]${afterTag}${joinNonEmpty(
+          [trimField(decodeBibtexText(fields.number ?? "")), year],
+          comma,
+        )}`
         break
       case "online":
       case "electronic":
       case "www":
-        body = `${prefix}${formattedTitle}[EB/OL]. ${year ? `${year}.` : ""}`
+        body = `${prefix}${formattedTitle}[EB/OL]${afterTag}${publicationStamp(year, punctuation)}${accessStamp(fields)}`
         break
       case "misc":
         body = fields.url
-          ? `${prefix}${formattedTitle}[EB/OL]. ${year ? `${year}.` : ""}`
-          : `${prefix}${formattedTitle}[Z]. ${year ? `${year}.` : ""}`
+          ? `${prefix}${formattedTitle}[EB/OL]${afterTag}${publicationStamp(year, punctuation)}${accessStamp(fields)}`
+          : `${prefix}${formattedTitle}[Z]${afterTag}${year}`
         break
       case "manual":
-        body = `${prefix}${formattedTitle}[M]. ${publicationDetails(fields, title, true)}.`
+        body = `${prefix}${formattedTitle}[M]${afterTag}${publicationDetails(fields, title, punctuation, true)}`
         break
       case "standard": {
-        const number = decodeBibtexText(fields.number ?? "")
+        // GB/T 7714—2025：标准号置于题名之前。
+        const number = trimField(decodeBibtexText(fields.number ?? ""))
         const standardTitle =
           number && !title.includes(number)
-            ? `${formattedTitle}: ${number}`
+            ? `${number} ${formattedTitle}`
             : formattedTitle
-        body = `${prefix}${standardTitle}[S]. ${joinNonEmpty(
-          [decodeBibtexText(fields.organization ?? ""), year],
-          ", ",
-        )}.`
+        body = `${prefix}${standardTitle}[S]${afterTag}${joinNonEmpty(
+          [trimField(decodeBibtexText(fields.organization ?? "")), year],
+          comma,
+        )}`
         break
       }
       default:
-        body = `${prefix}${formattedTitle}[Z]. ${year ? `${year}.` : ""}`
+        body = `${prefix}${formattedTitle}[Z]${afterTag}${year}`
     }
-    return appendIdentifier(terminal(body), fields)
+    return appendIdentifier(terminal(body, punctuation), fields, punctuation)
   }
 
   const titleToken = `\u0000title:${entry.id}\u0000`
