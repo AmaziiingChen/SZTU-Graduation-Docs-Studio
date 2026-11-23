@@ -76,7 +76,7 @@ jobs:
           # node_modules and .venv are full of links into the runner's own store; copying them leaves
           # dangling absolute paths, so they are rebuilt inside the staged tree instead.
           $copyArgs = @("$env:GITHUB_WORKSPACE", $work, '/E', '/MT:16', '/R:1', '/W:1', '/NFL', '/NDL', '/NJH', '/NJS', '/NP',
-            '/XD', "$env:GITHUB_WORKSPACE\app\build", "$env:GITHUB_WORKSPACE\Thesis", "$env:GITHUB_WORKSPACE\.git",
+            '/XD', "$env:GITHUB_WORKSPACE\app\build", "$env:GITHUB_WORKSPACE\.git", "$env:GITHUB_WORKSPACE\Thesis\.git",
             "$env:GITHUB_WORKSPACE\app\node_modules", "$env:GITHUB_WORKSPACE\app\apps\desktop\node_modules",
             "$env:GITHUB_WORKSPACE\app\.venv")
           robocopy @copyArgs | Out-Null
