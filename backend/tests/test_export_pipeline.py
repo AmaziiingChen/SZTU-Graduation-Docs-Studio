@@ -556,14 +556,38 @@ class ExportPipelineTests(unittest.TestCase):
         self.assertEqual(missing_font.exception.code, "REQUIRED_FONT_MISSING")
         self.assertEqual(missing_font.exception.details["format"], "docx")
         self.assertIn("Wingdings 2", missing_font.exception.message)
-        pdf_and_tex = preflight_export(
-            self.workspace,
-            document_id=document["id"],
-            output_directory=str(self.output),
-            formats=["tex", "pdf"],
-            engine=engine,
-        )
+        # The host may not ship Poppler; PDF preflight only needs to know the
+        # tools are resolvable, and that check belongs to its own test.
+        with patch(
+            "sztu_docs_backend.exporter.shutil.which",
+            side_effect=lambda name, path=None: f"/usr/bin/{name}",
+        ):
+            pdf_and_tex = preflight_export(
+                self.workspace,
+                document_id=document["id"],
+                output_directory=str(self.output),
+                formats=["tex", "pdf"],
+                engine=engine,
+            )
         self.assertTrue(pdf_and_tex["ready"])
+
+        with patch(
+            "sztu_docs_backend.exporter.shutil.which",
+            side_effect=lambda name, path=None: (
+                None if name == "pdftoppm" else f"/usr/bin/{name}"
+            ),
+        ):
+            unavailable = preflight_export(
+                self.workspace,
+                document_id=document["id"],
+                output_directory=str(self.output),
+                formats=["pdf"],
+                engine=engine,
+            )
+        self.assertFalse(unavailable["ready"])
+        self.assertIn(
+            "ENVIRONMENT_PDF_TOOLS_MISSING", unavailable["blocking_codes"]
+        )
         self.assertEqual(pdf_and_tex["formats"], ["pdf", "tex"])
 
         long_content = json.loads(

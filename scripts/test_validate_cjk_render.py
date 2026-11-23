@@ -23,6 +23,8 @@ import types
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
+
+from PIL import Image
 from pathlib import Path
 from unittest.mock import patch
 
@@ -225,7 +227,9 @@ class ValidatorCommandContractTests(unittest.TestCase):
                 returncode = module.main()
 
         self.assertEqual(len(commands), 2)
-        bbox_command, render_command = commands
+        by_tool = {Path(command[0]).name: command for command in commands}
+        bbox_command = by_tool["pdftotext"]
+        render_command = by_tool["pdftoppm"]
         self.assertIn("-bbox-layout", bbox_command)
         self.assertEqual(bbox_command[-1], "-")
         self.assertFalse(any(argument.endswith(".html") for argument in bbox_command))
@@ -233,6 +237,40 @@ class ValidatorCommandContractTests(unittest.TestCase):
         self.assertIn("-r", render_command)
         self.assertIn("150", render_command)
         self.assertEqual(returncode, 2)  # empty bbox => INCONCLUSIVE, not a crash
+
+    def test_a_build_without_bbox_layout_falls_back_instead_of_failing(self) -> None:
+        """Xpdf 4.x pdftotext rejects -bbox-layout; the gate must still run."""
+        module = load_validator()
+        replies = {
+            "-bbox-layout": b"Usage: pdftotext [options] <PDF-file> [<text-file>]\n",
+        }
+        calls: list[list[str]] = []
+
+        def fake_run(command: list[str], **_: object) -> bytes:
+            calls.append(list(command))
+            if "-bbox-layout" in command:
+                raise module.ToolFailure("pdftotext: unknown option -bbox-layout")
+            return "第一页中文。\f第二页中文。\f".encode("utf-8")
+
+        with tempfile.TemporaryDirectory(prefix="cjk-gate-fallback-") as directory:
+            pdf = Path(directory) / "input.pdf"
+            pdf.write_bytes(b"%PDF-1.4\n%%EOF\n")
+            images = {}
+            for page in (1, 2):
+                page_pdf = Path(directory) / f"page-{page}.png"
+                Image.new("RGB", (60, 80), "white").save(page_pdf)
+                images[page] = page_pdf
+            args = types.SimpleNamespace(min_ink_ratio=0.006, min_cjk_words=1)
+            with patch.object(module, "run", side_effect=fake_run):
+                pages = module.bbox_pages("/usr/bin/pdftotext", pdf)
+                total, visible, _ = module.measure_pages(
+                    "/usr/bin/pdftotext", pdf, images, args
+                )
+
+        self.assertIsNone(pages)
+        self.assertEqual(total, 2)  # one contiguous CJK run per page
+        self.assertEqual(visible, 0)  # blank white pages carry no ink
+        self.assertTrue(any("-bbox-layout" in call for call in calls))
 
 
 if __name__ == "__main__":
