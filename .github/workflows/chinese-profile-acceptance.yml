@@ -98,6 +98,25 @@ jobs:
             "echo %errorlevel% > `"$work\accept.exit`""
           ) | Set-Content -Path $script -Encoding ascii
           icacls $script /grant "${cjk}:RX" /Q | Out-Null
+          # A fresh standard account has no batch-logon right, so the task registers but never runs.
+          # Grant it explicitly; otherwise the wait loop only ever sees a timeout.
+          $sid = (New-Object System.Security.Principal.NTAccount($cjk)).Translate([System.Security.Principal.SecurityIdentifier]).Value
+          $inf = Join-Path $env:RUNNER_TEMP 'batch-logon.inf'
+          $sdb = Join-Path $env:RUNNER_TEMP 'batch-logon.sdb'
+          secedit /export /cfg $inf /quiet | Out-Null
+          $text = Get-Content $inf -Raw
+          if ($text -match 'SeBatchLogonRight = ([^\r\n]*)') {
+            $current = $Matches[1].Trim()
+            if ($current -notlike "*$sid*") {
+              $joined = (@($current.Split(',') | Where-Object { $_.Trim() }) + "*$sid") -join ','
+              $text = $text -replace 'SeBatchLogonRight = [^\r\n]*', "SeBatchLogonRight = $joined"
+            }
+          } else {
+            $text = $text -replace '\[Privilege Rights\]', "[Privilege Rights]`r`nSeBatchLogonRight = *$sid"
+          }
+          Set-Content -Path $inf -Value $text -Encoding unicode
+          secedit /configure /db $sdb /cfg $inf /areas USER_RIGHTS /quiet | Out-Null
+          Write-Host "batch logon granted to $cjk ($sid)"
           # Scheduled tasks run with the account's own profile, which is how the failure appears.
           schtasks /create /tn 'SZTU-CI-Accept' /tr "cmd /c $script" /sc once /st 00:00 /ru $cjk /rp $env:CJK_PASSWORD /f | Out-Null
           if ($LASTEXITCODE -ne 0) { throw 'Could not schedule the acceptance run' }
@@ -118,6 +137,11 @@ jobs:
             }
             Start-Sleep -Seconds 15
             $elapsed = [int]((Get-Date) - $started).TotalMinutes
+            if ($elapsed -ge 6 -and -not (Test-Path (Join-Path $work 'stage-1-started.txt'))) {
+              Write-Host '--- the scheduled task never started ---'
+              schtasks /query /tn 'SZTU-CI-Accept' /v /fo LIST | Out-String | Write-Host
+              throw 'The scheduled task did not start'
+            }
             if ($elapsed % 2 -eq 0) { Write-Host "waiting $elapsed min" }
           }
           Write-Host '--- whoami ---'
