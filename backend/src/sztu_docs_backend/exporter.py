@@ -2496,7 +2496,12 @@ def _run_process(
         raise ExportError(
             "RENDER_FAILED",
             "文档生成失败，请重试或发送诊断包。",
-            {"exit_code": process.returncode},
+            {
+                "exit_code": process.returncode,
+                # The tail travels with the error so a failed CI run and a
+                # student diagnostic both show what the tool actually said.
+                "output_tail": diagnostic[-2000:],
+            },
         )
     return (stdout + "\n" + stderr)[-20_000:]
 

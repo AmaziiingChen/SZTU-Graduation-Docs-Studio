@@ -193,6 +193,7 @@ try {
   failure = error
   report.error = { code: error.code ?? null, message: error.message, details: error.details ?? null }
   console.error(`FAIL: ${error.code ? `[${error.code}] ` : ''}${error.message}`)
+  if (error.details) console.error(JSON.stringify(error.details, null, 2).slice(-4_000))
 } finally {
   await client.stop()
   report.status = failure ? 'failure' : 'pass'
