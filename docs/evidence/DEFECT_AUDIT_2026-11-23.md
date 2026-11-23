@@ -126,3 +126,28 @@ The offline Windows runtime pins `oschwartz10612/poppler-windows` v26.09.0, whos
 directory and an output directory that both contain Chinese characters, on
 Windows and macOS, and runs the thesis template suite on a Chinese-named
 standard user. `package-acceptance.yml` keeps exercising the packaged installers.
+
+## The Chinese-profile acceptance now really runs
+
+`chinese-profile-acceptance.yml` had never executed a single assertion: account
+billing stopped it before, and once billing was gone the harness itself was
+broken in five places. All five are fixed; the run now installs the offline
+package as `林振宇` and exports every document type.
+
+| harness defect | symptom | fix |
+| --- | --- | --- |
+| `Copy-Item` over the whole workspace | step exceeded its budget before installing | `robocopy /MT` with the package store rebuilt in-tree |
+| no batch-logon right | task registered, never executed | `secedit` grants `SeBatchLogonRight` |
+| pnpm store in the runner profile | `Cannot find module 'electron-builder'` for a standard account | store moved into the staged tree |
+| template checkout excluded | `ENOENT … Thesis\templates\proposal\fixtures\normal.json` | staged, with only `.git` skipped |
+| licensed fonts not staged | `REQUIRED_FONT_MISSING` under the test account | `ci-fonts` staged and passed via `SZTU_FONT_DIR` |
+
+One product defect surfaced along the way and is fixed in the same push: the
+packager ran the offline smoke compile with a hard 60 s timeout, which fails on
+a cold machine while font caches are rebuilt. `scripts/verify_windows_offline_runtime.py`
+now allows 300 s and reports the partial tool output when it does expire.
+
+Result of the passing run (`45233202654`, version 0.1.17): seven documents,
+eleven pages, engine resolved through
+`%SZTU_ENGINE_ROOT%` → `%PROGRAMDATA%\SZTU-Docs\engine\bdb4c8e1ac7053a7` →
+`%LOCALAPPDATA%\SZTU-Docs\r\…`, with the legacy per-user copy absent.
