@@ -15,6 +15,52 @@ const MAX_NOTICE_BODY_LENGTH = 1_000
 const SEMVER_PATTERN = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/
 const SHA256_PATTERN = /^[a-f0-9]{64}$/
 
+const RENAME_RETRYABLE_CODES = new Set(["EPERM", "EBUSY", "EACCES"])
+/** 杀毒软件/OneDrive 的短暂扫描锁通常在一秒内释放，按 50→800 ms 指数退避重试。 */
+export const RENAME_RETRY_DELAYS_MS: readonly number[] = [50, 100, 200, 400, 800]
+
+type RenameLike = (oldPath: string, newPath: string) => Promise<void>
+
+export type RenameRetryOptions = {
+  renameImpl?: RenameLike
+  wait?: (delayMs: number) => Promise<void>
+}
+
+/**
+ * 把已验证的临时安装包改名为最终缓存名。
+ *
+ * Windows 上杀毒软件或 OneDrive 可能短暂占用刚写完的文件，使 rename 返回
+ * EPERM / EBUSY / EACCES；只对这三类错误按 50/100/200/400/800 ms 退避重试
+ * 5 次，其它错误（路径不存在、空间不足、跨设备等）立即失败。
+ */
+export async function renameWithRetry(
+  temporary: string,
+  target: string,
+  options: RenameRetryOptions = {},
+): Promise<void> {
+  const renameImpl = options.renameImpl ?? rename
+  const wait = options.wait ?? ((delayMs: number) =>
+    new Promise<void>((resolve) => { setTimeout(resolve, delayMs) }))
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await renameImpl(temporary, target)
+      return
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      if (!code || !RENAME_RETRYABLE_CODES.has(code)) throw error
+      const delay = RENAME_RETRY_DELAYS_MS[attempt]
+      if (delay === undefined) {
+        throw new Error(
+          `更新包写入失败：目标文件被其他程序占用或被安全软件拦截（${code}）。` +
+          "请暂时关闭杀毒软件或 OneDrive 的文件扫描后重试；若仍失败，请重启电脑后再试。",
+          { cause: error },
+        )
+      }
+      await wait(delay)
+    }
+  }
+}
+
 export type ReleaseAnnouncement = {
   id: string
   title: string
@@ -679,7 +725,7 @@ export class UpdateService {
         advance("update_write")
         if (signal.aborted) throw new Error("Update request timed out.")
         // Replace the existing cache only after complete signature-bound verification.
-        await rename(temporary, target)
+        await renameWithRetry(temporary, target)
         committed = true
         const descriptor = await stat(target)
         if (!descriptor.isFile() || descriptor.size !== artifact.size_bytes) {

@@ -2039,6 +2039,31 @@ def content_check(
     }
 
 
+def _ascii_scratch_root() -> Path | None:
+    """Return a writable ASCII-only directory for external tool scratch files."""
+
+    candidates: list[Path] = []
+    if os.name == "nt":
+        program_data = os.environ.get("PROGRAMDATA")
+        if program_data:
+            candidates.append(Path(program_data) / "SZTU-Docs" / "tmp")
+    candidates.append(Path(tempfile.gettempdir()))
+    if os.name != "nt":
+        candidates.append(Path("/tmp"))
+    for candidate in candidates:
+        if not str(candidate).isascii():
+            continue
+        try:
+            candidate.mkdir(parents=True, exist_ok=True)
+            probe = candidate / f".sztu-probe-{os.getpid()}"
+            probe.write_bytes(b"")
+            probe.unlink()
+            return candidate
+        except OSError:
+            continue
+    return None
+
+
 def _renderer_environment(
     overrides: dict[str, str] | None = None,
 ) -> dict[str, str]:
@@ -2072,6 +2097,20 @@ def _renderer_environment(
     if "PATH" in environment:
         environment["PATH"] = windows_tool_path(environment["PATH"])
         environment.update(offline_tex_environment(environment["PATH"]))
+    tex_root = environment.get("TEXMFROOT")
+    if tex_root:
+        # kpathsea otherwise falls back to %USERPROFILE%\.texliveYYYY, which is
+        # non-ASCII on Chinese Windows and is not guaranteed to be writable.
+        environment["TEXMFVAR"] = tex_root + "/texmf-var"
+        environment["TEXMFCACHE"] = tex_root + "/texmf-var"
+    scratch = _ascii_scratch_root()
+    if scratch is not None:
+        # pdftotext/pdftocairo write with a plain fopen() and cannot open
+        # non-ASCII output paths; keep every tool scratch file ASCII-only.
+        for key in ("TEMP", "TMP", "TMPDIR"):
+            current = environment.get(key)
+            if not current or not str(current).isascii():
+                environment[key] = str(scratch)
     if overrides:
         environment.update(overrides)
     environment = windows_process_environment(environment)
@@ -2172,7 +2211,14 @@ def _terminate_process(process: subprocess.Popen[bytes]) -> None:
         return
     try:
         if os.name == "nt":
-            process.terminate()
+            # latexmk spawns xelatex/bibtex; terminating only the parent leaves
+            # orphans that keep writing into the export scratch directory.
+            subprocess.run(
+                ["taskkill", "/T", "/PID", str(process.pid)],
+                capture_output=True,
+                check=False,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
         else:
             os.killpg(process.pid, signal.SIGTERM)
         process.wait(timeout=3)
@@ -2201,6 +2247,10 @@ def _external_reason(output: str) -> str:
         (r"Permission denied|Access is denied", "permission_denied"),
         (r"No space left on device|disk full", "disk_full"),
         (r"I can't write on file|Unable to write|Could not write", "output_write_failed"),
+        # poppler writes output files with a plain fopen(): UTF-8 arguments are
+        # reinterpreted as ANSI, so any non-ASCII output path fails to open.
+        (r"couldn't open text file|could not open text file", "tool_path_unsupported"),
+        (r"^\s*i/o error", "tool_path_unsupported"),
     )
     for pattern, reason in checks:
         if re.search(pattern, output, flags=re.IGNORECASE):
@@ -2436,12 +2486,62 @@ def _run_process(
                 else "编译环境缺少配置文件或格式文件，分页预览和 PDF 导出不可用；请运行安装包完成修复。",
                 {"exit_code": process.returncode, "engine_root": str(root) if root is not None else None},
             )
+        reason = _external_reason(diagnostic)
+        if reason == "tool_path_unsupported":
+            raise ExportError(
+                "RENDER_TOOL_PATH_UNSUPPORTED",
+                "编译工具无法写入包含中文或其他特殊字符的路径，分页预览和 PDF 导出不可用；请把文档保存到英文路径后重试，并发送诊断包。",
+                {"exit_code": process.returncode, "reason": reason},
+            )
         raise ExportError(
             "RENDER_FAILED",
             "文档生成失败，请重试或发送诊断包。",
             {"exit_code": process.returncode},
         )
     return (stdout + "\n" + stderr)[-20_000:]
+
+
+def _embedded_fonts(pdffonts_output: str) -> set[str]:
+    """Return the font names whose `emb` column reports "yes".
+
+    pdffonts prints: name  type  encoding  emb  sub  uni  object ID. Font names
+    may contain spaces, so the trailing six columns are matched from the right.
+    """
+
+    embedded: set[str] = set()
+    for line in pdffonts_output.splitlines():
+        match = re.search(r"\s(yes|no)\s+(yes|no)\s+(yes|no)\s+\d+\s+\d+\s*$", line)
+        if match is None:
+            continue
+        if match.group(1) == "yes":
+            embedded.add(line[: match.start()].strip())
+    return embedded
+
+
+WINDOWS_MAX_PATH_MARGIN = 240
+
+
+def _publish_staged_file(staging: Path, destination: Path) -> None:
+    """Move a staged artifact into place without ever overwriting a file.
+
+    A hard link is atomic and cheap, but exFAT/FAT32 USB sticks and most network
+    shares reject it, so fall back to an exclusive copy in that case.
+    """
+
+    try:
+        os.link(staging, destination)
+        return
+    except FileExistsError:
+        raise
+    except OSError as link_error:
+        try:
+            with staging.open("rb") as source, destination.open("xb") as target:
+                shutil.copyfileobj(source, target)
+            return
+        except FileExistsError:
+            raise
+        except OSError:
+            raise link_error
 
 
 @traced("pdf_validation")
@@ -2475,12 +2575,19 @@ def _check_pdf(
         "thesis": ("SimHei", "SimSun", "TimesNewRoman"),
         **{kind: ("SimHei", "SimSun", "TimesNewRoman") for kind in ASSESSMENT_DOCUMENT_TYPES},
     }[document_type]
+    embedded = _embedded_fonts(fonts)
     for required_font in required_fonts:
         if required_font not in fonts:
             raise ExportError(
                 "PDF_FONT_FAILED",
                 "PDF 未嵌入规定字体，已停止导出。",
                 {"font": required_font},
+            )
+        if not any(required_font in name for name in embedded):
+            raise ExportError(
+                "PDF_FONT_NOT_EMBEDDED",
+                "PDF 使用的规定字体没有嵌入，换一台电脑打开会变形；请安装完整字体后重新导出。",
+                {"font": required_font, "embedded": sorted(embedded)},
             )
     return [
         {
@@ -2495,6 +2602,38 @@ def _check_pdf(
     ]
 
 
+CJK_GATE_MIN_TIMEOUT_SECONDS = 45
+CJK_GATE_MAX_TIMEOUT_SECONDS = 300
+
+
+MAX_PREVIEW_PAGES = 400
+
+
+def _preview_rasterize_timeout(pdf: Path) -> int:
+    """Rasterising a 200-page thesis at 240 dpi takes far longer than a memo."""
+
+    pages = _pdf_page_count(pdf)
+    return max(60, min(600, 5 * max(pages, 1)))
+
+
+def _pdf_page_count(path: Path) -> int:
+    """Return the page count, or 0 when pdfinfo cannot be read."""
+
+    try:
+        info = _run(["pdfinfo", str(path)], cwd=path.parent, timeout=15)
+    except ExportError:
+        return 0
+    match = re.search(r"^Pages:\s+(\d+)\s*$", info, re.MULTILINE)
+    return int(match.group(1)) if match else 0
+
+
+def _cjk_gate_timeout(path: Path) -> int:
+    pages = _pdf_page_count(path)
+    # Rasterising every page costs roughly two seconds per page on Windows.
+    budget = 15 + 2 * max(pages, 0)
+    return max(CJK_GATE_MIN_TIMEOUT_SECONDS, min(CJK_GATE_MAX_TIMEOUT_SECONDS, budget))
+
+
 @traced("glyph_validation")
 def _run_cjk_gate(
     pdf: Path,
@@ -2504,7 +2643,7 @@ def _run_cjk_gate(
     _run(
         _python_script_command(validator, str(pdf)),
         cwd=pdf.parent,
-        timeout=45,
+        timeout=_cjk_gate_timeout(pdf),
         cancellation_file=cancellation_file,
         diagnostic_stage="glyph_validation",
     )
@@ -2586,6 +2725,36 @@ def _validate_export_request(
     return output, record, proposal, ordered_formats, profile
 
 
+def _preflight_environment_blockers(formats: list[str]) -> list[dict[str, str]]:
+    """Cheap environment checks that must pass before rendering starts.
+
+    The expensive xelatex probe stays in `check_environment`; preflight only
+    rejects conditions that are guaranteed to fail the export.
+    """
+
+    blockers: list[dict[str, str]] = []
+    environment = _renderer_environment()
+    path = environment.get("PATH", "")
+    root = portable_tex_root(path)
+    if root is not None and not str(root).isascii():
+        blockers.append(
+            {
+                "code": "ENVIRONMENT_ENGINE_PATH_UNSUPPORTED",
+                "message": "编译环境安装在包含中文的路径，PDF 导出不可用；请运行最新安装包修复后重启应用。",
+            }
+        )
+    if "pdf" in formats:
+        for tool in ("pdftoppm", "pdftotext"):
+            if shutil.which(tool, path=path) is None:
+                blockers.append(
+                    {
+                        "code": "ENVIRONMENT_PDF_TOOLS_MISSING",
+                        "message": f"缺少 {tool}，PDF 预览和字形检查不可用；请重新安装应用。",
+                    }
+                )
+    return blockers
+
+
 @traced("export_preflight")
 def preflight_export(
     workspace: Any,
@@ -2651,6 +2820,7 @@ def preflight_export(
                     "exists": False,
                 }
             )
+    environment_blockers = _preflight_environment_blockers(ordered_formats)
     input_sha256 = hashlib.sha256(canonical_json(proposal)).hexdigest()
     token_payload = {
         "document_id": document_id,
@@ -2670,6 +2840,20 @@ def preflight_export(
     }
     checks = [
         content_check(proposal, record["document_type"], engine=descriptor),
+        {
+            "schema_version": "1.0",
+            "check_id": "environment",
+            "gate": "environment",
+            "status": "pass" if not environment_blockers else "fail",
+            "blocking": True,
+            "message": (
+                "运行环境可用。"
+                if not environment_blockers
+                else "运行环境缺少导出所需组件，请先按提示修复。"
+            ),
+            "details": {"blockers": environment_blockers},
+            "checked_at": utc_now(),
+        },
         {
             "schema_version": "1.0",
             "check_id": "template-integrity",
@@ -2713,7 +2897,7 @@ def preflight_export(
     ]
     return {
         "schema_version": "1.0",
-        "ready": True,
+        "ready": not environment_blockers,
         "document_id": document_id,
         "formats": ordered_formats,
         "input_sha256": input_sha256,
@@ -2723,7 +2907,7 @@ def preflight_export(
             "pack_sha256": descriptor.pack_sha256,
         },
         "checks": checks,
-        "blocking_codes": [],
+        "blocking_codes": [item["code"] for item in environment_blockers],
         "preflight_token": preflight_token,
         "expires_at": (datetime.now(UTC) + timedelta(minutes=5)).isoformat(
             timespec="milliseconds"
@@ -3081,7 +3265,7 @@ def _cached_preview_result(
 
     pdf = cached_artifact(manifest.get("pdf"))
     raw_pages = manifest.get("pages")
-    if pdf is None or not isinstance(raw_pages, list) or not 1 <= len(raw_pages) <= 80:
+    if pdf is None or not isinstance(raw_pages, list) or not 1 <= len(raw_pages) <= MAX_PREVIEW_PAGES:
         return None
     if descriptor.document_type in ASSESSMENT_DOCUMENT_TYPES and len(raw_pages) != 1:
         return None
@@ -3338,7 +3522,7 @@ def generate_preview(
                 str(page_prefix),
             ],
             cwd=preview_directory,
-            timeout=60,
+            timeout=_preview_rasterize_timeout(pdf_path),
             cancellation_file=Path(cancellation_file) if cancellation_file else None,
         )
         page_pattern = re.compile(r"^page-(\d+)\.png$")
@@ -3352,8 +3536,11 @@ def generate_preview(
             ),
             key=lambda item: item[0],
         )
-        if not page_paths or len(page_paths) > 80:
-            raise ExportError("PREVIEW_RENDER_FAILED", "预览页面数量无效。")
+        if not page_paths or len(page_paths) > MAX_PREVIEW_PAGES:
+            raise ExportError(
+                "PREVIEW_RENDER_FAILED",
+                f"预览页面数量超过 {MAX_PREVIEW_PAGES} 页上限。",
+            )
         if [number for number, _ in page_paths] != list(range(1, len(page_paths) + 1)):
             raise ExportError("PREVIEW_RENDER_FAILED", "预览页面序号不连续。")
 
@@ -3831,8 +4018,14 @@ def run_export(
                             case.file(f"output-staging/{format_name}.partial", staging)
                         staging.unlink(missing_ok=True)
                         raise
+                    if os.name == "nt" and len(str(destination)) >= WINDOWS_MAX_PATH_MARGIN:
+                        raise ExportError(
+                            "OUTPUT_PATH_TOO_LONG",
+                            "导出路径过长，Windows 无法写入；请缩短目标文件夹或文件名后重试。",
+                            {"format": format_name, "path_length": len(str(destination))},
+                        )
                     try:
-                        os.link(staging, destination)
+                        _publish_staged_file(staging, destination)
                     except OSError as exc:
                         case = current_case.get()
                         if case is not None and staging.is_file():
@@ -3843,7 +4036,11 @@ def run_export(
                                 "输出文件名刚被其他程序占用，请重新导出以自动使用下一版本号。",
                                 {"format": format_name},
                             ) from exc
-                        raise
+                        raise ExportError(
+                            "OUTPUT_TARGET_UNSUPPORTED",
+                            "输出位置不支持直接写入（例如 U 盘或网络盘），请改存到本机文件夹后重试。",
+                            {"format": format_name, "reason": str(exc)},
+                        ) from exc
                     finally:
                         staging.unlink(missing_ok=True)
                     placements.append((destination, None))

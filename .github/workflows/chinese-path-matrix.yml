@@ -1,0 +1,154 @@
+name: Chinese path matrix
+# Guards the failure class reported in full_diagnostic_reports ca017910:
+# a Chinese Windows profile made the PDF glyph gate fail because poppler writes
+# its own outputs with a plain fopen(). Every document type is exported from a
+# Chinese data directory, a Chinese export folder and a Chinese %TEMP%.
+on:
+  push:
+    branches: [main, 'codex/**']
+    paths-ignore: ['**/*.md']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: chinese-paths-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  matrix:
+    name: Chinese paths / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2025, macos-15]
+    defaults:
+      run:
+        working-directory: app
+        shell: bash
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          path: app
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: AmaziiingChen/SZTU-Thesis-Latex-Template
+          ref: 2f25a025a4deed48755a44a26f0ae5a9a0599a63
+          path: Thesis
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '24.14.0'
+      - uses: pnpm/action-setup@f53f5227a9e83886ab598c617f3c170fab62f0d3 # v6
+        with:
+          package_json_file: app/package.json
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: '3.14'
+      - name: Install project dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Fetch verified private test inputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/ci_resources.py
+      - name: Prepare macOS PDF tools
+        if: runner.os == 'macOS'
+        run: brew list poppler >/dev/null 2>&1 || brew install poppler
+      - name: Install backend environment
+        shell: pwsh
+        run: |
+          pnpm setup:backend
+          if ($LASTEXITCODE -ne 0) { throw 'Backend setup failed' }
+          "SZTU_ACCEPT_PYTHON=$PWD/.venv/Scripts/python.exe" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          $temp = Join-Path $env:RUNNER_TEMP '中文 临时目录'
+          New-Item -ItemType Directory -Force -Path $temp | Out-Null
+          "TEMP=$temp" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "TMP=$temp" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+        if: runner.os == 'Windows'
+      - name: Install backend environment
+        run: |
+          pnpm setup:backend
+          echo "SZTU_ACCEPT_PYTHON=$PWD/.venv/bin/python" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/中文 临时目录"
+          echo "TMPDIR=$RUNNER_TEMP/中文 临时目录" >> "$GITHUB_ENV"
+        if: runner.os == 'macOS'
+      - name: Export every document type from Chinese paths
+        run: node scripts/accept_chinese_paths.mjs tmp/chinese-path-matrix
+      - name: Record Chinese path matrix evidence
+        if: always()
+        run: |
+          mkdir -p "tmp/chinese-path-matrix"
+          ls -R "tmp/chinese-path-matrix" > "tmp/chinese-path-matrix/files.txt" || true
+      - name: Upload Chinese path matrix evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: chinese-path-matrix-${{ matrix.os }}-${{ github.sha }}
+          if-no-files-found: warn
+          path: |
+            app/tmp/chinese-path-matrix/chinese-paths.json
+            app/tmp/chinese-path-matrix/files.txt
+            app/tmp/chinese-path-matrix/导出 目录
+  thesis:
+    name: Thesis export / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2025, macos-15]
+    defaults:
+      run:
+        working-directory: app
+        shell: bash
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          path: app
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: AmaziiingChen/SZTU-Thesis-Latex-Template
+          ref: 2f25a025a4deed48755a44a26f0ae5a9a0599a63
+          path: Thesis
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: '3.14'
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '24.14.0'
+      - uses: pnpm/action-setup@f53f5227a9e83886ab598c617f3c170fab62f0d3 # v6
+        with:
+          package_json_file: app/package.json
+      - name: Install project dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Fetch verified private test inputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/ci_resources.py
+      - name: Prepare macOS PDF tools
+        if: runner.os == 'macOS'
+        run: brew list poppler >/dev/null 2>&1 || brew install poppler
+      # The template harness compiles a full paper plus the bibliography stress
+      # fixture. It is informational until it has been calibrated on the hosted
+      # Windows image; the Chinese path matrix job above is the blocking guard.
+      - name: Compile the thesis template from a Chinese working tree
+        continue-on-error: true
+        working-directory: Thesis
+        run: python templates/thesis/test.py
+      - name: Upload thesis evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: thesis-export-${{ matrix.os }}-${{ github.sha }}
+          if-no-files-found: warn
+          path: Thesis/tmp/thesis-tests

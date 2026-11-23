@@ -173,8 +173,20 @@ class AssessmentContractTests(unittest.TestCase):
                     _check_pdf(pdf, document_type='defense_record')
                 self.assertEqual(raised.exception.code, 'SINGLE_PAGE_OVERFLOW')
                 self.assertEqual(mocked.call_count, 1)
-        with patch('sztu_docs_backend.exporter._run', side_effect=['Page size: 595 x 842 pts (A4)\nPages: 1\n', 'SimHei SimSun TimesNewRoman']):
+        fonts = (
+            'name                                 type              encoding         emb sub uni object ID\n'
+            '------------------------------------ ----------------- ----------------- ------------ --- --- --- ---\n'
+            'ABCDEF+SimHei                        CID TrueType      Identity-H       yes yes yes      7  0\n'
+            'ABCDEF+SimSun                        CID TrueType      Identity-H       yes yes yes      8  0\n'
+            'ABCDEF+TimesNewRoman                 TrueType          WinAnsi          yes yes yes      9  0\n'
+        )
+        with patch('sztu_docs_backend.exporter._run', side_effect=['Page size: 595 x 842 pts (A4)\nPages: 1\n', fonts]):
             self.assertEqual(_check_pdf(pdf, document_type='grade_assessment')[0]['status'], 'pass')
+        not_embedded = fonts.replace('yes yes yes      7  0', 'no  yes yes      7  0')
+        with patch('sztu_docs_backend.exporter._run', side_effect=['Page size: 595 x 842 pts (A4)\nPages: 1\n', not_embedded]):
+            with self.assertRaises(ExportError) as raised:
+                _check_pdf(pdf, document_type='grade_assessment')
+            self.assertEqual(raised.exception.code, 'PDF_FONT_NOT_EMBEDDED')
 
     def test_extra_pdf_page_never_reaches_output_or_completed_history(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

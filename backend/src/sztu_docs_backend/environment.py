@@ -40,6 +40,9 @@ CORE_DOCUMENT_FONT_GROUPS = {
 SPECIAL_DOCUMENT_FONT_GROUPS = {
     "华文行楷": ("STXINGKA.ttf", "STXingkai.ttf", "华文行楷.ttf"),
     "方正小标宋简体": ("方正小标宋简体.ttf", "FZXiaoBiaoSong-B05S.ttf", "FZXBSJW.TTF"),
+    # The thesis template binds its Kai Ti and STZhongsong roles to these families.
+    "楷体": ("simkai.ttf", "KaiTi.ttf", "楷体.ttf", "Kaiti.ttc"),
+    "华文中宋": ("STZHONGS.TTF", "STZhongsong.ttf", "华文中宋.ttf"),
 }
 FONT_OVERRIDE_ENVIRONMENTS = (
     "SZTU_STXINGKAI_FONT",
@@ -260,6 +263,29 @@ def _check_pdf_tools() -> dict[str, Any]:
     names = ("pdfinfo", "pdffonts", "pdftoppm", "pdftotext", "pdftocairo")
     tools = {name: shutil.which(name) for name in names}
     available = all(tools.values())
+    # `which` alone reports the tool as present even when a bundled DLL is
+    # missing or the binary is a broken shim, so execute each one as well.
+    executed: dict[str, str] = {}
+    if available:
+        for name, path in tools.items():
+            try:
+                completed = subprocess.run(
+                    [str(path), "-v"],
+                    capture_output=True,
+                    timeout=15,
+                    check=False,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                )
+            except (OSError, subprocess.TimeoutExpired) as error:
+                executed[name] = f"{type(error).__name__}: {error}"
+                continue
+            output = decode_tool_output(completed.stdout + completed.stderr).strip()
+            text = output.splitlines()[0] if output else ""
+            # pdftotext/pdftoppm exit 99 for -v on some builds, so only require
+            # that the binary ran and printed a version banner.
+            executed[name] = text or f"exit {completed.returncode}"
+            if not text:
+                available = False
     return {
         "id": "pdf_tools",
         "required": True,
@@ -267,9 +293,9 @@ def _check_pdf_tools() -> dict[str, Any]:
         "message": (
             "PDF 分页与中文字形检查工具可用。"
             if available
-            else "缺少 Poppler PDF 工具；分页预览不可用。"
+            else "缺少或无法运行 Poppler PDF 工具；分页预览与中文字形检查不可用。"
         ),
-        "details": tools,
+        "details": {"tools": tools, "versions": executed},
     }
 
 

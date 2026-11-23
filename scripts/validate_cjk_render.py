@@ -60,14 +60,25 @@ def require_command(name: str) -> str:
     return path
 
 
-def run(command: list[str]) -> None:
-    completed = subprocess.run(command, text=True, capture_output=True, check=False)
+def decode_output(value: bytes) -> str:
+    """Decode child-process output without depending on the Windows ANSI code page."""
+    return value.decode("utf-8", errors="replace")
+
+
+def run(command: list[str]) -> bytes:
+    """Run a poppler command and return its raw stdout.
+
+    Output is captured as bytes: on Windows the parent process may use a legacy
+    ANSI code page (for example GBK), while poppler always emits UTF-8.
+    """
+    completed = subprocess.run(command, capture_output=True, check=False)
     if completed.returncode != 0:
-        details = completed.stderr.strip() or completed.stdout.strip()
+        details = decode_output(completed.stderr).strip() or decode_output(completed.stdout).strip()
         print(f"ERROR: command failed: {' '.join(command)}", file=sys.stderr)
         if details:
             print(details, file=sys.stderr)
         raise SystemExit(2)
+    return completed.stdout
 
 
 def local_name(tag: str) -> str:
@@ -106,20 +117,25 @@ def main() -> int:
         return 2
 
     pdftotext = require_command("pdftotext")
-    pdftocairo = require_command("pdftocairo")
+    # pdftoppm writes page images through SplashBitmap::writeImgFile -> goo::openFile,
+    # which uses _wfopen() on Windows and therefore accepts a non-ASCII output path.
+    # pdftocairo opens its output with plain fopen() and cannot, so it must not be used
+    # for a path that may contain the Windows user name or a localized %TEMP%.
+    pdftoppm = require_command("pdftoppm")
 
     with tempfile.TemporaryDirectory(prefix="cjk-render-gate-") as temp_name:
         temp_dir = Path(temp_name)
-        bbox_path = temp_dir / "bbox.html"
         render_dir = temp_dir / "render"
         render_dir.mkdir()
 
-        run([pdftotext, "-bbox-layout", str(pdf), str(bbox_path)])
-        run([pdftocairo, "-png", "-r", str(args.dpi), str(pdf), str(render_dir / "page")])
+        # "-" sends the bbox layout to stdout, so no HTML file is ever written to a
+        # path that poppler's bare fopen() could reject on Windows.
+        bbox_xml = run([pdftotext, "-enc", "UTF-8", "-bbox-layout", str(pdf), "-"])
+        run([pdftoppm, "-png", "-r", str(args.dpi), str(pdf), str(render_dir / "page")])
 
         try:
-            root = ET.parse(bbox_path).getroot()
-        except (ET.ParseError, OSError) as exc:
+            root = ET.fromstring(bbox_xml)
+        except ET.ParseError as exc:
             print(f"ERROR: could not parse pdftotext bbox output: {exc}", file=sys.stderr)
             return 2
 

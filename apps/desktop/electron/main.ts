@@ -45,6 +45,7 @@ import { MidtermDatePolicyService, type MidtermDatePolicyStatus } from "./midter
 import { developmentConfig } from "./development-config.js"
 import { privatePreviewRoot } from "./preview-path.js"
 import { CloseCoordinator } from "./close-coordinator.js"
+import { EXPORT_RUN_TIMEOUT_MS, normalizeExportRunError } from "./export-run.js"
 import { SidecarChannels } from "./sidecar-channels.js"
 import { checkThesisTemplateResource, downloadThesisTemplate, ThesisTemplateError } from "./thesis-template.js"
 
@@ -1526,11 +1527,18 @@ function registerIpc(): void {
         .then(() => {
           activeCancellationFiles.set(input.requestId as string, marker)
           params.cancellation_file = marker
-          return requestSidecar("export.run", params, 120_000)
+          return requestSidecar("export.run", params, EXPORT_RUN_TIMEOUT_MS).catch((error: unknown) => {
+            throw normalizeExportRunError(error)
+          })
         })
         .finally(async () => {
           activeCancellationFiles.delete(input.requestId as string)
-          await removeCancellationMarker(marker)
+          try {
+            await removeCancellationMarker(marker)
+          } catch (error) {
+            // Cleanup must not replace the real export result (for example, EXPORT_TIMEOUT).
+            console.error("Failed to remove the export cancellation marker.", error)
+          }
         })
     })
   })
