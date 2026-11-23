@@ -69,9 +69,14 @@ jobs:
           }
           $work = 'C:\sztu-ci'
           New-Item -ItemType Directory -Path $work -Force | Out-Null
-          Copy-Item -Path $env:GITHUB_WORKSPACE\* -Destination $work -Recurse -Force
-          # The account is a standard user: no elevation anywhere in this job.
-          icacls $work /grant "${cjk}:(OI)(CI)M" /T /Q | Out-Null
+          # The account is a standard user: no elevation anywhere in this job. Grant first, because
+          # every file created below then inherits the ACE instead of needing a /T walk over node_modules.
+          icacls $work /grant "${cjk}:(OI)(CI)M" /Q | Out-Null
+          # robocopy with /MT moves the pnpm tree in minutes; Copy-Item took longer than the job timeout.
+          $copyArgs = @("$env:GITHUB_WORKSPACE", $work, '/E', '/MT:16', '/R:1', '/W:1', '/NFL', '/NDL', '/NJH', '/NJS', '/NP',
+            '/XD', "$env:GITHUB_WORKSPACE\app\build", "$env:GITHUB_WORKSPACE\Thesis", "$env:GITHUB_WORKSPACE\.git")
+          robocopy @copyArgs | Out-Null
+          if ($LASTEXITCODE -ge 8) { throw "Could not stage the workspace (robocopy $LASTEXITCODE)" }
           $installer = Get-ChildItem -Path "$work\app\release\offline\*-offline.exe" | Select-Object -First 1
           if (-not $installer) { throw 'Offline installer was not created' }
           $log = Join-Path $work 'accept.log'
@@ -151,7 +156,8 @@ jobs:
           $acceptance = Get-Content 'C:\sztu-ci\app\tmp\ci-acceptance\acceptance.json' -Raw | ConvertFrom-Json
           Write-Host "version: $($acceptance.version) status: $($acceptance.status) documents: $($acceptance.documents.Count)"
           if ($acceptance.status -ne 'pass') { throw "Acceptance status $($acceptance.status)" }
-          if ($acceptance.version -notlike '0.1.16*') { throw "Unexpected app version $($acceptance.version)" }
+          $expected = (Get-Content 'C:\sztu-ci\app\package.json' -Raw | ConvertFrom-Json).version
+          if ($acceptance.version -ne $expected) { throw "Acceptance ran $($acceptance.version), the checkout is $expected" }
           if ($acceptance.documents.Count -lt 7) { throw 'Not every document type was exercised' }
           if ($acceptance.windows_environment.missing_comspec -ne 'pass') { throw 'The COMSPEC regression did not run' }
           $pages = ($acceptance.documents | Measure-Object -Property preview_pages -Sum).Sum
