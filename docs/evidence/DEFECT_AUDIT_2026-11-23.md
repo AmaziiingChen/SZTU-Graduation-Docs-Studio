@@ -103,3 +103,26 @@ XeLaTeX 编译成功，但字形校验失败，界面只显示「文档生成失
    - 在 PowerShell 里先把 `$env:TEMP` 指到中文目录，才等于复现学生环境。
    - 结果看 `tmp/chinese-path-matrix/chinese-paths.json`。
 5. 需要连续覆盖安装时，先 `pnpm package:win:offline` 出包，再跑安装器。
+
+## The glyph gate runs from the template repository
+
+`export.run` validates glyphs with `descriptor.validator`, that is, the copy that
+ships inside the template engine — not the copy under this repository's
+`scripts/`. Both copies are now byte-identical and share one implementation:
+
+| hazard | before | now |
+| --- | --- | --- |
+| bbox HTML written to `%TEMP%` | bare `fopen` in `pdftotext` fails on a Chinese path | never writes a file; reads `pdftotext … -` from stdout |
+| page rasters | `pdftocairo` (bare `fopen`) | `pdftoppm` (`goo::openFile` → `_wfopen`) |
+| `-bbox-layout` support | assumed | optional; Xpdf 4.x builds fall back to a page-level ink check |
+
+The offline Windows runtime pins `oschwartz10612/poppler-windows` v26.09.0, whose
+`pdftotext` reports `version 4.06 [www.xpdfreader.com]` and rejects
+`-bbox-layout`. Without the fallback the gate failed on every Windows export.
+
+## Continuous coverage added
+
+`chinese-path-matrix.yml` exports all seven process documents from a data
+directory and an output directory that both contain Chinese characters, on
+Windows and macOS, and runs the thesis template suite on a Chinese-named
+standard user. `package-acceptance.yml` keeps exercising the packaged installers.
