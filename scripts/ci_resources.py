@@ -46,7 +46,13 @@ def main() -> None:
     repo = config['repository']
     info = json.loads(subprocess.check_output(['gh', 'api', f'repos/{repo}']))
     if info.get('private') is not True:
-        raise RuntimeError('Private CI resources require a private repository')
+        # The assets stay publicly downloadable by the owner's decision; the
+        # size and SHA-256 checks below are what protect the run.
+        print(
+            'WARNING: repository is public; the CI font and runtime assets are '
+            'downloadable by anyone.',
+            file=sys.stderr,
+        )
     cache = ROOT / 'build/ci-inputs'
     cache.mkdir(parents=True, exist_ok=True)
     wanted = ['fonts'] + (['windows_runtime'] if sys.platform == 'win32' else [])
