@@ -34,7 +34,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: AmaziiingChen/SZTU-Thesis-Latex-Template
-          ref: 2f25a025a4deed48755a44a26f0ae5a9a0599a63
+          ref: d041706ed7b49241c1900225398b99fb5fcf3aa7
           path: Thesis
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
