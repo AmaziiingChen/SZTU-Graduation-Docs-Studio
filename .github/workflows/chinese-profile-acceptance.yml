@@ -82,8 +82,14 @@ jobs:
           robocopy @copyArgs | Out-Null
           if ($LASTEXITCODE -ge 8) { throw "Could not stage the workspace (robocopy $LASTEXITCODE)" }
           Push-Location "$work\app"
-          pnpm install --frozen-lockfile
+          # pnpm links packages to the store in the runner's profile, which a standard account cannot
+          # traverse, so the staged tree gets its own store.
+          pnpm install --frozen-lockfile --store-dir "$work\pnpm-store"
           if ($LASTEXITCODE -ne 0) { throw 'Could not reinstall the staged workspace' }
+          if (-not (Test-Path "$work\app\.venv\Scripts\python.exe")) {
+            pnpm setup:backend
+            if ($LASTEXITCODE -ne 0) { throw 'Could not build the backend runtime' }
+          }
           Pop-Location
           $installer = Get-ChildItem -Path "$work\app\release\offline\*-offline.exe" | Select-Object -First 1
           if (-not $installer) { throw 'Offline installer was not created' }
