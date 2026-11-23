@@ -81,6 +81,12 @@ jobs:
             "$env:GITHUB_WORKSPACE\app\.venv")
           robocopy @copyArgs | Out-Null
           if ($LASTEXITCODE -ge 8) { throw "Could not stage the workspace (robocopy $LASTEXITCODE)" }
+          # The scheduled task inherits the machine environment, so the licensed CI fonts have to be
+          # staged next to the workspace and named explicitly; the packaged bundle ships only part of set.
+          $fonts = "$work\app\build\ci-fonts"
+          New-Item -ItemType Directory -Path (Split-Path $fonts) -Force | Out-Null
+          robocopy "$env:GITHUB_WORKSPACE\app\build\ci-fonts" $fonts /E /NFL /NDL /NJH /NJS /NP | Out-Null
+          if ($LASTEXITCODE -ge 8) { throw "Could not stage the CI fonts (robocopy $LASTEXITCODE)" }
           Push-Location "$work\app"
           # pnpm links packages to the store in the runner's profile, which a standard account cannot
           # traverse, so the staged tree gets its own store.
@@ -101,6 +107,7 @@ jobs:
           # Every stage leaves a marker, so a stall is localised instead of only reported as a timeout.
           @(
             '@echo off',
+            "set SZTU_FONT_DIR=$fonts",
             "whoami /user > `"$work\whoami.txt`" 2>&1",
             "set > `"$work\environment.txt`"",
             "echo started=%DATE% %TIME% > `"$work\stage-1-started.txt`"",
