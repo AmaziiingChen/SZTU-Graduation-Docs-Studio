@@ -34,16 +34,25 @@ def main() -> int:
     if not configuration:
         raise RuntimeError("Offline runtime root is missing from PATH or is not ASCII")
     os.environ.update(configuration)
-    def run(command: list[str], cwd: Path | None = None) -> str:
+    def decode(value: bytes) -> str:
+        try:
+            return value.decode("utf-8")
+        except UnicodeDecodeError:
+            return value.decode("mbcs" if os.name == "nt" else "utf-8", errors="replace")
+
+    # The first xelatex run on a cold machine rebuilds font caches; a one-minute budget
+    # turned that into an intermittent packaging failure instead of a real defect.
+    def run(command: list[str], cwd: Path | None = None, timeout: float = 300.0) -> str:
         command = [windows_tool_path(command[0]), *command[1:]]
-        completed = subprocess.run(command, cwd=cwd, capture_output=True, timeout=60)
-        def decode(value: bytes) -> str:
-            try:
-                return value.decode("utf-8")
-            except UnicodeDecodeError:
-                return value.decode("mbcs" if os.name == "nt" else "utf-8", errors="replace")
-        output = decode(completed.stdout) + decode(completed.stderr)
-        if completed.returncode != 0:
+        process = subprocess.Popen(command, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        try:
+            stdout, stderr = process.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            stdout, stderr = process.communicate()
+            raise RuntimeError(f"Timed out after {timeout:g}s: {command[0]}\n" + (decode(stdout) + decode(stderr))[-2500:]) from None
+        output = decode(stdout) + decode(stderr)
+        if process.returncode != 0:
             raise RuntimeError(output[-2500:])
         return output
     for filename in (*PROCESS_TEX_PACKAGE_FILES, *THESIS_TEX_PACKAGE_FILES):
