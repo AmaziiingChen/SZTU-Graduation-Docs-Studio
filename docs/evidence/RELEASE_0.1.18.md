@@ -24,9 +24,13 @@
 
 | 平台 | 文件 | 字节 | SHA-256 |
 | --- | --- | --- | --- |
-| Windows x64 | `SZTU-Docs-Studio-0.1.18-win-x64-offline.exe` | 见下方清单 | 见下方清单 |
+| Windows x64 | `SZTU-Docs-Studio-0.1.18-win-x64-offline.exe` | 429,906,274 | `31465fc9d49f262829b221f971ddb19446ff4ee05f41b7a0bc15ad70caba233a` |
 
-清单：`releases/stable/manifest.json`（同时保留 `releases/0.1.18/manifest.json`）。
+清单：`releases/stable/manifest.json`（同时保留 `releases/0.1.18/manifest.json`），800 字节，
+SHA-256 `fda503a0fd241b853ee6fca9a2d23f69ebcbda5e465bee6593596a1ff520b4c3`，Ed25519 签名验证通过，
+`artifacts` 仅含 `win32/x64` 一条。
+
+发布后实测：公网清单 200 / 800 字节且哈希一致；产物 200 / `content-length: 429906274`。
 
 ## 回滚
 
