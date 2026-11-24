@@ -33,7 +33,10 @@ import type {
   StudentProfileDraft,
   SztuDesktopApi,
 } from "@/types/desktop-api"
-import { completeEnvironmentOnboarding } from "@/lib/environment-onboarding"
+import {
+  completeEnvironmentOnboarding,
+  environmentOnboardingIsComplete,
+} from "@/lib/environment-onboarding"
 import { readWorkspaceRecovery, workspaceRecoveryKey } from "@/lib/workspace-recovery"
 
 import App from "./App"
@@ -786,7 +789,7 @@ describe("M3 workbench persistence", () => {
     expect(api.downloadUpdate).not.toHaveBeenCalled()
   })
 
-  it("keeps environment help on demand and returns to editing after repair", async () => {
+  it("opens the setup guide once and keeps it available on demand afterwards", async () => {
     window.localStorage.clear()
     const api = mockApi()
     vi.mocked(api.checkEnvironment).mockResolvedValueOnce({
@@ -798,7 +801,10 @@ describe("M3 workbench persistence", () => {
     renderApp()
 
     await screen.findByLabelText("保存状态：已保存")
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    const onboarding = await screen.findByRole("dialog", { name: "环境检查" })
+    expect(environmentOnboardingIsComplete()).toBe(true)
+    fireEvent.click(within(onboarding).getByRole("button", { name: "返回工作台" }))
+    await waitFor(() => expect(onboarding).not.toBeInTheDocument())
     await openOperationsPanel()
     fireEvent.click(await screen.findByRole("button", { name: "查看环境修复指引" }))
 
@@ -834,9 +840,6 @@ describe("M3 workbench persistence", () => {
 
     renderApp()
     await screen.findByLabelText("保存状态：已保存")
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
-    await openOperationsPanel()
-    fireEvent.click(await screen.findByRole("button", { name: "查看环境修复指引" }))
 
     const dialog = await screen.findByRole("dialog", {
       name: "环境检查",

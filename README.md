@@ -120,6 +120,21 @@ TeX Live、XeLaTeX、latexmk 或 Poppler；首次启动的环境检查会提示�
 当前安装包没有 Apple Developer ID 签名或公证，macOS 可能显示 Gatekeeper 提示。具体构建边界见
 [macOS 打包说明](docs/MACOS_PACKAGING.md)。
 
+### macOS 用户安装前需要准备的依赖
+
+macOS 版把编译环境留给系统，安装包只有约 280 MB；Windows 离线版则内置约 400 MB 的 TeX 运行时，
+装完即可用。Mac 用户第一次启动时，若缺少下表组件，应用会自动弹出「环境检查」并给出安装说明；
+关闭后仍可从「环境检查」按钮随时打开。
+
+| 组件 | 用途 | 安装方式 | 体积 |
+| --- | --- | --- | --- |
+| MacTeX（含 XeLaTeX、BibTeX、latexmk） | 论文与过程文档的 PDF 编译 | [tug.org/mactex](https://tug.org/mactex/) | 约 4 GB |
+| Poppler（`pdftotext`、`pdftoppm`） | 预览光栅化与字号、字形检查 | `brew install poppler` | 约 30 MB |
+| 宋体、黑体、楷体、Times New Roman、方正小标宋 | 文档排版 | 系统字体册安装后重启应用 | — |
+
+缺少上述依赖时，编辑与保存不受影响，但预览和导出会被拦下并提示缺失项；装好并重启应用后
+点「重新检查」即可继续。
+
 填写文档后点击顶部的“预览&导出”。右侧抽屉会立即打开，并在没有当前有效预览时自动保存、检查和生成与正式 PDF 导出共用模板引擎的
 逐页图像；已有有效结果时直接打开，不重复生成。继续编辑正文、修改学生档案或更新模板后，下次打开抽屉会自动重新生成；导出格式统一在抽屉底部选择。
 预览确认只代表当前 PDF 页面可供审阅，不等于 Word/WPS 目标编辑器验收通过。

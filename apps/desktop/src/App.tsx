@@ -44,6 +44,10 @@ import { AppearanceSettings } from "@/components/workbench/appearance-settings"
 import type { CreateDocumentRequest } from "@/components/workbench/nav-documents"
 import { DiagnosticSupport } from "@/components/workbench/diagnostic-support"
 import { EnvironmentOnboardingDialog } from "@/components/workbench/environment-onboarding-dialog"
+import {
+  completeEnvironmentOnboarding,
+  environmentOnboardingIsComplete,
+} from "@/lib/environment-onboarding"
 import { ExportHistoryStatusBadge } from "@/components/workbench/export-history-status-badge"
 import {
   DocumentSectionNav,
@@ -4929,6 +4933,15 @@ export default function App() {
       : undefined
   const environmentReady =
     environment.status === "ready" && environment.result.ready
+
+  // Surface the setup guide once per installation. A fresh Mac without MacTeX would otherwise only
+  // learn about the requirement when the first preview fails.
+  useEffect(() => {
+    if (environment.status !== "ready" || environment.result.ready) return
+    if (environmentOnboardingIsComplete()) return
+    completeEnvironmentOnboarding()
+    setEnvironmentGuideOpen(true)
+  }, [environment])
   const previewReady =
     previewState.status === "ready" &&
     !previewState.stale &&
