@@ -94,11 +94,14 @@ describe("offline signed updates and response bodies", () => {
     expect(service.revealDownloadedPath()).toBeNull()
   })
 
-  it("retains the platform-mismatch failure for a manifest that actually includes installers", async () => {
-    const f = await fixture(), value = f.payload(Buffer.from("AAA"))
+  it("treats a release without a package for this platform as up to date", async () => {
+    const f = await fixture(), value = f.payload(Buffer.from("AAA")), outcome = vi.fn()
     value.artifacts[0]!.arch = "x64"
-    const service = new UpdateService({ ...f.options, fetchImpl: async () => f.response(value) })
-    expect(await service.checkNow()).toMatchObject({ state: "error", code: "CHECK_FAILED" })
+    const service = new UpdateService({ ...f.options, fetchImpl: async () => f.response(value), onOutcome: outcome })
+    expect(await service.checkNow()).toMatchObject({ state: "up_to_date", control: { updatePolicy: "recommended" } })
+    expect(outcome).toHaveBeenCalledWith("up_to_date")
+    expect(outcome).not.toHaveBeenCalledWith("failed")
+    expect(service.revealDownloadedPath()).toBeNull()
   })
 
   it("redownloads changed signed content at the same version and size, then verifies local cache bytes", async () => {

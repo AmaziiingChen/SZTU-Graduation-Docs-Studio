@@ -500,7 +500,20 @@ export class UpdateService {
         (item) =>
           item.platform === this.options.platform && item.arch === this.options.arch,
       )
-      if (!artifact) throw new Error("No update artifact for this platform.")
+      if (!artifact) {
+        // The release may only carry packages for the platforms that changed. A build whose
+        // platform is missing is simply up to date, not broken: surfacing an error here would
+        // make every Windows-only rollout look like a failed check on macOS.
+        this.availableUpdate = undefined
+        mark("success")
+        this.setStatus({
+          state: "up_to_date",
+          checkedAt: (this.options.now?.() ?? new Date()).toISOString(),
+          ...(control ? { control } : {}),
+        })
+        await this.options.onOutcome?.("up_to_date")
+        return this.status
+      }
       mark("success")
       if (
         this.downloadedVersion === manifest.version &&
