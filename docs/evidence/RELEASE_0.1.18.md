@@ -1,6 +1,6 @@
 # 0.1.18 发布记录
 
-发布对象：Windows x64 离线安装包（2026-11-24）。本次只有 Windows 产物，清单不含 darwin 条目。
+发布对象：Windows x64 离线安装包与 macOS arm64 DMG（2026-11-25）。清单同时包含 win32/x64 与 darwin/arm64 两条产物。
 
 ## 与 0.1.17 的差别
 
@@ -25,12 +25,17 @@
 | 平台 | 文件 | 字节 | SHA-256 |
 | --- | --- | --- | --- |
 | Windows x64 | `SZTU-Docs-Studio-0.1.18-win-x64-offline.exe` | 429,906,274 | `31465fc9d49f262829b221f971ddb19446ff4ee05f41b7a0bc15ad70caba233a` |
+| macOS arm64 | `SZTU-Docs-Studio-0.1.18-mac-arm64.dmg` | 141,972,388 | `feb01d75a739ef54f1923b2c615390ff82d450478778039dcbcfb75219046404` |
 
-清单：`releases/stable/manifest.json`（同时保留 `releases/0.1.18/manifest.json`），800 字节，
-SHA-256 `fda503a0fd241b853ee6fca9a2d23f69ebcbda5e465bee6593596a1ff520b4c3`，Ed25519 签名验证通过，
-`artifacts` 仅含 `win32/x64` 一条。
+同批还导出了 macOS 的 ZIP 压缩包（141,718,145 字节，SHA-256 `ea2c80187c37fe6dc5c91e00379073307168dee28eafaf250f61ee5d0fc24030d`），
+未写入清单，仅用于直接分发。DMG 内的应用为 ad-hoc 签名、未公证，首次打开需右键「打开」放行；macOS 版不内置 TeX，
+用户需自备 MacTeX 与 Poppler。
 
-发布后实测：公网清单 200 / 800 字节且哈希一致；产物 200 / `content-length: 429906274`。
+清单：`releases/stable/manifest.json`（同时保留 `releases/0.1.18/manifest.json`），1128 字节，
+SHA-256 `3335f529a2f01aa3cb373fcceb726382563cc1af012eb9973a053e80dfa60135`，Ed25519 签名验证通过，
+`artifacts` 含 `win32/x64:429906274` 与 `darwin/arm64:141972388` 两条。
+
+发布后实测：公网清单 200 / 1128 字节且哈希一致；DMG 与 EXE 均 200 且 `content-length` 与清单一致。
 
 ## 回滚
 
