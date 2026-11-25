@@ -43,6 +43,8 @@ jobs:
       - name: Preserve template LF bytes
         working-directory: .
         run: git config --global core.autocrlf false
+      - name: Check the packaging plan
+        run: node scripts/check_packaging_plan.mjs --allow-missing-fonts
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: AmaziiingChen/SZTU-Thesis-Latex-Template

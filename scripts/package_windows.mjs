@@ -33,6 +33,7 @@ run(python, ["-m", "pip", "install", "--disable-pip-version-check", "-r", "scrip
 run(process.execPath, [pnpmScript, "verify"])
 run(python, ["scripts/stage_thesis_template.py"])
 run(python, ["scripts/stage_document_fonts.py"])
+run(process.execPath, ["scripts/check_packaging_plan.mjs"])
 run(python, ["scripts/build_backend_sidecar.py"])
 run(python, ["scripts/stage_macos_template_engines.py"])
 run(python, ["scripts/generate_windows_icon.py"])

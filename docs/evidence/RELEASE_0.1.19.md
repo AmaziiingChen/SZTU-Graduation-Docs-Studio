@@ -31,3 +31,18 @@
   `STXingkai.ttf` 4,009,504 B、`STZhongsong.ttf` 12,128,500 B）。
 - `python3 templates/thesis/test.py`：本机通过（25 页 + 3 页压力样例）。
 - Windows 侧由 `Package acceptance` 在 windows-2025 上重新打包并跑 7 类文档验收。
+
+## 产物与发布（2026-11-25）
+
+| 项目 | 值 |
+| --- | --- |
+| 构建 | `Package acceptance 45575852547`（commit `88b64e5`），双平台 success |
+| 安装包 | `SZTU-Docs-Studio-0.1.19-win-x64-offline.exe` 439,613,820 B |
+| SHA-256 | `88ae135a1c95a8c995607eb2deba8d6d4f4034131e277642d0854cfd49b2da6e` |
+| 更新清单 | 800 B，SHA-256 `e01c74933ed0d3553a82158e0f4085102c342799f47787a3da0f501d02e35ffd`，仅含 `win32/x64` |
+| 发布路径 | `releases/0.1.19/` 与 `releases/stable/manifest.json` |
+| 公网复核 | 清单 200 / 800 B / 哈希一致 / version 0.1.19；安装包 200 / 439,613,820 B |
+| 签名校验 | 固定 Ed25519 公钥验签通过 |
+
+macOS 版本次不重打：客户端已能容忍清单中缺少本平台产物（`update-service.ts` 的
+`up_to_date` 分支），macOS 用户停留在 0.1.18，不会报错。

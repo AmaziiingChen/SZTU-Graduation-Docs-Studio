@@ -25,6 +25,7 @@
     "test": "pnpm --filter @sztu-docs/desktop test",
     "test:backend": "pnpm setup:backend && python scripts/run_backend_tests.py",
     "verify": "pnpm lint && pnpm test && pnpm telemetry:test && pnpm test:update-tools && pnpm test:backend && pnpm build && pnpm telemetry:build",
-    "dev:thesis": "node scripts/dev-thesis-workbench.mjs"
+    "dev:thesis": "node scripts/dev-thesis-workbench.mjs",
+    "check:packaging": "node scripts/check_packaging_plan.mjs"
   }
 }
