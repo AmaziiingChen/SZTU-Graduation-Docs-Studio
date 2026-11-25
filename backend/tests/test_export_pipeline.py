@@ -13,8 +13,10 @@ from unittest.mock import patch
 from sztu_docs_backend import template_engine
 from sztu_docs_backend.exporter import (
     ExportError,
+    _iter_content_image_paths,
     _output_filenames,
     _run,
+    _stage_content_images,
     build_export_document,
     delete_export_history_record,
     list_export_history,
@@ -126,6 +128,90 @@ class ExportFilenameTests(unittest.TestCase):
                 "tex": "第二版修改稿-2-LaTeX.zip",
             },
         )
+
+
+class ContentImageStagingTests(unittest.TestCase):
+    def test_collects_paths_from_image_blocks_and_figure_groups(self) -> None:
+        content = {
+            "sections": {
+                "basic": [
+                    {"type": "paragraph", "runs": [{"text": "正文"}]},
+                    {"type": "image", "path": "document-assets/first.png"},
+                ],
+                "extra": [
+                    {
+                        "type": "figure_group",
+                        "items": [
+                            {"path": "document-assets/second.png"},
+                            {"path": "document-assets/third.png"},
+                        ],
+                    }
+                ],
+            }
+        }
+
+        self.assertEqual(
+            sorted(_iter_content_image_paths(content)),
+            [
+                "document-assets/first.png",
+                "document-assets/second.png",
+                "document-assets/third.png",
+            ],
+        )
+
+    def test_stages_relative_images_next_to_the_renderer_input(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            assets = root / "document-assets"
+            assets.mkdir()
+            (assets / "demo.png").write_bytes(b"png-bytes")
+            work = root / "work"
+            work.mkdir()
+            content = {"sections": {"basic": [{"type": "image", "path": "document-assets/demo.png"}]}}
+
+            _stage_content_images(content, assets_root=assets, work=work)
+
+            staged = work / "document-assets" / "demo.png"
+            self.assertTrue(staged.is_file())
+            self.assertEqual(staged.read_bytes(), b"png-bytes")
+
+    def test_reports_missing_managed_images_with_a_readable_error(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            assets = root / "document-assets"
+            assets.mkdir()
+            work = root / "work"
+            work.mkdir()
+            content = {"sections": {"basic": [{"type": "image", "path": "document-assets/missing.png"}]}}
+
+            with self.assertRaises(ExportError) as raised:
+                _stage_content_images(content, assets_root=assets, work=work)
+
+            self.assertEqual(raised.exception.code, "IMAGE_ASSET_UNAVAILABLE")
+            self.assertIn("图片文件找不到", raised.exception.message)
+
+    def test_ignores_absolute_and_escaping_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            assets = root / "document-assets"
+            assets.mkdir()
+            absolute = root / "absolute.png"
+            absolute.write_bytes(b"absolute")
+            work = root / "work"
+            work.mkdir()
+            content = {
+                "sections": {
+                    "basic": [
+                        {"type": "image", "path": str(absolute)},
+                        {"type": "image", "path": "../../escape.png"},
+                    ]
+                }
+            }
+
+            _stage_content_images(content, assets_root=assets, work=work)
+
+            self.assertFalse((work / "absolute.png").exists())
+            self.assertFalse((work.parent / "escape.png").exists())
 
 
 class ExportPipelineTests(unittest.TestCase):

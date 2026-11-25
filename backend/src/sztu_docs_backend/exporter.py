@@ -2156,6 +2156,72 @@ def _renderer_environment(
     return environment
 
 
+def _iter_content_image_paths(value: Any):
+    """Yield every image path referenced by a rendered content tree."""
+
+    if isinstance(value, dict):
+        block_type = value.get("type")
+        if block_type == "image" and isinstance(value.get("path"), str):
+            yield value["path"]
+        elif block_type == "figure_group":
+            items = value.get("items")
+            if isinstance(items, list):
+                for item in items:
+                    if isinstance(item, dict) and isinstance(item.get("path"), str):
+                        yield item["path"]
+        for child in value.values():
+            yield from _iter_content_image_paths(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from _iter_content_image_paths(child)
+
+
+def _stage_content_images(
+    content: Any,
+    *,
+    assets_root: Path | None,
+    work: Path,
+) -> None:
+    """Copy managed images next to the renderer input.
+
+    Process templates resolve relative image paths against the directory that
+    holds the JSON input, not against the workspace data directory. Thesis
+    renderers receive ``--assets-root``; the process renderers do not, so the
+    files must already be there or XeLaTeX fails with "image file does not
+    exist".
+    """
+
+    if assets_root is None:
+        return
+    work_root = work.resolve()
+    staged: set[str] = set()
+    missing: list[str] = []
+    for raw_path in _iter_content_image_paths(content):
+        if raw_path in staged:
+            continue
+        staged.add(raw_path)
+        relative = Path(raw_path)
+        if relative.is_absolute():
+            continue
+        destination = (work / relative).resolve()
+        if work_root not in destination.parents:
+            continue
+        source = assets_root / relative.name
+        if not source.is_file():
+            missing.append(raw_path)
+            continue
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        if destination.is_file() and destination.stat().st_size == source.stat().st_size:
+            continue
+        shutil.copy2(source, destination)
+    if missing:
+        raise ExportError(
+            "IMAGE_ASSET_UNAVAILABLE",
+            "文档里插入的图片文件找不到了，请重新插入这张图片后再试。",
+            {"count": len(missing)},
+        )
+
+
 def _engine_renderer_environment(descriptor: EngineDescriptor) -> dict[str, str]:
     roots: list[str] = []
     configured = os.environ.get("SZTU_FONT_DIR")
@@ -3857,6 +3923,13 @@ def run_export(
             data_path = work / f"{record['document_type']}.json"
             with step("render_input_write"):
                 data_path.write_bytes(canonical_json(proposal))
+            assets_root = asset_directory
+            if assets_root is None:
+                data_directory = workspace.database.data_directory
+                if data_directory is not None:
+                    assets_root = data_directory / "document-assets"
+            with step("asset_staging"):
+                _stage_content_images(proposal, assets_root=assets_root, work=work)
             generated: dict[str, Path] = {}
             live_workspace = descriptor.source in {
                 "development-workspace",
