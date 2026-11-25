@@ -5,6 +5,13 @@ directories:
 extraResources:
   - from: ../../build/offline-runtime-location.json
     to: offline-runtime-location.json
+  # 随包分发系统不常备的文档字体：华文中宋（论文题名）、华文行楷（任务书校名）、方正小标宋（封面）。
+  - from: ../../local-fonts
+    to: document-fonts
+    filter:
+      - STZhongsong.ttf
+      - STXingkai.ttf
+      - FZXiaoBiaoSong-B05S.ttf
 win:
   artifactName: "SZTU-Docs-Studio-${version}-win-${arch}-offline.${ext}"
 nsis:

@@ -69,6 +69,10 @@ def main() -> int:
     for target in engines_root.rglob("*"):
         if target.suffix.lower() in {".ttf", ".ttc", ".otf"}:
             raise RuntimeError("Document fonts must not be bundled")
+    # 系统不常备的文档字体必须随包分发，否则新机器上论文题名、任务书校名和封面会直接失败。
+    for font in ("STZhongsong.ttf", "STXingkai.ttf", "FZXiaoBiaoSong-B05S.ttf"):
+        if not (resources / "document-fonts" / font).is_file():
+            raise RuntimeError(f"Bundled document font missing: {font}")
     with tempfile.TemporaryDirectory(prefix="sztu-windows-bundle-") as data_root:
         environment_path = os.environ.get("PATH", "")
         runtime = bundle_runtime(resources, Path(sys.argv[2]).resolve() if len(sys.argv) > 2 else None)
