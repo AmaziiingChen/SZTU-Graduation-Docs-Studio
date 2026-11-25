@@ -34,7 +34,7 @@ import {
   useState,
   type ReactNode,
 } from "react"
-import { ChevronDownIcon, HelpCircleIcon, LoaderCircleIcon, PackageCheckIcon, SaveIcon, TriangleAlertIcon, UserRoundIcon } from "lucide-react"
+import { ChevronDownIcon, HelpCircleIcon, LoaderCircleIcon, PackageCheckIcon, SaveIcon, ShieldCheckIcon, TriangleAlertIcon, UserRoundIcon } from "lucide-react"
 import { ThinkingOrb } from "thinking-orbs"
 
 import { AppSidebar } from "@/components/workbench/app-sidebar"
@@ -200,6 +200,7 @@ import type {
 } from "@/types/desktop-api"
 import type { ToolLinkId } from "@/types/desktop-api"
 import { wrapDesktopApi } from "@/lib/desktop-errors"
+import { disableSafeMode } from "@/lib/safe-mode"
 import type {
   ParagraphInput,
   StructuredBodyValue,
@@ -3433,7 +3434,7 @@ function InspectionPanel({
   )
 }
 
-export default function App() {
+export default function App({ safeMode = false }: { safeMode?: boolean } = {}) {
   useEditableSelection()
   const exportFeedback = useActionFeedback()
   const isMobile = useIsMobile()
@@ -5381,7 +5382,8 @@ export default function App() {
       editor
     )
 
-  const showFirstRunTour = !firstRunTourDismissed
+  const showFirstRunTour = !safeMode
+    && !firstRunTourDismissed
     && (
       tourForced
       || (workspace.status === "ready"
@@ -5583,6 +5585,25 @@ export default function App() {
         inspectionDisabled={workspaceDisabled}
       />
       <SidebarInset className="min-h-0 overflow-hidden">
+        {safeMode ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/60 px-4 py-2 text-sm text-foreground">
+            <span className="flex items-center gap-2">
+              <ShieldCheckIcon aria-hidden="true" className="size-4" />
+              安全模式已开启：已关闭新手引导和自动弹窗，编辑、预览与导出不受影响。
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                disableSafeMode()
+                window.location.reload()
+              }}
+            >
+              退出安全模式
+            </Button>
+          </div>
+        ) : null}
         {activePane !== "document" ? <SiteHeader
           title={
             activePane === "profile"

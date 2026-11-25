@@ -602,10 +602,10 @@ function installApi(api: SztuDesktopApi) {
   ;(window as Window & { sztuDesktop?: SztuDesktopApi }).sztuDesktop = api
 }
 
-function renderApp() {
+function renderApp(props: { safeMode?: boolean } = {}) {
   return render(
     <TooltipProvider>
-      <App />
+      <App {...props} />
     </TooltipProvider>,
   )
 }
@@ -978,6 +978,15 @@ describe("M3 workbench persistence", () => {
     expect(within(help).getByText("粘贴与管理参考文献（BibTeX）")).toBeInTheDocument()
     fireEvent.click(within(help).getByRole("button", { name: /载入演示资料/ }))
     await waitFor(() => expect(api.installDemoDocuments).toHaveBeenCalledTimes(1))
+  })
+
+  it("keeps the workspace usable in safe mode without the tour", async () => {
+    const api = mockApi()
+    installApi(api)
+    renderApp({ safeMode: true })
+
+    expect(await screen.findByText(/安全模式已开启/)).toBeInTheDocument()
+    expect(screen.queryByRole("dialog", { name: "新手引导" })).not.toBeInTheDocument()
   })
 
   it("submits feedback from the help center with contact details", async () => {

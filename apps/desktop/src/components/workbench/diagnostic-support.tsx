@@ -71,6 +71,22 @@ export function DiagnosticSupport({ caseId, showSummary = false }: { caseId?: st
 
   return (
     <div className="grid gap-3">
+      {caseId ? (
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <span>诊断编号：<code className="rounded bg-muted px-1 py-0.5">{caseId}</code></span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-auto px-2 py-1 text-xs"
+            onClick={() => {
+              void navigator.clipboard.writeText(caseId)
+            }}
+          >
+            复制编号
+          </Button>
+        </div>
+      ) : null}
       {showSummary ? (
         <div className="grid gap-1">
           <p className="text-xs text-muted-foreground">
