@@ -225,12 +225,12 @@ export function AppSidebar({
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
-              tooltip="帮助"
+              tooltip="帮助支持"
               className="pl-8"
               onClick={() => finishNavigation(onSelectHelp)}
             >
               <AnimatedActionIcon icon={CircleQuestionMarkIcon} />
-              <span>帮助</span>
+              <span>帮助支持</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>

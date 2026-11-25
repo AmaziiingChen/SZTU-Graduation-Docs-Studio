@@ -185,7 +185,7 @@ export function MessageCenterDialog({
           </ScrollArea>
         )}
 
-        <DialogFooter className="border-t px-4 py-3">
+        <DialogFooter className="mx-0 mb-0 rounded-none border-t bg-muted/40 px-4 py-3">
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             关闭
           </Button>

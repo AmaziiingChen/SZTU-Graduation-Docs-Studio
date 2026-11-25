@@ -974,8 +974,8 @@ describe("M3 workbench persistence", () => {
     installApi(api)
     renderApp()
 
-    fireEvent.click(await screen.findByRole("button", { name: "帮助" }))
-    const help = await screen.findByRole("dialog", { name: "帮助" })
+    fireEvent.click(await screen.findByRole("button", { name: "帮助支持" }))
+    const help = await screen.findByRole("dialog", { name: "帮助支持" })
     fireEvent.change(within(help).getByPlaceholderText(/搜索/), { target: { value: "文献" } })
     expect(within(help).getByText("粘贴与管理参考文献（BibTeX）")).toBeInTheDocument()
     fireEvent.click(within(help).getByRole("button", { name: /载入演示资料/ }))
@@ -996,8 +996,8 @@ describe("M3 workbench persistence", () => {
     installApi(api)
     renderApp()
 
-    fireEvent.click(await screen.findByRole("button", { name: "帮助" }))
-    const help = await screen.findByRole("dialog", { name: "帮助" })
+    fireEvent.click(await screen.findByRole("button", { name: "帮助支持" }))
+    const help = await screen.findByRole("dialog", { name: "帮助支持" })
     fireEvent.click(within(help).getByRole("button", { name: "关于与许可" }))
     const dialog = await screen.findByRole("dialog", { name: "关于与许可" })
     await waitFor(() => expect(within(dialog).getByText("0.1.0")).toBeInTheDocument())
@@ -1009,8 +1009,8 @@ describe("M3 workbench persistence", () => {
     installApi(api)
     renderApp()
 
-    fireEvent.click(await screen.findByRole("button", { name: "帮助" }))
-    const help = await screen.findByRole("dialog", { name: "帮助" })
+    fireEvent.click(await screen.findByRole("button", { name: "帮助支持" }))
+    const help = await screen.findByRole("dialog", { name: "帮助支持" })
     fireEvent.click(within(help).getByRole("button", { name: "反馈问题" }))
     const dialog = await screen.findByRole("dialog", { name: "反馈问题" })
     fireEvent.change(within(dialog).getByLabelText("具体描述"), {
@@ -1069,7 +1069,7 @@ describe("M3 workbench persistence", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: /周末维护提醒/ }))
     expect(within(dialog).getByText(/本周六晚八点进行服务维护/)).toBeInTheDocument()
     fireEvent.click(within(dialog).getByRole("button", { name: "查看说明" }))
-    expect(await screen.findByRole("dialog", { name: "帮助" })).toBeInTheDocument()
+    expect(await screen.findByRole("dialog", { name: "帮助支持" })).toBeInTheDocument()
     expect(screen.queryByRole("dialog", { name: "消息通知" })).not.toBeInTheDocument()
     await waitFor(() => expect(messagesButton).not.toHaveTextContent("1"))
   })

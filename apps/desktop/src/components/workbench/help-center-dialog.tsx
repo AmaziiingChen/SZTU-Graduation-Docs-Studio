@@ -122,7 +122,7 @@ export function HelpCenterDialog({
         <DialogHeader className="gap-1 border-b px-4 py-4">
           <DialogTitle className="flex items-center gap-2">
             <BookOpenIcon className="size-4" aria-hidden="true" />
-            帮助
+            帮助支持
           </DialogTitle>
           <DialogDescription>
             常见问题、快捷键、更新说明，以及可随时载入的演示资料。
@@ -306,7 +306,7 @@ export function HelpCenterDialog({
         ) : null}
 
         <Separator />
-        <DialogFooter className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 sm:justify-between">
+        <DialogFooter className="mx-0 mb-0 flex flex-wrap items-center justify-between gap-2 rounded-none border-t bg-muted/40 px-4 py-3 sm:justify-between">
           <div className="flex flex-wrap items-center gap-2">
             <Button
               type="button"
