@@ -258,6 +258,7 @@ export function NavDocuments({
                   <span className="min-w-0 flex-1 truncate">{group.label}</span>
                 </CollapsibleTrigger>
                 <SidebarMenuAction
+                  data-tour={group.type === "task_book" ? "create-task-book" : undefined}
                   aria-label={`新建${group.label}`}
                   title={`新建${group.label}`}
                   disabled={disabled}

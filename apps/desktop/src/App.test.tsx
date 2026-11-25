@@ -592,6 +592,7 @@ beforeEach(() => {
   vi.mocked(celebrateExportSuccess).mockClear()
   window.localStorage.clear()
   window.localStorage.setItem("sztu-docs.thesis-seeded-v1", "1")
+  window.localStorage.setItem("sztu-docs.first-run-tour-v1", "done")
 })
 
 function replaceRichText(element: HTMLElement, value: string) {
@@ -914,6 +915,34 @@ describe("M3 workbench persistence", () => {
       schema_version: "0.1",
       title: "合成学生甲-毕业论文",
     }))
+  })
+
+  it("walks a brand-new user through the first run tour", async () => {
+    window.localStorage.clear()
+    const api = mockApi()
+    vi.mocked(api.openWorkspace).mockResolvedValue({
+      mode: "persistent",
+      profile: null,
+      profiles: [],
+      profile_draft: null,
+      document: null,
+      documents: [],
+      deleted_documents: [],
+    })
+    installApi(api)
+    renderApp()
+
+    const tour = await screen.findByRole("dialog", { name: "新手引导" })
+    expect(within(tour).getByText("先填一次基本信息")).toBeInTheDocument()
+    fireEvent.click(await screen.findByRole("button", { name: "档案与基本信息" }))
+    await waitFor(() => {
+      expect(within(screen.getByRole("dialog", { name: "新手引导" })).getByText("在这里填写档案")).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByRole("button", { name: "跳过引导" }))
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "新手引导" })).not.toBeInTheDocument()
+    })
+    expect(window.localStorage.getItem("sztu-docs.first-run-tour-v1")).toBe("done")
   })
 
   it("downloads the bundled thesis template without changing the document or requiring a preview", async () => {

@@ -36,6 +36,7 @@ export function DocumentSectionNav({
   return (
     <div
       data-slot="document-section-nav"
+      data-tour="section-list"
       className="flex h-full min-h-0 w-40 shrink-0 flex-col border-r bg-muted/30"
     >
       <div

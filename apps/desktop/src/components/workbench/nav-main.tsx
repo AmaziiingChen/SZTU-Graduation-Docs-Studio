@@ -24,6 +24,7 @@ export function NavMain({
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
+              data-tour="nav-profile"
               tooltip="档案与基本信息"
               aria-label="档案与基本信息"
               className="pl-8"

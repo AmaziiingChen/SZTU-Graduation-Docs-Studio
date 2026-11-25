@@ -44,6 +44,7 @@ import { AppearanceSettings } from "@/components/workbench/appearance-settings"
 import type { CreateDocumentRequest } from "@/components/workbench/nav-documents"
 import { DiagnosticSupport } from "@/components/workbench/diagnostic-support"
 import { EnvironmentOnboardingDialog } from "@/components/workbench/environment-onboarding-dialog"
+import { FirstRunTour } from "@/components/workbench/first-run-tour"
 import { ExportHistoryStatusBadge } from "@/components/workbench/export-history-status-badge"
 import {
   DocumentSectionNav,
@@ -203,6 +204,7 @@ import type {
 } from "@/types/structured-content"
 
 const THESIS_SEED_FLAG = "sztu-docs.thesis-seeded-v1"
+const FIRST_RUN_TOUR_FLAG = "sztu-docs.first-run-tour-v1"
 
 type Draft = {
   assessment: AssessmentDraft
@@ -1969,6 +1971,7 @@ function StudentProfileEditor({
   return (
     <ScrollArea className="h-full">
       <div
+        data-tour="profile-form"
         className="mx-auto grid max-w-4xl gap-6 p-6"
         onBlurCapture={(event) => {
           const field = event.target.closest<HTMLElement>("[data-profile-field]")?.dataset.profileField ?? event.target.id
@@ -3447,6 +3450,7 @@ export default function App() {
   const [createProfileOpen, setCreateProfileOpen] = useState(false)
   const [newStudent, setNewStudent] = useState({ full_name: "", student_number: "", college: "", major: "" })
   const [createProfileError, setCreateProfileError] = useState<string | null>(null)
+  const [firstRunTourDismissed, setFirstRunTourDismissed] = useState(false)
   const profileRef = useRef<StudentProfile | null>(null)
   const [document, setDocument] = useState<DocumentRecord | null>(null)
   const documentRef = useRef<DocumentRecord | null>(null)
@@ -5194,6 +5198,7 @@ export default function App() {
 
   const documentActions = document && activeDocumentType !== "thesis" ? (
     <Button
+      data-tour="preview-export"
       size={isMobile ? "icon" : "default"}
       aria-label="预览&导出"
       title="预览&导出"
@@ -5349,6 +5354,20 @@ export default function App() {
     ) : (
       editor
     )
+
+  const showFirstRunTour = !firstRunTourDismissed
+    && workspace.status === "ready"
+    && profiles.length === 0
+    && window.localStorage.getItem(FIRST_RUN_TOUR_FLAG) !== "done"
+
+  const closeFirstRunTour = () => {
+    try {
+      window.localStorage.setItem(FIRST_RUN_TOUR_FLAG, "done")
+    } catch {
+      // 本地存储不可用时，至少本次会话不再打扰。
+    }
+    setFirstRunTourDismissed(true)
+  }
 
   return (
     <SidebarProvider
@@ -5603,6 +5622,7 @@ export default function App() {
           </ResizablePanelGroup>
         </SheetContent>
       </Sheet>
+      {showFirstRunTour ? <FirstRunTour open onClose={closeFirstRunTour} /> : null}
       <EnvironmentOnboardingDialog
         open={environmentGuideOpen}
         environment={environment}
