@@ -989,6 +989,19 @@ describe("M3 workbench persistence", () => {
     expect(screen.queryByRole("dialog", { name: "新手引导" })).not.toBeInTheDocument()
   })
 
+  it("opens the about dialog with version and license details", async () => {
+    const api = mockApi()
+    installApi(api)
+    renderApp()
+
+    fireEvent.click(await screen.findByRole("button", { name: "帮助与支持" }))
+    const help = await screen.findByRole("dialog", { name: "帮助与支持" })
+    fireEvent.click(within(help).getByRole("button", { name: "关于与许可" }))
+    const dialog = await screen.findByRole("dialog", { name: "关于与许可" })
+    await waitFor(() => expect(within(dialog).getByText("0.1.0")).toBeInTheDocument())
+    expect(within(dialog).getByText(/GPL-3.0/)).toBeInTheDocument()
+  })
+
   it("submits feedback from the help center with contact details", async () => {
     const api = mockApi()
     installApi(api)

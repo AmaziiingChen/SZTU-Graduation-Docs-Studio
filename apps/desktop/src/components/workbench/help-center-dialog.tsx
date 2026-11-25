@@ -66,6 +66,7 @@ export type HelpCenterDialogProps = {
   onRemoveDemo: () => void | Promise<void>
   onReplayTour: () => void
   onOpenFeedback: () => void
+  onOpenAbout: () => void
 }
 
 export function HelpCenterDialog({
@@ -77,6 +78,7 @@ export function HelpCenterDialog({
   onRemoveDemo,
   onReplayTour,
   onOpenFeedback,
+  onOpenAbout,
 }: HelpCenterDialogProps) {
   const [tab, setTab] = React.useState<HelpTab>("help")
   const [query, setQuery] = React.useState("")
@@ -327,6 +329,17 @@ export function HelpCenterDialog({
             >
               <MessageSquareIcon aria-hidden="true" />
               反馈问题
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                onOpenAbout()
+                handleOpenChange(false)
+              }}
+            >
+              关于与许可
             </Button>
           </div>
           <Button type="button" size="sm" onClick={() => handleOpenChange(false)}>
