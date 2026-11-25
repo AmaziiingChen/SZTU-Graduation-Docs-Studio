@@ -66,6 +66,7 @@ export function AppSidebar({
   onDeleteDocument,
   onRestoreDocument,
   onPurgeDocument,
+  revealDocumentTypes,
   disabled,
   inspectionDisabled,
   ...props
@@ -102,6 +103,7 @@ export function AppSidebar({
   onDeleteDocument: (documentId: string) => Promise<void>
   onRestoreDocument: (documentId: string) => Promise<void>
   onPurgeDocument: (documentId: string) => Promise<void>
+  revealDocumentTypes?: string[]
   disabled: boolean
   inspectionDisabled: boolean
 }) {
@@ -167,6 +169,7 @@ export function AppSidebar({
           onDeleteDocument={onDeleteDocument}
           onRestoreDocument={onRestoreDocument}
           onPurgeDocument={onPurgeDocument}
+          revealDocumentTypes={revealDocumentTypes}
         />
       </SidebarContent>
       <SidebarFooter>

@@ -113,6 +113,7 @@ export function NavDocuments({
   onDeleteDocument,
   onRestoreDocument,
   onPurgeDocument,
+  revealDocumentTypes,
 }: {
   studentName: string
   profileActive: boolean
@@ -138,6 +139,7 @@ export function NavDocuments({
   onDeleteDocument: (documentId: string) => Promise<void>
   onRestoreDocument: (documentId: string) => Promise<void>
   onPurgeDocument: (documentId: string) => Promise<void>
+  revealDocumentTypes?: string[]
 }) {
   const componentFieldId = useId()
   const activeRecordType = documents.find((item) => item.id === activeDocumentId)?.document_type
@@ -152,6 +154,16 @@ export function NavDocuments({
     defense_record: activeType === "defense_record",
     grade_assessment: activeType === "grade_assessment",
   })
+  const revealKey = revealDocumentTypes?.join(",") ?? ""
+  const [revealedKey, setRevealedKey] = useState("")
+  if (revealDocumentTypes?.length && revealKey !== revealedKey) {
+    setRevealedKey(revealKey)
+    setExpanded((current) => {
+      const next = { ...current }
+      for (const type of revealDocumentTypes) next[type as DocumentType] = true
+      return next
+    })
+  }
   const [expandedSelection, setExpandedSelection] = useState({ id: activeDocumentId, type: activeType })
   if (expandedSelection.id !== activeDocumentId || expandedSelection.type !== activeType) {
     setExpandedSelection({ id: activeDocumentId, type: activeType })

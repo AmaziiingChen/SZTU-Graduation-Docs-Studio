@@ -73,7 +73,7 @@ export function UsageGuideDialog({
             使用说明
           </DialogTitle>
           <DialogDescription>
-            四步完成一份过程文档。想先看看成品，可以载入一套虚构的演示资料（示例学生档案与八类文档），看完随时清除。
+            四步完成一份过程文档。想先看看成品，可以载入一套虚构的演示资料（示例学生档案与七类文档），看完随时清除。
           </DialogDescription>
         </DialogHeader>
         <ScrollArea className="max-h-[60vh] pr-3">

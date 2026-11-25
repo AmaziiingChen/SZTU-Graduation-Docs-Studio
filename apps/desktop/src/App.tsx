@@ -3507,6 +3507,7 @@ export default function App() {
   const [environmentGuideOpen, setEnvironmentGuideOpen] = useState(false)
   const [usageGuideOpen, setUsageGuideOpen] = useState(false)
   const [sampleBusy, setSampleBusy] = useState(false)
+  const [revealedSampleTypes, setRevealedSampleTypes] = useState<string[]>([])
   const [welcomeVisible, setWelcomeVisible] = useState(() => {
     try {
       return window.localStorage.getItem("sztu-docs.welcome-guide-v1") !== "1"
@@ -5025,11 +5026,12 @@ export default function App() {
     setSampleBusy(true)
     try {
       const result = await api.installReferenceSample()
-      const installed = result.sample?.installed?.length ?? 0
+      const installed = result.sample?.installed ?? []
+      setRevealedSampleTypes(installed)
       await reloadWorkspace()
       toast.success(
-        installed
-          ? `已载入 ${installed} 份演示文档，标题以「参考样例·」开头。`
+        installed.length
+          ? `已载入 ${installed.length} 份演示文档，标题以「参考样例·」开头。`
           : "演示资料已经存在，无需重复载入。",
       )
     } catch (error) {
@@ -5471,6 +5473,7 @@ export default function App() {
         onSelectAppearance={() => setActivePane("appearance")}
         onSelectInspection={() => setActivePane("inspection")}
         onSelectGuide={() => setUsageGuideOpen(true)}
+        revealDocumentTypes={revealedSampleTypes}
         onSelectDocument={selectDocumentFile}
         onSelectThesisTool={(toolId) => {
           setActiveThesisTool(toolId)
