@@ -70,7 +70,7 @@
 | 桌面测试 | 70 文件 / 691 测试通过，150.33 s |
 | 类型检查 | `tsc -b` 与 `tsc -p tsconfig.electron.json` 均通过 |
 | 代码检查 | 0 error / 40 warning（均为既有 React Compiler 建议） |
-| 打包预检 | `Packaging Plan OK`：18 个目标文件、11 个字体、模板固定提交 `d041706` |
+| 打包预检 | `Packaging Plan OK`：18 个目标文件、11 个字体、模板固定提交 `1c9b692` |
 | 安装脚本 | Windows PowerShell 5.1 解析通过；端到端干跑退出码 0 并写出结果文件 |
 | 文献渲染比对 | 7 个 golden 用例通过（6 条样本文献） |
 | 使用说明与演示资料 | 协议层装载 7 类样例、重复载入不重复、清除只删带前缀文档；`test_reference_sample.py` 15 项通过 |

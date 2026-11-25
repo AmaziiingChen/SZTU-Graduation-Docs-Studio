@@ -22,7 +22,7 @@ gh run list --branch codex/thesis-workbench --repo AmaziiingChen/SZTU-Graduation
 
 ## 资源与来源
 
-模板提交固定在 `d041706ed7b49241c1900225398b99fb5fcf3aa7`（与各 workflow 的 checkout ref 和 `config/ci-resources.json` 的 `template_commit` 同步）。升级模板时同时更新 workflow 的 checkout ref 和 `config/ci-resources.json`，保留 LF 字节。pnpm 11 的依赖安装脚本许可使用 `allowBuilds`，不使用已失效的 `onlyBuiltDependencies`；Electron 44 不再提供下载二进制的 postinstall，Windows 打包脚本显式执行项目依赖中的 `install-electron`。Windows 的 `node_modules`、Python 引擎和 EXE 全部在 Windows x64 构建；macOS 的引擎和 DMG 在 ARM64 macOS 构建。Windows 构建和安装后验收使用 PowerShell，避免 Git Bash 自带的旧 Xpdf 抢占 Poppler；中文字形检查需要 Poppler 的 `pdftotext -bbox-layout`。
+模板提交固定在 `1c9b6929ddb376c1df83f5a66ffc480db9e429c1`（与各 workflow 的 checkout ref 和 `config/ci-resources.json` 的 `template_commit` 同步）。升级模板时同时更新 workflow 的 checkout ref 和 `config/ci-resources.json`，保留 LF 字节。pnpm 11 的依赖安装脚本许可使用 `allowBuilds`，不使用已失效的 `onlyBuiltDependencies`；Electron 44 不再提供下载二进制的 postinstall，Windows 打包脚本显式执行项目依赖中的 `install-electron`。Windows 的 `node_modules`、Python 引擎和 EXE 全部在 Windows x64 构建；macOS 的引擎和 DMG 在 ARM64 macOS 构建。Windows 构建和安装后验收使用 PowerShell，避免 Git Bash 自带的旧 Xpdf 抢占 Poppler；中文字形检查需要 Poppler 的 `pdftotext -bbox-layout`。
 
 用户授权用于云端验收的字体和离线运行时位于**私有应用仓库的单独资源预发布**，不进入 Git 源码。文件清单、资源编号、大小和 SHA-256 固定在 `config/ci-resources.json`；下载后先校验，再使用。只使用 GitHub 为当前任务提供的只读令牌，没有复制腾讯云管理密钥或更新签名私钥。资源预发布仅在私有仓库可见，不是应用版本发布；只读任务令牌可以下载，不能修改发布。
 
