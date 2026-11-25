@@ -78,9 +78,26 @@ describe("desktop error envelopes", () => {
     await expect(wrapDesktopApi(api).systemPing()).rejects.toBe(original)
   })
 
-  it("returns the same proxy for the same raw api object", () => {
+  it("returns the same wrapper for the same raw api object", () => {
     const api = fakeApi({})
     expect(wrapDesktopApi(api)).toBe(wrapDesktopApi(api))
+  })
+
+  it("works with the read-only properties exposed by contextBridge", async () => {
+    const target: Record<string, unknown> = {}
+    Object.defineProperty(target, "systemPing", {
+      value: vi
+        .fn()
+        .mockRejectedValue(new Error(encode("RENDER_FAILED", "文档生成失败，请重试。"))),
+      enumerable: true,
+      writable: false,
+      configurable: false,
+    })
+
+    const wrapped = wrapDesktopApi(target as unknown as SztuDesktopApi)
+    const error = await wrapped.systemPing().catch((value: unknown) => value)
+    expect(error).toBeInstanceOf(DesktopApiError)
+    expect((error as DesktopApiError).code).toBe("RENDER_FAILED")
   })
 
   it("leaves successful values untouched", async () => {

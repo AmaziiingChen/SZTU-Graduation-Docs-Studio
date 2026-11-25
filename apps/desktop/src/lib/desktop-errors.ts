@@ -61,29 +61,37 @@ function normalizeFailure(error: unknown): never {
 }
 
 /**
- * 给 window.sztuDesktop 套一层代理：所有方法调用失败时先归一化错误，
+ * 包装 window.sztuDesktop：所有方法调用失败时先归一化错误，
  * 保证调用方拿到的是干净的 message 与可用的 code/details。
+ *
+ * 不能对 contextBridge 暴露的对象直接用 Proxy：它的属性是只读且不可配置的，
+ * Proxy 的 get 必须返回原值，包装函数会触发 "proxy did not return its actual
+ * value"，整棵 React 树崩成白屏。这里改为复制一份普通对象再包函数。
  */
 export function wrapDesktopApi(raw: SztuDesktopApi): SztuDesktopApi {
-  const cached = wrappedApis.get(raw as unknown as object)
+  const cacheKey = raw as unknown as object
+  const cached = wrappedApis.get(cacheKey)
   if (cached) return cached
-  const wrapped = new Proxy(raw, {
-    get(target, property, receiver) {
-      const value: unknown = Reflect.get(target, property, receiver)
-      if (typeof value !== "function") return value
-      return (...args: unknown[]) => {
-        try {
-          const result = (value as (...input: unknown[]) => unknown).apply(target, args)
-          if (result && typeof (result as PromiseLike<unknown>).then === "function") {
-            return (result as PromiseLike<unknown>).then(undefined, normalizeFailure)
-          }
-          return result
-        } catch (error) {
-          return normalizeFailure(error)
+  const wrapped: Record<string, unknown> = {}
+  for (const name of Object.getOwnPropertyNames(raw)) {
+    const value = (raw as unknown as Record<string, unknown>)[name]
+    if (typeof value !== "function") {
+      wrapped[name] = value
+      continue
+    }
+    wrapped[name] = (...args: unknown[]) => {
+      try {
+        const result = (value as (...input: unknown[]) => unknown).apply(raw, args)
+        if (result && typeof (result as PromiseLike<unknown>).then === "function") {
+          return (result as PromiseLike<unknown>).then(undefined, normalizeFailure)
         }
+        return result
+      } catch (error) {
+        return normalizeFailure(error)
       }
-    },
-  }) as SztuDesktopApi
-  wrappedApis.set(raw as unknown as object, wrapped)
-  return wrapped
+    }
+  }
+  const result = wrapped as unknown as SztuDesktopApi
+  wrappedApis.set(cacheKey, result)
+  return result
 }
