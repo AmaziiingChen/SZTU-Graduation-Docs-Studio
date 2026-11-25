@@ -202,6 +202,8 @@ import type {
   StructuredBodyValue,
 } from "@/types/structured-content"
 
+const THESIS_SEED_FLAG = "sztu-docs.thesis-seeded-v1"
+
 type Draft = {
   assessment: AssessmentDraft
   thesis: ThesisDraft
@@ -4228,6 +4230,40 @@ export default function App() {
     }
   }
 
+  // The thesis pane only offers a template download, so every workspace starts with one
+  // thesis document to land on instead of an empty group that asks for a manual "+".
+  const thesisSeededRef = useRef(false)
+  useEffect(() => {
+    if (thesisSeededRef.current || workspace.status !== "ready") return
+    const api = getDesktopApi()
+    if (!api) return
+    if (documents.some((item) => item.document_type === "thesis")) {
+      thesisSeededRef.current = true
+      return
+    }
+    if (window.localStorage.getItem(THESIS_SEED_FLAG) === "1") {
+      thesisSeededRef.current = true
+      return
+    }
+    thesisSeededRef.current = true
+    window.localStorage.setItem(THESIS_SEED_FLAG, "1")
+    void (async () => {
+      try {
+        const created = await api.createDocument({
+          profile_id: profileRef.current?.id ?? null,
+          document_type: "thesis",
+          template_version: "0.1.0-authoring",
+          schema_version: "0.1",
+          title: defaultDocumentTitle("thesis", profileRef.current?.full_name ?? ""),
+        })
+        setDocuments((current) => current.some((item) => item.id === created.id) ? current : [...current, created])
+      } catch {
+        window.localStorage.removeItem(THESIS_SEED_FLAG)
+        thesisSeededRef.current = false
+      }
+    })()
+  }, [documents, workspace.status])
+
   const restoreRecovery = () => {
     const current = documentRef.current
     if (!current || !recovery || recovery.documentId !== current.id ||
@@ -5544,12 +5580,13 @@ export default function App() {
                 <ChevronDownIcon />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuItem onClick={() => void startExport(["pdf"])}>
+                  导出 PDF
+                  <span aria-hidden="true" className="text-xs text-muted-foreground">（推荐）</span>
+                </DropdownMenuItem>
                 {activeDocumentType !== "thesis" ? <DropdownMenuItem onClick={() => void startExport(["docx"])}>
                   导出 Word
                 </DropdownMenuItem> : null}
-                <DropdownMenuItem onClick={() => void startExport(["pdf"])}>
-                  导出 PDF
-                </DropdownMenuItem>
                 {activeDocumentType !== "thesis" ? <DropdownMenuItem onClick={() => void startExport(["tex"])}>
                   导出 LaTeX 源码包
                 </DropdownMenuItem> : null}

@@ -591,6 +591,7 @@ function renderApp() {
 beforeEach(() => {
   vi.mocked(celebrateExportSuccess).mockClear()
   window.localStorage.clear()
+  window.localStorage.setItem("sztu-docs.thesis-seeded-v1", "1")
 })
 
 function replaceRichText(element: HTMLElement, value: string) {
@@ -888,6 +889,31 @@ describe("M3 workbench persistence", () => {
 
     fireEvent.click(within(dialog).getByRole("button", { name: "返回工作台" }))
     await waitFor(() => expect(dialog).not.toBeInTheDocument())
+  })
+
+  it("creates one thesis document when the workspace has none yet", async () => {
+    window.localStorage.clear()
+    const api = mockApi()
+    const thesis = documentFixture({ id: "seeded-thesis", document_type: "thesis", title: "合成学生甲-毕业论文", content: null, current_revision: 0 })
+    vi.mocked(api.openWorkspace).mockResolvedValue({
+      mode: "persistent",
+      profile,
+      profiles: [profile],
+      profile_draft: null,
+      document: null,
+      documents: [],
+      deleted_documents: [],
+    })
+    vi.mocked(api.createDocument).mockResolvedValue(thesis)
+    installApi(api)
+    renderApp()
+    await waitFor(() => expect(api.createDocument).toHaveBeenCalledWith({
+      profile_id: profile.id,
+      document_type: "thesis",
+      template_version: "0.1.0-authoring",
+      schema_version: "0.1",
+      title: "合成学生甲-毕业论文",
+    }))
   })
 
   it("downloads the bundled thesis template without changing the document or requiring a preview", async () => {
