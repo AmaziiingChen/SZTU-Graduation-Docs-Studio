@@ -1,5 +1,4 @@
 import { AnimatedActionIcon } from "@/components/animated-action-icon"
-import { BookOpenIcon } from "lucide-react"
 import { RocketIcon } from "@/components/ui/rocket"
 import { QrCodeIcon } from "@/components/ui/qr-code-icon"
 import { DownloadIcon } from "@/components/ui/download"
@@ -58,7 +57,6 @@ export function AppSidebar({
   onSelectTools,
   onSelectAppearance,
   onSelectInspection,
-  onSelectGuide,
   onSelectDocument,
   onSelectThesisTool,
   onCreateDocument,
@@ -66,7 +64,6 @@ export function AppSidebar({
   onDeleteDocument,
   onRestoreDocument,
   onPurgeDocument,
-  revealDocumentTypes,
   disabled,
   inspectionDisabled,
   ...props
@@ -95,7 +92,6 @@ export function AppSidebar({
   onSelectTools: () => void
   onSelectAppearance: () => void
   onSelectInspection: () => void
-  onSelectGuide: () => void
   onSelectDocument: (documentId: string) => Promise<void>
   onSelectThesisTool: (toolId: ThesisToolId) => void
   onCreateDocument: (request: CreateDocumentRequest) => Promise<void>
@@ -103,7 +99,6 @@ export function AppSidebar({
   onDeleteDocument: (documentId: string) => Promise<void>
   onRestoreDocument: (documentId: string) => Promise<void>
   onPurgeDocument: (documentId: string) => Promise<void>
-  revealDocumentTypes?: string[]
   disabled: boolean
   inspectionDisabled: boolean
 }) {
@@ -169,7 +164,6 @@ export function AppSidebar({
           onDeleteDocument={onDeleteDocument}
           onRestoreDocument={onRestoreDocument}
           onPurgeDocument={onPurgeDocument}
-          revealDocumentTypes={revealDocumentTypes}
         />
       </SidebarContent>
       <SidebarFooter>
@@ -214,12 +208,6 @@ export function AppSidebar({
             >
               <AnimatedActionIcon icon={QrCodeIcon} />
               <span>联系作者</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <SidebarMenuButton tooltip="使用说明" className="pl-8" onClick={() => finishNavigation(onSelectGuide)}>
-              <BookOpenIcon className="size-4" aria-hidden="true" />
-              <span>使用说明</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>

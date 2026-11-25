@@ -60,8 +60,6 @@ it("covers sidecar operations while keeping local fault archive maintenance outs
   const localMaintenance = new Set([
     "diagnostic.recover",
     "diagnostic.finishPreview",
-    "workspace.installReferenceSample",
-    "workspace.removeReferenceSample",
   ])
   for (const [, method] of methodBlock.matchAll(/"([a-z]+\.[A-Za-z]+)"/g)) {
     if (localMaintenance.has(method)) expect(DIAGNOSTIC_OPERATIONS).not.toContain(method)

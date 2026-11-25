@@ -93,7 +93,7 @@ try {
     : path.join(root, 'release/offline/win-unpacked/resources/app.asar')
   assert.deepEqual(await readFile(path.join(resources, 'app.asar')), await readFile(unpacked))
   start()
-  const initial = await call('workspace.open', { mode: 'persistent', initialize_reference: false })
+  const initial = await call('workspace.open', { mode: 'persistent' })
   const profile = await call('workspace.saveProfile', { profile: { ...initial.profile,
     full_name: '合成验收学生甲', student_number: 'CI-TEST-A', college: '合成学院', major: '合成专业',
     class_name: '合成班级', advisor_name: '合成指导教师', advisor_title: '合成职称', graduation_cohort: '2026届',

@@ -116,7 +116,6 @@ if (legacyOption >= 0) {
   try {
     const initial = await old.request("workspace.open", {
       mode: "persistent",
-      initialize_reference: true
     })
     assert.equal(initial.documents.length, 3)
     firstProfile = await old.request("workspace.saveProfile", {
@@ -159,7 +158,7 @@ const call = (method, params) =>
   channels.request(method, params, 180_000, () => {})
 const results = { version, previousVersion: "0.1.13", previousSchema, profiles: [] }
 try {
-  const migrated = await call("workspace.open", { mode: "persistent", initialize_reference: true })
+  const migrated = await call("workspace.open", { mode: "persistent" })
   assert.equal(migrated.profile.id, firstProfile.id)
   assert.equal(migrated.documents.length, 3)
   assert.deepEqual(migrated.document.content.sections.basic_content_and_requirements, [

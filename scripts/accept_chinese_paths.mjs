@@ -122,7 +122,7 @@ class Sidecar {
 const client = new Sidecar()
 let failure = null
 try {
-  const initial = await client.request('workspace.open', { mode: 'persistent', initialize_reference: false })
+  const initial = await client.request('workspace.open', { mode: 'persistent' })
   const profile = await client.request('workspace.saveProfile', {
     profile: {
       ...initial.profile,

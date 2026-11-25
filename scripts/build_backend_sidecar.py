@@ -107,18 +107,12 @@ def smoke_test() -> None:
                 f"Packaged document dependencies are unavailable: {dependency_check!r}"
             )
         opened = request(process, "workspace.open", {
-            "mode": "persistent", "initialize_reference": True,
+            "mode": "persistent",
         }).get("result")
-        if not isinstance(opened, dict) or not isinstance(opened.get("profile"), dict):
-            raise RuntimeError("Packaged reference profile is unavailable.")
-        documents = opened.get("documents")
-        if (
-            opened["profile"].get("full_name") != "林知远"
-            or not isinstance(documents, list)
-            or len(documents) != 3
-            or {item.get("document_type") for item in documents} != {"task_book", "proposal", "midterm"}
-        ):
-            raise RuntimeError("Packaged reference documents are incomplete.")
+        if not isinstance(opened, dict):
+            raise RuntimeError("Packaged workspace open omitted its result.")
+        if opened.get("profile") is not None or opened.get("documents"):
+            raise RuntimeError("A fresh packaged workspace should start empty.")
     finally:
         process.terminate()
         try:

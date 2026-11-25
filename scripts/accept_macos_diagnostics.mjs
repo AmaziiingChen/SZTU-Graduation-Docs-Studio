@@ -3,7 +3,7 @@
 import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
 import { randomUUID } from "node:crypto"
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises"
+import { access, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import { createServer } from "node:http"
 import { createRequire } from "node:module"
 import os from "node:os"
@@ -64,9 +64,25 @@ try {
     await service.initialize()
     const client = new SidecarClient(path.join(resources, "backend"), workspace, sidecar, { retryRequests: false })
     try {
-      const opened = await client.request("workspace.open", { mode: "persistent", initialize_reference: true })
+      const opened = await client.request("workspace.open", { mode: "persistent" })
       const documentType = scenario.documentType ?? "task_book"
-      const task = opened.documents.find(item => item.document_type === documentType)
+      let documents = opened.documents
+      if (!documents.length) {
+        const profile = await client.request("workspace.saveProfile", { profile: {
+          full_name: "合成诊断学生", student_number: "DIAG-001", college: "合成学院", major: "合成专业",
+          class_name: "合成班级", advisor_name: "合成指导教师", graduation_cohort: "2026届",
+          thesis_title: ["合成诊断题目"] } })
+        const fixtureDir = path.join(root, "../Thesis/templates", documentType.replaceAll("_", "-"), "fixtures")
+        const fixture = await access(path.join(fixtureDir, "minimal.json")).then(() => "minimal.json", () => "normal.json")
+        const data = JSON.parse(await readFile(path.join(fixtureDir, fixture), "utf8"))
+        const created = await client.request("workspace.createDocument", { document: { profile_id: profile.profile.id,
+          document_type: documentType, template_version: "diagnostic-acceptance", schema_version: data.schema_version,
+          title: "合成诊断文档" } })
+        await client.request("workspace.saveDraft", { document_id: created.id,
+          content: { metadata: data.metadata, sections: data.sections }, expected_revision: 0, reason: "manual" })
+        documents = [created]
+      }
+      const task = documents.find(item => item.document_type === documentType)
       assert.ok(task)
       await client.request("workspace.selectDocument", { document_id: task.id })
       const result = await client.request("document.check", { document_id: task.id })
@@ -115,7 +131,7 @@ try {
     let channels = new SidecarChannels(createClient("control"), createClient("render"), workspace)
     const call = (method, params) => channels.request(method, params, 120_000)
     try {
-      const initial = await call("workspace.open", { mode: "persistent", initialize_reference: true })
+      const initial = await call("workspace.open", { mode: "persistent" })
       const task = initial.document
       assert.equal(task.document_type, "task_book")
       const fields = Object.fromEntries(["college", "major", "class_name", "advisor_name", "advisor_title", "graduation_cohort"].map(

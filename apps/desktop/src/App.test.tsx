@@ -508,24 +508,6 @@ function mockApi(): SztuDesktopApi {
       documents: [documentFixture()],
       deleted_documents: [],
     })),
-    installReferenceSample: vi.fn().mockResolvedValue({
-      mode: "persistent" as const,
-      profile,
-      profile_draft: null,
-      document: documentFixture(),
-      documents: [documentFixture()],
-      deleted_documents: [],
-      sample: { installed: ["task_book"], skipped: [] },
-    }),
-    removeReferenceSample: vi.fn().mockResolvedValue({
-      mode: "persistent" as const,
-      profile,
-      profile_draft: null,
-      document: documentFixture(),
-      documents: [documentFixture()],
-      deleted_documents: [],
-      sample: { installed: [], skipped: [], removed: 1, titles: ["参考样例·任务书"] },
-    }),
     saveDraft: vi.fn().mockResolvedValue({
       document_id: "document-fixture",
       revision: 3,
@@ -738,22 +720,6 @@ describe("M3 workbench persistence", () => {
     const confirm = await screen.findByRole("dialog", { name: "安装更新并重启" })
     fireEvent.click(within(confirm).getByRole("button", { name: "保存并安装" }))
     await waitFor(() => expect(api.installUpdate).toHaveBeenCalledTimes(1))
-  })
-
-  it("opens the usage guide and loads the demo documents on demand", async () => {
-    const api = mockApi()
-    installApi(api)
-    renderApp()
-
-    if (!screen.queryByRole("button", { name: "使用说明" })) {
-      fireEvent.click(await screen.findByRole("button", { name: "Toggle Sidebar" }))
-    }
-    fireEvent.click(await screen.findByRole("button", { name: "使用说明" }))
-    const guide = await screen.findByRole("dialog", { name: "使用说明" })
-    expect(within(guide).getByText(/参考样例/)).toBeInTheDocument()
-
-    fireEvent.click(within(guide).getByRole("button", { name: "载入演示资料" }))
-    await waitFor(() => expect(api.installReferenceSample).toHaveBeenCalledTimes(1))
   })
 
   it("allows required update download retries instead of leaving the blocking notice waiting", async () => {

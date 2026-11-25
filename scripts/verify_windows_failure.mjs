@@ -70,7 +70,7 @@ async function runScenario(app,label,reported=false){
  const workspace=path.join(output,label+'-workspace')
  const client=new app.SidecarClient(path.join(app.resources,'backend'),workspace,app.native,{retryRequests:false,appVersion:app.version});active=client
  const call=(m,p)=>request(client,m,p)
- await call('workspace.open',{mode:'persistent',initialize_reference:false})
+ await call('workspace.open',{mode:'persistent'})
  const profile=await call('workspace.saveProfile',{profile:{full_name:'合成验收学生',student_number:'CI-REPLAY-001',college:'合成学院',major:'合成专业',
   class_name:'合成班级',advisor_name:'合成指导教师',graduation_cohort:'2026届',thesis_title:['合成任务书故障回归题目']}})
  let document=await call('workspace.createDocument',{document:{profile_id:profile.id,document_type:'task_book',template_version:'regression',schema_version:fixture.schema_version,title:'合成故障结构回归'}})

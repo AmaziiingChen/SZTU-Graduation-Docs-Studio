@@ -29,8 +29,6 @@ export type SidecarMethod =
   | "workspace.deleteDocument"
   | "workspace.restoreDocument"
   | "workspace.purgeDocument"
-  | "workspace.installReferenceSample"
-  | "workspace.removeReferenceSample"
   | "workspace.saveDraft"
   | "workspace.closeTemporary"
   | "document.check"
@@ -76,8 +74,6 @@ const ALLOWED_METHODS = new Set<SidecarMethod>([
   "workspace.deleteDocument",
   "workspace.restoreDocument",
   "workspace.purgeDocument",
-  "workspace.installReferenceSample",
-  "workspace.removeReferenceSample",
   "workspace.saveDraft",
   "workspace.closeTemporary",
   "document.check",

@@ -1126,7 +1126,7 @@ function registerIpc(): void {
       if (mode !== "persistent" && mode !== "temporary") {
         throw new IpcValidationError("工作区模式无效。")
       }
-      return requestSidecar("workspace.open", { mode, initialize_reference: mode === "persistent", all_documents: true })
+      return requestSidecar("workspace.open", { mode, all_documents: true })
     })
   })
 
@@ -1258,16 +1258,6 @@ function registerIpc(): void {
       })
     })
   }
-
-  ipcMain.handle("sztu:workspace-install-reference-sample", async (event) => {
-    assertTrustedSender(event)
-    return runBridge(() => requestSidecar("workspace.installReferenceSample", {}))
-  })
-
-  ipcMain.handle("sztu:workspace-remove-reference-sample", async (event) => {
-    assertTrustedSender(event)
-    return runBridge(() => requestSidecar("workspace.removeReferenceSample", {}))
-  })
 
   ipcMain.handle("sztu:workspace-save-draft", async (event, input: unknown) => {
     assertTrustedSender(event)
@@ -1804,7 +1794,7 @@ async function requestSidecar<T>(
     if (result && typeof result === "object") {
       const snapshot = result as Record<string, unknown>
       const document = (snapshot.document ?? (method === "workspace.saveDraft" || method === "workspace.createDocument" ? snapshot : null)) as Record<string, unknown> | null
-      if (["workspace.open", "workspace.createProfile", "workspace.selectProfile", "workspace.deleteProfile", "workspace.restoreProfile", "workspace.selectDocument", "workspace.deleteDocument", "workspace.restoreDocument", "workspace.purgeDocument", "workspace.installReferenceSample", "workspace.removeReferenceSample"].includes(method) || method === "workspace.closeTemporary") activeDiagnosticContext = {}
+      if (["workspace.open", "workspace.createProfile", "workspace.selectProfile", "workspace.deleteProfile", "workspace.restoreProfile", "workspace.selectDocument", "workspace.deleteDocument", "workspace.restoreDocument", "workspace.purgeDocument"].includes(method) || method === "workspace.closeTemporary") activeDiagnosticContext = {}
       if (document) activeDiagnosticContext = diagnosticContext({ document_type: document.document_type, structure: documentStructure(document.content) })
     }
     const envelope = isRecord(result) ? result : undefined
