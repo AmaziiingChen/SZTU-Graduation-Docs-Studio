@@ -20,12 +20,12 @@ Run these from the repository root. All of them are cheap.
 | Command | Catches |
 | --- | --- |
 | `node scripts/check_packaging_plan.mjs` | duplicate extraResources targets (the EBUSY class), version drift, template-pin drift, missing document fonts |
-| `python3 scripts/run_backend_tests.py` | backend behaviour, including packaging guards under `scripts/test_*.py` |
+| `python scripts/run_backend_tests.py` | backend behaviour, including packaging guards under `scripts/test_*.py` |
 | `cd apps/desktop && npx tsc -p tsconfig.electron.json --noEmit` | Electron main-process types |
-| `npx tsc -b` (root) | renderer types |
-| `npx vitest run` (root) | component and integration behaviour |
+| `cd apps/desktop && npx tsc -b` | renderer types |
+| `pnpm test` (root) | component and integration behaviour |
 | `pnpm lint` | style gate, kept at zero errors |
-| `python3 templates/thesis/test.py` (template checkout) | thesis layout and bibliography geometry |
+| `cd Thesis/templates/thesis && python test.py` (template checkout) | thesis layout and bibliography geometry |
 
 `pnpm verify` chains most of the above; use it before a release commit.
 

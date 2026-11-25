@@ -2,15 +2,15 @@
 
 交接日期：2026-11-16，北京时间。接手目标是先解决已收到的 Windows 预览失败，补齐能解释底层失败原因的证据，再处理跨平台更新下载。不要把下一次公开发布当作采集信息的试验。
 
-2026-11-16 后续验证：任务书报告 `d67e88f0-497c-4f8d-a6e6-00ea96959d1f` 对应的环境处理缺陷已完成旧版/候选版实际 Windows 对照，旧版复现同一错误，候选版同条件通过；生产诊断 ZIP 已完整读回。详见 [验证记录](evidence/WINDOWS_TASK_BOOK_FIX_0.1.15.md)。以下保留当时原始证据；中文路径的另一份故障仍单独待处理。
+2026-11-16 后续验证：任务书报告 `d67e88f0-497c-4f8d-a6e6-00ea96959d1f` 对应的环境处理缺陷已完成旧版/候选版实际 Windows 对照，旧版复现同一错误，候选版同条件通过；生产诊断 ZIP 已完整读回。详见 [验证记录](WINDOWS_TASK_BOOK_FIX_0.1.15.md)。以下保留当时原始证据；中文路径的另一份故障仍单独待处理。
 
 ## 接手状态与代码基线
 
 - 应用仓库：[SZTU-Graduation-Docs-Studio](https://github.com/AmaziiingChen/SZTU-Graduation-Docs-Studio)，分支 `codex/thesis-workbench`。本次交接前远端最新提交为 `6d0ada287610863c4484dbb2a7d0da77e07c7203`，已包含 Windows 0.1.14 发布记录。
 - 模板仓库：[SZTU-Thesis-Latex-Template](https://github.com/AmaziiingChen/SZTU-Thesis-Latex-Template)，同分支，提交 `35f4b0ffc97fce5ebe36fc58a962da9138370386`。两个仓库并列，模板目录名为 `Thesis`。
 - 当前公开稳定更新清单已经是双平台 `0.1.14`。此前“Windows 尚未上传、清单仍为 0.1.13”的描述已过时。
-- 本交接初稿只整理证据；随后已增加共享渲染环境对 COMSPEC 缺失、系统 PATH 未展开的修复，以及 GitHub 双系统原生构建与安装包验收。当前验证结果见 [云端构建与安装包验收](CI_ACCEPTANCE.md)。初稿中的现场根因判断仍以原始证据为界，不能推定原用户电脑已确认修复。
-- 现有 [Windows 0.1.14 验收记录](evidence/WINDOWS_ACCEPTANCE_0.1.14.md) 说明构建机曾成功运行；不能据此推断以下用户环境已覆盖。
+- 本交接初稿只整理证据；随后已增加共享渲染环境对 COMSPEC 缺失、系统 PATH 未展开的修复，以及 GitHub 双系统原生构建与安装包验收。当前验证结果见 [云端构建与安装包验收](../CI_ACCEPTANCE.md)。初稿中的现场根因判断仍以原始证据为界，不能推定原用户电脑已确认修复。
+- 现有 [Windows 0.1.14 验收记录](WINDOWS_ACCEPTANCE_0.1.14.md) 说明构建机曾成功运行；不能据此推断以下用户环境已覆盖。
 
 在 Windows 的共同父目录运行。先检查本机改动，已有未提交内容应保留；分支分叉时检查差异，不强制覆盖。
 
@@ -177,7 +177,7 @@ WHERE report_id IN (
 
 ## 开发、验证与交回结果
 
-先按 [Windows 开发与打包](WINDOWS_DEVELOPMENT.md) 复用现有 Node.js 24、pnpm 11.19.0、Python 3.11+ 和 Windows 本机依赖，不跨系统复用 macOS 的 `.venv`、`node_modules`。
+先按 [Windows 开发与打包](../WINDOWS_DEVELOPMENT.md) 复用现有 Node.js 24、pnpm 11.19.0、Python 3.11+ 和 Windows 本机依赖，不跨系统复用 macOS 的 `.venv`、`node_modules`。
 
 ```powershell
 Set-Location SZTU-Graduation-Docs-Studio

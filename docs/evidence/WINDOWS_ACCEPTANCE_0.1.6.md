@@ -55,6 +55,6 @@
 - Word/WPS 实机逐页检查尚未完成。
 - 干净 Windows 电脑首次安装、通过网络收到安装包后的系统来源提示、卸载及卸载后资料保留尚未验证。
 - 尚未执行真实生产新版本推送或自动安装；本轮仅验证通知、按需下载、完整性校验和失败重试逻辑。
-- macOS 的构建、安装、旧数据升级及 Word/WPS 检查由 Mac agent 接续，见 `docs/RELEASE_HANDOFF_0.1.6.md`。
+- macOS 的构建、安装、旧数据升级及 Word/WPS 检查由 Mac agent 接续，见 `docs/evidence/RELEASE_HANDOFF_0.1.6.md`。
 
 GitHub 仅上传源码、验收说明、安装包及校验文件，保持草稿状态。正式向用户发布前完成上述相应验收，再签署并更新公开 CloudBase 清单。

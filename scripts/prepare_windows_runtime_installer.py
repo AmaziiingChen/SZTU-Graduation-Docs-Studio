@@ -5,8 +5,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
-# Preserve the published 0.1.10/0.1.11 runtime location when all immutable
-# components match. The previous identifier also hashed a machine font cache.
+# Preserve the already-published 0.1.10/0.1.11 runtime location when all
+# immutable components match (historical mapping; do not add new entries).
+# The previous identifier also hashed a machine font cache.
 LEGACY_RUNTIME_IDS = {
     "9b38f8e72395cf6dd862a1f5b69f2bbbd76aa8d9826d758158519df32c5b471b":
         "bdb4c8e1ac7053a7c7af5c236bc62d3eff05d9d539f4ce456a7571df5a7464ee",

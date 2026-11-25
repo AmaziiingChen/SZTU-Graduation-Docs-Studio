@@ -13,26 +13,26 @@
 
 | 编号 | 原问题 | 修复与当前实现 |
 | --- | --- | --- |
-| 1 | 基础组件反向引用工作台 | 移动既有动画适配器到 components/ 公共层，所有消费者引用同一实现；ui/ 不再导入 workbench/。 [源码](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/apps/desktop/src/components/animated-action-icon.tsx) |
-| 2 | Accordion、SidebarTrigger 局部视觉 | 恢复 base-nova 默认样式；保留已有无障碍名称、展开状态与已授权图标动画。 [源码](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/apps/desktop/src/components/ui/accordion.tsx) |
-| 3 | 弹层动画重复定制 | Dialog、DropdownMenu、Popover、Select、Tooltip 恢复官方时长，保留减少动态效果支持。Sheet 使用原有官方时长。 [源码](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/apps/desktop/src/components/ui/dialog.tsx) |
-| 4 | 选区浮动工具栏 | 使用已经安装的 Tiptap BubbleMenu 定位、碰撞处理和滚动更新；复用现有 ToolbarToggle 与格式切换函数，删除手工坐标和浮层 CSS。 [源码](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/apps/desktop/src/components/workbench/structured-content-editor.tsx) |
-| 5 | 正文工具栏玻璃效果 | 当时移除半透明背景与 backdrop-blur；2026-10-04 按用户要求恢复，见本文末尾恢复记录。 [源码](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/apps/desktop/src/components/workbench/structured-content-editor.tsx) |
-| 6 | 三套导航折叠 | 改用官方 Collapsible，组合已有 Sidebar，保持分类状态。 [源码](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/apps/desktop/src/components/workbench/nav-documents.tsx) |
-| 7 | 导航自定义菜单按钮 | 文档与回收站动作复用 SidebarMenuAction 和 DropdownMenuTrigger。 [源码](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/apps/desktop/src/components/workbench/nav-documents.tsx) |
-| 8 | 表格尺寸矩阵自定义按钮 | 矩阵格使用现有 Button 的 default/outline 和 icon-xs；范围选择保持业务逻辑。 [源码](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/apps/desktop/src/components/workbench/visual-table-editor.tsx) |
-| 9 | 多图缩略图选择样式 | 复用合并后的既有排序行及 Button secondary/ghost，保留缩略图业务内容。 [源码](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/apps/desktop/src/components/workbench/multi-figure-generator.tsx) |
-| 10 | 两份字段外壳 | FormField 与 DocumentDateField 内部复用官方 Field、FieldLabel、FieldContent、FieldError。 [源码](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/apps/desktop/src/components/workbench/form-field.tsx) |
-| 11 | 十个文件各自拼接字段 | 原生 label 改用官方 FieldLabel，嵌套控件拆为关联的标签与控件，使用稳定 ID；多字段行保留业务网格。 [源码](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/apps/desktop/src/components/workbench/body-tool-dialog.tsx) |
-| 12 | 两套排序列表行 | 将既有 SortableScheduleRow 移到公共位置供进度计划和多图复用，删除重复行实现；未新增视觉原语。 [源码](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/apps/desktop/src/components/sortable-content-row.tsx) |
-| 13 | 两套图标交互桥接 | 移除 use-sidebar-icon-animation，导航与编辑器统一使用既有 AnimatedActionIcon。 [源码](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/apps/desktop/src/components/animated-action-icon.tsx) |
-| 14 | LaTeX 动作重复 | 复制、下载及成功/失败反馈归到既有 LatexSourceSheet，表格和多图共用。 [源码](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/apps/desktop/src/components/workbench/latex-source-sheet.tsx) |
-| 15 | 空状态各自设计 | 参考文献、表格、多图、正文工具使用官方 Empty 组合。 [源码](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/apps/desktop/src/components/workbench/reference-importer.tsx) |
-| 16 | 滚动渐隐手工实现 | 既有 FadingScrollArea 改为 ScrollArea 与已安装 shadcn scroll-fade-b 工具类，移除手工监听、Observer 和渐变覆盖层。 [源码](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/apps/desktop/src/components/workbench/fading-scroll-area.tsx) |
-| 17 | 空白区单独图标动画 | 正文空白图标复用 AnimatedActionIcon，静态说明图标保持静态；删除 writing-welcome 和 tool-open-arrow 遗留 CSS。 [源码](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/apps/desktop/src/index.css) |
-| 18 | 预览抽屉自制手柄 | 使用现有 ResizablePanelGroup/Panel/Handle，Sheet 保留关闭与焦点管理；透明占位面板支持从左边缘调宽。 [源码](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/apps/desktop/src/App.tsx) |
-| 19 | 表格图标复制动画 | 保留原有 3×3 图形，和 2×2 图标共享动画 Hook，采用唯一渐变 ID；未新增 UI 控件。 [源码](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/apps/desktop/src/hooks/use-grid-icon-animation.ts) |
-| 20 | 编辑表格自制视觉网格 | 复用 Card、Table、TableHeader/Body/Row/Head/Cell、Input，保留批量粘贴与单元格键盘导航。 [源码](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/apps/desktop/src/components/workbench/visual-table-editor.tsx) |
+| 1 | 基础组件反向引用工作台 | 移动既有动画适配器到 components/ 公共层，所有消费者引用同一实现；ui/ 不再导入 workbench/。 [源码](../../apps/desktop/src/components/animated-action-icon.tsx) |
+| 2 | Accordion、SidebarTrigger 局部视觉 | 恢复 base-nova 默认样式；保留已有无障碍名称、展开状态与已授权图标动画。 [源码](../../apps/desktop/src/components/ui/accordion.tsx) |
+| 3 | 弹层动画重复定制 | Dialog、DropdownMenu、Popover、Select、Tooltip 恢复官方时长，保留减少动态效果支持。Sheet 使用原有官方时长。 [源码](../../apps/desktop/src/components/ui/dialog.tsx) |
+| 4 | 选区浮动工具栏 | 使用已经安装的 Tiptap BubbleMenu 定位、碰撞处理和滚动更新；复用现有 ToolbarToggle 与格式切换函数，删除手工坐标和浮层 CSS。 [源码](../../apps/desktop/src/components/workbench/structured-content-editor.tsx) |
+| 5 | 正文工具栏玻璃效果 | 当时移除半透明背景与 backdrop-blur；2026-10-04 按用户要求恢复，见本文末尾恢复记录。 [源码](../../apps/desktop/src/components/workbench/structured-content-editor.tsx) |
+| 6 | 三套导航折叠 | 改用官方 Collapsible，组合已有 Sidebar，保持分类状态。 [源码](../../apps/desktop/src/components/workbench/nav-documents.tsx) |
+| 7 | 导航自定义菜单按钮 | 文档与回收站动作复用 SidebarMenuAction 和 DropdownMenuTrigger。 [源码](../../apps/desktop/src/components/workbench/nav-documents.tsx) |
+| 8 | 表格尺寸矩阵自定义按钮 | 矩阵格使用现有 Button 的 default/outline 和 icon-xs；范围选择保持业务逻辑。 [源码](../../apps/desktop/src/components/workbench/visual-table-editor.tsx) |
+| 9 | 多图缩略图选择样式 | 复用合并后的既有排序行及 Button secondary/ghost，保留缩略图业务内容。 [源码](../../apps/desktop/src/components/workbench/multi-figure-generator.tsx) |
+| 10 | 两份字段外壳 | FormField 与 DocumentDateField 内部复用官方 Field、FieldLabel、FieldContent、FieldError。 [源码](../../apps/desktop/src/components/workbench/form-field.tsx) |
+| 11 | 十个文件各自拼接字段 | 原生 label 改用官方 FieldLabel，嵌套控件拆为关联的标签与控件，使用稳定 ID；多字段行保留业务网格。 [源码](../../apps/desktop/src/components/workbench/body-tool-dialog.tsx) |
+| 12 | 两套排序列表行 | 将既有 SortableScheduleRow 移到公共位置供进度计划和多图复用，删除重复行实现；未新增视觉原语。 [源码](../../apps/desktop/src/components/sortable-content-row.tsx) |
+| 13 | 两套图标交互桥接 | 移除 use-sidebar-icon-animation，导航与编辑器统一使用既有 AnimatedActionIcon。 [源码](../../apps/desktop/src/components/animated-action-icon.tsx) |
+| 14 | LaTeX 动作重复 | 复制、下载及成功/失败反馈归到既有 LatexSourceSheet，表格和多图共用。 [源码](../../apps/desktop/src/components/workbench/latex-source-sheet.tsx) |
+| 15 | 空状态各自设计 | 参考文献、表格、多图、正文工具使用官方 Empty 组合。 [源码](../../apps/desktop/src/components/workbench/reference-importer.tsx) |
+| 16 | 滚动渐隐手工实现 | 既有 FadingScrollArea 改为 ScrollArea 与已安装 shadcn scroll-fade-b 工具类，移除手工监听、Observer 和渐变覆盖层。 [源码](../../apps/desktop/src/components/workbench/fading-scroll-area.tsx) |
+| 17 | 空白区单独图标动画 | 正文空白图标复用 AnimatedActionIcon，静态说明图标保持静态；删除 writing-welcome 和 tool-open-arrow 遗留 CSS。 [源码](../../apps/desktop/src/index.css) |
+| 18 | 预览抽屉自制手柄 | 使用现有 ResizablePanelGroup/Panel/Handle，Sheet 保留关闭与焦点管理；透明占位面板支持从左边缘调宽。 [源码](../../apps/desktop/src/App.tsx) |
+| 19 | 表格图标复制动画 | 保留原有 3×3 图形，和 2×2 图标共享动画 Hook，采用唯一渐变 ID；未新增 UI 控件。 [源码](../../apps/desktop/src/hooks/use-grid-icon-animation.ts) |
+| 20 | 编辑表格自制视觉网格 | 复用 Card、Table、TableHeader/Body/Row/Head/Cell、Input，保留批量粘贴与单元格键盘导航。 [源码](../../apps/desktop/src/components/workbench/visual-table-editor.tsx) |
 
 ## 管理端修复
 

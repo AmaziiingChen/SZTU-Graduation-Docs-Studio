@@ -1,6 +1,6 @@
 # Windows 开发与打包
 
-2026-10-04 已在 Windows x64 上构建本地 0.1.5 离线安装包，并整合 macOS 工作台新功能。使用同一套 Electron + React + TypeScript 前端和 Python 文档引擎。常规打包入口为 `pnpm package:win`；内置 TeX/Poppler 的离线版使用 `pnpm package:win:offline`。
+Windows x64 是当前主开发与交付平台（源码 0.1.19）。使用 Electron + React + TypeScript 前端和 Python 文档引擎；macOS 只保留构建脚本和历史记录。常规打包入口为 `pnpm package:win`；内置 TeX/Poppler 的离线版使用 `pnpm package:win:offline`。
 
 ## 当前工作区
 
@@ -10,9 +10,9 @@ C:\AmazingSyncthing\Thesis\
   Thesis\                       配套模板仓库
 ```
 
-应用与模板均在 `codex/thesis-workbench` 分支，当前基线分别为 `c4ac639`、`8b541eb`，并保留本地 Windows 适配。应用开发态自动读取同级 `../Thesis`，验证允许清单并生成不可变快照。安装包准备开题报告、任务书、中期检查、指导教师评审、评阅人评审、答辩记录和成绩考核七类引擎。
+应用与模板均在 `codex/thesis-workbench` 分支，当前基线分别为 `4a7c067`、`d041706`，并保留本地 Windows 适配。应用开发态自动读取同级 `../Thesis`，验证允许清单并生成不可变快照。安装包准备开题报告、任务书、中期检查、指导教师评审、评阅人评审、答辩记录和成绩考核七类引擎。
 
-最新源码已同步编辑器一键整理、连续列表编号、进度展开编辑与撤销、评审题目富文本以及溢出字段定位。本轮只完成本地合并、检查和构建，使用 `pnpm dev` 查看；现有 0.1.5 安装包仍对应上一轮构建。详细结果见 [本轮源码同步记录](evidence/REMOTE_SYNC_20261004.md)。
+最新源码已同步编辑器一键整理、连续列表编号、进度展开编辑与撤销、评审题目富文本以及溢出字段定位。本轮只完成本地合并、检查和构建，使用 `pnpm dev` 查看；当前源码版本为 0.1.19，本地不再保存历史安装包。详细结果见 [本轮源码同步记录](evidence/REMOTE_SYNC_20261004.md)。
 
 毕业论文页面提供内置 LaTeX 源码工程下载，不依赖 Python/TeX 即可保存 ZIP。独立编译按包内 README 准备环境。工作台环境检查已改为校验实际内置源码包的完整性，不再检查已不用于该页面的旧 `thesis_engine`。
 
@@ -77,13 +77,13 @@ pnpm package:win
 
 ## 离线安装包：分享给 Windows 使用者
 
-分享 `release/offline/SZTU-Docs-Studio-0.1.5-win-x64-offline.exe`（约 358 MiB）。用户双击安装，应用自动优先使用 `resources/offline-runtime` 中的工具；无需单独安装 Node.js、Python、TeX Live 或 Poppler，无需修改系统 PATH，无需联网下载宏包。
+从发布页下载 `SZTU-Docs-Studio-<版本>-win-x64-offline.exe`（0.1.19 约 410 MB）。用户双击安装，应用自动优先使用 `resources/offline-runtime` 中的工具；无需单独安装 Node.js、Python、TeX Live 或 Poppler，无需修改系统 PATH，无需联网下载宏包。
 
 离线版包含 TeX Live 2025 的 176 个所需宏包及其依赖、XeLaTeX、BibTeX、latexmk/Perl 和 Poppler 26.09.0；保留相关许可、可用宏包源文件及 Poppler 源码归档。TeX Live 的开源字体随其包保留，Windows/Office 商业文档字体不进入安装包。
 
 **使用英文安装路径。** 默认目录采用 `SZTU Docs Studio`，中文桌面快捷方式和应用名称保留。TeX 在中文路径下仍有底层兼容限制；如果 Windows 用户名含中文，请在安装时选择如 `D:\SZTU-Docs-Studio` 的全英文路径。含空格的英文目录移动后已通过宏包、工具和中文 PDF 测试。应用为 TeX 启动器设置当前运行根目录，并在可用时使用 Windows 短路径；不更改系统语言或安全设置。
 
-仍需本机合法文档字体和 Word/WPS。方正小标宋简体仅用于中期检查表的两行 18 pt 大标题，当前按用户决定暂缓引入；中期原版预览与导出仍需先确定该字体方案，其他六类过程文档不受影响。字体用途和引入状态见 [工作台字体集](../font-sets/README.md)。
+仍需本机合法文档字体和 Word/WPS。方正小标宋简体仅用于中期检查表的两行 18 pt 大标题。0.1.19 起打包环节统一收进华文中宋、华文行楷与方正小标宋三款 Office 字体，纯净 Windows 上不再报 `REQUIRED_FONT_MISSING`；字体用途见 [工作台字体集](../font-sets/README.md)。
 
 开发者可从明确的本机来源准备离线环境：
 

@@ -1,6 +1,6 @@
 # 云端构建与安装包验收
 
-开发者在 macOS 提交代码后，由 GitHub 的 macOS ARM64、Windows x64 环境分别构建和验证。本流程只生成内部安装包和合成测试证据，不上传腾讯云发布文件，不修改正式更新清单。
+开发者提交代码后，由 GitHub Actions 的 Windows x64 与 macOS ARM64 环境分别构建和验证；Windows 是主要交付目标，macOS 保留同源验证。本流程只生成内部安装包和合成测试证据，不上传腾讯云发布文件，不修改正式更新清单。
 
 2026-11-16 已实际跑通双系统，代码提交与产物哈希见 [本次验收记录](evidence/CI_ACCEPTANCE_2026-11-16.md)。任务书原故障的旧版/候选版对照，以及后续腾讯云生产入库读回，见 [0.1.15 任务书修复验证](evidence/WINDOWS_TASK_BOOK_FIX_0.1.15.md)。
 
@@ -22,7 +22,7 @@ gh run list --branch codex/thesis-workbench --repo AmaziiingChen/SZTU-Graduation
 
 ## 资源与来源
 
-模板提交固定在 `35f4b0ffc97fce5ebe36fc58a962da9138370386`。升级模板时同时更新 workflow 的 checkout ref 和 `config/ci-resources.json`，保留 LF 字节。pnpm 11 的依赖安装脚本许可使用 `allowBuilds`，不使用已失效的 `onlyBuiltDependencies`；Electron 44 不再提供下载二进制的 postinstall，Windows 打包脚本显式执行项目依赖中的 `install-electron`。Windows 的 `node_modules`、Python 引擎和 EXE 全部在 Windows x64 构建；macOS 的引擎和 DMG 在 ARM64 macOS 构建。Windows 构建和安装后验收使用 PowerShell，避免 Git Bash 自带的旧 Xpdf 抢占 Poppler；中文字形检查需要 Poppler 的 `pdftotext -bbox-layout`。
+模板提交固定在 `d041706ed7b49241c1900225398b99fb5fcf3aa7`（与各 workflow 的 checkout ref 和 `config/ci-resources.json` 的 `template_commit` 同步）。升级模板时同时更新 workflow 的 checkout ref 和 `config/ci-resources.json`，保留 LF 字节。pnpm 11 的依赖安装脚本许可使用 `allowBuilds`，不使用已失效的 `onlyBuiltDependencies`；Electron 44 不再提供下载二进制的 postinstall，Windows 打包脚本显式执行项目依赖中的 `install-electron`。Windows 的 `node_modules`、Python 引擎和 EXE 全部在 Windows x64 构建；macOS 的引擎和 DMG 在 ARM64 macOS 构建。Windows 构建和安装后验收使用 PowerShell，避免 Git Bash 自带的旧 Xpdf 抢占 Poppler；中文字形检查需要 Poppler 的 `pdftotext -bbox-layout`。
 
 用户授权用于云端验收的字体和离线运行时位于**私有应用仓库的单独资源预发布**，不进入 Git 源码。文件清单、资源编号、大小和 SHA-256 固定在 `config/ci-resources.json`；下载后先校验，再使用。只使用 GitHub 为当前任务提供的只读令牌，没有复制腾讯云管理密钥或更新签名私钥。资源预发布仅在私有仓库可见，不是应用版本发布；只读任务令牌可以下载，不能修改发布。
 
@@ -44,6 +44,6 @@ Windows 运行时取自已分发的 0.1.14 离线 EXE，原安装包 SHA-256 为
 
 ## 仍应补充的现场回归
 
-现有线上故障和推断见 [Windows 故障交接](WINDOWS_FAILURE_HANDOFF_2026-11-16.md)。不能以普通构建机运行成功代替中文用户目录、短路径不可用、COMSPEC 缺失和未展开系统 PATH 的回归。本轮已加入安装后任务书在 COMSPEC 缺失、系统 PATH 未展开条件下的实际预览回归，并在共享渲染环境构造中补齐命令解释器与系统目录。该回归成功仍不代替原用户电脑上的最终确认。跨平台更新还需持续慢速传输、断线恢复及 Range 不支持的实际传输验证。
+现有线上故障和推断见 [Windows 故障交接](evidence/WINDOWS_FAILURE_HANDOFF_2026-11-16.md)。不能以普通构建机运行成功代替中文用户目录、短路径不可用、COMSPEC 缺失和未展开系统 PATH 的回归。本轮已加入安装后任务书在 COMSPEC 缺失、系统 PATH 未展开条件下的实际预览回归，并在共享渲染环境构造中补齐命令解释器与系统目录。该回归成功仍不代替原用户电脑上的最终确认。跨平台更新还需持续慢速传输、断线恢复及 Range 不支持的实际传输验证。
 
 首次跑通云端流程后，新增故障应转化为维护端可重复的用例，在该流程中阻止再次带入公开版本。任何一项失败都应保留真实失败状态；不要使用 continue-on-error 把失败的必要步骤改成绿色。

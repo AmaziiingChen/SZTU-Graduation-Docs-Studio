@@ -24,7 +24,7 @@ git -C Thesis rev-parse HEAD
 
 ## 2. 在 Windows x64 构建
 
-使用 Windows 本机的 Node.js 24、pnpm 11.19.0、Python 3.11 或更新版本。从已成功打出 0.1.13 的 Windows 机器复用 `build/offline-runtime`。如果没有 `build/offline-runtime/runtime-manifest.json`，先按 [Windows 开发与打包](WINDOWS_DEVELOPMENT.md#离线安装包分享给-windows-使用者) 准备离线运行时和合法文档字体。
+使用 Windows 本机的 Node.js 24、pnpm 11.19.0、Python 3.11 或更新版本。从已成功打出 0.1.13 的 Windows 机器复用 `build/offline-runtime`。如果没有 `build/offline-runtime/runtime-manifest.json`，先按 [Windows 开发与打包](../WINDOWS_DEVELOPMENT.md#离线安装包分享给-windows-使用者) 准备离线运行时和合法文档字体。
 
 ```powershell
 Set-Location SZTU-Graduation-Docs-Studio

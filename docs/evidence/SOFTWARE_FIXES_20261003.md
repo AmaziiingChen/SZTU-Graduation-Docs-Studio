@@ -26,26 +26,26 @@
 
 ## 验证证据
 
-- 桌面端完整回归：58 个文件、457 项通过，覆盖前端和 Electron 服务。命令为 `pnpm --filter @sztu-docs/desktop exec vitest run --maxWorkers=2 --testTimeout=15000`。首轮旧测试仍要求重开空字段立即报错，已保留“空值不被旧档案回填”的断言并改为失焦后检查提示，最终全量通过。[日志](../tmp/software-fixes-20261003/frontend-tests-final.log)
-- Python 完整回归：运行 241 项，其中 239 项通过、2 项跳过。[日志](../tmp/software-fixes-20261003/backend-tests.log)
-- `pnpm lint`、组件复用规则、设计系统检查、`pnpm build`、`git diff --check` 通过。lint 仍有既有 React/Fast Refresh 警告，构建保留大体积 chunk 提示。[lint](../tmp/software-fixes-20261003/lint-final.log)、[构建](../tmp/software-fixes-20261003/build-final.log)
-- 真实 Node SidecarClient + Python ProtocolSession + 临时 SQLite：合成慢渲染期间保存耗时 1ms；150ms 请求期限在取消清理完成后才返回；普通保存超时后进程停止，回读未出现晚提交。慢任务由测试桩控制，没有以此冒充真实 TeX 渲染验收。[脚本](../tmp/software-fixes-20261003/sidecar-integration.mjs)、[结果](../tmp/software-fixes-20261003/real-sidecar-KXNEsV/evidence.json)
-- 原始 Python 侧车分页：创建 115 份虚构文档，首页 100、次页 15，115 个 ID 唯一，最早的活动文档仍被保留。[脚本](../tmp/software-fixes-20261003/pagination-integration.mjs)、[结果](../tmp/software-fixes-20261003/pagination-L259ZN/evidence.json)
-- 后台 Chrome 使用真实 App 与虚构 IPC 数据检查界面，覆盖文件定位、日期清空、校验时机、BibTeX 帮助、环境修复、分页、论文入口、1100×700 最小窗口，以及冲突副本的保留和恢复。11 张界面截图已逐张检查，脚本未收到页面异常。[界面结果](../tmp/software-fixes-20261003/visual-evidence.json)、[冲突恢复结果](../tmp/software-fixes-20261003/recovery-visual-evidence.json)
+- 桌面端完整回归：58 个文件、457 项通过，覆盖前端和 Electron 服务。命令为 `pnpm --filter @sztu-docs/desktop exec vitest run --maxWorkers=2 --testTimeout=15000`。首轮旧测试仍要求重开空字段立即报错，已保留“空值不被旧档案回填”的断言并改为失焦后检查提示，最终全量通过。日志：`tmp/software-fixes-20261003/frontend-tests-final.log`（已于 2026-11-25 清理时删除）
+- Python 完整回归：运行 241 项，其中 239 项通过、2 项跳过。日志：`tmp/software-fixes-20261003/backend-tests.log`（已于 2026-11-25 清理时删除）
+- `pnpm lint`、组件复用规则、设计系统检查、`pnpm build`、`git diff --check` 通过。lint 仍有既有 React/Fast Refresh 警告，构建保留大体积 chunk 提示。lint：`tmp/software-fixes-20261003/lint-final.log`（已于 2026-11-25 清理时删除）、构建：`tmp/software-fixes-20261003/build-final.log`（已于 2026-11-25 清理时删除）
+- 真实 Node SidecarClient + Python ProtocolSession + 临时 SQLite：合成慢渲染期间保存耗时 1ms；150ms 请求期限在取消清理完成后才返回；普通保存超时后进程停止，回读未出现晚提交。慢任务由测试桩控制，没有以此冒充真实 TeX 渲染验收。脚本：`tmp/software-fixes-20261003/sidecar-integration.mjs`（已于 2026-11-25 清理时删除）、结果：`tmp/software-fixes-20261003/real-sidecar-KXNEsV/evidence.json`（已于 2026-11-25 清理时删除）
+- 原始 Python 侧车分页：创建 115 份虚构文档，首页 100、次页 15，115 个 ID 唯一，最早的活动文档仍被保留。脚本：`tmp/software-fixes-20261003/pagination-integration.mjs`（已于 2026-11-25 清理时删除）、结果：`tmp/software-fixes-20261003/pagination-L259ZN/evidence.json`（已于 2026-11-25 清理时删除）
+- 后台 Chrome 使用真实 App 与虚构 IPC 数据检查界面，覆盖文件定位、日期清空、校验时机、BibTeX 帮助、环境修复、分页、论文入口、1100×700 最小窗口，以及冲突副本的保留和恢复。11 张界面截图已逐张检查，脚本未收到页面异常。界面结果：`tmp/software-fixes-20261003/visual-evidence.json`（已于 2026-11-25 清理时删除）、冲突恢复结果：`tmp/software-fixes-20261003/recovery-visual-evidence.json`（已于 2026-11-25 清理时删除）
 
 ## 界面证据
 
 当前文件名和活动分组：
 
-![当前文档定位](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/tmp/software-fixes-20261003/01-current-document.png)
+当前文档定位：`tmp/software-fixes-20261003/01-current-document.png`（已于 2026-11-25 清理时删除）
 
 冲突重新载入后仍能恢复保留草稿：
 
-![草稿恢复入口](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/tmp/software-fixes-20261003/10-conflict-retained.png)
+草稿恢复入口：`tmp/software-fixes-20261003/10-conflict-retained.png`（已于 2026-11-25 清理时删除）
 
 环境错误可返回具体修复步骤：
 
-![环境修复指引](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/tmp/software-fixes-20261003/06-environment-recovery.png)
+环境修复指引：`tmp/software-fixes-20261003/06-environment-recovery.png`（已于 2026-11-25 清理时删除）
 
 ## 完成边界
 

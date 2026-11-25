@@ -106,7 +106,7 @@ macOS、Windows 和常见 Linux 环境中的随机回退，但不承诺不同平
 
 2026-10-03 补齐的 Field、Label、Collapsible、Empty、Pagination 来自官方 base-nova registry，仅做项目导入别名、cn 和 Lucide 图标占位转换。动画适配器从 workbench 移到 components 公共层，供原语和业务层共用；UI 层不得反向依赖 workbench。
 
-现有排序行合并为公共 sortable-content-row；已有 2×2、3×3 图标共用动画 Hook。选区工具栏使用已经安装的 Tiptap BubbleMenu，预览抽屉使用现有 Resizable，渐隐使用已安装 shadcn scroll-fade-b。功能组合与逐项修复见 [复用审计与修复记录](./FRONTEND_COMPONENT_REUSE_AUDIT.md)。
+现有排序行合并为公共 sortable-content-row；已有 2×2、3×3 图标共用动画 Hook。选区工具栏使用已经安装的 Tiptap BubbleMenu，预览抽屉使用现有 Resizable，渐隐使用已安装 shadcn scroll-fade-b。功能组合与逐项修复见 [复用审计与修复记录](./evidence/FRONTEND_COMPONENT_REUSE_AUDIT.md)。
 
 2026-10-04 用户明确要求保留并改进选区工具栏、导航折叠及下拉选择的交互动效。组件复用整改不得以恢复默认样式为由移除这些过渡。继续使用现有组件、主题、字体和布局，不增加视觉原语或依赖。
 
@@ -124,7 +124,7 @@ macOS、Windows 和常见 Linux 环境中的随机回退，但不承诺不同平
 - 当前明暗外观不变、减少动态效果开启、浏览器不支持 API 或快照失败时直接应用主题。“跟随系统”保留系统色彩模式监听；命名配色预设切换沿用原有行为。
 - 原生快照伪元素需要全局 CSS，样式仅在 data-theme-transition 存在期间生效；旧/新快照关闭默认淡化混合，遮罩播放期间不拦截按钮交互。
 
-验证：主题外观 9 项测试通过，覆盖旧快照晚到、减少动态效果、快照失败、卸载清理和原有预设保存。后台 Chrome 检查浅色→深色、深色→浅色的切换，700ms 中点 clip-path 为 inset(0px 50% 0px 0px)，截图已检查；连续真实点击、重复模式、系统模式监听、减少动态效果、不支持 API 的回退及 Everforest 配色保留均通过，页面错误为零。证据位于 tmp/theme-transition-20261004/；属于浏览器界面验收，未重新打包安装。
+验证：主题外观 9 项测试通过，覆盖旧快照晚到、减少动态效果、快照失败、卸载清理和原有预设保存。后台 Chrome 检查浅色→深色、深色→浅色的切换，700ms 中点 clip-path 为 inset(0px 50% 0px 0px)，截图已检查；连续真实点击、重复模式、系统模式监听、减少动态效果、不支持 API 的回退及 Everforest 配色保留均通过，页面错误为零。证据原位于 `tmp/theme-transition-20261004/`，该临时目录已在 2026-11-25 清理时删除；属于浏览器界面验收，未重新打包安装。
 
 ## 编辑器工具栏磨砂效果
 

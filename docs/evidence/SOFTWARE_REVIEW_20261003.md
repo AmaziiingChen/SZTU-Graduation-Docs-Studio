@@ -21,7 +21,7 @@
 
 触发：文档 A 已保存，点击 B；等待 B 的 IPC 返回时继续编辑 A。切换前只检查一次保存状态，等待期间编辑区仍可输入；返回后整份工作区快照覆盖当前草稿，并重置编辑版本。复现中新增正文没有发送给 saveDraft，切换后界面恢复“已保存”。慢预览占用侧车时，这个等待窗口会更明显。
 
-依据：[切换文档](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/apps/desktop/src/App.tsx:3793)、[快照回填](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/apps/desktop/src/App.tsx:3549)、[编辑区禁用条件](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/apps/desktop/src/App.tsx:4675)。新建、重命名、删除和恢复也使用整份快照回填，需要共同审查；本轮直接复现的是切换。
+依据：[切换文档（App.tsx:3793）](../../apps/desktop/src/App.tsx)、[快照回填（App.tsx:3549）](../../apps/desktop/src/App.tsx)、[编辑区禁用条件（App.tsx:4675）](../../apps/desktop/src/App.tsx)。新建、重命名、删除和恢复也使用整份快照回填，需要共同审查；本轮直接复现的是切换。
 
 建议：把切换作为完整事务处理。等待期间锁定编辑，或者在应用新快照前确认旧文档后续输入已保存；不能仅依赖发起时的 dirty 状态。验收须覆盖“发起切换后继续输入”和 IPC 延迟。
 
@@ -31,7 +31,7 @@
 
 macOS 红色关闭按钮销毁渲染窗口，主进程和侧车可继续运行，因此已经发出的保存仍可能完成。Cmd+Q 或菜单退出会执行 before-quit，并先销毁侧车，未完成保存还可能被中断。不能将两种情况混成“关闭窗口总会杀掉后端”，也不能说已经提交的数据会被回滚。
 
-依据：[自动保存防抖](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/apps/desktop/src/App.tsx:3841)、[主进程退出](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/apps/desktop/electron/main.ts:1580)。未发现关闭前保存握手。
+依据：[自动保存防抖（App.tsx:3841）](../../apps/desktop/src/App.tsx)、[主进程退出（main.ts:1580）](../../apps/desktop/electron/main.ts)。未发现关闭前保存握手。
 
 建议：关闭前提交最新草稿并等待确认；保存失败时让内容保持可恢复。验收分别覆盖红色关闭按钮、Cmd+Q、防抖期和保存进行中。
 
@@ -41,7 +41,7 @@ Python 侧车串行处理请求。较慢的预览会使保存排队，保存默�
 
 离线复现使用真实 SidecarClient 和假串行 worker：预览、保存都报告 REQUEST_TIMEOUT 后，两个操作仍产生完成记录。真实模板还包含渲染、PDF 检查、中文字形门禁和栅格化等阶段，120 秒并不是后端完整任务的保证上限；本轮未运行真实模板到超时。
 
-依据：[超时处理](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/apps/desktop/electron/sidecar-client.ts:281)、[串行服务](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/backend/src/sztu_docs_backend/server.py:59)、[导出清理及取消](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/apps/desktop/electron/main.ts:1340)。
+依据：[超时处理（sidecar-client.ts:281）](../../apps/desktop/electron/sidecar-client.ts)、[串行服务（server.py:59）](../../backend/src/sztu_docs_backend/server.py)、[导出清理及取消（main.ts:1340）](../../apps/desktop/electron/main.ts)。
 
 建议：统一任务期限、取消和最终状态回读。保存不能被长渲染无界阻塞；请求超时后应能确认实际结果，避免盲目重试已提交的写入。单纯延长超时只能缓解，不能解决状态分歧。
 
@@ -51,7 +51,7 @@ Python 侧车串行处理请求。较慢的预览会使保存排队，保存默�
 
 提示写着“重新载入工作区，再决定如何处理当前内容”，实际按钮先覆盖内容，用户已失去决定机会。组件测试证明覆盖这一步；侧车测试证明晚提交机制。尚未在打包应用中连贯操作复现整链。单实例锁不能阻断这条链。
 
-依据：[冲突提示及按钮](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/apps/desktop/src/App.tsx:2321)、[按钮绑定](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/apps/desktop/src/App.tsx:4678)、[覆盖草稿](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/apps/desktop/src/App.tsx:3550)。
+依据：[冲突提示及按钮（App.tsx:2321）](../../apps/desktop/src/App.tsx)、[按钮绑定（App.tsx:4678）](../../apps/desktop/src/App.tsx)、[覆盖草稿（App.tsx:3550）](../../apps/desktop/src/App.tsx)。
 
 建议：重载前保留本地冲突副本，提供复制、恢复或明确选择。优先与 F1–F3 一起处理。
 
@@ -59,7 +59,7 @@ Python 侧车串行处理请求。较慢的预览会使保存排队，保存默�
 
 工作区响应对文档和回收站都固定取最近 100 条，没有总数、截断提示或后续页。临时数据库实测有 101 份文档，返回 UI 的只有 100 份，最早一份缺失。数据还在数据库，但重新加载后正常导航找不到它。
 
-依据：[工作区列表查询](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/backend/src/sztu_docs_backend/protocol.py:956)。建议提供可遍历的分页或完整列表，并保持当前文档可定位；不能静默截断。
+依据：[工作区列表查询（protocol.py:956）](../../backend/src/sztu_docs_backend/protocol.py)。建议提供可遍历的分页或完整列表，并保持当前文档可定位；不能静默截断。
 
 ## 更新与遥测缺陷
 
@@ -67,10 +67,10 @@ Python 侧车串行处理请求。较慢的预览会使保存排队，保存默�
 
 | 编号 | 优先级 | 确认问题与触发条件 | 建议与依据 |
 | --- | --- | --- | --- |
-| F6 | P2 | 更新请求收到响应头后就清掉超时；若响应体停滞，检查或下载可长期挂起。后续检查被 checking 状态挡住 | 超时覆盖完整读体和下载流，并允许终止、重试。[update-service.ts](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/apps/desktop/electron/update-service.ts:470) |
-| F7 | P2 | 已下载包与新签名清单版本相同、字节数相同，但 SHA-256 变化时，仍返回旧缓存。复现得到“应为 BBB，实际 AAA”，下载仅发生一次 | 缓存命中同时核对签名清单中的摘要，必要时重新计算文件 hash。[update-service.ts](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/apps/desktop/electron/update-service.ts:539) |
-| F8 | P3 | 管理端允许只发公告或策略、安装包为空；当清单版本高于客户端，客户端却按缺少安装包报 CHECK_FAILED | 统一清单语义，区分控制信息和可安装更新。[客户端](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/apps/desktop/electron/update-service.ts:417)、[管理端](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/apps/telemetry-admin/server/release-management.ts:89) |
-| F9 | P3 | 遥测并发写队列时，较旧快照后完成 rename，可覆盖新事件。两次记录成功，磁盘只保留一条 | 队列落盘串行化或加版本保护。受控调度已复现，影响统计而非编辑正文。[telemetry.ts](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/apps/desktop/electron/telemetry.ts:577) |
+| F6 | P2 | 更新请求收到响应头后就清掉超时；若响应体停滞，检查或下载可长期挂起。后续检查被 checking 状态挡住 | 超时覆盖完整读体和下载流，并允许终止、重试。[update-service.ts（update-service.ts:470）](../../apps/desktop/electron/update-service.ts) |
+| F7 | P2 | 已下载包与新签名清单版本相同、字节数相同，但 SHA-256 变化时，仍返回旧缓存。复现得到“应为 BBB，实际 AAA”，下载仅发生一次 | 缓存命中同时核对签名清单中的摘要，必要时重新计算文件 hash。[update-service.ts（update-service.ts:539）](../../apps/desktop/electron/update-service.ts) |
+| F8 | P3 | 管理端允许只发公告或策略、安装包为空；当清单版本高于客户端，客户端却按缺少安装包报 CHECK_FAILED | 统一清单语义，区分控制信息和可安装更新。[客户端（update-service.ts:417）](../../apps/desktop/electron/update-service.ts)、[管理端（release-management.ts:89）](../../apps/telemetry-admin/server/release-management.ts) |
+| F9 | P3 | 遥测并发写队列时，较旧快照后完成 rename，可覆盖新事件。两次记录成功，磁盘只保留一条 | 队列落盘串行化或加版本保护。受控调度已复现，影响统计而非编辑正文。[telemetry.ts（telemetry.ts:577）](../../apps/desktop/electron/telemetry.ts) |
 
 ## UI 和交互问题
 
@@ -78,7 +78,7 @@ Python 侧车串行处理请求。较慢的预览会使保存排队，保存默�
 
 工作区异步恢复到成绩考核表时，左侧仍展开开题报告，当前文档所在分组未自动展开；正文只有“基本信息”等分区名，没有可见文件名。用户需要猜测当前上下文。见流程步骤 6。
 
-原因是 expanded 只在组件初次渲染时根据 activeType 初始化；当文档后来载入时没有同步展开。文档页面又隐藏了顶部标题。[nav-documents.tsx](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/apps/desktop/src/components/workbench/nav-documents.tsx:123)、[App.tsx](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/apps/desktop/src/App.tsx:4820)。
+原因是 expanded 只在组件初次渲染时根据 activeType 初始化；当文档后来载入时没有同步展开。文档页面又隐藏了顶部标题。[nav-documents.tsx（nav-documents.tsx:123）](../../apps/desktop/src/components/workbench/nav-documents.tsx)、[App.tsx（App.tsx:4820）](../../apps/desktop/src/App.tsx)。
 
 建议：工作区恢复和选择文档后保证当前项可见，并在现有顶栏保留一个轻量的当前文件名。无需增加说明卡片或重复整套分区标题。
 
@@ -86,31 +86,31 @@ Python 侧车串行处理请求。较慢的预览会使保存排队，保存默�
 
 评审表允许日期留空，选择日期后却没有清空入口；再次点击选中日，Calendar 产生的空值被 onSelect 忽略。实测选择 10 月 15 日后再次点击，仍保留该日期。见步骤 7。
 
-依据：[document-date-field.tsx](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/apps/desktop/src/components/workbench/document-date-field.tsx:87)。建议对可空字段接收取消选择，或复用现有 Button 提供清空；保留各文档已有日期范围限制。
+依据：[document-date-field.tsx（document-date-field.tsx:87）](../../apps/desktop/src/components/workbench/document-date-field.tsx)。建议对可空字段接收取消选择，或复用现有 Button 提供清空；保留各文档已有日期范围限制。
 
 ### U3 P2 环境故障的处理入口难找 且信息不足
 
 预览失败时只看到“运行环境尚未就绪”等文字，没有直接打开检查或修复的操作。实际环境状态和诊断包放在名为“导出记录”的页面。该页对缺少 XeLaTeX 等具体依赖只显示泛化的“创建故障诊断包”，用户难以自己处理。初始安装向导已有更具体的安装说明，但完成首次引导后缺少从故障处返回的直接入口。见步骤 5。
 
-依据：[预览阻断提示](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/apps/desktop/src/App.tsx:2838)、[泛化修复提示](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/apps/desktop/src/App.tsx:3050)、[导航命名](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/apps/desktop/src/components/workbench/app-sidebar.tsx:189)。建议在实际错误处提供“检查运行环境”或“查看修复步骤”，复用现有环境引导与诊断界面。
+依据：[预览阻断提示（App.tsx:2838）](../../apps/desktop/src/App.tsx)、[泛化修复提示（App.tsx:3050）](../../apps/desktop/src/App.tsx)、[导航命名（app-sidebar.tsx:189）](../../apps/desktop/src/components/workbench/app-sidebar.tsx)。建议在实际错误处提供“检查运行环境”或“查看修复步骤”，复用现有环境引导与诊断界面。
 
 ### U4 P3 首次进入空档案就显示整片错误
 
 未操作的必填字段立即显示红框、红色错误文字，顶部同时解释共享档案和文档要求。错误是有文本支撑的，但首次进入时容易被理解为软件或导入数据出了问题，且分散填写顺序。见步骤 2。
 
-依据：[字段立即判错](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/apps/desktop/src/App.tsx:1978)、[顶部重复说明](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/apps/desktop/src/App.tsx:1926)。建议初始显示必要的必填标识；失焦或执行检查后显示具体错误。保留实际检查规则和可访问的错误关联。
+依据：[字段立即判错（App.tsx:1978）](../../apps/desktop/src/App.tsx)、[顶部重复说明（App.tsx:1926）](../../apps/desktop/src/App.tsx)。建议初始显示必要的必填标识；失焦或执行检查后显示具体错误。保留实际检查规则和可访问的错误关联。
 
 ### U5 P3 参考文献入口默认用户已经懂 BibTeX
 
 空状态和弹窗只要求粘贴 BibTeX，示例也直接是 @article 源码。对于只有普通参考文献文字的用户，按钮可见，但下一步仍不清楚。见步骤 3。
 
-依据：[reference-importer.tsx](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/apps/desktop/src/components/workbench/reference-importer.tsx:386)。建议在输入处提供简短的“如何获取 BibTeX”帮助，并指向已有支持方式。不需要本轮扩展解析格式或新增一套录入控件。
+依据：[reference-importer.tsx（reference-importer.tsx:386）](../../apps/desktop/src/components/workbench/reference-importer.tsx)。建议在输入处提供简短的“如何获取 BibTeX”帮助，并指向已有支持方式。不需要本轮扩展解析格式或新增一套录入控件。
 
 ### U6 P3 未开放的论文功能要进入后才知道不可用
 
 毕业论文与可用文档并列，进入“模板下载”后才看到“暂未开放下载”和禁用按钮。它是当前功能边界，不是模板导出损坏；入口缺少状态导致用户无效探索。见步骤 8。
 
-依据：[App.tsx](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/apps/desktop/src/App.tsx:2332)。建议在现有入口明确可用范围，避免创建或进入后才发现核心操作不可用。
+依据：[App.tsx（App.tsx:2332）](../../apps/desktop/src/App.tsx)。建议在现有入口明确可用范围，避免创建或进入后才发现核心操作不可用。
 
 ## 本轮界面流程与截图
 
@@ -120,33 +120,33 @@ Python 侧车串行处理请求。较慢的预览会使保存排队，保存默�
 
 状态：启动引导有明确下一步；空文档的分区和预览操作可定位。环境检测结果为替身数据，不能据此判断本机依赖完整。
 
-![首次启动环境引导](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/tmp/software-audit-20261003/14-onboarding.png)
+首次启动环境引导：`tmp/software-audit-20261003/14-onboarding.png`（已于 2026-11-25 清理时删除）
 
-![空文档编辑入口](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/tmp/software-audit-20261003/01-empty-workspace.png)
+空文档编辑入口：`tmp/software-audit-20261003/01-empty-workspace.png`（已于 2026-11-25 清理时删除）
 
 ### 2 填写学生档案
 
 状态：字段结构清楚；未操作即全表报错，需调整验证时机（U4）。截图中错误有文字，未发现仅依赖颜色表达该错误的情况。
 
-![空档案验证状态](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/tmp/software-audit-20261003/02-profile.png)
+空档案验证状态：`tmp/software-audit-20261003/02-profile.png`（已于 2026-11-25 清理时删除）
 
 ### 3 编辑正文与添加文献
 
 状态：正文和参考文献分区明确，空文献有添加按钮；BibTeX 前置知识没有补足（U5）。弹窗可见焦点，完整键盘顺序和读屏朗读仍待验证。
 
-![参考文献空状态](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/tmp/software-audit-20261003/05-references.png)
+参考文献空状态：`tmp/software-audit-20261003/05-references.png`（已于 2026-11-25 清理时删除）
 
-![添加参考文献弹窗](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/tmp/software-audit-20261003/18-reference-add.png)
+添加参考文献弹窗：`tmp/software-audit-20261003/18-reference-add.png`（已于 2026-11-25 清理时删除）
 
 ### 4 保存与生成预览
 
 状态：保存失败有明确提示和重试按钮；预览有等待与失败状态。内容保全和超时处理存在 F1–F4。等待抽屉可用 Escape 收起，但截图不能证明收起等于取消，当前不应向用户暗示后台任务已停止。
 
-![保存失败状态](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/tmp/software-audit-20261003/12-save-failure.png)
+保存失败状态：`tmp/software-audit-20261003/12-save-failure.png`（已于 2026-11-25 清理时删除）
 
-![预览生成中](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/tmp/software-audit-20261003/13-preview-working.png)
+预览生成中：`tmp/software-audit-20261003/13-preview-working.png`（已于 2026-11-25 清理时删除）
 
-![注入预览错误后的界面](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/tmp/software-audit-20261003/04-preview-error.png)
+注入预览错误后的界面：`tmp/software-audit-20261003/04-preview-error.png`（已于 2026-11-25 清理时删除）
 
 此错误为预览 API 替身注入。检查 API 也由替身提供，因此这张截图不用于判断“不完整正文是否被错误放行”。真实前端预检代码会拦截不完整输入。
 
@@ -154,42 +154,42 @@ Python 侧车串行处理请求。较慢的预览会使保存排队，保存默�
 
 状态：故障能显示；缺少从错误直达修复的操作，诊断入口名称也不易联想（U3）。
 
-![预览被运行环境阻断](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/tmp/software-audit-20261003/06-environment-blocked.png)
+预览被运行环境阻断：`tmp/software-audit-20261003/06-environment-blocked.png`（已于 2026-11-25 清理时删除）
 
-![导出记录中的环境与诊断](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/tmp/software-audit-20261003/07-environment-recovery.png)
+导出记录中的环境与诊断：`tmp/software-audit-20261003/07-environment-recovery.png`（已于 2026-11-25 清理时删除）
 
 ### 6 恢复并查看成绩考核表
 
 状态：表单内容可读，但当前文档所在分组仍折叠，正文缺少文件身份（U1）。
 
-![当前文档身份不明显](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/tmp/software-audit-20261003/08-assessment.png)
+当前文档身份不明显：`tmp/software-audit-20261003/08-assessment.png`（已于 2026-11-25 清理时删除）
 
 ### 7 填写与撤销日期
 
 状态：中文日历能选择；可选日期没有恢复为空的动作（U2）。键盘用户同样缺少显式清空路径。
 
-![选择可选日期](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/tmp/software-audit-20261003/16-date-calendar.png)
+选择可选日期：`tmp/software-audit-20261003/16-date-calendar.png`（已于 2026-11-25 清理时删除）
 
-![再次点击后日期仍保留](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/tmp/software-audit-20261003/17-date-cannot-clear.png)
+再次点击后日期仍保留：`tmp/software-audit-20261003/17-date-cannot-clear.png`（已于 2026-11-25 清理时删除）
 
 ### 8 访问论文功能与排版工具
 
 状态：独立排版工具有明确表单；论文模板入口进入后才告知不可用（U6）。工具生成的源码没有在本轮拿去真实编译，不作输出正确性结论。
 
-![论文模板未开放](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/tmp/software-audit-20261003/09-thesis-unavailable.png)
+论文模板未开放：`tmp/software-audit-20261003/09-thesis-unavailable.png`（已于 2026-11-25 清理时删除）
 
-![排版工具表单](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/tmp/software-audit-20261003/11-tools.png)
+排版工具表单：`tmp/software-audit-20261003/11-tools.png`（已于 2026-11-25 清理时删除）
 
 ### 9 最小窗口查看
 
 状态：1100×700 范围内本次所查主编辑区可用，没有观察到页面整体越界；这不覆盖每个长表格、长标题和缩放组合。820 宽截图低于真实窗口允许下限，已排除为产品缺陷证据。
 
-![应用允许的最小窗口](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/tmp/software-audit-20261003/19-minimum-window.png)
+应用允许的最小窗口：`tmp/software-audit-20261003/19-minimum-window.png`（已于 2026-11-25 清理时删除）
 
 ## 条件问题与已排除判断
 
-- 待启用链路：论文预览复制共享档案时遗漏 thesis_title_en，特定输入下会产生预览 hash 不一致。替身渲染已复现，但当前论文预览入口禁用，不计为日常主要缺陷。[exporter.py](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/backend/src/sztu_docs_backend/exporter.py:2954)。
-- 文件系统兼容性：导出最终写入仅使用 os.link，注入 ENOTSUP 后导出失败并清理结果。未使用 exFAT 等实际目的盘验收，列为待验证兼容项。[exporter.py](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/backend/src/sztu_docs_backend/exporter.py:3465)。
+- 待启用链路：论文预览复制共享档案时遗漏 thesis_title_en，特定输入下会产生预览 hash 不一致。替身渲染已复现，但当前论文预览入口禁用，不计为日常主要缺陷。[exporter.py（exporter.py:2954）](../../backend/src/sztu_docs_backend/exporter.py)。
+- 文件系统兼容性：导出最终写入仅使用 os.link，注入 ENOTSUP 后导出失败并清理结果。未使用 exFAT 等实际目的盘验收，列为待验证兼容项。[exporter.py（exporter.py:3465）](../../backend/src/sztu_docs_backend/exporter.py)。
 - 未成立的历史乱序问题：人工构造的组件替身允许请求乱序，但当前 Python 侧车串行处理，该复现不代表当前实际路径，已排除。
 - 未成立的常规“清空档案仍导出旧身份”：前端预检会阻断不完整档案进入预览和导出；未完成的档案草稿仍允许保存。未作为确认问题。
 - 文档质量状态不能由 UI 截图认证。本轮未对结构、中文字形、逐页版式和 Word/WPS 四个验收门作新的通过结论。
@@ -204,7 +204,7 @@ Python 侧车串行处理请求。较慢的预览会使保存排队，保存默�
 
 ## 复现材料
 
-- [前端临时组件测试](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/apps/desktop/tmp/audit-frontend-state.repro.tsx)。4 项断言通过，其中历史人工乱序不作为确认缺陷。
-- [后端复现脚本](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/tmp/software-audit-20261003/backend-reproduce.py) 与 [结果](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/tmp/software-audit-20261003/backend-results.json)。
-- [桌面服务详细报告](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/tmp/readonly-audit-desktop-20261003/findings.md)、[复现脚本](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/tmp/readonly-audit-desktop-20261003/reproduce.mjs) 与 [执行证据](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/tmp/readonly-audit-desktop-20261003/553fc422-d601-4843-b047-396e4e8f4461/evidence.json)。
-- [界面主捕获脚本](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/tmp/software-audit-20261003/capture.mjs)、[细节脚本](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/tmp/software-audit-20261003/capture-detail.mjs)、[稳定状态补拍](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/tmp/software-audit-20261003/capture-final.mjs)。捕获脚本要求将该目录保存的 software-audit.html 和 software-audit.tsx 临时放回 apps/desktop 并启动独立 Vite；它们不是产品入口。
+- 前端临时组件测试：`apps/desktop/tmp/audit-frontend-state.repro.tsx`（已于 2026-11-25 清理时删除）。4 项断言通过，其中历史人工乱序不作为确认缺陷。
+- 后端复现脚本：`tmp/software-audit-20261003/backend-reproduce.py`（已于 2026-11-25 清理时删除） 与 结果：`tmp/software-audit-20261003/backend-results.json`（已于 2026-11-25 清理时删除）。
+- 桌面服务详细报告：`tmp/readonly-audit-desktop-20261003/findings.md`（已于 2026-11-25 清理时删除）、复现脚本：`tmp/readonly-audit-desktop-20261003/reproduce.mjs`（已于 2026-11-25 清理时删除） 与 执行证据：`tmp/readonly-audit-desktop-20261003/553fc422-d601-4843-b047-396e4e8f4461/evidence.json`（已于 2026-11-25 清理时删除）。
+- 界面主捕获脚本：`tmp/software-audit-20261003/capture.mjs`（已于 2026-11-25 清理时删除）、细节脚本：`tmp/software-audit-20261003/capture-detail.mjs`（已于 2026-11-25 清理时删除）、稳定状态补拍：`tmp/software-audit-20261003/capture-final.mjs`（已于 2026-11-25 清理时删除）。捕获脚本要求将该目录保存的 software-audit.html 和 software-audit.tsx 临时放回 apps/desktop 并启动独立 Vite；它们不是产品入口。

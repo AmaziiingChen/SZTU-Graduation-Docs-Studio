@@ -1,6 +1,6 @@
 # Windows 0.1.14 验收与发布
 
-2026-11-13，Windows 11 x64。按 `docs/RELEASE_HANDOFF_0.1.14_WINDOWS.md` 构建离线安装包，完成包内引擎、多档案、诊断云端回读和更新通道验证。
+2026-11-13，Windows 11 x64。按 `docs/evidence/RELEASE_HANDOFF_0.1.14_WINDOWS.md` 构建离线安装包，完成包内引擎、多档案、诊断云端回读和更新通道验证。
 
 ## 构建来源
 

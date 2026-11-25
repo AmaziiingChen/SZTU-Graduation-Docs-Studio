@@ -60,8 +60,8 @@
 
 解析函数测试覆盖全部下拉目录兼容性、完整/不完整输入、未知代码、旧年级和特殊班型。App 回归覆盖原子回填、自动保存、人工纠正、重开保持、班级兼容保留和清空。后台 Chrome 用虚构学号检查真实表单显示与保存参数，未控制前台窗口。
 
-本轮 App 与编码解析共 138 项回归通过；`pnpm lint`、`pnpm build` 与 `git diff --check` 通过。lint 保留既有 React/Fast Refresh 警告，构建保留既有大体积 chunk 提示。[测试日志](../tmp/student-id-mapping-20261003/regression.log)、[界面验证](../tmp/student-id-mapping-20261003/visual-checks.json)
+本轮 App 与编码解析共 138 项回归通过；`pnpm lint`、`pnpm build` 与 `git diff --check` 通过。lint 保留既有 React/Fast Refresh 警告，构建保留既有大体积 chunk 提示。测试日志：`tmp/student-id-mapping-20261003/regression.log`（已于 2026-11-25 清理时删除）、界面验证：`tmp/student-id-mapping-20261003/visual-checks.json`（已于 2026-11-25 清理时删除）
 
-![输入完整学号后的自动填写](/Users/chen/Thesis/.worktrees/thesis-workbench/SZTU-Graduation-Docs-Studio/tmp/student-id-mapping-20261003/01-auto-filled.png)
+输入完整学号后的自动填写：`tmp/student-id-mapping-20261003/01-auto-filled.png`（已于 2026-11-25 清理时删除）
 
 本轮源码和构建结果不代表已替换安装版。原始表格未修改，个人名单未写入代码或新增发布资源。

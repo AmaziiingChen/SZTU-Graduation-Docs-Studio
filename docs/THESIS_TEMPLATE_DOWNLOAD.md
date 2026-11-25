@@ -16,7 +16,7 @@ README、AGENTS 和写作说明。禁止直接压缩整个维护仓库。
 ```bash
 pnpm build:thesis-template
 # 模板工程位于其他目录时：
-python3 scripts/stage_thesis_template.py --source /path/to/Thesis
+python scripts/stage_thesis_template.py --source C:\path\to\Thesis
 ```
 
 输出固定为 `apps/desktop/resources/thesis-template/sztu-thesis-2026.zip` 与同名 JSON。

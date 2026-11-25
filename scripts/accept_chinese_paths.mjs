@@ -21,7 +21,8 @@ const output = path.resolve(process.argv[2] ?? path.join(root, 'tmp', 'chinese-p
 assert.ok(output.startsWith(path.join(root, 'tmp') + path.sep), 'output must stay inside tmp/')
 
 const kinds = ['proposal', 'task_book', 'midterm', 'advisor_review', 'reviewer_review', 'defense_record', 'grade_assessment']
-const appVersion = process.env.SZTU_ACCEPT_APP_VERSION || '0.1.17'
+const rootPackage = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'))
+const appVersion = process.env.SZTU_ACCEPT_APP_VERSION || rootPackage.version
 const python = process.env.SZTU_ACCEPT_PYTHON || (process.platform === 'win32' ? 'python' : 'python3')
 const engineEnvironment = Object.fromEntries(
   [...kinds.map(kind => [kind, `SZTU_DOCS_${kind.toUpperCase()}_ENGINE_DIR`])].map(([kind, name]) => [name, template]),

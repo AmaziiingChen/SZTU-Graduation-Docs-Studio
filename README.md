@@ -16,13 +16,13 @@
 
 本地开发版本新增指导教师评审表、评阅人评审表、答辩记录表和成绩考核表。四份表格固定为 A4 一页，基本信息从学生档案带入，姓名、学号、学院、专业和论文题目齐全即可打印；其余信息及评审内容允许留空，签名空间保留手写。各业务栏目沿用任务书的独立栏目导航，日期复用 `DocumentDateField`，所有格式共用预览抽屉内的一个“导出”菜单。PDF 用于现场打印，Word 和 LaTeX 源码为补充格式。填写内容超过固定区域时拒绝导出，不缩小官方字号、行距或签名空间。
 
-下半部分当前开放编辑，开关集中在 `apps/desktop/src/lib/assessment-documents.ts` 的 `lowerEditingEnabled`；关闭后保留已保存内容和导出能力。四种模板各自使用受控文件清单和不可变工作区快照，共用同一结构化输入及公共渲染能力。它们尚未进入已发布安装包。
+下半部分当前开放编辑，开关集中在 `apps/desktop/src/lib/assessment-documents.ts` 的 `lowerEditingEnabled`；关闭后保留已保存内容和导出能力。四种模板各自使用受控文件清单和不可变工作区快照，共用同一结构化输入及公共渲染能力。它们自 0.1.19 起随安装包提供。
 
 评语和分工的括号说明、答辩记录的引导说明与正文在同一个现有编辑器中编辑，新文档的光标进入说明之后的正文空段。说明单独保存到 `sections.writing_guidance`（`comments`、`division_of_work`、`questions`），正文不混入模板固定标签。删除说明保存为 `null`；换行后的新段、将说明改为列表后的文字按普通正文保存。导出时固定标签继续由模板提供，说明紧接其后，删除说明只省略说明本身。旧草稿迁移只裁剪可识别的旧固定标签，并保留正文及富文本；无法可靠识别的自定义文字全部保留为正文。`sections.editable_headings` 继续兼容旧草稿，已有 `writing_guidance` 映射的草稿不会自动重新补入说明。
 
 满页打印规则记录在各模板规格中：保留原件结构、字体字号、页边距和签署区域，按现场手写需要明确原件自动/最小行高的打印高度。页面检查同时验证实际表格底边、标题位置及学院/专业字形到表格的间距；单页、字形有效和 Word/WPS 验证分别记录。
 
-当前可用闭环覆盖 2026 届开题报告、毕业论文任务书和中期检查表：
+当前可用闭环覆盖 2026 届开题报告、毕业论文任务书、中期检查表，以及指导教师评审表、评阅人评审表、答辩记录表和成绩考核表（共七类文档）：
 
 - 在「档案与基本信息」新建、编辑和删除档案。新建文档时选用一份档案，所有文档可直接从左侧打开；
 - 基于 JSON Schema 的字段校验；
@@ -37,7 +37,7 @@
 中的毕业届别统一派生，教师意见、签名和日期继续保留为空白。
 中期检查当前开放检查日期、论文题目、论文目录、主要研究内容和进展情况；教师勾选、意见、
 签名和日期保持空白。底层模板支持的图片、列表和富文本尚未全部开放为可视化编辑控件。
-Windows x64 0.1.6 离线验收包已构建，已整合工作台新功能、四类评审模板及内置论文 LaTeX 工程下载，保留所需 TeX 和 Poppler。自动检查及七类文档导出通过，安装升级记录与待完成的 Word/WPS 人工验收见 [0.1.6 验收记录](docs/evidence/WINDOWS_ACCEPTANCE_0.1.6.md)和 [macOS 接续说明](docs/RELEASE_HANDOFF_0.1.6.md)。完整开发流程见 [Windows 开发与打包](docs/WINDOWS_DEVELOPMENT.md)。
+当前版本为 0.1.19。Windows x64 离线安装包在打包环节统一收进华文中宋、华文行楷与方正小标宋三款 Office 字体，解决纯净 Windows 上论文模板和任务书封面导出报 `REQUIRED_FONT_MISSING` 的问题；逐版变更见 `docs/evidence/RELEASE_0.1.*.md`，最新一份是 [0.1.19 发布记录](docs/evidence/RELEASE_0.1.19.md)。早期 0.1.6 离线包的自动检查与七类文档导出记录、以及待接续的 macOS 检查，保留在 [0.1.6 验收记录](docs/evidence/WINDOWS_ACCEPTANCE_0.1.6.md) 和 [macOS 接续说明](docs/evidence/RELEASE_HANDOFF_0.1.6.md)。完整开发与打包流程见 [Windows 开发与打包](docs/WINDOWS_DEVELOPMENT.md)。
 
 姓名、学号、学院、专业、班级和指导教师只在“学生档案”中维护。过程文档页面不提供
 这些字段的重复覆盖入口；内容检查、导出预检和最终导出会读取当前关联档案，并把当时
@@ -108,7 +108,7 @@ pnpm verify
 pnpm dev
 ```
 
-Windows 还需按文档功能安装 XeLaTeX、Poppler 和所需的合法字体。运行 `pnpm package:win` 生成内置 Python 引擎的 x64 安装包；完整环境准备、模板限制和验证记录见 [Windows 开发与打包](docs/WINDOWS_DEVELOPMENT.md)及 [Windows 本地验证记录](docs/evidence/WINDOWS_20260930.md)。Word/WPS 人工验收须在目标机器上单独完成。
+Windows 还需按文档功能安装 XeLaTeX、Poppler 和所需的合法字体。运行 `pnpm package:win` 生成内置 Python 引擎的 x64 安装包；完整环境准备、模板限制和验证记录见 [Windows 开发与打包](docs/WINDOWS_DEVELOPMENT.md)及 [最新发布记录](docs/evidence/RELEASE_0.1.19.md)。Word/WPS 人工验收须在目标机器上单独完成。
 
 ## macOS 本地预览安装包
 
@@ -122,7 +122,7 @@ TeX Live、XeLaTeX、latexmk 或 Poppler；首次启动的环境检查会提示�
 
 ### macOS 用户安装前需要准备的依赖
 
-macOS 版把编译环境留给系统，安装包只有约 280 MB；Windows 离线版则内置约 400 MB 的 TeX 运行时，
+macOS 版把编译环境留给系统，安装包约 135 MiB（141,972,388 字节）；Windows 离线版则内置约 400 MB 的 TeX 运行时，
 装完即可用。Mac 用户第一次启动时，若缺少下表组件，应用会自动弹出「环境检查」并给出安装说明；
 关闭后仍可从「环境检查」按钮随时打开。
 
@@ -149,7 +149,7 @@ macOS 版把编译环境留给系统，安装包只有约 280 MB；Windows 离�
 开发工作区快照不等于已验收或可发布模板。正式模板仍须固定版本、逐文件哈希、来源与许可证，
 并继续拒绝任何哈希漂移；未确认可再分发的学校 DOCX 不进入公开仓库或 Release。
 
-匿名遥测和更新通道的客户端基础已经接入，但开发构建未配置远程端点。首次启动会在任何上传前
+匿名遥测和更新通道已接入，正式构建配置了生产接收端点（`config/remote-services.production.json`）。首次启动会在任何上传前
 说明允许发送与禁止发送的字段；使用者可以“同意并继续”或退出。确认后应用记录启动、粗粒度
 运行时长、页面类型及检查/预览/同步模板/导出/验收结果，随机安装标识每 30 天轮换；不发送
 学生档案、论文题目、正文、参考文献、文件名、路径、模板内容、哈希或自由文本。版本检查使用
@@ -157,7 +157,7 @@ Ed25519 签名清单，并在下载后核对平台、架构、文件大小和 SH
 完成安装包替换、代码签名和回滚，因此不属于已发布的自动更新。详见
 [匿名遥测与更新通道](docs/TELEMETRY_AND_UPDATES.md)。
 
-完整任务、依赖和逐项完成标准见 [开发清单](docs/DEVELOPMENT_CHECKLIST.md)，当前实测结果见
+2026-09 版完整任务、依赖和逐项完成标准见 [开发清单（已归档）](docs/evidence/DEVELOPMENT_CHECKLIST.md)，当前实测结果见
 [M0/M1 验收记录](docs/evidence/M0_M1_ACCEPTANCE.md)、
 [M2/M3 验收记录](docs/evidence/M2_M3_ACCEPTANCE.md)和
 [M5 首条导出闭环记录](docs/evidence/M5_PROPOSAL_EXPORT_SLICE.md)、

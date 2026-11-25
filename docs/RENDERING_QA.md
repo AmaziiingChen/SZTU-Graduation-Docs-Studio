@@ -31,7 +31,7 @@ pdftotext -layout input.pdf -
 
 ```bash
 mkdir -p /tmp/document-render
-pdftocairo -png -r 180 input.pdf /tmp/document-render/page
+pdftoppm -png -r 180 input.pdf /tmp/document-render/page
 ```
 
 - 文字检查不得低于 150 DPI。
@@ -40,7 +40,7 @@ pdftocairo -png -r 180 input.pdf /tmp/document-render/page
 ### 3. 执行中文渲染门禁
 
 ```bash
-python3 scripts/validate_cjk_render.py input.pdf
+python scripts/validate_cjk_render.py input.pdf
 ```
 
 脚本会读取 PDF 的文字坐标，找到包含中文的词语，再检查对应页面区域中是否存在实际笔画像素。

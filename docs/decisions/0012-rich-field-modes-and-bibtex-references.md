@@ -1,4 +1,4 @@
-# 0009 — Rich-field modes and BibTeX references
+# 0012 — Rich-field modes and BibTeX references
 
 ## Status
 

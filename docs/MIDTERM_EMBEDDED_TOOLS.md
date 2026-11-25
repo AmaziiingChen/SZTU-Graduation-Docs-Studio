@@ -20,19 +20,19 @@
 - Electron 隔离渲染验证：4 张托管图片正常加载，编辑弹窗无横向溢出，确认按钮固定在底部。
 - WPS 已打开 2×2 图、三线表和普通表格样例，原生导出 PDF 字形门禁通过，三页已检查。WPS 与 LaTeX 的教师栏分页位置不同；不声称逐像素一致。后续添加的长表分段和组合图跨行分页只进行了结构与 PDF 回归，尚未在 WPS 单独复验压力样例。
 
-上述初轮遗留的 4 项 App 测试失败已在基线收尾时解决：保存状态断言匹配已批准配色，jsdom 明确禁用不实际运行的 CSS 动画；校验失败关闭预览抽屉并将焦点交给目标字段，重复检查同一板块也能定位。窄窗口测试按实际操作先展开侧边栏。最终全量前端 281 项通过，详见 `BASELINE_20260921.md`。
+上述初轮遗留的 4 项 App 测试失败已在基线收尾时解决：保存状态断言匹配已批准配色，jsdom 明确禁用不实际运行的 CSS 动画；校验失败关闭预览抽屉并将焦点交给目标字段，重复检查同一板块也能定位。窄窗口测试按实际操作先展开侧边栏。最终全量前端 281 项通过，详见 `docs/evidence/BASELINE_20260921.md`。
 
 ## 可重复运行
 
 桌面仓库：
-```sh
+```powershell
 pnpm --filter @sztu-docs/desktop exec vitest run src/components/workbench/body-tools.test.tsx src/components/workbench/structured-content-editor.test.tsx
 pnpm --filter @sztu-docs/desktop exec vitest run src/App.test.tsx -t 'opens persisted tables'
-PYTHONPATH=backend/src .venv/bin/python -m unittest discover -s backend/tests -p 'test_embedded_tools.py'
+$env:PYTHONPATH = "backend/src"; .venv\Scripts\python.exe -m unittest discover -s backend/tests -p 'test_embedded_tools.py'
 ```
 
-模板仓库（Python 需具备 python-docx、Pillow、pdfplumber，并安装 XeLaTeX）：
-```sh
+模板仓库（Python 需具备 python-docx、Pillow、pdfplumber，并安装 XeLaTeX；在模板仓库根目录运行）：
+```powershell
 python templates/midterm/test_embedded_tools.py
 ```
 

@@ -1,5 +1,7 @@
 # SZTU Graduation Docs Studio 完整开发清单
 
+> 归档说明：本文是 2026-09-04 的任务清单快照，已停止更新，勾选状态不反映当前进度。当前发布状态见 `docs/evidence/RELEASE_0.1.*.md`，验收证据见本目录其余记录。
+
 ## 1. 文档用途
 
 本清单用于直接驱动 `SZTU Graduation Docs Studio` 的开发、验收与发布。所有任务都应在

@@ -11,7 +11,9 @@ import { promisify } from "node:util"
 assert.equal(process.platform, "win32")
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 const bundle = path.resolve(process.argv[2] ?? "release/offline/win-unpacked")
-const output = path.resolve(process.argv[3] ?? "tmp/windows-profiles-acceptance-0.1.14")
+const rootPackage = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"))
+const expectedVersion = process.env.SZTU_ACCEPT_APP_VERSION || rootPackage.version
+const output = path.resolve(process.argv[3] ?? `tmp/windows-profiles-acceptance-${expectedVersion}`)
 assert.ok(output.startsWith(path.join(root, "tmp") + path.sep))
 assert.equal(
   await access(output).then(
@@ -52,7 +54,7 @@ function pythonJson(program, ...args) {
 
 const resources = path.join(bundle, "resources")
 const version = JSON.parse(extractFile(path.join(resources, "app.asar"), "package.json")).version
-assert.equal(version, "0.1.14")
+assert.equal(version, expectedVersion)
 const load = await loadModules(resources, "modules", [
   "sidecar-client",
   "sidecar-channels",
@@ -93,9 +95,10 @@ if (legacyOption >= 0) {
   firstProfile = saved.profile
   firstDocument = saved.document
 } else {
+  const previousVersion = process.env.SZTU_ACCEPT_PREVIOUS_VERSION || "0.1.13"
   assert.equal(
     JSON.parse(extractFile(path.join(previousResources, "app.asar"), "package.json")).version,
-    "0.1.13"
+    previousVersion
   )
   const loadPrevious = await loadModules(previousResources, "previous-modules", [
     "sidecar-client",
