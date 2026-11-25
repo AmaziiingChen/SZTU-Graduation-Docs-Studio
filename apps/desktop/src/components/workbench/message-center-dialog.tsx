@@ -74,10 +74,10 @@ export function MessageCenterDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex h-[min(78vh,620px)] flex-col gap-0 p-0 sm:max-w-2xl">
-        <DialogHeader className="border-b px-5 py-4">
+        <DialogHeader className="border-b px-4 py-4">
           <DialogTitle className="flex items-center gap-2 text-base">
             <BellIcon className="size-4" aria-hidden="true" />
-            消息中心
+            消息通知
           </DialogTitle>
           <DialogDescription>
             来自维护者的通知与新功能说明。消息只在版本与时间范围内显示。
@@ -86,7 +86,7 @@ export function MessageCenterDialog({
 
         {selected ? (
           <>
-            <div className="border-b px-5 py-3">
+            <div className="border-b px-4 py-3">
               <Button
                 type="button"
                 variant="ghost"
@@ -99,7 +99,7 @@ export function MessageCenterDialog({
               </Button>
             </div>
             <ScrollArea className="min-h-0 flex-1">
-              <article className="space-y-4 px-5 py-5">
+              <article className="space-y-4 px-4 py-5">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge className={severityClass[selected.severity]} variant="secondary">
                     {severityLabel[selected.severity]}
@@ -154,7 +154,7 @@ export function MessageCenterDialog({
                       <Button
                         type="button"
                         variant="ghost"
-                        className="flex h-auto w-full items-start gap-3 rounded-none px-5 py-4 text-left whitespace-normal"
+                        className="flex h-auto w-full items-start gap-3 rounded-none px-4 py-4 text-left whitespace-normal"
                         onClick={() => openNotice(notice)}
                       >
                         <span
@@ -185,7 +185,7 @@ export function MessageCenterDialog({
           </ScrollArea>
         )}
 
-        <DialogFooter className="border-t px-5 py-3">
+        <DialogFooter className="border-t px-4 py-3">
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             关闭
           </Button>

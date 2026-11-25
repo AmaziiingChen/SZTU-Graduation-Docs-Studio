@@ -119,17 +119,17 @@ export function HelpCenterDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="flex h-[min(82vh,660px)] flex-col gap-0 p-0 sm:max-w-4xl">
-        <DialogHeader className="gap-1 border-b px-5 py-4">
+        <DialogHeader className="gap-1 border-b px-4 py-4">
           <DialogTitle className="flex items-center gap-2">
             <BookOpenIcon className="size-4" aria-hidden="true" />
-            帮助与支持
+            帮助
           </DialogTitle>
           <DialogDescription>
             常见问题、快捷键、更新说明，以及可随时载入的演示资料。
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex items-center gap-1 border-b px-3 py-2">
+        <div className="flex items-center gap-1 border-b px-4 py-2">
           {TAB_LABELS.map((item) => (
             <Button
               key={item.id}
@@ -223,9 +223,6 @@ export function HelpCenterDialog({
                       </div>
                     </div>
                     <ArticleBody article={selectedArticle} />
-                    {selectedArticle.id === "demo-documents" ? (
-                      <DemoActions busy={demoBusy} onInstall={onInstallDemo} onRemove={onRemoveDemo} />
-                    ) : null}
                   </div>
                 ) : hits.length === 0 ? (
                   <div className="p-6 text-sm text-muted-foreground">
@@ -255,7 +252,7 @@ export function HelpCenterDialog({
                 )}
               </ScrollArea>
 
-              <div className="border-t p-3">
+              <div className="border-t px-4 py-3">
                 <DemoActions busy={demoBusy} onInstall={onInstallDemo} onRemove={onRemoveDemo} />
               </div>
             </div>
@@ -264,7 +261,7 @@ export function HelpCenterDialog({
 
         {tab === "shortcuts" ? (
           <ScrollArea className="min-h-0 flex-1">
-            <div className="space-y-4 p-5">
+            <div className="space-y-4 p-4">
               <p className="text-sm text-muted-foreground">
                 这些快捷键在应用内随时可用；弹窗打开时 Esc 优先关闭弹窗。
               </p>
@@ -290,7 +287,7 @@ export function HelpCenterDialog({
 
         {tab === "releases" ? (
           <ScrollArea className="min-h-0 flex-1">
-            <div className="space-y-5 p-5">
+            <div className="space-y-5 p-4">
               {releaseNotes.map((note) => (
                 <section key={note.version} className="space-y-2">
                   <div className="flex items-baseline gap-2">

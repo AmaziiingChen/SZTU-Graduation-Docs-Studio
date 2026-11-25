@@ -3,7 +3,8 @@ import { RocketIcon } from "@/components/ui/rocket"
 import { QrCodeIcon } from "@/components/ui/qr-code-icon"
 import { DownloadIcon } from "@/components/ui/download"
 import { PaletteIcon } from "@/components/ui/palette"
-import { BellIcon, HelpCircleIcon } from "lucide-react"
+import { BellIcon } from "@/components/ui/animateicons/bell"
+import { CircleQuestionMarkIcon } from "@/components/ui/animateicons/circle-question-mark"
 import * as React from "react"
 
 import maintainerWechatQr from "@/assets/maintainer-wechat-qr.jpg"
@@ -186,12 +187,12 @@ export function AppSidebar({
           ) : null}
           <SidebarMenuItem>
             <SidebarMenuButton
-              tooltip="消息中心"
+              tooltip="消息通知"
               className="pl-8"
               onClick={() => finishNavigation(onSelectMessages)}
             >
-              <BellIcon className="mr-2 size-4" aria-hidden="true" />
-              <span>消息中心</span>
+              <AnimatedActionIcon icon={BellIcon} />
+              <span>消息通知</span>
               {(noticeUnreadCount ?? 0) > 0 ? (
                 <span className="ml-auto rounded-full bg-primary px-1.5 text-[10px] font-medium leading-4 text-primary-foreground">
                   {noticeUnreadCount}
@@ -224,12 +225,12 @@ export function AppSidebar({
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
-              tooltip="帮助与支持"
+              tooltip="帮助"
               className="pl-8"
               onClick={() => finishNavigation(onSelectHelp)}
             >
-              <HelpCircleIcon className="mr-2 size-4" aria-hidden="true" />
-              <span>帮助与支持</span>
+              <AnimatedActionIcon icon={CircleQuestionMarkIcon} />
+              <span>帮助</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>

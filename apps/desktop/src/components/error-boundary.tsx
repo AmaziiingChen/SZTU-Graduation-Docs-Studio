@@ -116,7 +116,7 @@ export class ErrorBoundary extends React.Component<
               <AlertTriangleIcon />
               <AlertTitle>刚刚遇到一个错误</AlertTitle>
               <AlertDescription className="flex flex-wrap items-center gap-2">
-                <span>已记录，可以继续使用；如果反复出现，请通过「帮助与支持 → 反馈问题」告诉我们。</span>
+                <span>已记录，可以继续使用；如果反复出现，请通过「帮助 → 反馈问题」告诉我们。</span>
                 <Button type="button" variant="ghost" size="sm" onClick={() => void this.copyDetails()}>
                   <CopyIcon aria-hidden="true" />
                   {copied ? "已复制" : "复制信息"}
@@ -134,7 +134,7 @@ export class ErrorBoundary extends React.Component<
           <CardHeader>
             <CardTitle>页面遇到了一个问题</CardTitle>
             <CardDescription>
-              你的文档保存在本机，不会丢失。可以先重新加载；如果反复出现，请进入安全模式，再通过「帮助与支持 → 反馈问题」告诉我们。
+              你的文档保存在本机，不会丢失。可以先重新加载；如果反复出现，请进入安全模式，再通过「帮助 → 反馈问题」告诉我们。
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3">
