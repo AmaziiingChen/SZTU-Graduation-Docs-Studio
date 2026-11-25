@@ -37,7 +37,7 @@
 中的毕业届别统一派生，教师意见、签名和日期继续保留为空白。
 中期检查当前开放检查日期、论文题目、论文目录、主要研究内容和进展情况；教师勾选、意见、
 签名和日期保持空白。底层模板支持的图片、列表和富文本尚未全部开放为可视化编辑控件。
-当前版本为 0.1.19。Windows x64 离线安装包在打包环节统一收进华文中宋、华文行楷与方正小标宋三款 Office 字体，解决纯净 Windows 上论文模板和任务书封面导出报 `REQUIRED_FONT_MISSING` 的问题；逐版变更见 `docs/evidence/RELEASE_0.1.*.md`，最新一份是 [0.1.19 发布记录](docs/evidence/RELEASE_0.1.19.md)。早期 0.1.6 离线包的自动检查与七类文档导出记录、以及待接续的 macOS 检查，保留在 [0.1.6 验收记录](docs/evidence/WINDOWS_ACCEPTANCE_0.1.6.md) 和 [macOS 接续说明](docs/evidence/RELEASE_HANDOFF_0.1.6.md)。完整开发与打包流程见 [Windows 开发与打包](docs/WINDOWS_DEVELOPMENT.md)。
+当前版本为 0.2.0。Windows 安装包内置论文模板和任务书用到的全部字体——宋体、黑体、楷体、Times New Roman 四款、华文中宋、华文行楷、方正小标宋与 Wingdings 2——并在应用首次启动时自动注册到当前 Windows 用户，纯净电脑无需手动安装字体。这一版还改了错误提示：编译、预览与导出失败时只显示可读原因，错误码只进遥测和诊断包；文献字段只有空值会在编辑时当场指出；下载完成后可以一键安装更新并自动重启。逐版变更见 `docs/evidence/RELEASE_0.*.md`，最新一份是 [0.2.0 发布记录](docs/evidence/RELEASE_0.2.0.md)。早期 0.1.6 离线包的自动检查与七类文档导出记录、以及待接续的 macOS 检查，保留在 [0.1.6 验收记录](docs/evidence/WINDOWS_ACCEPTANCE_0.1.6.md) 和 [macOS 接续说明](docs/evidence/RELEASE_HANDOFF_0.1.6.md)。完整开发与打包流程见 [Windows 开发与打包](docs/WINDOWS_DEVELOPMENT.md)。
 
 姓名、学号、学院、专业、班级和指导教师只在“学生档案”中维护。过程文档页面不提供
 这些字段的重复覆盖入口；内容检查、导出预检和最终导出会读取当前关联档案，并把当时
@@ -108,13 +108,13 @@ pnpm verify
 pnpm dev
 ```
 
-Windows 还需按文档功能安装 XeLaTeX、Poppler 和所需的合法字体。运行 `pnpm package:win` 生成内置 Python 引擎的 x64 安装包；完整环境准备、模板限制和验证记录见 [Windows 开发与打包](docs/WINDOWS_DEVELOPMENT.md)及 [最新发布记录](docs/evidence/RELEASE_0.1.19.md)。Word/WPS 人工验收须在目标机器上单独完成。
+在 Windows 开发机上还需安装 XeLaTeX、Poppler 和所需的合法字体；运行 `pnpm package:win` 生成的 x64 安装包已内置 TeX 引擎、PDF 工具和模板字体，最终用户无需自行安装。完整环境准备、模板限制和验证记录见 [Windows 开发与打包](docs/WINDOWS_DEVELOPMENT.md)及 [最新发布记录](docs/evidence/RELEASE_0.2.0.md)。Word/WPS 人工验收须在目标机器上单独完成。
 
 ## macOS 本地预览安装包
 
 在 Apple Silicon Mac 上运行 `pnpm package:mac`，会先执行完整校验，再生成 ARM64 的 DMG 和 ZIP。
 安装包内置本地 Python 文档引擎，但不内置宋体、黑体、Times New Roman 等文档字体，也不内置
-TeX Live、XeLaTeX、latexmk 或 Poppler；首次启动的环境检查会提示用户准备这些本机依赖。
+TeX Live、XeLaTeX、latexmk 或 Poppler。首次启动不再弹出检查清单；缺少这些依赖时，预览和导出会就地说明缺什么、怎么装。
 界面自身继续使用项目已有的开源 Geist Web 字体，这不属于文档模板字体。
 
 当前安装包没有 Apple Developer ID 签名或公证，macOS 可能显示 Gatekeeper 提示。具体构建边界见
@@ -123,8 +123,7 @@ TeX Live、XeLaTeX、latexmk 或 Poppler；首次启动的环境检查会提示�
 ### macOS 用户安装前需要准备的依赖
 
 macOS 版把编译环境留给系统，安装包约 135 MiB（141,972,388 字节）；Windows 离线版则内置约 400 MB 的 TeX 运行时，
-装完即可用。Mac 用户第一次启动时，若缺少下表组件，应用会自动弹出「环境检查」并给出安装说明；
-关闭后仍可从「环境检查」按钮随时打开。
+装完即可用。Mac 用户第一次启动不再弹出检查清单；缺少下表组件时，预览和导出会就地提示，也可从「导出记录」里的「查看环境修复指引」随时手动查看。
 
 | 组件 | 用途 | 安装方式 | 体积 |
 | --- | --- | --- | --- |
@@ -132,8 +131,7 @@ macOS 版把编译环境留给系统，安装包约 135 MiB（141,972,388 字节
 | Poppler（`pdftotext`、`pdftoppm`） | 预览光栅化与字号、字形检查 | `brew install poppler` | 约 30 MB |
 | 宋体、黑体、楷体、Times New Roman、方正小标宋 | 文档排版 | 系统字体册安装后重启应用 | — |
 
-缺少上述依赖时，编辑与保存不受影响，但预览和导出会被拦下并提示缺失项；装好并重启应用后
-点「重新检查」即可继续。
+缺少上述依赖时，编辑与保存不受影响，但预览和导出会被拦下并提示缺失项；装好并重启应用后重试即可。
 
 填写文档后点击顶部的“预览&导出”。右侧抽屉会立即打开，并在没有当前有效预览时自动保存、检查和生成与正式 PDF 导出共用模板引擎的
 逐页图像；已有有效结果时直接打开，不重复生成。继续编辑正文、修改学生档案或更新模板后，下次打开抽屉会自动重新生成；导出格式统一在抽屉底部选择。

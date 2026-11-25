@@ -1,6 +1,6 @@
 # Windows 开发与打包
 
-Windows x64 是当前主开发与交付平台（源码 0.1.19）。使用 Electron + React + TypeScript 前端和 Python 文档引擎；macOS 只保留构建脚本和历史记录。常规打包入口为 `pnpm package:win`；内置 TeX/Poppler 的离线版使用 `pnpm package:win:offline`。
+Windows x64 是当前主开发与交付平台（源码 0.2.0）。使用 Electron + React + TypeScript 前端和 Python 文档引擎；macOS 只保留构建脚本和历史记录。常规打包入口为 `pnpm package:win`；内置 TeX/Poppler 的离线版使用 `pnpm package:win:offline`。
 
 ## 当前工作区
 
@@ -12,7 +12,7 @@ C:\AmazingSyncthing\Thesis\
 
 应用与模板均在 `codex/thesis-workbench` 分支，当前基线分别为 `4a7c067`、`d041706`，并保留本地 Windows 适配。应用开发态自动读取同级 `../Thesis`，验证允许清单并生成不可变快照。安装包准备开题报告、任务书、中期检查、指导教师评审、评阅人评审、答辩记录和成绩考核七类引擎。
 
-最新源码已同步编辑器一键整理、连续列表编号、进度展开编辑与撤销、评审题目富文本以及溢出字段定位。本轮只完成本地合并、检查和构建，使用 `pnpm dev` 查看；当前源码版本为 0.1.19，本地不再保存历史安装包。详细结果见 [本轮源码同步记录](evidence/REMOTE_SYNC_20261004.md)。
+最新源码已同步编辑器一键整理、连续列表编号、进度展开编辑与撤销、评审题目富文本以及溢出字段定位。本轮只完成本地合并、检查和构建，使用 `pnpm dev` 查看；当前源码版本为 0.2.0，本地不再保存历史安装包。详细结果见 [本轮源码同步记录](evidence/REMOTE_SYNC_20261004.md)。
 
 毕业论文页面提供内置 LaTeX 源码工程下载，不依赖 Python/TeX 即可保存 ZIP。独立编译按包内 README 准备环境。工作台环境检查已改为校验实际内置源码包的完整性，不再检查已不用于该页面的旧 `thesis_engine`。
 
@@ -73,17 +73,17 @@ pnpm package:win
 - `release/win-unpacked/SZTU-Docs-Studio.exe`：解包版启动入口；须保留整个 `win-unpacked` 目录。
 - `release/win-unpacked/resources/sidecar/sztu-docs-backend.exe`：内置 Python 引擎，最终用户无需安装 Python。
 
-常规安装包依赖目标机器上的 TeX、Poppler 和合法文档字体。当前包没有 Windows 代码签名，尚未完成安装/卸载与目标编辑器人工验收；本次没有上传或公开发布。
+常规（非离线）安装包依赖目标机器上的 TeX、Poppler 和文档字体；离线安装包把 TeX 引擎、PDF 工具与模板字体都收进安装包。当前包没有 Windows 代码签名，尚未完成安装/卸载与目标编辑器人工验收；本次没有上传或公开发布。
 
 ## 离线安装包：分享给 Windows 使用者
 
-从发布页下载 `SZTU-Docs-Studio-<版本>-win-x64-offline.exe`（0.1.19 约 410 MB）。用户双击安装，应用自动优先使用 `resources/offline-runtime` 中的工具；无需单独安装 Node.js、Python、TeX Live 或 Poppler，无需修改系统 PATH，无需联网下载宏包。
+从发布页下载 `SZTU-Docs-Studio-<版本>-win-x64-offline.exe`（0.2.0 因内置全部模板字体，体积比 0.1.19 的约 410 MB 更大）。用户双击安装，应用自动优先使用 `resources/offline-runtime` 中的工具；无需单独安装 Node.js、Python、TeX Live 或 Poppler，无需修改系统 PATH，无需联网下载宏包。
 
-离线版包含 TeX Live 2025 的 176 个所需宏包及其依赖、XeLaTeX、BibTeX、latexmk/Perl 和 Poppler 26.09.0；保留相关许可、可用宏包源文件及 Poppler 源码归档。TeX Live 的开源字体随其包保留，Windows/Office 商业文档字体不进入安装包。
+离线版包含 TeX Live 2025 的 176 个所需宏包及其依赖、XeLaTeX、BibTeX、latexmk/Perl 和 Poppler 26.09.0；保留相关许可、可用宏包源文件及 Poppler 源码归档。TeX Live 的开源字体随其包保留。论文模板与任务书需要的文档字体由打包脚本复制到 `resources/document-fonts`，不进入 Git 仓库，详见下文。
 
-**使用英文安装路径。** 默认目录采用 `SZTU Docs Studio`，中文桌面快捷方式和应用名称保留。TeX 在中文路径下仍有底层兼容限制；如果 Windows 用户名含中文，请在安装时选择如 `D:\SZTU-Docs-Studio` 的全英文路径。含空格的英文目录移动后已通过宏包、工具和中文 PDF 测试。应用为 TeX 启动器设置当前运行根目录，并在可用时使用 Windows 短路径；不更改系统语言或安全设置。
+**安装路径可以包含中文，但在新用例通过前仍建议使用默认目录。** 引擎固定安装在 `C:\ProgramData\SZTU-Docs\engine\<id>`，与用户选择的安装目录无关。打包验收新增了中文安装目录用例：把安装包静默装到含中文和空格的目录（`中文 安装 目录\SZTU 文档工作台`）后跑完整验收（`.github/workflows/package-acceptance.yml`），结果以首次 CI 运行为准；在此之前，安装时仍建议选择如 `D:\SZTU-Docs-Studio` 的英文路径。含空格的英文目录移动后已通过宏包、工具和中文 PDF 测试。应用为 TeX 启动器设置当前运行根目录，并在可用时使用 Windows 短路径；不更改系统语言或安全设置。
 
-仍需本机合法文档字体和 Word/WPS。方正小标宋简体仅用于中期检查表的两行 18 pt 大标题。0.1.19 起打包环节统一收进华文中宋、华文行楷与方正小标宋三款 Office 字体，纯净 Windows 上不再报 `REQUIRED_FONT_MISSING`；字体用途见 [工作台字体集](../font-sets/README.md)。
+编辑导出的 Word 文档仍需要本机安装 Word/WPS。方正小标宋简体仅用于中期检查表的两行 18 pt 大标题。0.2.0 起，打包环节把论文模板和任务书用到的全部字体（宋体、黑体、楷体、Times New Roman 四款、华文中宋、华文行楷、方正小标宋、Wingdings 2）收进安装包，应用首次启动时自动注册到当前 Windows 用户，用户无需手动安装字体。字体用途见 [工作台字体集](../font-sets/README.md)。
 
 开发者可从明确的本机来源准备离线环境：
 
@@ -97,7 +97,7 @@ pnpm package:win:offline
 
 Poppler 二进制来源：[上游 Windows 26.09.0 发布](https://github.com/oschwartz10612/poppler-windows/releases/tag/v26.09.0-0)；源码来源：[Poppler 26.09.0](https://poppler.freedesktop.org/poppler-26.09.0.tar.xz)。构建脚本保留已存在的准备目录，避免覆盖此前证据；重新准备时使用新的 `--output` 目录，确认通过后再用于打包。
 
-`verify_windows_offline_runtime.py` 移除系统 TeX/Poppler PATH，核对工具哈希及声明宏包，编译并检查中文 PDF。最终包检查冻结引擎、七类模板与内置论文下载 ZIP。模板准备先检查全部源文件，缺底稿时提前列出具体路径，保留此前构建资源。四类空白评审底稿已由上游授权入库，无需换机后再次转换。最新记录见 [v0.1.5 Windows 整合验证](evidence/WINDOWS_INTEGRATION_20261004.md)。
+`verify_windows_offline_runtime.py` 移除系统 TeX/Poppler PATH，核对工具哈希及声明宏包，编译并检查中文 PDF。最终包检查冻结引擎、七类模板与内置论文下载 ZIP。模板准备先检查全部源文件，缺底稿时提前列出具体路径，保留此前构建资源。四类空白评审底稿已由上游授权入库，无需换机后再次转换。最新记录见 [0.1.16 中文路径与引擎位置修复](evidence/RELEASE_0.1.16.md) 与 [0.2.0 发布记录](evidence/RELEASE_0.2.0.md)。
 
 首次运行的遥测与更新告知沿用现有产品行为；本地构建包含仓库现有的远程服务配置。联网事件需要用户确认告知后才开始，文档内容不进入遥测。
 
@@ -116,11 +116,11 @@ pnpm package:win
 - 原生工具的非 UTF-8 日志不会再导致子进程读取线程崩溃。
 - 后端构建通过线程和队列等待管道响应，替代 Windows 不支持的管道 `select`。
 - Electron 向后端传入明确允许的 Windows 环境目录；Word/WPS 检测读取当前用户/机器的 32/64 位 `App Paths` 注册信息，并核实可执行文件存在。
-- Windows 的华文行楷文件名 `STXINGKA.TTF` 映射到受信任模板支持的字体覆盖变量；不替换字体、不复制商业字体进安装包。
+- Windows 的华文行楷文件名 `STXINGKA.TTF` 映射到受信任模板支持的字体覆盖变量；打包时把模板需要的字体收进 `resources/document-fonts`，应用首次启动复制到当前用户字体目录并写 `HKCU` 注册项，不修改系统字体目录、不替换已有字体。
 - 缺少符号链接创建权限的测试明确跳过，POSIX 权限位检查保留在适用平台执行。
 
 ## 用户辅助验证
 
 退出旧应用进程后启动新版本，检查 Word/WPS 状态是否通过。随后使用虚构数据检查档案保存、文档切换、分页预览及三种格式导出，最后在本机 Word/WPS 中逐页核对版式。本次不使用 Computer Use 继续操作界面。
 
-本地开发可从 Git 忽略的 `local-fonts/` 读取私有字体；将来取得分发许可的字体可由运行时 `resources/document-fonts/` 读取。当前没有加入方正字体或重建安装包。自动检查和 PDF 字形检查通过，均不代表规定字体验收或 Word/WPS 人工验收已完成。
+本地开发从 Git 忽略的 `local-fonts/` 读取私有字体；打包时 `scripts/stage_document_fonts.py` 把论文模板与任务书需要的 11 个字体文件收进 `local-fonts/`（不进 Git），再由 electron-builder 复制到 `resources/document-fonts/`。自动检查和 PDF 字形检查通过，不代表规定字体验收或 Word/WPS 人工验收已完成。

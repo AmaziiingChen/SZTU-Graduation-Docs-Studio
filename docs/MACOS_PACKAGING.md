@@ -11,7 +11,7 @@ SHA-256，会写入应用资源目录中的 `sidecar/build-manifest.json`。
 
 安装包只包含应用代码、经过逐文件允许清单与 SHA-256 复核的过程文档模板引擎、本地 Python sidecar 和公开的远程服务配置。
 它不会复制或打包本机文档字体、TeX Live、XeLaTeX、latexmk、Poppler、学生数据、导出文件、
-签名材料或开发环境路径。Word/PDF/LaTeX 的正式渲染继续依赖首次启动检查发现的本机环境。
+签名材料或开发环境路径。macOS 包不内置 TeX 与字体，Word/PDF/LaTeX 的正式渲染依赖本机已安装的 MacTeX、Poppler 与文档字体；缺失时预览和导出会就地提示，不再在首次启动弹出检查清单。
 应用界面的开源 Geist Web 字体属于前端资源，不用于正式文档排版。
 
 模板引擎来自 `SZTU_DOCS_PACKAGING_TEMPLATE_ROOT` 指向的受信任本地模板工程；未设置时只在

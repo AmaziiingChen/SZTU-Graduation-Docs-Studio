@@ -14,4 +14,4 @@ M0 使用 [M0_REPOSITORY_GOVERNANCE_TEMPLATE.md](M0_REPOSITORY_GOVERNANCE_TEMPLA
 
 2026-09 至 2026-11 的基线、软件审查、源码审计、发布交接与开发清单等时点记录也归档在本目录，包括 [工程基线](BASELINE_20260921.md)、[软件审查](SOFTWARE_REVIEW_20261003.md)、[软件修复](SOFTWARE_FIXES_20261003.md)、[本地与远端源码审计](LOCAL_REMOTE_AUDIT_20261004.md)、[组件复用审计](FRONTEND_COMPONENT_REUSE_AUDIT.md)、[0.1.6 发布交接](RELEASE_HANDOFF_0.1.6.md)、[Windows 0.1.14 故障排查交接](WINDOWS_FAILURE_HANDOFF_2026-11-16.md)、[0.1.14 构建交接](RELEASE_HANDOFF_0.1.14_WINDOWS.md)和[完整开发清单](DEVELOPMENT_CHECKLIST.md)。
 
-逐版发布记录见 `RELEASE_0.1.*.md`（最新为 [0.1.19](RELEASE_0.1.19.md)）。论文工作台早期实现记录见 [THESIS_WORKBENCH.md](THESIS_WORKBENCH.md)；6 份已完成的实现规格（需求、设计、任务）归档在 [specs/](specs/) 下。
+逐版发布记录见 `RELEASE_0.*.md`（最新为 [0.2.0](RELEASE_0.2.0.md)）。论文工作台早期实现记录见 [THESIS_WORKBENCH.md](THESIS_WORKBENCH.md)；6 份已完成的实现规格（需求、设计、任务）归档在 [specs/](specs/) 下。
