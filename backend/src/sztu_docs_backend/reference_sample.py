@@ -21,7 +21,6 @@ SAMPLE_DOCUMENTS: dict[str, str] = {
     "task_book": "任务书",
     "proposal": "开题报告",
     "midterm": "中期检查",
-    "thesis": "毕业论文",
     "advisor_review": "指导教师评审表",
     "reviewer_review": "评阅人评审表",
     "defense_record": "答辩记录表",
@@ -71,20 +70,11 @@ def _load_sample() -> dict[str, Any]:
     return json.loads((SAMPLE_DIRECTORY / "reference.json").read_text(encoding="utf-8"))
 
 
-# The thesis body editor is not wired into the workbench yet; keep the thesis
-# sample in the bundled data so it starts working as soon as the editor lands.
-DEFERRED_DOCUMENT_TYPES = frozenset({"thesis"})
-
-
 def bundled_document_types() -> tuple[str, ...]:
     """Return the document types the bundled sample data can currently install."""
 
     documents = _load_sample()["documents"]
-    return tuple(
-        document_type
-        for document_type in SAMPLE_DOCUMENTS
-        if document_type in documents and document_type not in DEFERRED_DOCUMENT_TYPES
-    )
+    return tuple(document_type for document_type in SAMPLE_DOCUMENTS if document_type in documents)
 
 
 def _apply_identity(content: dict[str, Any], profile: dict[str, Any]) -> None:
@@ -182,11 +172,7 @@ def install_reference_sample(workspace: Workspace) -> dict[str, Any]:
     sample = _load_sample()
     available = sample.get("documents", {})
     existing = _sample_titles(database.connection)
-    bundled = [
-        document_type
-        for document_type in SAMPLE_DOCUMENTS
-        if document_type in available and document_type not in DEFERRED_DOCUMENT_TYPES
-    ]
+    bundled = [document_type for document_type in SAMPLE_DOCUMENTS if document_type in available]
     skipped = [
         document_type
         for document_type in bundled

@@ -178,16 +178,13 @@ class ReferenceSampleTests(unittest.TestCase):
                 session.close()
 
 
-    def test_thesis_sample_waits_until_the_editor_is_wired(self) -> None:
-        self.assertIn("thesis", reference_sample_module._load_sample()["documents"])
-        self.assertNotIn("thesis", bundled_document_types())
-        installed = install_reference_sample(self.workspace)
-        self.assertNotIn("thesis", installed["installed"])
-        self.assertNotIn("thesis", installed["skipped"])
-        self.assertNotIn(
-            "thesis",
-            {item["document_type"] for item in self.workspace.list_documents()},
-        )
+    def test_bundled_sample_matches_the_installable_document_types(self) -> None:
+        # 论文正文编辑器不做，演示资料里也不放论文样例；这里锁住两边的口径一致，
+        # 避免 reference.json 与安装器清单再次漂移。
+        documents = reference_sample_module._load_sample()["documents"]
+        self.assertNotIn("thesis", documents)
+        self.assertEqual(set(documents), set(bundled_document_types()))
+        self.assertEqual(list(documents), list(reference_sample_module.SAMPLE_DOCUMENTS))
 
     def test_install_can_be_repeated_without_duplicates(self) -> None:
         first = install_reference_sample(self.workspace)

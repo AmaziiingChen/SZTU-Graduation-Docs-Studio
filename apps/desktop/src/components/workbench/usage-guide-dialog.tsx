@@ -94,7 +94,7 @@ export function UsageGuideDialog({
               演示资料
             </p>
             <p className="text-sm text-muted-foreground">
-              载入后会新增标题以「参考样例·」开头的文档，覆盖任务书、开题报告、中期检查与四类评审表；不会改动你自己已有的文档。论文样例的结构保留在数据里，正文编辑开放后自动出现。
+              载入后会新增标题以「参考样例·」开头的文档，覆盖任务书、开题报告、中期检查与四类评审表；不会改动你自己已有的文档。
             </p>
             <div className="flex flex-wrap items-center gap-2">
               <Button type="button" disabled={sampleBusy} onClick={() => void install()}>
