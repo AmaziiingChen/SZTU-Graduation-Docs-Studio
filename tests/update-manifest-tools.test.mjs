@@ -119,6 +119,78 @@ test("creates a schema 2.0 manifest with signed release control", async () => {
   assert.doesNotMatch(publicKey, /PRIVATE KEY/)
 })
 
+test("creates a signed schema 3.0 manifest with release notices", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "sztu-notices-"))
+  const keys = await generateSigningKeyPair(path.join(directory, "keys"))
+  const manifest = await createSignedManifest({
+    version: "0.2.0",
+    publishedAt: "2026-11-26T00:00:00.000Z",
+    privateKeyPath: keys.privateKeyPath,
+    artifacts: [],
+    schemaVersion: "3.0",
+    control: {
+      update_policy: "optional",
+      minimum_supported_version: null,
+      service_status: "normal",
+      help_url: "https://example.com/guide",
+      announcement: null,
+      notices: [
+        {
+          id: "notice-maintenance",
+          title: "周末维护提醒",
+          body: "本周六晚八点进行服务维护。",
+          image_url: null,
+          severity: "important",
+          starts_at: "2026-11-26T00:00:00.000Z",
+          ends_at: null,
+          min_version: "0.2.0",
+          max_version: null,
+          actions: [
+            { id: "open-help", label: "查看说明", kind: "internal", target: "faq" },
+          ],
+        },
+      ],
+    },
+  })
+  const publicKey = await readFile(keys.publicKeyPath, "utf8")
+  assert.equal(manifest.payload.schema_version, "3.0")
+  assert.equal(manifest.payload.control.notices.length, 1)
+  assert.equal(
+    verify(
+      null,
+      Buffer.from(canonicalJson(manifest.payload), "utf8"),
+      publicKey,
+      Buffer.from(manifest.signature, "base64"),
+    ),
+    true,
+  )
+})
+
+test("rejects notices with unknown internal targets or unsafe image urls", async () => {
+  const { validateNotice } = await import("../scripts/create_update_manifest.mjs")
+  const base = {
+    id: "notice-1",
+    title: "标题",
+    body: "正文内容。",
+    image_url: null,
+    severity: "info",
+    starts_at: "2026-11-26T00:00:00.000Z",
+    ends_at: null,
+    min_version: null,
+    max_version: null,
+    actions: [],
+  }
+  assert.doesNotThrow(() => validateNotice(base))
+  assert.throws(
+    () => validateNotice({ ...base, actions: [{ id: "a", label: "打开", kind: "internal", target: "download" }] }),
+    /目标不受支持/,
+  )
+  assert.throws(
+    () => validateNotice({ ...base, image_url: "http://example.com/a.png" }),
+    /HTTPS/,
+  )
+})
+
 test("creates a signed control-only manifest without an installer", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "sztu-control-only-"))
   const keys = await generateSigningKeyPair(path.join(directory, "keys"))

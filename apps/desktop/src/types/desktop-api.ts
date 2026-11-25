@@ -124,6 +124,26 @@ export type ReleaseAnnouncement = {
   dismissible: boolean
 }
 
+export type NoticeAction = {
+  id: string
+  label: string
+  kind: "external" | "internal"
+  target: string
+}
+
+export type ReleaseNotice = {
+  id: string
+  title: string
+  body: string
+  imageUrl: string | null
+  severity: "info" | "important" | "critical"
+  startsAt: string
+  endsAt: string | null
+  minVersion: string | null
+  maxVersion: string | null
+  actions: NoticeAction[]
+}
+
 export type ReleaseControl = {
   updatePolicy: "optional" | "recommended" | "required"
   minimumSupportedVersion: string | null
@@ -131,6 +151,7 @@ export type ReleaseControl = {
   serviceStatus: "normal" | "maintenance" | "retired"
   helpUrl: string | null
   announcement: ReleaseAnnouncement | null
+  notices: ReleaseNotice[]
 }
 
 export type MidtermDateRule = {
@@ -559,6 +580,7 @@ export type SztuDesktopApi = {
   revealDownloadedUpdate: () => Promise<null>
   installUpdate: () => Promise<null>
   openReleaseHelp: () => Promise<null>
+  openExternalUrl: (url: string) => Promise<null>
   openToolLink: (toolId: ToolLinkId) => Promise<null>
   writeClipboardText: (text: string) => Promise<null>
   writeClipboardPng: (dataUrl: string) => Promise<null>

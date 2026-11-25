@@ -17,13 +17,98 @@ function exactKeys(value, keys) {
     keys.every((key) => key in value)
 }
 
-export function validateReleaseControl(value) {
+const INTERNAL_NOTICE_TARGETS = new Set(["guide", "release-notes", "faq", "settings"])
+
+export function validateNotice(value) {
+  const keys = [
+    "id",
+    "title",
+    "body",
+    "image_url",
+    "severity",
+    "starts_at",
+    "ends_at",
+    "min_version",
+    "max_version",
+    "actions",
+  ]
+  if (
+    !exactKeys(value, keys) ||
+    typeof value.id !== "string" ||
+    !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/.test(value.id) ||
+    typeof value.title !== "string" ||
+    value.title.trim().length < 1 ||
+    value.title.length > 80 ||
+    typeof value.body !== "string" ||
+    value.body.trim().length < 1 ||
+    value.body.length > 4_000 ||
+    !["info", "important", "critical"].includes(value.severity) ||
+    typeof value.starts_at !== "string" ||
+    !Number.isFinite(Date.parse(value.starts_at)) ||
+    !(
+      value.ends_at === null ||
+      (typeof value.ends_at === "string" && Number.isFinite(Date.parse(value.ends_at)))
+    ) ||
+    !(
+      value.min_version === null ||
+      (typeof value.min_version === "string" && SEMVER_PATTERN.test(value.min_version))
+    ) ||
+    !(
+      value.max_version === null ||
+      (typeof value.max_version === "string" && SEMVER_PATTERN.test(value.max_version))
+    ) ||
+    !Array.isArray(value.actions) ||
+    value.actions.length > 4
+  ) {
+    throw new Error("消息格式无效。")
+  }
+  if (value.ends_at !== null && new Date(value.ends_at) <= new Date(value.starts_at)) {
+    throw new Error("消息结束时间必须晚于开始时间。")
+  }
+  if (value.image_url !== null) {
+    const parsed = new URL(value.image_url)
+    if (parsed.protocol !== "https:" || parsed.username || parsed.password) {
+      throw new Error("消息图片必须是无凭据的 HTTPS 地址。")
+    }
+  }
+  const actionIds = new Set()
+  for (const action of value.actions) {
+    if (
+      !exactKeys(action, ["id", "label", "kind", "target"]) ||
+      typeof action.id !== "string" ||
+      !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/.test(action.id) ||
+      actionIds.has(action.id) ||
+      typeof action.label !== "string" ||
+      action.label.trim().length < 1 ||
+      action.label.length > 40 ||
+      !["external", "internal"].includes(action.kind) ||
+      typeof action.target !== "string"
+    ) {
+      throw new Error("消息按钮格式无效。")
+    }
+    actionIds.add(action.id)
+    if (action.kind === "internal") {
+      if (!INTERNAL_NOTICE_TARGETS.has(action.target)) {
+        throw new Error(`消息按钮目标不受支持：${action.target}`)
+      }
+      continue
+    }
+    const parsed = new URL(action.target)
+    if (parsed.protocol !== "https:" || parsed.username || parsed.password) {
+      throw new Error("消息按钮外链必须是无凭据的 HTTPS 地址。")
+    }
+  }
+  return value
+}
+
+export function validateReleaseControl(value, schemaVersion = "2.0") {
   const keys = [
     "update_policy",
     "minimum_supported_version",
     "service_status",
     "help_url",
     "announcement",
+    ...(schemaVersion === "3.0" ? ["notices"] : []),
   ]
   if (
     !exactKeys(value, keys) ||
@@ -35,6 +120,17 @@ export function validateReleaseControl(value) {
     !(value.help_url === null || typeof value.help_url === "string")
   ) {
     throw new Error("远程发布策略格式无效。")
+  }
+  if (schemaVersion === "3.0") {
+    if (!Array.isArray(value.notices) || value.notices.length > 20) {
+      throw new Error("消息列表无效。")
+    }
+    const ids = new Set()
+    for (const notice of value.notices) {
+      validateNotice(notice)
+      if (ids.has(notice.id)) throw new Error(`消息 id 重复：${notice.id}`)
+      ids.add(notice.id)
+    }
   }
   if (value.help_url !== null) {
     const parsed = new URL(value.help_url)
@@ -110,6 +206,8 @@ function parseArguments(argv) {
     else if (name === "--private-key") values.privateKey = value
     else if (name === "--output") values.output = value
     else if (name === "--control") values.control = value
+    else if (name === "--schema") values.schema = value
+    else if (name === "--notices") values.notices = value
     else throw new Error(`不支持的参数：${name}`)
   }
   if (!values.version || !SEMVER_PATTERN.test(values.version)) {
@@ -117,6 +215,15 @@ function parseArguments(argv) {
   }
   if (!values.privateKey || !values.output || (!values.control && values.artifacts.length === 0)) {
     throw new Error("必须提供 --private-key、--output，并提供 --control 或至少一个 --artifact。")
+  }
+  if (values.schema !== undefined && !["2.0", "3.0"].includes(values.schema)) {
+    throw new Error("--schema 只支持 2.0 或 3.0。")
+  }
+  if ((values.schema || values.notices) && !values.control) {
+    throw new Error("--schema 与 --notices 只能与 --control 一起使用。")
+  }
+  if (values.notices && values.schema === "2.0") {
+    throw new Error("--notices 需要 --schema 3.0。")
   }
   const publishedAt = values.publishedAt ?? new Date().toISOString()
   if (!Number.isFinite(Date.parse(publishedAt))) {
@@ -164,12 +271,14 @@ export async function createSignedManifest(input) {
     })
   }
   const payload = {
-    schema_version: input.control ? "2.0" : "1.0",
+    schema_version: input.control ? (input.schemaVersion ?? "2.0") : "1.0",
     channel: "stable",
     version: input.version,
     published_at: input.publishedAt,
     artifacts,
-    ...(input.control ? { control: validateReleaseControl(input.control) } : {}),
+    ...(input.control
+      ? { control: validateReleaseControl(input.control, input.schemaVersion ?? "2.0") }
+      : {}),
   }
   const privateKey = createPrivateKey(await readFile(input.privateKeyPath, "utf8"))
   if (privateKey.asymmetricKeyType !== "ed25519") {
@@ -190,12 +299,20 @@ export async function main(argv = process.argv.slice(2)) {
   const control = arguments_.control
     ? JSON.parse(await readFile(path.resolve(arguments_.control), "utf8"))
     : undefined
+  const schemaVersion = arguments_.schema ?? (control ? "2.0" : undefined)
+  if (control && arguments_.notices) {
+    control.notices = JSON.parse(await readFile(path.resolve(arguments_.notices), "utf8"))
+  }
+  if (control && schemaVersion === "3.0" && !Array.isArray(control.notices)) {
+    control.notices = []
+  }
   const manifest = await createSignedManifest({
     version: arguments_.version,
     publishedAt: arguments_.publishedAt,
     privateKeyPath: path.resolve(arguments_.privateKey),
     artifacts,
     control,
+    schemaVersion,
   })
   await mkdir(path.dirname(outputPath), { recursive: true })
   await writeFile(outputPath, `${JSON.stringify(manifest, null, 2)}\n`, {

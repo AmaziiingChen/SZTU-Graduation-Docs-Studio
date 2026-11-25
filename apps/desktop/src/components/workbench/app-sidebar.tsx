@@ -3,7 +3,7 @@ import { RocketIcon } from "@/components/ui/rocket"
 import { QrCodeIcon } from "@/components/ui/qr-code-icon"
 import { DownloadIcon } from "@/components/ui/download"
 import { PaletteIcon } from "@/components/ui/palette"
-import { HelpCircleIcon } from "lucide-react"
+import { BellIcon, HelpCircleIcon } from "lucide-react"
 import * as React from "react"
 
 import maintainerWechatQr from "@/assets/maintainer-wechat-qr.jpg"
@@ -56,6 +56,8 @@ export function AppSidebar({
   onLoadMoreDocuments,
   onSelectProfile,
   onSelectHelp,
+  onSelectMessages,
+  noticeUnreadCount,
   onSelectTools,
   onSelectAppearance,
   onSelectInspection,
@@ -92,6 +94,8 @@ export function AppSidebar({
   onLoadMoreDocuments?: (deleted: boolean) => Promise<void>
   onSelectProfile: () => void
   onSelectHelp: () => void
+  onSelectMessages: () => void
+  noticeUnreadCount?: number
   onSelectTools: () => void
   onSelectAppearance: () => void
   onSelectInspection: () => void
@@ -180,6 +184,21 @@ export function AppSidebar({
               </SidebarMenuButton>
             </SidebarMenuItem>
           ) : null}
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              tooltip="消息中心"
+              className="pl-8"
+              onClick={() => finishNavigation(onSelectMessages)}
+            >
+              <BellIcon className="mr-2 size-4" aria-hidden="true" />
+              <span>消息中心</span>
+              {(noticeUnreadCount ?? 0) > 0 ? (
+                <span className="ml-auto rounded-full bg-primary px-1.5 text-[10px] font-medium leading-4 text-primary-foreground">
+                  {noticeUnreadCount}
+                </span>
+              ) : null}
+            </SidebarMenuButton>
+          </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
               tooltip="效率工具"

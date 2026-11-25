@@ -35,7 +35,7 @@ import {
 } from "@/data/help-content"
 import { cn } from "@/lib/utils"
 
-type HelpTab = "help" | "shortcuts" | "releases"
+export type HelpTab = "help" | "shortcuts" | "releases"
 
 const TAB_LABELS: Array<{ id: HelpTab; label: string }> = [
   { id: "help", label: "常见问题" },
@@ -61,6 +61,7 @@ export type HelpCenterDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   initialArticleId?: string | null
+  initialTab?: HelpTab | null
   demoBusy?: boolean
   onInstallDemo: () => void | Promise<void>
   onRemoveDemo: () => void | Promise<void>
@@ -73,6 +74,7 @@ export function HelpCenterDialog({
   open,
   onOpenChange,
   initialArticleId,
+  initialTab,
   demoBusy = false,
   onInstallDemo,
   onRemoveDemo,
@@ -101,8 +103,11 @@ export function HelpCenterDialog({
       : results.filter((hit) => hit.article.category === categoryId)
   }, [categoryId, query])
 
-  const handleOpenChange = (next: boolean) => {
-    if (!next) {
+  React.useEffect(() => {
+    if (open && initialTab) setTab(initialTab)
+  }, [initialTab, open])
+
+  const handleOpenChange = (next: boolean) => {    if (!next) {
       setSelectedArticleId(null)
       setQuery("")
       setCategoryId("all")

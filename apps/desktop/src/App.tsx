@@ -46,6 +46,7 @@ import { DiagnosticSupport } from "@/components/workbench/diagnostic-support"
 import { EnvironmentOnboardingDialog } from "@/components/workbench/environment-onboarding-dialog"
 import { FirstRunTour } from "@/components/workbench/first-run-tour"
 import { HelpCenterDialog } from "@/components/workbench/help-center-dialog"
+import { MessageCenterDialog } from "@/components/workbench/message-center-dialog"
 import { FeedbackDialog } from "@/components/workbench/feedback-dialog"
 import { AboutDialog } from "@/components/workbench/about-dialog"
 import { ExportHistoryStatusBadge } from "@/components/workbench/export-history-status-badge"
@@ -188,6 +189,7 @@ import type {
   JsonObject,
   MidtermDatePolicyStatus,
   MidtermDateRule,
+  NoticeAction,
   PreviewResult,
   StudentProfile,
   StudentProfileDraft,
@@ -201,6 +203,8 @@ import type {
 } from "@/types/desktop-api"
 import type { ToolLinkId } from "@/types/desktop-api"
 import { wrapDesktopApi } from "@/lib/desktop-errors"
+import { activeNotices, loadReadNoticeIds, markNoticeRead, unreadCount } from "@/lib/messages"
+import type { HelpTab } from "@/components/workbench/help-center-dialog"
 import { disableSafeMode } from "@/lib/safe-mode"
 import type {
   ParagraphInput,
@@ -3474,10 +3478,53 @@ export default function App({ safeMode = false }: { safeMode?: boolean } = {}) {
   const [feedbackOpen, setFeedbackOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
   const [helpArticleId, setHelpArticleId] = useState<string | null>(null)
+  const [helpTab, setHelpTab] = useState<HelpTab | null>(null)
   const [demoBusy, setDemoBusy] = useState(false)
+  const [messagesOpen, setMessagesOpen] = useState(false)
+  const [appVersion, setAppVersion] = useState("")
+  const [readNoticeIds, setReadNoticeIds] = useState<string[]>(() => loadReadNoticeIds())
   const openHelp = useCallback((articleId: string | null = null) => {
     setHelpArticleId(articleId)
+    setHelpTab(null)
     setHelpOpen(true)
+  }, [])
+  const openHelpTab = useCallback((tab: HelpTab) => {
+    setHelpTab(tab)
+    setHelpArticleId(null)
+    setHelpOpen(true)
+  }, [])
+  const openMessages = useCallback(() => setMessagesOpen(true), [])
+  const markNoticeAsRead = useCallback((noticeId: string) => {
+    setReadNoticeIds((current) => markNoticeRead(current, noticeId))
+  }, [])
+  const handleNoticeAction = useCallback(
+    async (action: NoticeAction) => {
+      setMessagesOpen(false)
+      if (action.kind === "external") {
+        const api = getDesktopApi()
+        if (!api) return
+        try {
+          await api.openExternalUrl(action.target)
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : "打开链接失败，请重试。")
+        }
+        return
+      }
+      if (action.target === "settings") {
+        setActivePane("appearance")
+        return
+      }
+      openHelpTab(action.target === "release-notes" ? "releases" : "help")
+    },
+    [openHelpTab],
+  )
+  useEffect(() => {
+    const api = getDesktopApi()
+    if (!api) return
+    void api
+      .getAppInfo()
+      .then((info) => setAppVersion(info.appVersion))
+      .catch(() => undefined)
   }, [])
   const profileRef = useRef<StudentProfile | null>(null)
   const [document, setDocument] = useState<DocumentRecord | null>(null)
@@ -3541,6 +3588,18 @@ export default function App({ safeMode = false }: { safeMode?: boolean } = {}) {
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({
     state: "unconfigured",
   })
+  const visibleNotices = useMemo(
+    () =>
+      activeNotices(
+        "control" in updateStatus ? (updateStatus.control?.notices ?? []) : [],
+        appVersion || "0.0.0",
+      ),
+    [appVersion, updateStatus],
+  )
+  const noticeUnreadCount = useMemo(
+    () => unreadCount(visibleNotices, readNoticeIds),
+    [readNoticeIds, visibleNotices],
+  )
   const [midtermDatePolicyStatus, setMidtermDatePolicyStatus] = useState<MidtermDatePolicyStatus>({
     state: "unconfigured",
     rules: [],
@@ -5562,6 +5621,8 @@ export default function App({ safeMode = false }: { safeMode?: boolean } = {}) {
         onLoadMoreDocuments={loadMoreDocuments}
         onSelectProfile={() => setActivePane("profile")}
         onSelectHelp={() => openHelp()}
+        onSelectMessages={openMessages}
+        noticeUnreadCount={noticeUnreadCount}
         onSelectTools={() => setActivePane("tools")}
         onSelectAppearance={() => setActivePane("appearance")}
         onSelectInspection={() => setActivePane("inspection")}
@@ -5748,6 +5809,7 @@ export default function App({ safeMode = false }: { safeMode?: boolean } = {}) {
         open={helpOpen}
         onOpenChange={setHelpOpen}
         initialArticleId={helpArticleId}
+        initialTab={helpTab}
         demoBusy={demoBusy}
         onInstallDemo={installDemoDocuments}
         onRemoveDemo={removeDemoDocuments}
@@ -5757,6 +5819,14 @@ export default function App({ safeMode = false }: { safeMode?: boolean } = {}) {
         }}
         onOpenFeedback={() => setFeedbackOpen(true)}
         onOpenAbout={() => setAboutOpen(true)}
+      />
+      <MessageCenterDialog
+        open={messagesOpen}
+        onOpenChange={setMessagesOpen}
+        notices={visibleNotices}
+        readIds={readNoticeIds}
+        onMarkRead={markNoticeAsRead}
+        onAction={(action) => void handleNoticeAction(action)}
       />
       <FeedbackDialog open={feedbackOpen} onOpenChange={setFeedbackOpen} />
       <AboutDialog

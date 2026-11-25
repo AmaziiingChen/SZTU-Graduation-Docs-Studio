@@ -439,6 +439,8 @@ function mockApi(): SztuDesktopApi {
       total: 1287,
     }),
     getUpdateStatus: vi.fn().mockResolvedValue({ state: "unconfigured" }),
+    openReleaseHelp: vi.fn().mockResolvedValue(null),
+    openExternalUrl: vi.fn().mockResolvedValue(null),
     downloadUpdate: vi.fn().mockResolvedValue({ state: "unconfigured" }),
     installUpdate: vi.fn().mockResolvedValue(null),
     getMidtermDatePolicyStatus: vi.fn().mockResolvedValue({ state: "unconfigured", rules: [] }),
@@ -1026,6 +1028,50 @@ describe("M3 workbench persistence", () => {
       }),
     )
     expect(await within(dialog).findByText(/反馈编号/)).toBeInTheDocument()
+  })
+
+  it("shows unread notices in the message center and routes internal actions to help", async () => {
+    const api = mockApi()
+    vi.mocked(api.getUpdateStatus).mockResolvedValue({
+      state: "up_to_date",
+      checkedAt: "2026-11-26T00:00:00Z",
+      control: {
+        updatePolicy: "optional",
+        minimumSupportedVersion: null,
+        requiresUpgrade: false,
+        serviceStatus: "normal",
+        helpUrl: null,
+        announcement: null,
+        notices: [
+          {
+            id: "notice-maintenance",
+            title: "周末维护提醒",
+            body: "本周六晚八点进行服务维护，期间更新检查可能短暂不可用。",
+            imageUrl: null,
+            severity: "important",
+            startsAt: "2026-01-01T00:00:00Z",
+            endsAt: "2030-01-01T00:00:00Z",
+            minVersion: null,
+            maxVersion: null,
+            actions: [{ id: "notice-help", label: "查看说明", kind: "internal", target: "faq" }],
+          },
+        ],
+      },
+    })
+    installApi(api)
+    renderApp()
+
+    const messagesButton = await screen.findByRole("button", { name: /消息中心/ })
+    await waitFor(() => expect(messagesButton).toHaveTextContent("1"))
+    fireEvent.click(messagesButton)
+    const dialog = await screen.findByRole("dialog", { name: "消息中心" })
+    expect(within(dialog).getByText("周末维护提醒")).toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole("button", { name: /周末维护提醒/ }))
+    expect(within(dialog).getByText(/本周六晚八点进行服务维护/)).toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole("button", { name: "查看说明" }))
+    expect(await screen.findByRole("dialog", { name: "帮助与支持" })).toBeInTheDocument()
+    expect(screen.queryByRole("dialog", { name: "消息中心" })).not.toBeInTheDocument()
+    await waitFor(() => expect(messagesButton).not.toHaveTextContent("1"))
   })
 
   it("downloads the bundled thesis template without changing the document or requiring a preview", async () => {

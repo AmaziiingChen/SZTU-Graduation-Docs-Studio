@@ -55,6 +55,7 @@
 SZTU_TELEMETRY_ENDPOINT=https://amazingapp-d5giro9ac73398410-1412347033.ap-shanghai.app.tcloudbase.com/api/telemetry/v1/events
 SZTU_DIAGNOSTIC_ENDPOINT=https://amazingapp-d5giro9ac73398410-1412347033.ap-shanghai.app.tcloudbase.com/api/diagnostics/v1/reports
 SZTU_UPDATE_MANIFEST_URL=https://downloads.example.com/stable/manifest.json
+SZTU_UPDATE_MANIFEST_URL_V2=https://downloads.example.com/stable/manifest-v3.json
 SZTU_UPDATE_PUBLIC_KEY_PEM=-----BEGIN PUBLIC KEY-----...-----END PUBLIC KEY-----
 SZTU_MIDTERM_DATE_POLICY_URL=https://downloads.example.com/stable/midterm-date-policy.json
 ```
@@ -66,6 +67,7 @@ SZTU_MIDTERM_DATE_POLICY_URL=https://downloads.example.com/stable/midterm-date-p
   "telemetry_endpoint": "https://amazingapp-d5giro9ac73398410-1412347033.ap-shanghai.app.tcloudbase.com/api/telemetry/v1/events",
   "diagnostic_endpoint": "https://amazingapp-d5giro9ac73398410-1412347033.ap-shanghai.app.tcloudbase.com/api/diagnostics/v1/reports",
   "update_manifest_url": "https://downloads.example.com/stable/manifest.json",
+  "update_manifest_url_v2": "https://downloads.example.com/stable/manifest-v3.json",
   "midterm_date_policy_url": "https://downloads.example.com/stable/midterm-date-policy.json",
   "update_public_key_pem": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----\n"
 }
@@ -140,6 +142,12 @@ corepack pnpm update:manifest -- \
 公告会阻止进入工作台。无网络时不会把未验证的远程内容当作指令执行。
 
 旧版 1.0 清单继续兼容，其行为等同于可选更新且没有公告或停用策略。
+
+### 消息中心（清单 3.0）
+
+3.0 清单在 2.0 的 `control` 上增加 `notices` 数组，用于应用内消息中心：标题、正文、可选 HTTPS 图片、级别、生效/失效时间、适配的版本区间，以及最多 4 个按钮。按钮分两类：`external` 必须是 HTTPS 外链，`internal` 只接受 `guide`、`faq`、`release-notes`、`settings` 四个应用内目标。客户端仍先读 2.0 兼容地址，失败后回退；配置了独立的 3.0 清单地址时优先读取 3.0 清单，读取或校验失败自动退回 2.0 清单。消息只随更新检查下发，不额外发起查询请求；客户端按时间与版本过滤，已读状态仅保存在本机（最多 200 条）。
+
+配置了 3.0 清单时，在发布配置中增加 `update_manifest_url_v2`；未配置的旧安装包继续使用原有地址，因此线上可同时保留 2.0（旧客户端）与 3.0（新客户端）两份清单。生成方式：`corepack pnpm update:manifest -- --schema 3.0 --notices /安全位置/notices.json ...`；`notices.json` 为通知数组，工具按与客户端相同的严格规则校验并签名。
 
 开发构建可以在未配置远程服务时确认并继续，此时不会产生外部请求。正式构建若缺少遥测接收端、更新清单 URL 或公钥，会停在首次说明页并只允许退出，避免发布出一个名义上强制、实际上没有数据通道或安全更新源的版本。
 

@@ -12,6 +12,10 @@ const STALL_TIMEOUT_MS = 45_000
 const MAX_ARTIFACT_BYTES = 1024 * 1024 * 1024
 const MAX_NOTICE_TITLE_LENGTH = 80
 const MAX_NOTICE_BODY_LENGTH = 1_000
+const MAX_MESSAGE_COUNT = 20
+const MAX_MESSAGE_BODY_LENGTH = 4_000
+const MAX_MESSAGE_ACTIONS = 4
+const INTERNAL_MESSAGE_TARGETS = new Set(["guide", "release-notes", "faq", "settings"])
 const SEMVER_PATTERN = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/
 const SHA256_PATTERN = /^[a-f0-9]{64}$/
 
@@ -71,6 +75,26 @@ export type ReleaseAnnouncement = {
   dismissible: boolean
 }
 
+export type NoticeAction = {
+  id: string
+  label: string
+  kind: "external" | "internal"
+  target: string
+}
+
+export type ReleaseNotice = {
+  id: string
+  title: string
+  body: string
+  imageUrl: string | null
+  severity: "info" | "important" | "critical"
+  startsAt: string
+  endsAt: string | null
+  minVersion: string | null
+  maxVersion: string | null
+  actions: NoticeAction[]
+}
+
 export type ReleaseControl = {
   updatePolicy: "optional" | "recommended" | "required"
   minimumSupportedVersion: string | null
@@ -78,6 +102,7 @@ export type ReleaseControl = {
   serviceStatus: "normal" | "maintenance" | "retired"
   helpUrl: string | null
   announcement: ReleaseAnnouncement | null
+  notices: ReleaseNotice[]
 }
 
 export type UpdateStatus =
@@ -99,7 +124,7 @@ type UpdateArtifact = {
 }
 
 export type UpdateManifestPayload = {
-  schema_version: "1.0" | "2.0"
+  schema_version: "1.0" | "2.0" | "3.0"
   channel: "stable"
   version: string
   published_at: string
@@ -118,6 +143,18 @@ export type UpdateManifestPayload = {
       ends_at: string | null
       dismissible: boolean
     } | null
+    notices?: {
+      id: string
+      title: string
+      body: string
+      image_url: string | null
+      severity: "info" | "important" | "critical"
+      starts_at: string
+      ends_at: string | null
+      min_version: string | null
+      max_version: string | null
+      actions: { id: string; label: string; kind: "external" | "internal"; target: string }[]
+    }[]
   }
 }
 
@@ -184,20 +221,133 @@ function validOptionalHttpsUrl(value: unknown): string | null {
   return validArtifactUrl(value)
 }
 
+function parseNoticeActions(value: unknown): NoticeAction[] {
+  if (!Array.isArray(value) || value.length > MAX_MESSAGE_ACTIONS) {
+    throw new Error("Release message actions are invalid.")
+  }
+  return value.map((raw): NoticeAction => {
+    if (
+      !isObject(raw) ||
+      !exactKeys(raw, ["id", "label", "kind", "target"]) ||
+      typeof raw.id !== "string" ||
+      !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/.test(raw.id) ||
+      typeof raw.label !== "string" ||
+      raw.label.trim().length < 1 ||
+      raw.label.length > 40 ||
+      (raw.kind !== "external" && raw.kind !== "internal")
+    ) {
+      throw new Error("Release message action is invalid.")
+    }
+    const target = raw.target
+    if (typeof target !== "string") throw new Error("Release message action target is invalid.")
+    if (raw.kind === "external") {
+      return { id: raw.id, label: raw.label.trim(), kind: "external", target: validArtifactUrl(target) }
+    }
+    if (!INTERNAL_MESSAGE_TARGETS.has(target)) {
+      throw new Error("Release message internal target is invalid.")
+    }
+    return { id: raw.id, label: raw.label.trim(), kind: "internal", target }
+  })
+}
+
+function parseNotices(value: unknown): ReleaseNotice[] {
+  if (!Array.isArray(value) || value.length > MAX_MESSAGE_COUNT) {
+    throw new Error("Release messages are invalid.")
+  }
+  const seen = new Set<string>()
+  return value.map((raw): ReleaseNotice => {
+    if (
+      !isObject(raw) ||
+      !exactKeys(raw, [
+        "id",
+        "title",
+        "body",
+        "image_url",
+        "severity",
+        "starts_at",
+        "ends_at",
+        "min_version",
+        "max_version",
+        "actions",
+      ]) ||
+      typeof raw.id !== "string" ||
+      !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/.test(raw.id) ||
+      seen.has(raw.id) ||
+      typeof raw.title !== "string" ||
+      raw.title.trim().length < 1 ||
+      raw.title.length > MAX_NOTICE_TITLE_LENGTH ||
+      typeof raw.body !== "string" ||
+      raw.body.trim().length < 1 ||
+      raw.body.length > MAX_MESSAGE_BODY_LENGTH ||
+      !["info", "important", "critical"].includes(String(raw.severity)) ||
+      typeof raw.starts_at !== "string" ||
+      !Number.isFinite(Date.parse(raw.starts_at)) ||
+      !(
+        raw.ends_at === null ||
+        (typeof raw.ends_at === "string" && Number.isFinite(Date.parse(raw.ends_at)))
+      ) ||
+      !(
+        raw.min_version === null ||
+        (typeof raw.min_version === "string" && SEMVER_PATTERN.test(raw.min_version))
+      ) ||
+      !(
+        raw.max_version === null ||
+        (typeof raw.max_version === "string" && SEMVER_PATTERN.test(raw.max_version))
+      )
+    ) {
+      throw new Error("Release message is invalid.")
+    }
+    seen.add(raw.id)
+    const startsAt = new Date(raw.starts_at)
+    const endsAt = raw.ends_at === null ? null : new Date(raw.ends_at as string)
+    if (endsAt && endsAt <= startsAt) throw new Error("Release message time range is invalid.")
+    let imageUrl: string | null = null
+    if (raw.image_url !== null) {
+      if (typeof raw.image_url !== "string") throw new Error("Release message image is invalid.")
+      imageUrl = validArtifactUrl(raw.image_url)
+    }
+    return {
+      id: raw.id,
+      title: raw.title.trim(),
+      body: raw.body.trim(),
+      imageUrl,
+      severity: raw.severity as ReleaseNotice["severity"],
+      startsAt: startsAt.toISOString(),
+      endsAt: endsAt?.toISOString() ?? null,
+      minVersion: raw.min_version as string | null,
+      maxVersion: raw.max_version as string | null,
+      actions: parseNoticeActions(raw.actions),
+    }
+  })
+}
+
 function parseControl(
   value: unknown,
   currentVersion: string,
   now: Date,
+  schemaVersion: "2.0" | "3.0" = "2.0",
 ): ReleaseControl {
   if (
     !isObject(value) ||
-    !exactKeys(value, [
-      "update_policy",
-      "minimum_supported_version",
-      "service_status",
-      "help_url",
-      "announcement",
-    ]) ||
+    !exactKeys(
+      value,
+      schemaVersion === "3.0"
+        ? [
+            "update_policy",
+            "minimum_supported_version",
+            "service_status",
+            "help_url",
+            "announcement",
+            "notices",
+          ]
+        : [
+            "update_policy",
+            "minimum_supported_version",
+            "service_status",
+            "help_url",
+            "announcement",
+          ],
+    ) ||
     !["optional", "recommended", "required"].includes(String(value.update_policy)) ||
     !["normal", "maintenance", "retired"].includes(String(value.service_status)) ||
     !(
@@ -266,6 +416,7 @@ function parseControl(
     serviceStatus: value.service_status as ReleaseControl["serviceStatus"],
     helpUrl: validOptionalHttpsUrl(value.help_url),
     announcement,
+    notices: schemaVersion === "3.0" ? parseNotices(value.notices) : [],
   }
 }
 
@@ -298,12 +449,13 @@ export function parseAndVerifyManifest(
   const payload = value.payload
   if (!isObject(payload)) throw new Error("Manifest payload is invalid.")
   const schemaVersion = payload.schema_version
-  const expectedKeys = schemaVersion === "2.0"
-    ? ["schema_version", "channel", "version", "published_at", "artifacts", "control"]
-    : ["schema_version", "channel", "version", "published_at", "artifacts"]
+  const expectedKeys =
+    schemaVersion === "2.0" || schemaVersion === "3.0"
+      ? ["schema_version", "channel", "version", "published_at", "artifacts", "control"]
+      : ["schema_version", "channel", "version", "published_at", "artifacts"]
   if (
     !exactKeys(payload, expectedKeys) ||
-    (schemaVersion !== "1.0" && schemaVersion !== "2.0") ||
+    (schemaVersion !== "1.0" && schemaVersion !== "2.0" && schemaVersion !== "3.0") ||
     payload.channel !== "stable" ||
     typeof payload.version !== "string" ||
     !SEMVER_PATTERN.test(payload.version) ||
@@ -339,8 +491,8 @@ export function parseAndVerifyManifest(
       size_bytes: raw.size_bytes as number,
     }
   })
-  if (schemaVersion === "2.0") {
-    parseControl(payload.control, "0.0.0", new Date(0))
+  if (schemaVersion === "2.0" || schemaVersion === "3.0") {
+    parseControl(payload.control, "0.0.0", new Date(0), schemaVersion)
   }
   return {
     schema_version: schemaVersion,
@@ -348,7 +500,7 @@ export function parseAndVerifyManifest(
     version: payload.version,
     published_at: payload.published_at,
     artifacts,
-    ...(schemaVersion === "2.0"
+    ...(schemaVersion === "2.0" || schemaVersion === "3.0"
       ? { control: payload.control as UpdateManifestPayload["control"] }
       : {}),
   }
@@ -374,6 +526,7 @@ export class UpdateService {
       platform: NodeJS.Platform
       arch: string
       manifestUrl?: string
+      manifestUrlV2?: string
       publicKeyPem?: string
       fetchImpl?: FetchLike
       now?: () => Date
@@ -385,7 +538,7 @@ export class UpdateService {
     },
   ) {
     this.status =
-      options.manifestUrl && options.publicKeyPem
+      (options.manifestUrl || options.manifestUrlV2) && options.publicKeyPem
         ? { state: "idle" }
         : { state: "unconfigured" }
   }
@@ -400,7 +553,7 @@ export class UpdateService {
   }
 
   start(): void {
-    if (!this.options.manifestUrl || !this.options.publicKeyPem || this.timer) return
+    if ((!this.options.manifestUrl && !this.options.manifestUrlV2) || !this.options.publicKeyPem || this.timer) return
     void this.checkNow()
     this.timer = setInterval(() => void this.checkNow(), UPDATE_INTERVAL_MS)
     this.timer.unref()
@@ -430,7 +583,12 @@ export class UpdateService {
   }
 
   async checkNow(): Promise<UpdateStatus> {
-    if (!this.options.manifestUrl || !this.options.publicKeyPem || this.checking || this.downloading) {
+    if (
+      (!this.options.manifestUrl && !this.options.manifestUrlV2) ||
+      !this.options.publicKeyPem ||
+      this.checking ||
+      this.downloading
+    ) {
       return this.status
     }
     this.checking = true
@@ -443,24 +601,37 @@ export class UpdateService {
     const mark = (outcome: "success" | "failure", code?: string, reason?: string) =>
       this.options.onDiagnostic?.(outcome, Date.now() - started, code, { stage, request_id: requestId, ...(reason ? { reason } : {}) })
     try {
-      const bytes = await this.fetchWithTimeout(this.options.manifestUrl, 10_000, async (response, signal) => {
-        if (!response.ok || !response.body) throw new Error("Manifest request failed.")
-        const declaredLength = Number(response.headers.get("content-length") ?? "0")
-        if (declaredLength > MAX_MANIFEST_BYTES) throw new Error("Manifest is too large.")
-        const chunks: Uint8Array[] = []
-        let size = 0
-        const reader = response.body.getReader()
+      const manifestUrls = [this.options.manifestUrlV2, this.options.manifestUrl].filter(
+        (url): url is string => Boolean(url),
+      )
+      let bytes: Buffer | undefined
+      let fetchError: unknown
+      for (const url of manifestUrls) {
         try {
-          while (true) {
-            const chunk = await this.readChunk(reader, signal)
-            if (chunk.done) break
-            size += chunk.value.byteLength
-            if (size > MAX_MANIFEST_BYTES) throw new Error("Manifest is too large.")
-            chunks.push(chunk.value)
-          }
-          return Buffer.concat(chunks, size)
-        } finally { void reader.cancel().catch(() => undefined); reader.releaseLock() }
-      })
+          bytes = await this.fetchWithTimeout(url, 10_000, async (response, signal) => {
+            if (!response.ok || !response.body) throw new Error("Manifest request failed.")
+            const declaredLength = Number(response.headers.get("content-length") ?? "0")
+            if (declaredLength > MAX_MANIFEST_BYTES) throw new Error("Manifest is too large.")
+            const chunks: Uint8Array[] = []
+            let size = 0
+            const reader = response.body.getReader()
+            try {
+              while (true) {
+                const chunk = await this.readChunk(reader, signal)
+                if (chunk.done) break
+                size += chunk.value.byteLength
+                if (size > MAX_MANIFEST_BYTES) throw new Error("Manifest is too large.")
+                chunks.push(chunk.value)
+              }
+              return Buffer.concat(chunks, size)
+            } finally { void reader.cancel().catch(() => undefined); reader.releaseLock() }
+          })
+          break
+        } catch (error) {
+          fetchError = error
+        }
+      }
+      if (!bytes) throw fetchError ?? new Error("Manifest request failed.")
       mark("success")
       stage = "manifest_verify"
       started = Date.now()
@@ -477,12 +648,13 @@ export class UpdateService {
         return this.status
       }
       let control: ReleaseControl | undefined
-      if (manifest.schema_version === "2.0") {
+      if (manifest.schema_version === "2.0" || manifest.schema_version === "3.0") {
         try {
           control = parseControl(
             manifest.control,
             this.options.currentVersion,
             this.options.now?.() ?? new Date(),
+            manifest.schema_version,
           )
         } catch {
           mark("failure", "MANIFEST_INVALID")
@@ -494,7 +666,8 @@ export class UpdateService {
       mark("success")
       this.currentControl = control
       if (compareSemver(manifest.version, this.options.currentVersion) <= 0 ||
-          (manifest.schema_version === "2.0" && manifest.artifacts.length === 0)) {
+          ((manifest.schema_version === "2.0" || manifest.schema_version === "3.0") &&
+            manifest.artifacts.length === 0)) {
         this.availableUpdate = undefined
         this.setStatus({
           state: "up_to_date",

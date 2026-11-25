@@ -81,6 +81,7 @@ contextBridge.exposeInMainWorld("sztuDesktop", {
   revealDownloadedUpdate: () => invoke("sztu:update-reveal"),
   installUpdate: () => invoke("sztu:update-install"),
   openReleaseHelp: () => invoke("sztu:update-open-help"),
+  openExternalUrl: (url: string) => invoke("sztu:open-external-url", url),
   openToolLink: (toolId: unknown) => invoke("sztu:tool-open", toolId),
   writeClipboardText: (text: unknown) => invoke("sztu:clipboard-write-text", text),
   writeClipboardPng: (dataUrl: unknown) => invoke("sztu:clipboard-write-png", dataUrl),

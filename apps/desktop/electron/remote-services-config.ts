@@ -10,6 +10,7 @@ export type RemoteServicesConfig = {
   telemetryEndpoint?: string
   diagnosticEndpoint?: string
   updateManifestUrl?: string
+  updateManifestUrlV2?: string
   updatePublicKeyPem?: string
   midtermDatePolicyUrl?: string
 }
@@ -18,6 +19,7 @@ type RawRemoteServicesConfig = {
   telemetry_endpoint?: unknown
   diagnostic_endpoint?: unknown
   update_manifest_url?: unknown
+  update_manifest_url_v2?: unknown
   update_public_key_pem?: unknown
   midterm_date_policy_url?: unknown
 }
@@ -44,6 +46,7 @@ function parseConfig(
     "telemetry_endpoint",
     "diagnostic_endpoint",
     "update_manifest_url",
+    "update_manifest_url_v2",
     "update_public_key_pem",
     "midterm_date_policy_url",
   ])
@@ -62,6 +65,10 @@ function parseConfig(
     typeof raw.update_manifest_url === "string" && raw.update_manifest_url.trim()
       ? validRemoteUrl(raw.update_manifest_url, allowLoopback)
       : undefined
+  const updateManifestUrlV2 =
+    typeof raw.update_manifest_url_v2 === "string" && raw.update_manifest_url_v2.trim()
+      ? validRemoteUrl(raw.update_manifest_url_v2, allowLoopback)
+      : undefined
   const midtermDatePolicyUrl =
     typeof raw.midterm_date_policy_url === "string" && raw.midterm_date_policy_url.trim()
       ? validRemoteUrl(raw.midterm_date_policy_url, allowLoopback)
@@ -72,10 +79,17 @@ function parseConfig(
     raw.update_public_key_pem.length <= 8_192
       ? raw.update_public_key_pem
       : undefined
-  if (Boolean(updateManifestUrl || midtermDatePolicyUrl) !== Boolean(updatePublicKeyPem)) {
+  if (Boolean(updateManifestUrl || updateManifestUrlV2 || midtermDatePolicyUrl) !== Boolean(updatePublicKeyPem)) {
     throw new Error("Signed remote URL and Ed25519 public key must be configured together.")
   }
-  return { telemetryEndpoint, diagnosticEndpoint, updateManifestUrl, updatePublicKeyPem, midtermDatePolicyUrl }
+  return {
+    telemetryEndpoint,
+    diagnosticEndpoint,
+    updateManifestUrl,
+    updateManifestUrlV2,
+    updatePublicKeyPem,
+    midtermDatePolicyUrl,
+  }
 }
 
 export async function loadRemoteServicesConfig(input: {
@@ -92,6 +106,7 @@ export async function loadRemoteServicesConfig(input: {
         diagnostic_endpoint:
           environment.SZTU_DIAGNOSTIC_ENDPOINT ?? DEFAULT_DIAGNOSTIC_ENDPOINT,
         update_manifest_url: environment.SZTU_UPDATE_MANIFEST_URL,
+        update_manifest_url_v2: environment.SZTU_UPDATE_MANIFEST_URL_V2,
         update_public_key_pem: environment.SZTU_UPDATE_PUBLIC_KEY_PEM,
         midterm_date_policy_url: environment.SZTU_MIDTERM_DATE_POLICY_URL,
       },

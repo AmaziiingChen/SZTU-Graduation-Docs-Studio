@@ -728,6 +728,7 @@ async function initializeRemoteServices(): Promise<void> {
     platform: process.platform,
     arch: process.arch,
     manifestUrl: resolved.updateManifestUrl,
+    manifestUrlV2: resolved.updateManifestUrlV2,
     publicKeyPem: resolved.updatePublicKeyPem,
     onOutcome: (outcome, version) => telemetry?.recordUpdate(outcome, version),
     onDiagnostic: (outcome, duration, code, context) => diagnostics?.record("diagnostic.step", outcome, duration, code, context),
@@ -1036,6 +1037,24 @@ function registerIpc(): void {
       const helpUrl = updateService?.getHelpUrl()
       if (!helpUrl) throw new IpcValidationError("当前没有可用的使用说明链接。")
       await shell.openExternal(helpUrl)
+      return null
+    })
+  })
+
+  ipcMain.handle("sztu:open-external-url", (event, rawUrl: unknown) => {
+    assertTrustedSender(event)
+    return runBridge(async () => {
+      if (typeof rawUrl !== "string" || rawUrl.length === 0 || rawUrl.length > 2048) {
+        throw new IpcValidationError("外部链接无效。")
+      }
+      let parsed: URL
+      try {
+        parsed = new URL(rawUrl)
+      } catch {
+        throw new IpcValidationError("外部链接无效。")
+      }
+      if (parsed.protocol !== "https:") throw new IpcValidationError("只允许打开 https 链接。")
+      await shell.openExternal(parsed.toString())
       return null
     })
   })
