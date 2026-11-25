@@ -48,25 +48,22 @@ function ambiguousCitation(text: string, from: number, to: number): boolean {
     || text[from - 1] === "[" || text[to] === "]"
 }
 
+export type CleanupOptions = { citations?: boolean; punctuation?: boolean; lists?: boolean }
+
 /**
- * Apply one local, undoable edit without flattening the canonical rich content.
+ * Apply the selected local edits without flattening the canonical rich content.
  * Positions are paragraph offsets (including inline atoms), not offsets within
  * individual text runs, so split bold/italic citation markers remain intact.
+ * All operations share a transaction, one change event and one undo.
  */
-export function tidyEditor(editor: Editor, kind: EditorCleanupKind) {
-  const transaction = closeHistory(editor.state.tr)
-  const result = appendTextCleanup(transaction, kind, editor.isEditable && !editor.view.composing)
-  dispatchCleanup(editor, transaction)
-  return result
-}
-
-/** All three operations share a transaction, one change event and one undo. */
-export function tidyFormatting(editor: Editor) {
+export function tidyFormatting(editor: Editor, options: CleanupOptions = {}) {
+  const { citations: runCitations = true, punctuation: runPunctuation = true, lists: runLists = true } = options
   const transaction = closeHistory(editor.state.tr)
   const enabled = editor.isEditable && !editor.view.composing
-  const citations = appendTextCleanup(transaction, "citations", enabled)
-  const punctuation = appendTextCleanup(transaction, "punctuation", enabled)
-  const lists = appendListCleanup(transaction, enabled)
+  const idle = { changed: 0, skipped: 0, limited: 0, selected: !transaction.selection.empty }
+  const citations = runCitations ? appendTextCleanup(transaction, "citations", enabled) : idle
+  const punctuation = runPunctuation ? appendTextCleanup(transaction, "punctuation", enabled) : idle
+  const lists = runLists ? appendListCleanup(transaction, enabled) : { groups: 0, items: 0, ...idle }
   dispatchCleanup(editor, transaction)
   return { citations, punctuation, lists, selected: citations.selected }
 }

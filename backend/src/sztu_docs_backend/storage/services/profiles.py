@@ -11,20 +11,6 @@ from ..errors import NotFoundError, ValidationError
 from .common import decode_json, encode_json, new_id, require_text
 from .profile_drafts import normalize_english_thesis_title, normalize_thesis_title
 
-PROFILE_FIELDS = (
-    "full_name",
-    "student_number",
-    "college",
-    "major",
-    "class_name",
-    "advisor_name",
-    "advisor_title",
-    "graduation_cohort",
-    "thesis_title",
-    "thesis_title_en",
-)
-
-
 class ProfileService:
     def __init__(self, database: Database) -> None:
         self.database = database

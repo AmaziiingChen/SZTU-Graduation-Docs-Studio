@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from .environment import check_environment
-from .diagnostic_steps import checkpoint, step
+from .diagnostic_steps import step
 from .exporter import (
     build_export_document,
     capture_export_source,

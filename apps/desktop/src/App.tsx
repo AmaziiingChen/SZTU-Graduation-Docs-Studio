@@ -5495,11 +5495,9 @@ export default function App() {
       </Sheet>
       <EnvironmentOnboardingDialog
         open={environmentGuideOpen}
-        revisiting
         environment={environment}
         onRefresh={() => void refreshEnvironment()}
         onComplete={() => setEnvironmentGuideOpen(false)}
-        onQuit={() => void getDesktopApi()?.quitApp()}
         onOpenGuide={(toolId) => void openToolLink(toolId)}
       />
       <Dialog

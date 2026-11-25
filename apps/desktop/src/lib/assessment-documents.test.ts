@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { assessmentContent, assessmentStarterParagraphs, assessmentWritingGuidance, assessmentDocumentRegistry, assessmentGradeError, assessmentRoundedGrade, emptyAssessmentDraft, isAssessmentDocumentType, moveAssessmentItem, readAssessmentDraft } from "./assessment-documents"
+import { assessmentContent, assessmentStarterParagraphs, assessmentWritingGuidance, assessmentDocumentRegistry, assessmentGradeError, emptyAssessmentDraft, isAssessmentDocumentType, moveAssessmentItem, readAssessmentDraft } from "./assessment-documents"
 
 describe("assessment document input", () => {
   it("starts with blank lower regions and preserves the shared metadata", () => {
@@ -92,14 +92,6 @@ describe("assessment document input", () => {
     expect(content.sections).toMatchObject({ members: input.members, questions: input.questions })
     expect(input.members).toEqual(["", " ", "示例成员"])
     expect(input.questions).toHaveLength(2)
-  })
-
-  it("matches decimal half-up rounding without binary float drift", () => {
-    expect(assessmentRoundedGrade("89.49999999999999999999")).toBe("89")
-    expect(assessmentRoundedGrade("89.5")).toBe("90")
-    expect(assessmentRoundedGrade("9007199254740993.5")).toBe("9007199254740994")
-    expect(assessmentRoundedGrade(".5")).toBeNull()
-    expect(assessmentRoundedGrade("")).toBeNull()
   })
 
 })

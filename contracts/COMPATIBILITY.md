@@ -52,4 +52,4 @@
 中迁移并在成功验证后原子写回。BibTeX 源只允许保存在草稿的
 `editor_state.bibliography`，不得进入严格文档、渲染器或导出输入快照。解析失败时保留原始
 草稿和上一份有效结构化参考文献，并阻止检查、预览和导出。完整决策见
-[`0009-rich-field-modes-and-bibtex-references.md`](../docs/decisions/0009-rich-field-modes-and-bibtex-references.md)。
+[`0012-rich-field-modes-and-bibtex-references.md`](../docs/decisions/0012-rich-field-modes-and-bibtex-references.md)。

@@ -754,7 +754,8 @@ class ExportPipelineTests(unittest.TestCase):
                 "thesis_title": None,
             },
         )
-        self.assertFalse(stored["overwrite_confirmed"])
+        # 用户确认只记录在历史里；导出仍分配新版本，不覆盖原文件。
+        self.assertTrue(stored["overwrite_confirmed"])
         self.assertFalse(stored["artifacts"][0]["replaced_existing"])
         self.assertEqual(stored["artifacts"][0]["relative_path"], versioned_target.name)
 
@@ -765,7 +766,7 @@ class ExportPipelineTests(unittest.TestCase):
         self.assertEqual(history[0]["export_id"], receipt["export_id"])
         self.assertEqual(history[0]["status"], "completed")
         self.assertTrue(history[0]["snapshot_available"])
-        self.assertFalse(history[0]["overwrite_confirmed"])
+        self.assertTrue(history[0]["overwrite_confirmed"])
         self.assertEqual(history[0]["artifacts"][0]["file_state"], "available")
 
         deleted = delete_export_history_record(

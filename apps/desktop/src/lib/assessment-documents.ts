@@ -166,10 +166,3 @@ export function assessmentGradeError(value: string): string | null {
   return /^\d+(?:\.\d+)?$/.test(value.trim()) && Number(value) >= 0 && Number.isFinite(Number(value))
     ? null : "请输入非负整数或小数（例如 0.5），或留空由现场填写。"
 }
-
-/** Match Decimal ROUND_HALF_UP without floating-point rounding or integer precision loss. */
-export function assessmentRoundedGrade(value: string): string | null {
-  if (!value.trim() || assessmentGradeError(value)) return null
-  const [integer, fraction = ""] = value.trim().split(".")
-  return (BigInt(integer || "0") + (fraction[0] && fraction[0] >= "5" ? 1n : 0n)).toString()
-}

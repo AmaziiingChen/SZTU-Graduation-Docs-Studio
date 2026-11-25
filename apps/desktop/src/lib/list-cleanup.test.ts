@@ -1,9 +1,11 @@
 import { Editor } from "@tiptap/react"
 import { AllSelection } from "@tiptap/pm/state"
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { tidyLists } from "@/lib/list-cleanup"
+import { tidyFormatting } from "@/lib/editor-cleanup"
 import { createRestrictedEditorExtensions, structuredAuthoringToTiptap, structuredBodyToTiptap, tiptapToStructuredBody } from "@/lib/structured-content-editor"
 import type { StructuredBodyValue } from "@/types/structured-content"
+
+const tidyLists = (editor: Editor) => tidyFormatting(editor, { citations: false, punctuation: false }).lists
 
 const editors: Editor[] = []
 function create(body: StructuredBodyValue, mode: "body" | "paragraphs" = "body") {

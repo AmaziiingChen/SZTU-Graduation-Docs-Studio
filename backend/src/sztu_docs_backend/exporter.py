@@ -27,10 +27,14 @@ from .bibtex_gate import BibtexValidationError, count_valid_bibtex_entries
 from .storage.database import utc_now
 from .storage.paths import protect_private_file
 from .storage.services.common import encode_json, new_id
+from .storage.services.exports import (
+    complete_job_row,
+    fail_job_row,
+    insert_artifact_rows,
+    insert_job_row,
+)
 from .template_engine import (
     ASSESSMENT_DOCUMENT_TYPES,
-    ENGINE_TEMPLATE_ID,
-    ENGINE_VERSION,
     EngineDescriptor,
     TemplateEngineError,
     canonical_json,
@@ -2960,30 +2964,22 @@ def _create_job(
     input_sha256 = hashlib.sha256(canonical_json(proposal)).hexdigest()
     with workspace.database.transaction(immediate=True) as connection:
         try:
-            connection.execute(
-                """
-                INSERT INTO export_jobs(
-                    id, document_id, requested_formats_json, status, progress,
-                    output_directory, created_at, updated_at, request_id,
-                    input_sha256, template_id, template_version, template_sha256,
-                    snapshot_json, overwrite_confirmed
-                ) VALUES (?, ?, ?, 'running', 5, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    export_id,
-                    document_id,
-                    encode_json(formats, "formats"),
-                    str(output),
-                    now,
-                    now,
-                    request_id,
-                    input_sha256,
-                    descriptor.template_id,
-                    descriptor.version,
-                    descriptor.pack_sha256,
-                    encode_json(snapshot, "snapshot"),
-                    int(overwrite_confirmed),
-                ),
+            insert_job_row(
+                connection,
+                job_id=export_id,
+                document_id=document_id,
+                formats_json=encode_json(formats, "formats"),
+                status="running",
+                progress=5,
+                output_directory=str(output),
+                now=now,
+                request_id=request_id,
+                input_sha256=input_sha256,
+                template_id=descriptor.template_id,
+                template_version=descriptor.version,
+                template_sha256=descriptor.pack_sha256,
+                snapshot_json=encode_json(snapshot, "snapshot"),
+                overwrite_confirmed=overwrite_confirmed,
             )
         except sqlite3.IntegrityError as exc:
             raise ExportError(
@@ -2994,19 +2990,13 @@ def _create_job(
 
 
 def _fail_job(workspace: Any, export_id: str, code: str) -> None:
-    status = "cancelled" if code == "EXPORT_CANCELLED" else "failed"
-    now = utc_now()
     with workspace.database.transaction(immediate=True) as connection:
-        connection.execute(
-            """
-            UPDATE export_jobs
-            SET status = ?, progress = 100, error_code = ?, updated_at = ?,
-                completed_at = ?, cancel_requested_at = CASE
-                    WHEN ? = 'cancelled' THEN COALESCE(cancel_requested_at, ?)
-                    ELSE cancel_requested_at END
-            WHERE id = ?
-            """,
-            (status, code, now, now, status, now, export_id),
+        fail_job_row(
+            connection,
+            export_id,
+            now=utc_now(),
+            error_code=code,
+            cancelled=code == "EXPORT_CANCELLED",
         )
 
 
@@ -3019,34 +3009,28 @@ def _complete_job(
 ) -> None:
     now = utc_now()
     with workspace.database.transaction(immediate=True) as connection:
-        for artifact in artifacts:
-            connection.execute(
-                """
-                INSERT INTO export_artifacts(
-                    id, export_job_id, format, relative_path, sha256,
-                    size_bytes, checks_json, created_at, replaced_existing
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    artifact["artifact_id"],
-                    export_id,
-                    artifact["format"],
-                    str(Path(artifact["path"]).relative_to(output)),
-                    artifact["sha256"],
-                    artifact["size_bytes"],
-                    encode_json(artifact["checks"], "checks"),
-                    now,
-                    int(artifact["replaced_existing"]),
-                ),
-            )
-        connection.execute(
-            """
-            UPDATE export_jobs
-            SET status = 'completed', progress = 100, updated_at = ?,
-                completed_at = ?, receipt_json = ?
-            WHERE id = ?
-            """,
-            (now, now, encode_json(receipt, "receipt"), export_id),
+        insert_artifact_rows(
+            connection,
+            export_id,
+            [
+                {
+                    "id": artifact["artifact_id"],
+                    "format": artifact["format"],
+                    "relative_path": str(Path(artifact["path"]).relative_to(output)),
+                    "sha256": artifact["sha256"],
+                    "size_bytes": artifact["size_bytes"],
+                    "checks_json": encode_json(artifact["checks"], "checks"),
+                    "replaced_existing": artifact["replaced_existing"],
+                }
+                for artifact in artifacts
+            ],
+            now,
+        )
+        complete_job_row(
+            connection,
+            export_id,
+            now=now,
+            receipt_json=encode_json(receipt, "receipt"),
         )
 
 
@@ -3802,7 +3786,7 @@ def run_export(
         proposal=proposal,
         record=record,
         descriptor=descriptor,
-        overwrite_confirmed=False,
+        overwrite_confirmed=overwrite_confirmed,
         profile=profile,
     )
     placements: list[tuple[Path, Path | None]] = []

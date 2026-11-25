@@ -1,7 +1,7 @@
 import { Editor } from "@tiptap/react"
 import { AllSelection, TextSelection } from "@tiptap/pm/state"
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { tidyEditor, tidyFormatting } from "@/lib/editor-cleanup"
+import { tidyFormatting } from "@/lib/editor-cleanup"
 import {
   createRestrictedEditorExtensions,
   structuredBodyToTiptap,
@@ -9,6 +9,10 @@ import {
   tiptapToStructuredBody,
 } from "@/lib/structured-content-editor"
 import type { StructuredBodyValue } from "@/types/structured-content"
+
+const tidyEditor = (editor: Editor, kind: "citations" | "punctuation") => kind === "citations"
+  ? tidyFormatting(editor, { punctuation: false, lists: false }).citations
+  : tidyFormatting(editor, { citations: false, lists: false }).punctuation
 
 const editors: Editor[] = []
 function create(body: StructuredBodyValue) {

@@ -148,19 +148,15 @@ function platformName(system: string): string {
 
 export function EnvironmentOnboardingDialog({
   open,
-  revisiting = false,
   environment,
   onRefresh,
   onComplete,
-  onQuit,
   onOpenGuide,
 }: {
   open: boolean
-  revisiting?: boolean
   environment: EnvironmentOnboardingState
   onRefresh: () => void
   onComplete: () => void
-  onQuit: () => void
   onOpenGuide: (toolId: ToolLinkId) => void
 }) {
   const result = environment.status === "ready" ? environment.result : undefined
@@ -173,9 +169,9 @@ export function EnvironmentOnboardingDialog({
     : 0
 
   return (
-    <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen && revisiting) onComplete() }}>
+    <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onComplete() }}>
       <DialogContent
-        showCloseButton={revisiting}
+        showCloseButton
         className="max-h-[calc(100dvh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden sm:max-w-2xl"
       >
         <DialogHeader>
@@ -303,21 +299,14 @@ export function EnvironmentOnboardingDialog({
         </div>
 
         <DialogFooter>
-          {environment.status === "error" && !revisiting ? (
-            <Button variant="outline" onClick={onQuit}>
-              退出应用
-            </Button>
-          ) : null}
           {environment.status !== "loading" ? (
             <Button variant="outline" onClick={onRefresh}>
               <AnimatedActionIcon icon={RefreshCwIconAnimated} />
               重新检查
             </Button>
           ) : null}
-          {revisiting || environment.status === "ready" ? (
-            <Button onClick={onComplete}>
-              {revisiting ? "返回工作台" : environment.status === "ready" && environment.result.ready ? "进入工作台" : "稍后配置"}
-            </Button>
+          {environment.status !== "loading" ? (
+            <Button onClick={onComplete}>返回工作台</Button>
           ) : null}
         </DialogFooter>
       </DialogContent>

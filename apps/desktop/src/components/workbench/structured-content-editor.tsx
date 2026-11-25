@@ -1,10 +1,8 @@
 import { Field, FieldLabel } from "@/components/ui/field"
-import { ThesisInsertControls } from "@/components/workbench/thesis-insert-controls"
 import { hasUnescapedMathDelimiter } from "@/lib/process-math-source"
 import { recoverManagedImagePreview } from "@/lib/managed-image-preview"
 import { tidyFormatting } from "@/lib/editor-cleanup"
 import { ArticleMediumIcon } from "@/components/ui/icons/article-medium"
-import type { ThesisReferenceOption } from "@/lib/thesis-draft"
 import { AlignJustifyIcon } from "@/components/ui/align-justify-icon"
 import { LayoutGridIcon } from "@/components/ui/layout-grid-icon"
 import { TableGridIcon } from "@/components/workbench/table-grid-icon"
@@ -229,7 +227,6 @@ export type StructuredContentEditorProps = {
   contentHeader?: ReactNode
   toolbarActions?: ReactNode
   contentFooter?: ReactNode
-  thesisReferences?: ThesisReferenceOption[]
   enableDocumentTools?: boolean
   enableProcessEquations?: boolean
   enableFigures?: boolean
@@ -516,7 +513,6 @@ export function StructuredContentEditor({
   enableFigures = false,
   enableDocumentTools = false,
   enableProcessEquations = false,
-  thesisReferences,
   figureChapters = [{ value: 1, label: "第 1 章" }],
   figureCatalog,
   figureNumbering = {},
@@ -1015,7 +1011,7 @@ export function StructuredContentEditor({
         toolbarActions
           ? "h-(--header-height) gap-2 px-4"
           : "flex-wrap gap-1 px-1.5",
-        !toolbarActions && (thesisReferences ? "min-h-(--header-height) py-1" : "h-(--header-height)"),
+        !toolbarActions && "h-(--header-height)",
       )}
     >
       <div
@@ -1141,7 +1137,6 @@ export function StructuredContentEditor({
         </>
       ) : null}
 
-      {thesisReferences && <ThesisInsertControls editor={editor} references={thesisReferences} disabled={disabled} equationSelected={toolbarState.equationSelected} />}
       {mode === "body" && enableDocumentTools ? <>
         <DropdownMenu>
           <Tooltip>

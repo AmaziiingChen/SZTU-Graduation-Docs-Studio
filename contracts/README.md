@@ -15,6 +15,7 @@ Draft 2020-12，并以稳定 `$id` 作为跨语言标识。
 | `content-block.schema.json` | 独立 `$defs` | 过程文档共用富文本、列表和图片内容块 |
 | `midterm.schema.json` | `schema_version=0.1` | 严格、可导出的中期检查表数据 |
 | `task-book.schema.json` | `schema_version=0.1` | 严格、可导出的毕业论文任务书数据 |
+| `assessment-form.schema.json` | `schema_version=0.1` | 严格、可导出的指导教师评审表、评阅人评审表、答辩记录表与成绩考核表数据 |
 | `environment-check-result.schema.json` | IPC 协议版本承载 | 本地环境状态 |
 | `check-result.schema.json` | `schema_version=1.0` | 独立质量门禁结果 |
 | `export-request.schema.json` | `schema_version=1.0` | 已通过严格文档 Schema 的导出请求 |

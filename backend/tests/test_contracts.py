@@ -71,7 +71,6 @@ class ContractTests(unittest.TestCase):
                 "ipc-envelope.schema.json",
                 "midterm.schema.json",
                 "proposal.schema.json",
-                "preview-operation.schema.json",
                 "qa-policy.schema.json",
                 "qa-record-operation.schema.json",
                 "student-profile.schema.json",

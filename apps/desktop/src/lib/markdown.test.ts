@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest"
 
 import {
-  contentBlocksToMarkdown,
-  markdownPlainText,
   markdownToContentBlocks,
   markdownToInlineParagraph,
   markdownToParagraphs,
@@ -58,22 +56,5 @@ describe("restricted Markdown document contract", () => {
         ],
       },
     ])
-    expect(markdownToContentBlocks(contentBlocksToMarkdown(blocks))).toEqual(
-      blocks,
-    )
-  })
-
-  it("does not preserve raw HTML as executable markup", () => {
-    expect(markdownPlainText("安全文本<script>alert(1)</script>")).toBe("安全文本alert(1)")
-  })
-
-  it("preserves unsupported legacy blocks as visible plain text", () => {
-    expect(markdownPlainText("> 重要内容")).toBe("> 重要内容")
-    expect(markdownPlainText("```text\n不能丢失\n```")).toBe(
-      "```text\n不能丢失\n```",
-    )
-    expect(markdownPlainText("[链接文字](https://example.invalid)")).toBe(
-      "[链接文字](https://example.invalid)",
-    )
   })
 })

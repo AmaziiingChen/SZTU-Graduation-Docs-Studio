@@ -3,10 +3,10 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 import {
   OutlineEditor,
-  renumberOutlineItems,
   validateOutlineItems,
   type OutlineEditorItem,
 } from "./outline-editor"
+import { DEFAULT_OUTLINE_NUMBERING_STYLE, numberOutlineItems } from "@/lib/outline-numbering"
 
 const items: OutlineEditorItem[] = [
   { id: "one", level: 1, number: "1.", title: "绪论" },
@@ -103,12 +103,12 @@ describe("OutlineEditor", () => {
 describe("outline helpers", () => {
   it("renumbers outline items with the default first style", () => {
     expect(
-      renumberOutlineItems([
+      numberOutlineItems([
         { id: "1", level: 1, number: "", title: "一" },
         { id: "2", level: 2, number: "", title: "二" },
         { id: "3", level: 2, number: "", title: "三" },
         { id: "4", level: 1, number: "", title: "四" },
-      ]).map((item) => item.number),
+      ], DEFAULT_OUTLINE_NUMBERING_STYLE).map((item) => item.number),
     ).toEqual(["一、", "（一）", "（二）", "二、"])
   })
 

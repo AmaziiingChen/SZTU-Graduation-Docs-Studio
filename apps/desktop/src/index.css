@@ -291,13 +291,6 @@
   background: color-mix(in oklab, var(--muted-foreground) 75%, transparent) padding-box;
 }
 
-@supports (-moz-appearance: none) {
-  * {
-    scrollbar-width: thin;
-    scrollbar-color: var(--muted-foreground) transparent;
-  }
-}
-
 /* Functional editor-only decorations. These nodes are omitted from the
    structured document, clipboard serialization, and exported files. */
 .formatting-mark {

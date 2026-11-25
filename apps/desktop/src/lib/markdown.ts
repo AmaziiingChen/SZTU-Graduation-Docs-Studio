@@ -256,18 +256,6 @@ export function markdownToInlineParagraph(value: string): JsonObject {
   return { type: "paragraph", runs: runs.length ? runs : [{ text: " ", ...normalStyle }] }
 }
 
-export function markdownPlainText(value: string): string {
-  const paragraphs = markdownToParagraphs(value)
-  return paragraphs
-    .flatMap((paragraph) => (Array.isArray(paragraph.runs) ? paragraph.runs : []))
-    .map((run) =>
-      typeof run === "object" && run !== null && !Array.isArray(run) && typeof run.text === "string"
-        ? run.text
-        : "",
-    )
-    .join("\n")
-}
-
 function objectValue(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -276,64 +264,4 @@ function objectValue(value: unknown): Record<string, unknown> {
 
 function objectRecord(value: unknown): JsonObject {
   return objectValue(value) as JsonObject
-}
-
-export function richParagraphToMarkdown(value: unknown): string {
-  if (typeof value === "string") return value
-  const paragraph = objectValue(value)
-  if (!Array.isArray(paragraph.runs)) return ""
-  return paragraph.runs
-    .map((rawRun) => {
-      const run = objectValue(rawRun)
-      const text = typeof run.text === "string" ? run.text : ""
-      const script = run.script
-      let markdown =
-        script === "sub"
-          ? `$_{${text}}$`
-          : script === "super"
-            ? `$^{${text}}$`
-            : text
-      if (run.italic === true) markdown = `*${markdown}*`
-      if (run.bold === true) markdown = `**${markdown}**`
-      return markdown
-    })
-    .join("")
-}
-
-function contentBlockMarkdown(value: unknown, depth = 0): string {
-  if (typeof value === "string") return value
-  const block = objectValue(value)
-  if (block.type === "paragraph" && Array.isArray(block.runs)) {
-    return richParagraphToMarkdown(block)
-  }
-  if (
-    (block.type !== "ordered_list" && block.type !== "unordered_list") ||
-    !Array.isArray(block.items)
-  ) {
-    return ""
-  }
-
-  const indentation = "    ".repeat(depth)
-  return block.items
-    .map((rawItem, index) => {
-      const entry = objectValue(rawItem)
-      const explicitMarker =
-        typeof entry.marker === "string"
-          ? /^\d+/.exec(entry.marker)?.[0]
-          : undefined
-      const marker =
-        block.type === "unordered_list"
-          ? "-"
-          : `${explicitMarker ?? index + 1}.`
-      const line = `${indentation}${marker} ${richParagraphToMarkdown(entry.content)}`
-      const children = contentBlockMarkdown(entry.children, depth + 1)
-      return children ? `${line}\n${children}` : line
-    })
-    .join("\n")
-}
-
-/** Serialize repository-owned structured text blocks without using editor HTML. */
-export function contentBlocksToMarkdown(value: unknown): string {
-  if (!Array.isArray(value)) return ""
-  return value.map(contentBlockMarkdown).filter(Boolean).join("\n\n")
 }

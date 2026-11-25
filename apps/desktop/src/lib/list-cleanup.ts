@@ -1,6 +1,4 @@
-import type { Editor } from "@tiptap/react"
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model"
-import { closeHistory } from "@tiptap/pm/history"
 import { AllSelection, TextSelection, type Transaction } from "@tiptap/pm/state"
 
 type Candidate = {
@@ -34,17 +32,6 @@ function candidate(node: ProseMirrorNode, position: number): Candidate | undefin
   })
   if (protectedPrefix || /^(?:`|\$|\\[[(])/.test(body)) return
   return { node, position, prefixLength, indent: match[1], kind: ordered ? "orderedList" : "bulletList", number: ordered ? Number(match[2]) : 0 }
-}
-
-/** Convert only complete, unambiguous top-level paragraph groups to lists. */
-export function tidyLists(editor: Editor) {
-  const transaction = closeHistory(editor.state.tr)
-  const result = appendListCleanup(transaction, editor.isEditable && !editor.view.composing)
-  if (transaction.docChanged) {
-    editor.view.dispatch(transaction)
-    editor.view.dispatch(closeHistory(editor.state.tr))
-  }
-  return result
 }
 
 /** Append to the caller's transaction so combined cleanup is one saved edit. */

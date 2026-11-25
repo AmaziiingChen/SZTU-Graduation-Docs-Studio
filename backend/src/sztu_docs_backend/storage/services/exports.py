@@ -36,6 +36,136 @@ def _optional_json(value: str | None) -> Any:
     return None if value is None else decode_json(value)
 
 
+def insert_job_row(
+    connection: sqlite3.Connection,
+    *,
+    job_id: str,
+    document_id: str,
+    formats_json: str,
+    status: str,
+    progress: int,
+    output_directory: str,
+    now: str,
+    request_id: str,
+    input_sha256: str,
+    template_id: str,
+    template_version: str,
+    template_sha256: str,
+    snapshot_json: str,
+    overwrite_confirmed: bool,
+) -> None:
+    """Write one export_jobs row; callers own validation and transactions."""
+
+    if status not in ACTIVE_STATUSES:
+        raise ValidationError("status", "must_be_active")
+    connection.execute(
+        """
+        INSERT INTO export_jobs(
+            id, document_id, requested_formats_json, status, progress,
+            output_directory, created_at, updated_at, request_id,
+            input_sha256, template_id, template_version, template_sha256,
+            snapshot_json, overwrite_confirmed
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            job_id,
+            document_id,
+            formats_json,
+            status,
+            progress,
+            output_directory,
+            now,
+            now,
+            request_id,
+            input_sha256,
+            template_id,
+            template_version,
+            template_sha256,
+            snapshot_json,
+            int(overwrite_confirmed),
+        ),
+    )
+
+
+def insert_artifact_rows(
+    connection: sqlite3.Connection,
+    job_id: str,
+    artifacts: Sequence[Mapping[str, Any]],
+    created_at: str,
+) -> None:
+    """Insert export_artifacts rows for an already validated artifact list."""
+
+    for artifact in artifacts:
+        connection.execute(
+            """
+            INSERT INTO export_artifacts(
+                id, export_job_id, format, relative_path, sha256,
+                size_bytes, checks_json, created_at, replaced_existing
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                artifact["id"],
+                job_id,
+                artifact["format"],
+                artifact["relative_path"],
+                artifact["sha256"],
+                artifact["size_bytes"],
+                artifact["checks_json"],
+                created_at,
+                int(artifact["replaced_existing"]),
+            ),
+        )
+
+
+def complete_job_row(
+    connection: sqlite3.Connection,
+    job_id: str,
+    *,
+    now: str,
+    receipt_json: str,
+) -> None:
+    connection.execute(
+        """
+        UPDATE export_jobs
+        SET status = 'completed', progress = 100, error_code = NULL,
+            receipt_json = ?, completed_at = ?, updated_at = ?
+        WHERE id = ?
+        """,
+        (receipt_json, now, now, job_id),
+    )
+
+
+def fail_job_row(
+    connection: sqlite3.Connection,
+    job_id: str,
+    *,
+    now: str,
+    error_code: str,
+    receipt_json: str | None = None,
+    cancelled: bool = False,
+) -> None:
+    connection.execute(
+        """
+        UPDATE export_jobs
+        SET status = ?, progress = 100, error_code = ?, receipt_json = ?,
+            completed_at = ?, updated_at = ?, cancel_requested_at = CASE
+                WHEN ? THEN COALESCE(cancel_requested_at, ?)
+                ELSE cancel_requested_at END
+        WHERE id = ?
+        """,
+        (
+            "cancelled" if cancelled else "failed",
+            error_code,
+            receipt_json,
+            now,
+            now,
+            int(cancelled),
+            now,
+            job_id,
+        ),
+    )
+
+
 class ExportService:
     def __init__(self, database: Database) -> None:
         self.database = database
@@ -79,6 +209,12 @@ class ExportService:
 
         now = utc_now()
         job_id = new_id()
+        formats_json = encode_json(normalized_formats, "formats")
+        snapshot_json = encode_json(dict(snapshot), "snapshot")
+        input_sha256 = _hash(input_sha256, "input_sha256")
+        template_id = _text(template_id, "template_id", maximum=128)
+        template_version = _text(template_version, "template_version", maximum=128)
+        template_sha256 = _hash(template_sha256, "template_sha256")
         try:
             with self.database.transaction(immediate=True) as connection:
                 document = connection.execute(
@@ -86,30 +222,22 @@ class ExportService:
                 ).fetchone()
                 if document is None:
                     raise NotFoundError("document", document_id)
-                connection.execute(
-                    """
-                    INSERT INTO export_jobs(
-                        id, document_id, requested_formats_json, status, progress,
-                        output_directory, created_at, updated_at, request_id,
-                        input_sha256, template_id, template_version,
-                        template_sha256, snapshot_json, overwrite_confirmed
-                    ) VALUES (?, ?, ?, 'queued', 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        job_id,
-                        document_id,
-                        encode_json(normalized_formats, "formats"),
-                        output_directory,
-                        now,
-                        now,
-                        request_id,
-                        _hash(input_sha256, "input_sha256"),
-                        _text(template_id, "template_id", maximum=128),
-                        _text(template_version, "template_version", maximum=128),
-                        _hash(template_sha256, "template_sha256"),
-                        encode_json(dict(snapshot), "snapshot"),
-                        int(overwrite_confirmed),
-                    ),
+                insert_job_row(
+                    connection,
+                    job_id=job_id,
+                    document_id=document_id,
+                    formats_json=formats_json,
+                    status="queued",
+                    progress=0,
+                    output_directory=output_directory,
+                    now=now,
+                    request_id=request_id,
+                    input_sha256=input_sha256,
+                    template_id=template_id,
+                    template_version=template_version,
+                    template_sha256=template_sha256,
+                    snapshot_json=snapshot_json,
+                    overwrite_confirmed=overwrite_confirmed,
                 )
         except sqlite3.IntegrityError as exc:
             existing_request = self.database.connection.execute(
@@ -207,34 +335,28 @@ class ExportService:
         now = utc_now()
         with self.database.transaction(immediate=True) as connection:
             self._require_active(connection, job_id)
-            for artifact in normalized_artifacts:
-                connection.execute(
-                    """
-                    INSERT INTO export_artifacts(
-                        id, export_job_id, format, relative_path, sha256,
-                        size_bytes, checks_json, created_at, replaced_existing
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        new_id(),
-                        job_id,
-                        artifact["format"],
-                        artifact["relative_path"],
-                        artifact["sha256"],
-                        artifact["size_bytes"],
-                        encode_json(artifact["checks"], "checks"),
-                        now,
-                        int(artifact["replaced_existing"]),
-                    ),
-                )
-            connection.execute(
-                """
-                UPDATE export_jobs
-                SET status = 'completed', progress = 100, error_code = NULL,
-                    receipt_json = ?, completed_at = ?, updated_at = ?
-                WHERE id = ?
-                """,
-                (encode_json(dict(receipt), "receipt"), now, now, job_id),
+            insert_artifact_rows(
+                connection,
+                job_id,
+                [
+                    {
+                        "id": new_id(),
+                        "format": artifact["format"],
+                        "relative_path": artifact["relative_path"],
+                        "sha256": artifact["sha256"],
+                        "size_bytes": artifact["size_bytes"],
+                        "checks_json": encode_json(artifact["checks"], "checks"),
+                        "replaced_existing": artifact["replaced_existing"],
+                    }
+                    for artifact in normalized_artifacts
+                ],
+                now,
+            )
+            complete_job_row(
+                connection,
+                job_id,
+                now=now,
+                receipt_json=encode_json(dict(receipt), "receipt"),
             )
         return self.get_job(job_id)
 
@@ -251,19 +373,15 @@ class ExportService:
         now = utc_now()
         with self.database.transaction(immediate=True) as connection:
             self._require_active(connection, job_id)
-            connection.execute(
-                """
-                UPDATE export_jobs
-                SET status = 'failed', progress = 100, error_code = ?,
-                    receipt_json = ?, completed_at = ?, updated_at = ?
-                WHERE id = ?
-                """,
-                (
-                    error_code,
-                    encode_json(dict(receipt), "receipt") if receipt is not None else None,
-                    now,
-                    now,
-                    job_id,
+            fail_job_row(
+                connection,
+                job_id,
+                now=now,
+                error_code=error_code,
+                receipt_json=(
+                    encode_json(dict(receipt), "receipt")
+                    if receipt is not None
+                    else None
                 ),
             )
         return self.get_job(job_id)

@@ -29,7 +29,6 @@ import {
 } from "@/components/ui/tooltip"
 import { paragraphInputText } from "@/lib/paragraph"
 import {
-  DEFAULT_OUTLINE_NUMBERING_STYLE,
   numberOutlineItems,
   outlineStyleMaxDepth,
   OUTLINE_NUMBERING_STYLE_OPTIONS,
@@ -130,13 +129,6 @@ function previousSubtreeStart(
   let candidate = start - 1
   while (candidate >= 0 && value[candidate].level > level) candidate -= 1
   return candidate >= 0 && value[candidate].level === level ? candidate : null
-}
-
-export function renumberOutlineItems(
-  value: OutlineEditorItem[],
-  style: OutlineNumberingStyle = DEFAULT_OUTLINE_NUMBERING_STYLE,
-): OutlineEditorItem[] {
-  return numberOutlineItems(value, style)
 }
 
 const levelPadding: Record<OutlineLevel, string> = {
