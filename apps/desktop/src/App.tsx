@@ -34,7 +34,7 @@ import {
   useState,
   type ReactNode,
 } from "react"
-import { ChevronDownIcon, LoaderCircleIcon, PackageCheckIcon, SaveIcon, TriangleAlertIcon, UserRoundIcon } from "lucide-react"
+import { ChevronDownIcon, HelpCircleIcon, LoaderCircleIcon, PackageCheckIcon, SaveIcon, TriangleAlertIcon, UserRoundIcon } from "lucide-react"
 import { ThinkingOrb } from "thinking-orbs"
 
 import { AppSidebar } from "@/components/workbench/app-sidebar"
@@ -45,6 +45,7 @@ import type { CreateDocumentRequest } from "@/components/workbench/nav-documents
 import { DiagnosticSupport } from "@/components/workbench/diagnostic-support"
 import { EnvironmentOnboardingDialog } from "@/components/workbench/environment-onboarding-dialog"
 import { FirstRunTour } from "@/components/workbench/first-run-tour"
+import { HelpCenterDialog } from "@/components/workbench/help-center-dialog"
 import { ExportHistoryStatusBadge } from "@/components/workbench/export-history-status-badge"
 import {
   DocumentSectionNav,
@@ -1860,11 +1861,13 @@ function StudentProfileEditor({
   unassigned,
   unassignedHelp,
   profileActions,
+  onOpenHelp,
 }: {
   assessmentMode: boolean
   unassigned: boolean
   unassignedHelp: string
   profileActions: ReactNode
+  onOpenHelp: (articleId: string) => void
   validationRequested: boolean
   draft: Draft
   onChange: (field: TextDraftField, value: string) => void
@@ -1999,7 +2002,19 @@ function StudentProfileEditor({
 
         <Card size="sm">
           <CardHeader>
-            <CardTitle className="text-sm font-medium">论文题目</CardTitle>
+            <CardTitle className="flex items-center gap-1 text-sm font-medium">
+              论文题目
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                className="size-5 text-muted-foreground"
+                aria-label="查看论文题目填写说明"
+                onClick={() => onOpenHelp("profile-fields")}
+              >
+                <HelpCircleIcon className="size-3.5" aria-hidden="true" />
+              </Button>
+            </CardTitle>
           </CardHeader>
           <CardContent className="grid gap-4">
             <div className="grid gap-2" data-profile-field="title">
@@ -3451,6 +3466,14 @@ export default function App() {
   const [newStudent, setNewStudent] = useState({ full_name: "", student_number: "", college: "", major: "" })
   const [createProfileError, setCreateProfileError] = useState<string | null>(null)
   const [firstRunTourDismissed, setFirstRunTourDismissed] = useState(false)
+  const [tourForced, setTourForced] = useState(false)
+  const [helpOpen, setHelpOpen] = useState(false)
+  const [helpArticleId, setHelpArticleId] = useState<string | null>(null)
+  const [demoBusy, setDemoBusy] = useState(false)
+  const openHelp = useCallback((articleId: string | null = null) => {
+    setHelpArticleId(articleId)
+    setHelpOpen(true)
+  }, [])
   const profileRef = useRef<StudentProfile | null>(null)
   const [document, setDocument] = useState<DocumentRecord | null>(null)
   const documentRef = useRef<DocumentRecord | null>(null)
@@ -5227,6 +5250,7 @@ export default function App() {
         draft={draft}
         onChange={updateDraft}
         onStructuredBodyChange={updateStructuredBody}
+        onOpenHelp={openHelp}
         disabled={workspaceDisabled}
         workspace={workspace}
       />
@@ -5356,9 +5380,12 @@ export default function App() {
     )
 
   const showFirstRunTour = !firstRunTourDismissed
-    && workspace.status === "ready"
-    && profiles.length === 0
-    && window.localStorage.getItem(FIRST_RUN_TOUR_FLAG) !== "done"
+    && (
+      tourForced
+      || (workspace.status === "ready"
+        && profiles.length === 0
+        && window.localStorage.getItem(FIRST_RUN_TOUR_FLAG) !== "done")
+    )
 
   const closeFirstRunTour = () => {
     try {
@@ -5366,8 +5393,69 @@ export default function App() {
     } catch {
       // 本地存储不可用时，至少本次会话不再打扰。
     }
+    setTourForced(false)
     setFirstRunTourDismissed(true)
   }
+
+  const installDemoDocuments = async () => {
+    const api = getDesktopApi()
+    if (!api) {
+      toast.error("请在桌面应用中载入演示资料。")
+      return
+    }
+    setDemoBusy(true)
+    try {
+      const result = await api.installDemoDocuments()
+      const installed = result.demo.installed.length
+      toast.success(
+        installed > 0
+          ? `已载入 ${installed} 份演示文档，标题以「参考样例·」开头。`
+          : "演示资料已经存在，无需重复载入。",
+      )
+      await reloadWorkspace()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "载入演示资料失败，请重试。")
+    } finally {
+      setDemoBusy(false)
+    }
+  }
+
+  const removeDemoDocuments = async () => {
+    const api = getDesktopApi()
+    if (!api) {
+      toast.error("请在桌面应用中清除演示资料。")
+      return
+    }
+    setDemoBusy(true)
+    try {
+      const result = await api.removeDemoDocuments()
+      const removed = result.demo.removed ?? 0
+      toast.success(removed > 0 ? `已清除 ${removed} 份演示文档。` : "没有找到可清除的演示文档。")
+      await reloadWorkspace()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "清除演示资料失败，请重试。")
+    } finally {
+      setDemoBusy(false)
+    }
+  }
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey)) return
+      if (event.key === "/") {
+        event.preventDefault()
+        setHelpArticleId(null)
+        setHelpOpen(true)
+        return
+      }
+      if (event.key.toLowerCase() === "s") {
+        event.preventDefault()
+        void saveNow("manual")
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [saveNow])
 
   return (
     <SidebarProvider
@@ -5467,6 +5555,7 @@ export default function App() {
         deletedDocumentsLoading={documentListsLoading.deleted}
         onLoadMoreDocuments={loadMoreDocuments}
         onSelectProfile={() => setActivePane("profile")}
+        onSelectHelp={() => openHelp()}
         onSelectTools={() => setActivePane("tools")}
         onSelectAppearance={() => setActivePane("appearance")}
         onSelectInspection={() => setActivePane("inspection")}
@@ -5629,6 +5718,18 @@ export default function App() {
         onRefresh={() => void refreshEnvironment()}
         onComplete={() => setEnvironmentGuideOpen(false)}
         onOpenGuide={(toolId) => void openToolLink(toolId)}
+      />
+      <HelpCenterDialog
+        open={helpOpen}
+        onOpenChange={setHelpOpen}
+        initialArticleId={helpArticleId}
+        demoBusy={demoBusy}
+        onInstallDemo={installDemoDocuments}
+        onRemoveDemo={removeDemoDocuments}
+        onReplayTour={() => {
+          setTourForced(true)
+          setFirstRunTourDismissed(false)
+        }}
       />
       <Dialog
         open={releaseBlocking}

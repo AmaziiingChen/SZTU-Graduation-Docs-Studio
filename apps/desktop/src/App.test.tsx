@@ -468,6 +468,24 @@ function mockApi(): SztuDesktopApi {
         save_reason: null,
       }),
     ),
+    installDemoDocuments: vi.fn().mockResolvedValue({
+      mode: "persistent",
+      profile,
+      profile_draft: null,
+      document: documentFixture(),
+      documents: [documentFixture()],
+      deleted_documents: [],
+      demo: { installed: ["task_book", "proposal", "midterm"], skipped: [], profile_id: profile.id, titles: [] },
+    }),
+    removeDemoDocuments: vi.fn().mockResolvedValue({
+      mode: "persistent",
+      profile,
+      profile_draft: null,
+      document: documentFixture(),
+      documents: [documentFixture()],
+      deleted_documents: [],
+      demo: { installed: [], skipped: [], removed: 3, titles: [] },
+    }),
     selectDocument: vi.fn().mockImplementation(async (documentId: string) => ({
       mode: "persistent" as const,
       profile,
@@ -943,6 +961,19 @@ describe("M3 workbench persistence", () => {
       expect(screen.queryByRole("dialog", { name: "新手引导" })).not.toBeInTheDocument()
     })
     expect(window.localStorage.getItem("sztu-docs.first-run-tour-v1")).toBe("done")
+  })
+
+  it("opens the help center, searches articles, and loads demo documents", async () => {
+    const api = mockApi()
+    installApi(api)
+    renderApp()
+
+    fireEvent.click(await screen.findByRole("button", { name: "帮助与支持" }))
+    const help = await screen.findByRole("dialog", { name: "帮助与支持" })
+    fireEvent.change(within(help).getByPlaceholderText(/搜索/), { target: { value: "文献" } })
+    expect(within(help).getByText("粘贴与管理参考文献（BibTeX）")).toBeInTheDocument()
+    fireEvent.click(within(help).getByRole("button", { name: /载入演示资料/ }))
+    await waitFor(() => expect(api.installDemoDocuments).toHaveBeenCalledTimes(1))
   })
 
   it("downloads the bundled thesis template without changing the document or requiring a preview", async () => {

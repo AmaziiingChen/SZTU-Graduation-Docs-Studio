@@ -14,6 +14,7 @@ from typing import Any
 
 from .environment import check_environment
 from .diagnostic_steps import step
+from .demo_documents import install_demo_documents, remove_demo_documents
 from .exporter import (
     build_export_document,
     capture_export_source,
@@ -446,6 +447,8 @@ class ProtocolSession:
             "workspace.deleteDocument": self._delete_document,
             "workspace.restoreDocument": self._restore_document,
             "workspace.purgeDocument": self._purge_document,
+            "workspace.installDemoDocuments": self._install_demo_documents,
+            "workspace.removeDemoDocuments": self._remove_demo_documents,
             "workspace.saveDraft": self._save_draft,
             "workspace.closeTemporary": self._close_temporary,
             "document.check": self._check_document,
@@ -733,6 +736,16 @@ class ProtocolSession:
         document_scope(workspace, document_id, deleted=True)
         workspace.purge_document(document_id)
         return self._selection()
+
+    def _install_demo_documents(self, params: dict[str, Any]) -> dict[str, Any]:
+        _no_params(params)
+        workspace = self._require_workspace()
+        return {**self._selection(), "demo": install_demo_documents(workspace)}
+
+    def _remove_demo_documents(self, params: dict[str, Any]) -> dict[str, Any]:
+        _no_params(params)
+        workspace = self._require_workspace()
+        return {**self._selection(), "demo": remove_demo_documents(workspace)}
 
     def _select_document(self, params: dict[str, Any]) -> dict[str, Any]:
         _shape_params(params, required={"document_id"})

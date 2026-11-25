@@ -1259,6 +1259,16 @@ function registerIpc(): void {
     })
   }
 
+  for (const [channel, method] of [
+    ["sztu:workspace-install-demo-documents", "workspace.installDemoDocuments"],
+    ["sztu:workspace-remove-demo-documents", "workspace.removeDemoDocuments"],
+  ] as const) {
+    ipcMain.handle(channel, async (event) => {
+      assertTrustedSender(event)
+      return runBridge(() => requestSidecar(method, {}))
+    })
+  }
+
   ipcMain.handle("sztu:workspace-save-draft", async (event, input: unknown) => {
     assertTrustedSender(event)
     return runBridge(() => {
@@ -1785,7 +1795,7 @@ async function requestSidecar<T>(
     })
     if (method === "workspace.saveProfile" || method === "workspace.saveProfileDraft") {
       telemetry?.setAcademicProfile(params.profile)
-    } else if (["workspace.open", "workspace.createProfile", "workspace.selectProfile", "workspace.deleteProfile", "workspace.restoreProfile", "workspace.selectDocument", "workspace.deleteDocument", "workspace.restoreDocument", "workspace.purgeDocument"].includes(method)) {
+    } else if (["workspace.open", "workspace.createProfile", "workspace.selectProfile", "workspace.deleteProfile", "workspace.restoreProfile", "workspace.selectDocument", "workspace.deleteDocument", "workspace.restoreDocument", "workspace.purgeDocument", "workspace.installDemoDocuments", "workspace.removeDemoDocuments"].includes(method)) {
       const snapshot = result as Record<string, unknown> | null
       telemetry?.setAcademicProfile(snapshot?.profile_draft ?? snapshot?.profile)
     } else if (method === "workspace.closeTemporary") {
@@ -1794,7 +1804,7 @@ async function requestSidecar<T>(
     if (result && typeof result === "object") {
       const snapshot = result as Record<string, unknown>
       const document = (snapshot.document ?? (method === "workspace.saveDraft" || method === "workspace.createDocument" ? snapshot : null)) as Record<string, unknown> | null
-      if (["workspace.open", "workspace.createProfile", "workspace.selectProfile", "workspace.deleteProfile", "workspace.restoreProfile", "workspace.selectDocument", "workspace.deleteDocument", "workspace.restoreDocument", "workspace.purgeDocument"].includes(method) || method === "workspace.closeTemporary") activeDiagnosticContext = {}
+      if (["workspace.open", "workspace.createProfile", "workspace.selectProfile", "workspace.deleteProfile", "workspace.restoreProfile", "workspace.selectDocument", "workspace.deleteDocument", "workspace.restoreDocument", "workspace.purgeDocument", "workspace.installDemoDocuments", "workspace.removeDemoDocuments"].includes(method) || method === "workspace.closeTemporary") activeDiagnosticContext = {}
       if (document) activeDiagnosticContext = diagnosticContext({ document_type: document.document_type, structure: documentStructure(document.content) })
     }
     const envelope = isRecord(result) ? result : undefined

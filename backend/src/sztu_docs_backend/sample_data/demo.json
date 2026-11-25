@@ -1,0 +1,1519 @@
+{
+  "schema_version": "1.0",
+  "profile": {
+    "full_name": "程光铭",
+    "student_number": "202300307418",
+    "college": "新材料与新能源学院",
+    "major": "新能源科学与工程",
+    "class_name": "新能源2班",
+    "advisor_name": "陈予安",
+    "advisor_title": "副教授",
+    "graduation_cohort": "2027届",
+    "thesis_title": [
+      "SZTU Docs Studio 上手指南"
+    ],
+    "thesis_title_en": "From Draft to PDF with SZTU Docs Studio"
+  },
+  "image": "workflow.png",
+  "documents": [
+    {
+      "document_type": "task_book",
+      "title": "任务书 · 软件介绍与开发历程",
+      "template_version": "0.2+66c968c",
+      "schema_version": "0.1",
+      "content": {
+        "schema_version": "0.1",
+        "metadata": {
+          "title": {
+            "type": "paragraph",
+            "runs": [
+              {
+                "text": "SZTU Docs Studio 上手指南"
+              }
+            ]
+          },
+          "student_name": "程光铭",
+          "student_id": "202300307418",
+          "college": "新材料与新能源学院",
+          "major": "新能源科学与工程",
+          "class_name": "新能源2班",
+          "advisor": "陈予安",
+          "graduation_year": 2027
+        },
+        "sections": {
+          "basic_content_and_requirements": [
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "一、选题背景。",
+                  "bold": true
+                },
+                {
+                  "text": "毕业论文和过程材料对格式的要求很细：字号、行距、页边距、图表编号、参考文献著录，一处不一致就要返工。很多同学的时间不是花在内容上，而是花在“把格式调对”上；换一台电脑、换一个 Word 版本，之前调好的版式又可能变形。本课题希望把“格式”沉淀进软件：用户只负责填写与写作，排版交给模板和渲染引擎，最终得到可以提交的 Word 与 PDF。"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "二、选题内容。",
+                  "bold": true
+                },
+                {
+                  "text": "本课题以 SZTU 文档工作台（SZTU Docs Studio）为载体，覆盖任务书、开题报告、中期检查、毕业论文，以及指导教师评审表、评阅人评审表、答辩记录表、成绩考核表共七类材料。每类材料的字段、章节和版式都做成固定模板：填写时即时校验，预览时看到的就是最终版式，导出时得到的就是可以提交的版本。"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "具体来说，工作台把“写一份材料”拆成四件事，并把每一件都做成看得见的功能。"
+                }
+              ]
+            },
+            {
+              "type": "unordered_list",
+              "items": [
+                {
+                  "content": {
+                    "type": "paragraph",
+                    "runs": [
+                      {
+                        "text": "资料填一次：姓名、学号、学院、专业、导师与论文题目保存在档案里，各文档自动带出，不用反复粘贴。"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "content": {
+                    "type": "paragraph",
+                    "runs": [
+                      {
+                        "text": "格式不用记：字体、行距、标题层级、图表编号由模板统一处理，Windows 电脑安装后开箱可用。"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "content": {
+                    "type": "paragraph",
+                    "runs": [
+                      {
+                        "text": "数据留本机：正文、图片与文献只保存在本机的私有目录，不上传云端，也不需要注册账号。"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "content": {
+                    "type": "paragraph",
+                    "runs": [
+                      {
+                        "text": "生成可核对：预览按页显示最终排版，导出前先做内容检查，问题会指到具体字段，而不是只报一个失败。"
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "三、与三个专业的结合。",
+                  "bold": true
+                },
+                {
+                  "text": "工作台面向深圳技术大学新材料与新能源学院的三个专业方向。光源与照明方向常处理光谱曲线、色温与显色指数、灯具参数表，图表多、单位多；新能源科学与工程方向常写系统方案、能量流与经济性分析，表格与公式密集；材料科学与工程方向离不开表征图像、样品编号与结构式。三类文档的共同点是“图表编号要连续、单位要统一、参考文献要合规”，这正是模板最擅长、人工最容易出错的部分。"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "因此，模板把三个专业的常见结构做成章节骨架：光源类材料预留光学参数与灯具对比的位置，新能源类材料预留系统图、能量平衡表与经济性分析的位置，材料类材料预留样品信息、表征结果与结构式的位置。写作时按骨架填写，既不会漏项，也便于导师快速定位。"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "四、上手步骤。",
+                  "bold": true
+                },
+                {
+                  "text": "软件的使用路径很短，四步就能从空白走到导出；这套示例文档本身就是按这四步写成的。"
+                }
+              ]
+            },
+            {
+              "type": "ordered_list",
+              "items": [
+                {
+                  "content": {
+                    "type": "paragraph",
+                    "runs": [
+                      {
+                        "text": "填档案：在“档案与基本信息”里录入一次个人信息、导师信息与论文题目。"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "content": {
+                    "type": "paragraph",
+                    "runs": [
+                      {
+                        "text": "建文档：从左侧选择材料类型，新建文档，或打开之前保存的版本继续写。"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "content": {
+                    "type": "paragraph",
+                    "runs": [
+                      {
+                        "text": "写正文：按章节填写，右侧的结构提示会标出缺项；需要图表时插入图片或三线表。"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "content": {
+                    "type": "paragraph",
+                    "runs": [
+                      {
+                        "text": "预览导出：先看逐页预览确认真实版式，再导出 Word 或 PDF，保存到指定文件夹。"
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "为便于理解，图 1 把四步画成了一条从“填写资料”到“导出文件”的流程线。图中每一步都对应工作台里的一个页面，不需要额外安装插件，也不需要联网。"
+                }
+              ]
+            },
+            {
+              "type": "image",
+              "id": "fig-guideworkflow01",
+              "path": "document-assets/workflow.png",
+              "alt": "从填写资料、编辑内容、分页预览到导出文件的四步流程示意图",
+              "chapter": 1,
+              "width_mm": 140,
+              "caption": {
+                "type": "paragraph",
+                "runs": [
+                  {
+                    "text": "从填写资料到导出文件的四步流程"
+                  }
+                ]
+              }
+            },
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "五、技术路线。",
+                  "bold": true
+                },
+                {
+                  "text": "软件采用“桌面端 + 本地渲染引擎”的结构：桌面端负责编辑与交互，渲染引擎负责把内容排成 PDF，模板负责规定版式。渲染引擎、PDF 工具与模板字体随安装包一起提供，安装后固定在本机目录，因此同一份文档在不同电脑上得到的版式一致；正文与文献保存在本机数据库中，卸载或重装不会上传任何内容。"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "为避免“编辑时好看、导出时出错”，工作台把内容检查放在导出之前：缺字段、超页数、文献格式不正确等问题会在检查阶段指出具体位置；预览与导出使用同一套模板，所见即所得。"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "六、可行性。",
+                  "bold": true
+                },
+                {
+                  "text": "一方面，七类材料的版式与字段来自学校现行模板和撰写规范，需求边界清楚；另一方面，字体、引擎与 PDF 工具已经做成安装包内置组件，纯净 Windows 电脑无需额外安装 TeX 或字体。在此前版本的交付中，中文路径、字体缺失与文献空值等问题已经逐项修复，并在打包验收中覆盖。"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "七、预期成果。",
+                  "bold": true
+                },
+                {
+                  "text": "形成一套可复用的材料模板与填写规范；完成一份从空白到导出的完整示例（即本文档）；在纯净 Windows 环境验证字体、引擎与导出链路；沉淀一份面向同学的上手说明。"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "八、使用边界。",
+                  "bold": true
+                },
+                {
+                  "text": "软件负责格式与流程，不代写正文，也不替代导师与评审意见；示例中的人物、学号与实验数据均为虚构，文献来自公开来源。正式提交前，请以学校当年发布的通知与模板为准。"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "九、关于本示例。",
+                  "bold": true
+                },
+                {
+                  "text": "本文档本身就是一份示例：标题、章节、列表与配图都按任务书模板排版，正文则用来介绍产品。示例人物的姓名取自三个专业的意象——“程”对应工程，“光”对应光源与照明，“铭”对应材料的铭刻与标记；它只用于演示，不与任何真实学生对应。"
+                }
+              ]
+            }
+          ],
+          "schedule": [
+            {
+              "period": "2026年9月14日—2026年9月30日",
+              "content": {
+                "type": "paragraph",
+                "runs": [
+                  {
+                    "text": "需求梳理。",
+                    "bold": true
+                  },
+                  {
+                    "text": "整理七类材料的字段与版式，确定示例文档的章节结构。"
+                  }
+                ]
+              }
+            },
+            {
+              "period": "2026年10月1日—2026年10月31日",
+              "content": {
+                "type": "paragraph",
+                "runs": [
+                  {
+                    "text": "开发与联调。",
+                    "bold": true
+                  },
+                  {
+                    "text": "打通档案、文档与正文编辑，完成逐页预览与 Word、PDF 导出。"
+                  }
+                ]
+              }
+            },
+            {
+              "period": "2026年11月1日—2026年11月30日",
+              "content": {
+                "type": "paragraph",
+                "runs": [
+                  {
+                    "text": "功能收尾。",
+                    "bold": true
+                  },
+                  {
+                    "text": "内置渲染引擎与模板字体，补齐文献校验与七类材料，完成自测。"
+                  }
+                ]
+              }
+            },
+            {
+              "period": "2026年12月1日—2026年12月31日",
+              "content": {
+                "type": "paragraph",
+                "runs": [
+                  {
+                    "text": "验收交付。",
+                    "bold": true
+                  },
+                  {
+                    "text": "在纯净 Windows 与中文安装目录完成打包验收，交付安装包与说明。"
+                  }
+                ]
+              }
+            }
+          ],
+          "required_materials": [
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "开始填写之前，准备好下面几样东西，后面会省很多来回。"
+                }
+              ]
+            },
+            {
+              "type": "unordered_list",
+              "items": [
+                {
+                  "content": {
+                    "type": "paragraph",
+                    "runs": [
+                      {
+                        "text": "档案信息：姓名、学号、学院、专业、班级、导师与论文题目。"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "content": {
+                    "type": "paragraph",
+                    "runs": [
+                      {
+                        "text": "选题信息：题目来源、项目类型（如有）与起止时间。"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "content": {
+                    "type": "paragraph",
+                    "runs": [
+                      {
+                        "text": "文献：从 Zotero、知网或期刊页面导出的 BibTeX，或按 GB/T 7714 整理好的条目。"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "content": {
+                    "type": "paragraph",
+                    "runs": [
+                      {
+                        "text": "图片与公式：要插入的结果图、示意图，以及需要排版的公式。"
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "Windows 电脑无需另行安装 TeX、PDF 工具或模板字体：安装包已经内置，安装完成后即可编辑、预览和导出。"
+                }
+              ]
+            }
+          ],
+          "references": [
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "深圳技术大学. 本科毕业论文（设计）撰写规范[S]. 深圳: 深圳技术大学, 2026."
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "SZTU Docs Studio. SZTU文档工作台项目与使用说明[EB/OL]. https://github.com/AmaziiingChen/SZTU-Graduation-Docs-Studio."
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "全国信息与文献标准化技术委员会. 信息与文献 参考文献著录规则: GB/T 7714—2025[S]. 北京: 中国标准出版社, 2025."
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "Electron. contextBridge API[EB/OL]. https://www.electronjs.org/docs/latest/api/context-bridge."
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "TeX Users Group. TeX Live Documentation[EB/OL]. https://www.tug.org/texlive/doc.html."
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "Zotero. Zotero Documentation[EB/OL]. https://www.zotero.org/support/."
+                }
+              ]
+            }
+          ],
+          "topic_information": {
+            "nature": "graduation_design",
+            "source": {
+              "type": "practice_project"
+            }
+          }
+        },
+        "editor_state": {
+          "bibliography": {
+            "source_format": "bibtex",
+            "source_text": "@standard{sztu-thesis-spec,\n  title = {深圳技术大学本科毕业论文（设计）撰写规范},\n  year = {2026},\n}\n\n@standard{gbt7714-2025,\n  title = {信息与文献 参考文献著录规则: GB/T 7714—2025},\n  year = {2025},\n}\n\n@online{sztu-docs-studio,\n  title = {SZTU 文档工作台项目与使用文档},\n  url = {https://github.com/AmaziiingChen/SZTU-Graduation-Docs-Studio},\n  year = {2026},\n}\n\n@online{electron-contextbridge,\n  title = {contextBridge API},\n  url = {https://www.electronjs.org/docs/latest/api/context-bridge},\n  year = {2025},\n}\n\n@online{texlive-documentation,\n  title = {TeX Live Documentation},\n  url = {https://www.tug.org/texlive/doc.html},\n  year = {2025},\n}\n\n@online{zotero-documentation,\n  title = {Zotero Documentation},\n  url = {https://www.zotero.org/support/},\n  year = {2025},\n}\n",
+            "parse_status": "valid",
+            "entry_count": 6
+          }
+        }
+      }
+    },
+    {
+      "document_type": "proposal",
+      "title": "开题报告 · 上手步骤与使用技巧",
+      "template_version": "0.1.0-dev.1",
+      "schema_version": "0.2",
+      "content": {
+        "schema_version": "0.2",
+        "metadata": {
+          "title": {
+            "type": "paragraph",
+            "runs": [
+              {
+                "text": "SZTU Docs Studio 上手指南"
+              }
+            ]
+          },
+          "student_name": "程光铭",
+          "student_id": "202300307418",
+          "major": "新能源科学与工程",
+          "college": "新材料与新能源学院",
+          "advisor": "陈予安"
+        },
+        "sections": {
+          "significance_and_status": [
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "毕业论文和过程材料对格式的要求很细：字号、行距、页边距、图表编号、参考文献著录，任何一处不一致都可能被退回重排。很多同学的时间不是花在内容上，而是花在“把格式调对”上；换一台电脑、换一个 Word 版本，之前调好的版式又可能变形。更麻烦的是，任务书、开题报告、中期检查、评审表与答辩记录各有各的表格和栏目，模板一多，漏填、错填和版本混乱就很难避免。本课题希望把“格式”沉淀进软件：用户只负责填写与写作，排版交给模板和渲染引擎，最终得到可以直接提交的 Word 与 PDF。这件事看起来是排版问题，本质上是把学校的规范翻译成可执行的规则，让不会 LaTeX、也不熟悉 Word 样式的人同样能一次做对。"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "从现状看，常见做法有两类：一类是发 Word 模板，靠人工对照填写，格式正确与否全凭经验；另一类是直接上 LaTeX，版式稳定但门槛高，装环境、找宏包、处理中文路径都会把初学者挡在门外。本课题已有可运行的原型（0.2.0），覆盖任务书、开题报告、中期检查与四类评审表；字体、TeX 引擎与 PDF 工具随安装包提供，纯净 Windows 电脑无需额外配置。剩下的问题是把“能跑”变成“好用”：说明文档太散、示例内容太薄、出错信息不够直白，这正是本次开题要解决的问题。七类材料共用一套档案与一条渲染链路，只要链路正确，新增一类材料就以配置为主；因此本课题优先把链路做稳，而不是继续堆功能。"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "学院的三个专业方向各有典型文档：光源与照明常写光谱曲线、色温与显色指数、灯具参数表；新能源科学与工程常写系统方案、能量流与经济性分析；材料科学与工程离不开表征图像、样品编号与结构式。三类材料的共同点是图表编号要连续、单位要统一、参考文献要合规，这恰好是模板最擅长、人工最容易出错的部分，也是本课题选择“模板先行”的原因。"
+                }
+              ]
+            }
+          ],
+          "research_content": [
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "本课题的研究内容分为四个方面，每一项都要落到可操作的功能上："
+                }
+              ]
+            },
+            {
+              "type": "ordered_list",
+              "items": [
+                {
+                  "content": {
+                    "type": "paragraph",
+                    "runs": [
+                      {
+                        "text": "档案与身份信息。姓名、学号、学院、专业、班级、导师与论文题目只在档案里填写一次，各文档自动带出，避免逐份复制；同时要处理同名、换导师、换题目等真实场景。"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "content": {
+                    "type": "paragraph",
+                    "runs": [
+                      {
+                        "text": "模板与版式引擎。七类材料各自固定章节与字段，模板负责字号、行距、页边距、图表编号与参考文献著录；渲染引擎在本地把内容排成 PDF，保证不同电脑上版式一致。"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "content": {
+                    "type": "paragraph",
+                    "runs": [
+                      {
+                        "text": "内容检查与错误提示。提交前按模板规则检查缺项、超页、文献格式与图片资源，错误要指向具体字段并给出可执行的修改建议，而不是只报一个失败码。"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "content": {
+                    "type": "paragraph",
+                    "runs": [
+                      {
+                        "text": "预览、导出与更新。预览与导出使用同一套模板，所见即所得；安装包内置字体与引擎，并提供应用内更新，减少用户反复手工安装的成本。"
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "四个方面不是并列的功能清单，而是一条链路：档案提供数据，模板规定版式，检查保证可提交，预览与导出给出最终结果。本课题的验收也按这条链路逐段进行，任何一段不通过都不算完成。"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "七类材料之间还有一层复用关系：任务书、开题报告与中期检查使用过程类模板，四类评审表使用表格类模板，论文使用 LaTeX 模板。复用带来两个要求：一是字段命名必须一致，避免同一份档案在不同文档里出现两种写法；二是错误提示必须指向具体文档与字段，不能把模板差异留给用户自己猜。"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "验收标准同样按链路拆分：档案字段要能完整带出；模板章节不得缺项或重复；内容检查要能在导出前拦住缺字段、超页数与文献格式错误；预览与导出的版式必须一致；同一份内容在另一台干净 Windows 上导出，页数与图号不得变化。五项中任何一项不达标，就回到对应环节修正，而不是在导出阶段打补丁。"
+                }
+              ]
+            }
+          ],
+          "methods_and_means": [
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "本课题采用“桌面端 + 本地渲染引擎 + 模板包”的结构：桌面端负责编辑与交互，渲染引擎负责排版，模板包规定版式；三者之间用固定的数据协议衔接，便于分别测试和替换。"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "技术选型上，桌面端使用 Electron、React 与 TypeScript，本地服务使用 Python，数据保存在本机 SQLite，PDF 由 XeLaTeX 生成，Word 由 python-docx 生成。选择本地渲染而不是云端，是为了让正文与图片不出本机，也避免网络波动影响导出。"
+                }
+              ]
+            },
+            {
+              "type": "image",
+              "id": "fig-guideroute01",
+              "path": "document-assets/9bc74dd00bd9c71a069c9cae1bf17b208cd4ce57b599e307f1e5558ee4ef0e92.png",
+              "alt": "从填写资料到导出文件的四步流程",
+              "chapter": 1,
+              "width_mm": 140,
+              "caption": {
+                "type": "paragraph",
+                "runs": [
+                  {
+                    "text": "从填写资料到导出文件的四步流程"
+                  }
+                ]
+              }
+            },
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "验证方法分四层：单元测试覆盖字段规则与数据转换；集成测试覆盖“新建—填写—检查—导出”的完整链路；打包验收在纯净 Windows 上安装后跑一遍真实导出；最后用真实材料做人工版式核对。四层都通过，才认为功能可用。"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "错误处理按“用户能看懂、维护者能定位”两条标准设计：界面只显示原因与下一步动作，错误码与详细上下文写入本地诊断包；同一个问题在预览与导出两条路径上必须给出同样的解释。"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "字体、PDF 工具与 LaTeX 引擎全部随安装包提供，并固定安装到与安装目录无关的机器级目录，避免中文路径导致引擎找不到格式文件；图片资源按内容哈希存放在本机数据目录，渲染前再复制到临时工作目录，使同一份文档在不同电脑上得到一致结果。"
+                }
+              ]
+            }
+          ],
+          "research_steps": [
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "按学期安排，研究步骤分为四个阶段："
+                }
+              ]
+            },
+            {
+              "type": "ordered_list",
+              "items": [
+                {
+                  "content": {
+                    "type": "paragraph",
+                    "runs": [
+                      {
+                        "text": "2026 年 9 月：梳理七类材料的字段与版式，确定模板边界与验收标准。"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "content": {
+                    "type": "paragraph",
+                    "runs": [
+                      {
+                        "text": "2026 年 10 月：完成编辑器、数据协议与本地服务联调，打通“填写—保存—预览”。"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "content": {
+                    "type": "paragraph",
+                    "runs": [
+                      {
+                        "text": "2026 年 11 月：完成字体、引擎、七类模板与导出链路，补齐自动化测试与打包验收。"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "content": {
+                    "type": "paragraph",
+                    "runs": [
+                      {
+                        "text": "2026 年 12 月：在真实电脑上验收，修正体验问题，整理使用说明并交付。"
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "里程碑以“能否在干净电脑上独立完成一份材料”为准，而不是以代码写完为准；每完成一类材料，就在打包版本上做一次端到端验证。"
+                }
+              ]
+            },
+            {
+              "type": "unordered_list",
+              "items": [
+                {
+                  "content": {
+                    "type": "paragraph",
+                    "runs": [
+                      {
+                        "text": "可运行的桌面工作台与安装包，覆盖七类材料。"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "content": {
+                    "type": "paragraph",
+                    "runs": [
+                      {
+                        "text": "一套模板与字段规范，新增材料时按配置扩展。"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "content": {
+                    "type": "paragraph",
+                    "runs": [
+                      {
+                        "text": "一份端到端示例（本文档所在的演示材料）与一份面向同学的上手说明。"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "content": {
+                    "type": "paragraph",
+                    "runs": [
+                      {
+                        "text": "一组可重复执行的验收脚本，覆盖字体、引擎、中文路径与图片资源。"
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ],
+          "references": [
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "深圳技术大学. 本科毕业论文（设计）撰写规范[S]. 深圳: 深圳技术大学, 2026."
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "全国信息与文献标准化技术委员会. 信息与文献 参考文献著录规则: GB/T 7714—2025[S]. 北京: 中国标准出版社, 2025."
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "SZTU Docs Studio. SZTU 文档工作台项目与使用文档[EB/OL]. https://github.com/AmaziiingChen/SZTU-Graduation-Docs-Studio."
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "Electron. contextBridge API[EB/OL]. https://www.electronjs.org/docs/latest/api/context-bridge."
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "TeX Users Group. TeX Live Documentation[EB/OL]. https://www.tug.org/texlive/doc.html."
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "Zotero. Zotero Documentation[EB/OL]. https://www.zotero.org/support/."
+                }
+              ]
+            }
+          ]
+        },
+        "editor_state": {
+          "bibliography": {
+            "source_format": "bibtex",
+            "source_text": "@standard{sztu-thesis-spec,\n  title = {深圳技术大学本科毕业论文（设计）撰写规范},\n  year = {2026},\n}\n\n@standard{gbt7714-2025,\n  title = {信息与文献 参考文献著录规则: GB/T 7714—2025},\n  year = {2025},\n}\n\n@online{sztu-docs-studio,\n  title = {SZTU 文档工作台项目与使用文档},\n  url = {https://github.com/AmaziiingChen/SZTU-Graduation-Docs-Studio},\n  year = {2026},\n}\n\n@online{electron-contextbridge,\n  title = {contextBridge API},\n  url = {https://www.electronjs.org/docs/latest/api/context-bridge},\n  year = {2025},\n}\n\n@online{texlive-documentation,\n  title = {TeX Live Documentation},\n  url = {https://www.tug.org/texlive/doc.html},\n  year = {2025},\n}\n\n@online{zotero-documentation,\n  title = {Zotero Documentation},\n  url = {https://www.zotero.org/support/},\n  year = {2025},\n}\n",
+            "parse_status": "valid",
+            "entry_count": 6
+          }
+        }
+      }
+    },
+    {
+      "document_type": "midterm",
+      "title": "中期检查 · 功能展示与操作速查",
+      "template_version": "0.3+66c968c",
+      "schema_version": "0.1",
+      "content": {
+        "schema_version": "0.1",
+        "metadata": {
+          "student_name": "程光铭",
+          "college": "新材料与新能源学院",
+          "major": "新能源科学与工程",
+          "class_name": "新能源2班",
+          "advisor": "陈予安",
+          "check_date": "2026-12-10",
+          "title": {
+            "type": "paragraph",
+            "runs": [
+              {
+                "text": "SZTU Docs Studio 上手指南"
+              }
+            ]
+          }
+        },
+        "sections": {
+          "directory": [
+            {
+              "level": 1,
+              "title": "阶段目标与完成情况",
+              "number": "1"
+            },
+            {
+              "level": 2,
+              "title": "阶段目标",
+              "number": "1.1"
+            },
+            {
+              "level": 2,
+              "title": "完成情况",
+              "number": "1.2"
+            },
+            {
+              "level": 1,
+              "title": "主要工作",
+              "number": "2"
+            },
+            {
+              "level": 2,
+              "title": "模板与字段",
+              "number": "2.1"
+            },
+            {
+              "level": 2,
+              "title": "渲染与导出",
+              "number": "2.2"
+            },
+            {
+              "level": 2,
+              "title": "字体与安装",
+              "number": "2.3"
+            },
+            {
+              "level": 1,
+              "title": "功能速查",
+              "number": "3"
+            },
+            {
+              "level": 2,
+              "title": "七类材料",
+              "number": "3.1"
+            },
+            {
+              "level": 2,
+              "title": "常见操作",
+              "number": "3.2"
+            },
+            {
+              "level": 1,
+              "title": "进度与下一步",
+              "number": "4"
+            },
+            {
+              "level": 1,
+              "title": "问题与改进",
+              "number": "5"
+            }
+          ],
+          "main_research_content": [
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "本阶段的目标是把“能填写、能检查、能导出”走通，并在干净 Windows 电脑上验证一遍。截至 2026 年 12 月，七类材料的模板、字段与导出链路已经可用，字体、TeX 引擎与 PDF 工具随安装包提供，用户无需自行安装。"
+                }
+              ]
+            },
+            {
+              "type": "data_table",
+              "style": "three_line",
+              "columns": [
+                {
+                  "header": {
+                    "type": "paragraph",
+                    "runs": [
+                      {
+                        "text": "阶段"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "header": {
+                    "type": "paragraph",
+                    "runs": [
+                      {
+                        "text": "时间"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "header": {
+                    "type": "paragraph",
+                    "runs": [
+                      {
+                        "text": "主要成果"
+                      }
+                    ]
+                  }
+                }
+              ],
+              "rows": [
+                {
+                  "cells": [
+                    {
+                      "type": "paragraph",
+                      "runs": [
+                        {
+                          "text": "需求与模板"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "paragraph",
+                      "runs": [
+                        {
+                          "text": "2026 年 9 月"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "paragraph",
+                      "runs": [
+                        {
+                          "text": "七类材料字段表、章节骨架与验收标准"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "cells": [
+                    {
+                      "type": "paragraph",
+                      "runs": [
+                        {
+                          "text": "开发与联调"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "paragraph",
+                      "runs": [
+                        {
+                          "text": "2026 年 10 月"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "paragraph",
+                      "runs": [
+                        {
+                          "text": "编辑器、本地服务与数据协议打通"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "cells": [
+                    {
+                      "type": "paragraph",
+                      "runs": [
+                        {
+                          "text": "功能收尾"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "paragraph",
+                      "runs": [
+                        {
+                          "text": "2026 年 11 月"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "paragraph",
+                      "runs": [
+                        {
+                          "text": "字体与引擎内置、图片资源修复、错误提示改为可读原因"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "cells": [
+                    {
+                      "type": "paragraph",
+                      "runs": [
+                        {
+                          "text": "验收与交付"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "paragraph",
+                      "runs": [
+                        {
+                          "text": "2026 年 12 月"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "paragraph",
+                      "runs": [
+                        {
+                          "text": "纯净 Windows 验收、使用说明与示例材料"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "caption": {
+                "type": "paragraph",
+                "runs": [
+                  {
+                    "text": "阶段成果"
+                  }
+                ]
+              }
+            },
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "主要工作集中在三处：一是把学校规范拆成字段与章节，写进模板；二是把渲染链路固定下来，预览与导出使用同一套模板；三是把失败原因翻译成人话，让用户知道下一步该改哪里。"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "模板与字段这部分看起来琐碎，实际决定了软件能不能长期维护。七类材料共用一份档案，字段名一旦不统一，后续每加一类材料都要写一遍转换逻辑；因此本阶段先把字段表固定下来，再让模板只负责版式，新增材料时以配置为主，不改动渲染代码。"
+                }
+              ]
+            },
+            {
+              "type": "image",
+              "id": "fig-guidemidterm01",
+              "path": "document-assets/9bc74dd00bd9c71a069c9cae1bf17b208cd4ce57b599e307f1e5558ee4ef0e92.png",
+              "alt": "从填写资料到导出文件的四步流程",
+              "chapter": 1,
+              "width_mm": 140,
+              "caption": {
+                "type": "paragraph",
+                "runs": [
+                  {
+                    "text": "从填写资料到导出文件的四步流程"
+                  }
+                ]
+              }
+            },
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "渲染链路的改动最容易被忽略，但对体验影响最大：此前过程类文档插入图片后，预览与导出会因为找不到图片而失败；现在渲染前会把受管图片按内容哈希复制到临时工作目录，缺图时也会明确提示“图片文件找不到了，请重新插入”。"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "字体与安装是本阶段投入最多、也最容易在别人电脑上出问题的部分：论文模板需要宋体、黑体、楷体、华文中宋与 Times New Roman，任务书还需要 Wingdings 2。现在这些字体随安装包提供，应用首次启动时复制到当前用户的字体目录并写入注册项，不需要管理员权限，也不会覆盖系统已有字体。"
+                }
+              ]
+            },
+            {
+              "type": "data_table",
+              "style": "three_line",
+              "columns": [
+                {
+                  "header": {
+                    "type": "paragraph",
+                    "runs": [
+                      {
+                        "text": "功能"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "header": {
+                    "type": "paragraph",
+                    "runs": [
+                      {
+                        "text": "入口"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "header": {
+                    "type": "paragraph",
+                    "runs": [
+                      {
+                        "text": "说明"
+                      }
+                    ]
+                  }
+                }
+              ],
+              "rows": [
+                {
+                  "cells": [
+                    {
+                      "type": "paragraph",
+                      "runs": [
+                        {
+                          "text": "填写档案"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "paragraph",
+                      "runs": [
+                        {
+                          "text": "档案与基本信息"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "paragraph",
+                      "runs": [
+                        {
+                          "text": "姓名、学号、学院、专业、导师与题目填一次，各文档自动带出"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "cells": [
+                    {
+                      "type": "paragraph",
+                      "runs": [
+                        {
+                          "text": "新建文档"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "paragraph",
+                      "runs": [
+                        {
+                          "text": "左侧材料类型"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "paragraph",
+                      "runs": [
+                        {
+                          "text": "任务书、开题报告、中期检查、毕业论文与四类评审表"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "cells": [
+                    {
+                      "type": "paragraph",
+                      "runs": [
+                        {
+                          "text": "内容检查"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "paragraph",
+                      "runs": [
+                        {
+                          "text": "预览&导出"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "paragraph",
+                      "runs": [
+                        {
+                          "text": "缺字段、超页数、文献格式错误会指到具体位置"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "cells": [
+                    {
+                      "type": "paragraph",
+                      "runs": [
+                        {
+                          "text": "分页预览"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "paragraph",
+                      "runs": [
+                        {
+                          "text": "预览&导出"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "paragraph",
+                      "runs": [
+                        {
+                          "text": "按最终版式显示，支持逐页翻看"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "cells": [
+                    {
+                      "type": "paragraph",
+                      "runs": [
+                        {
+                          "text": "导出 Word / PDF"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "paragraph",
+                      "runs": [
+                        {
+                          "text": "预览&导出"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "paragraph",
+                      "runs": [
+                        {
+                          "text": "同一份内容两种格式，图表编号一致"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "cells": [
+                    {
+                      "type": "paragraph",
+                      "runs": [
+                        {
+                          "text": "载入演示资料"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "paragraph",
+                      "runs": [
+                        {
+                          "text": "使用说明"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "paragraph",
+                      "runs": [
+                        {
+                          "text": "标题带「参考样例·」前缀，随时可清除"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "cells": [
+                    {
+                      "type": "paragraph",
+                      "runs": [
+                        {
+                          "text": "检查更新"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "paragraph",
+                      "runs": [
+                        {
+                          "text": "关于与更新"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "paragraph",
+                      "runs": [
+                        {
+                          "text": "有新版本时提示，可下载后一键安装并重启"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "caption": {
+                "type": "paragraph",
+                "runs": [
+                  {
+                    "text": "功能速查"
+                  }
+                ]
+              }
+            },
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "下一阶段不再新增材料类型，而是把已有链路做稳：补齐演示内容、完善使用说明、把打包验收扩展到中文安装目录与多账户场景，并用真实材料做一轮人工版式核对。"
+                }
+              ]
+            },
+            {
+              "type": "ordered_list",
+              "items": [
+                {
+                  "content": {
+                    "type": "paragraph",
+                    "runs": [
+                      {
+                        "text": "完成演示资料的开题报告与中期检查两份内容。"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "content": {
+                    "type": "paragraph",
+                    "runs": [
+                      {
+                        "text": "把「载入/清除演示资料」做成可重复使用的入口。"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "content": {
+                    "type": "paragraph",
+                    "runs": [
+                      {
+                        "text": "在纯净 Windows 上跑一遍安装、字体注册、预览与导出。"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "content": {
+                    "type": "paragraph",
+                    "runs": [
+                      {
+                        "text": "整理一页纸的使用说明，放到软件内可随时查看。"
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ],
+          "progress": [
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "整体进度与计划一致：模板与渲染链路已经完成，剩下的是体验与验收。12 月的时间主要花在验收与修正上，不再安排新功能。"
+                }
+              ]
+            },
+            {
+              "type": "ordered_list",
+              "items": [
+                {
+                  "content": {
+                    "type": "paragraph",
+                    "runs": [
+                      {
+                        "text": "第 1 周：补齐演示内容，确认两份过程材料的篇幅与语气。"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "content": {
+                    "type": "paragraph",
+                    "runs": [
+                      {
+                        "text": "第 2 周：完成使用说明与演示资料的载入/清除入口。"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "content": {
+                    "type": "paragraph",
+                    "runs": [
+                      {
+                        "text": "第 3 周：纯净 Windows 验收，覆盖字体、中文路径与图片资源。"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "content": {
+                    "type": "paragraph",
+                    "runs": [
+                      {
+                        "text": "第 4 周：整理交付材料，冻结版本并归档验收记录。"
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "主要风险有两个：一是不同 Windows 账户的字体注册权限，二是用户电脑上的安全软件拦截渲染进程。前者通过写入当前用户字体目录规避，后者通过可读的错误提示把处理动作交给用户，并在诊断包中保留足够信息供维护者定位。"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "问题与改进方向：错误提示已经改为“原因 + 下一步”，但仍有少数失败只给出兜底文案；演示材料此前偏薄，正在补充；打包验收尚未覆盖多账户安装。以上三项都会在交付前逐条确认，未完成的会在验收记录中明确标注。"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "验收安排上，先在本机把七类材料各导出一次，再用一台没有装过 Office、TeX 和字体的电脑复测。复测关注四件事：首次启动是否还能正常进入工作台；字体是否注册成功；含图片的文档能否预览与导出；中文安装目录下更新能否完成。四项都通过，才认为本阶段达到可交付状态。"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

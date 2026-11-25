@@ -3,6 +3,7 @@ import { RocketIcon } from "@/components/ui/rocket"
 import { QrCodeIcon } from "@/components/ui/qr-code-icon"
 import { DownloadIcon } from "@/components/ui/download"
 import { PaletteIcon } from "@/components/ui/palette"
+import { HelpCircleIcon } from "lucide-react"
 import * as React from "react"
 
 import maintainerWechatQr from "@/assets/maintainer-wechat-qr.jpg"
@@ -54,6 +55,7 @@ export function AppSidebar({
   deletedDocumentsLoading,
   onLoadMoreDocuments,
   onSelectProfile,
+  onSelectHelp,
   onSelectTools,
   onSelectAppearance,
   onSelectInspection,
@@ -89,6 +91,7 @@ export function AppSidebar({
   deletedDocumentsLoading?: boolean
   onLoadMoreDocuments?: (deleted: boolean) => Promise<void>
   onSelectProfile: () => void
+  onSelectHelp: () => void
   onSelectTools: () => void
   onSelectAppearance: () => void
   onSelectInspection: () => void
@@ -198,6 +201,16 @@ export function AppSidebar({
             >
               <AnimatedActionIcon icon={PaletteIcon} />
               <span>主题外观</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              tooltip="帮助与支持"
+              className="pl-8"
+              onClick={() => finishNavigation(onSelectHelp)}
+            >
+              <HelpCircleIcon className="mr-2 size-4" aria-hidden="true" />
+              <span>帮助与支持</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
