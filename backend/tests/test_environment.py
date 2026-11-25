@@ -55,6 +55,26 @@ class EnvironmentTests(unittest.TestCase):
             result = environment_module._check_office_editor()
         self.assertEqual(result["status"], "warn")
 
+    def test_macos_application_bundle_counts_as_installed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            bundle = Path(directory) / "Microsoft Word.app"
+            bundle.mkdir()
+            with patch.object(environment_module.platform, "system", return_value="Darwin"), patch.object(
+                environment_module, "_office_candidates", return_value=[str(bundle)]
+            ):
+                result = environment_module._check_office_editor()
+        self.assertEqual(result["status"], "pass")
+        self.assertEqual(result["details"]["path"], str(bundle))
+
+    def test_missing_office_editor_is_advisory_only(self):
+        with patch.object(environment_module.platform, "system", return_value="Windows"), patch.object(
+            environment_module, "_office_candidates", return_value=["missing-office/WINWORD.EXE"]
+        ):
+            result = environment_module._check_office_editor()
+        self.assertFalse(result["required"])
+        self.assertEqual(result["status"], "warn")
+        self.assertIn("不影响 PDF 和 LaTeX 导出", result["message"])
+
     def test_document_font_checks_distinguish_required_and_optional_fonts(self) -> None:
         core_index = {
             candidates[0].casefold(): Path("fonts") / candidates[0]

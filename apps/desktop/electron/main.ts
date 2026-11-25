@@ -28,6 +28,16 @@ import {
   SidecarError,
   type SidecarMethod,
 } from "./sidecar-client.js"
+import { registerWindowsDocumentFonts } from "./document-fonts.js"
+import {
+  buildUpdateInstallScript,
+  installDirectoryForExecutable,
+  readUpdateInstallResult,
+  removeUpdateInstallResult,
+  startUpdateInstallScript,
+  updateInstallPaths,
+  writeUpdateInstallScript,
+} from "./update-install.js"
 import {
   DiagnosticService,
   stableDiagnosticErrorCode,
@@ -64,6 +74,7 @@ let fullDiagnostics: FullDiagnostics | undefined
 let remoteServicesStarted = false
 let shutdownStarted = false
 let quitApproved = false
+let updateInstallRequested = false
 let shutdownComplete = false
 const approvedWindowClosures = new Set<number>()
 const closeCoordinator = new CloseCoordinator({
@@ -962,6 +973,35 @@ function registerIpc(): void {
     })
   })
 
+  ipcMain.handle("sztu:update-install", (event) => {
+    assertTrustedSender(event)
+    return runBridge(async () => {
+      if (!app.isPackaged) {
+        throw new IpcValidationError("开发模式下不支持自动安装更新。")
+      }
+      const artifact = updateService?.installationArtifact()
+      if (!artifact) {
+        throw new IpcValidationError("更新安装包还没有下载完成，请重新下载后再试。")
+      }
+      const executablePath = app.getPath("exe")
+      const paths = updateInstallPaths(app.getPath("userData"))
+      const script = buildUpdateInstallScript({
+        appProcessId: process.pid,
+        executablePath,
+        installDirectory: installDirectoryForExecutable(executablePath),
+        installerPath: artifact.installerPath,
+        resultPath: paths.resultPath,
+        version: artifact.version,
+      })
+      await removeUpdateInstallResult(paths.resultPath)
+      await writeUpdateInstallScript(paths.scriptPath, script)
+      startUpdateInstallScript(paths.scriptPath)
+      updateInstallRequested = true
+      setTimeout(() => app.quit(), 400)
+      return null
+    })
+  })
+
   ipcMain.handle("sztu:update-open-help", (event) => {
     assertTrustedSender(event)
     return runBridge(async () => {
@@ -1793,6 +1833,26 @@ async function requestSidecar<T>(
   }
 }
 
+async function reportUpdateInstallResult(): Promise<void> {
+  const { resultPath } = updateInstallPaths(app.getPath("userData"))
+  const result = await readUpdateInstallResult(resultPath)
+  if (!result) return
+  await removeUpdateInstallResult(resultPath)
+  if (result.exitCode === 0) return
+  const message =
+    result.exitCode === 3
+      ? "更新程序没能在应用退出后开始安装，更新尚未完成。请关闭其他正在运行的窗口后重试，或手动运行下载好的安装包。"
+      : "更新安装没有完成，当前仍是旧版本。可以重新下载更新后再试，或手动运行下载好的安装包。"
+  await dialog.showMessageBox({
+    type: "warning",
+    title: "更新没有完成",
+    message,
+    buttons: ["知道了"],
+    defaultId: 0,
+    noLink: true,
+  })
+}
+
 app.enableSandbox()
 app.setName(localDevelopment.dataDirectory ? "SZTU文档工作台 · 论文开发" : "SZTU文档工作台")
 if (localDevelopment.dataDirectory) {
@@ -1812,11 +1872,24 @@ if (!app.requestSingleInstanceLock()) {
     configureSession()
     registerIpc()
     await initializeRemoteServices()
+    if (process.platform === "win32" && app.isPackaged) {
+      try {
+        const fonts = await registerWindowsDocumentFonts(backendRoot())
+        if (fonts.failed.length) {
+          console.warn("Some bundled document fonts could not be registered.", fonts.failed)
+        }
+      } catch (error) {
+        console.warn("Failed to register bundled document fonts.", error)
+      }
+    }
     if (process.platform === "darwin") {
       app.dock?.setIcon(desktopAssetPath("app-icon.png"))
     }
     mainWindow = createWindow()
     tray = createTray()
+    void reportUpdateInstallResult().catch((error) => {
+      console.warn("Failed to report the update install result.", error)
+    })
 
     app.on("activate", () => {
       showMainWindow()
@@ -1833,7 +1906,7 @@ app.on("window-all-closed", () => {
 app.on("before-quit", (event) => {
   if (shutdownComplete) return
   event.preventDefault()
-  if (!quitApproved && mainWindow && !mainWindow.isDestroyed()) {
+  if (!quitApproved && !updateInstallRequested && mainWindow && !mainWindow.isDestroyed()) {
     closeCoordinator.request(mainWindow.id, "quit")
     return
   }

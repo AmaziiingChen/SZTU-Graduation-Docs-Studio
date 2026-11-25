@@ -34,6 +34,8 @@ export type TelemetryUsageEventInput =
       outcome: "success" | "failure" | "cancelled"
       errorCode?: string
       formatCount?: number
+      stage?: string
+      reason?: string
     }
 
 export type DocumentCompletionResult = {
@@ -103,6 +105,8 @@ const TELEMETRY_ACTIONS = new Set([
 const DOCUMENT_TYPES = new Set(["proposal", "task_book", "midterm", "advisor_review", "reviewer_review", "defense_record", "grade_assessment"])
 const OUTCOMES = new Set(["success", "failure", "cancelled"])
 const STABLE_ERROR_CODE = /^[A-Z][A-Z0-9_]{0,63}$/
+const STABLE_STAGE = /^[a-z][a-z0-9_]{0,31}$/
+const STABLE_REASON = /^[A-Za-z][A-Za-z0-9_]{0,63}$/
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const DOCUMENT_ID_PATTERN =
@@ -127,6 +131,8 @@ const ATTRIBUTE_KEYS = new Set([
   "error_code",
   "format_count",
   "target_version",
+  "stage",
+  "reason",
 ])
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -163,13 +169,17 @@ export function parseTelemetryUsageEvent(value: unknown): TelemetryUsageEventInp
       !exactKeys(
         value,
         ["name", "action", "documentType", "outcome"],
-        ["errorCode", "formatCount"],
+        ["errorCode", "formatCount", "stage", "reason"],
       ) ||
       !TELEMETRY_ACTIONS.has(value.action as string) ||
       !DOCUMENT_TYPES.has(value.documentType as string) ||
       !OUTCOMES.has(value.outcome as string) ||
       (value.errorCode !== undefined &&
         (typeof value.errorCode !== "string" || !STABLE_ERROR_CODE.test(value.errorCode))) ||
+      (value.stage !== undefined &&
+        (typeof value.stage !== "string" || !STABLE_STAGE.test(value.stage))) ||
+      (value.reason !== undefined &&
+        (typeof value.reason !== "string" || !STABLE_REASON.test(value.reason))) ||
       (value.formatCount !== undefined &&
         (!Number.isInteger(value.formatCount) ||
           (value.formatCount as number) < 1 ||
@@ -189,6 +199,8 @@ export function parseTelemetryUsageEvent(value: unknown): TelemetryUsageEventInp
       outcome: value.outcome as "success" | "failure" | "cancelled",
       ...(value.errorCode === undefined ? {} : { errorCode: value.errorCode as string }),
       ...(value.formatCount === undefined ? {} : { formatCount: value.formatCount as number }),
+      ...(value.stage === undefined ? {} : { stage: value.stage as string }),
+      ...(value.reason === undefined ? {} : { reason: value.reason as string }),
     } as TelemetryUsageEventInput
   }
   throw new Error("Telemetry event name is not allowlisted.")
@@ -365,6 +377,8 @@ export class TelemetryService {
       attributes.outcome = event.outcome
       if (event.errorCode) attributes.error_code = event.errorCode
       if (event.formatCount) attributes.format_count = event.formatCount
+      if (event.stage) attributes.stage = event.stage
+      if (event.reason) attributes.reason = event.reason
     }
     await this.record("usage_event", attributes)
   }

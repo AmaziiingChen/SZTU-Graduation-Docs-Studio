@@ -33,10 +33,7 @@ import type {
   StudentProfileDraft,
   SztuDesktopApi,
 } from "@/types/desktop-api"
-import {
-  completeEnvironmentOnboarding,
-  environmentOnboardingIsComplete,
-} from "@/lib/environment-onboarding"
+
 import { readWorkspaceRecovery, workspaceRecoveryKey } from "@/lib/workspace-recovery"
 
 import App from "./App"
@@ -439,6 +436,7 @@ function mockApi(): SztuDesktopApi {
     }),
     getUpdateStatus: vi.fn().mockResolvedValue({ state: "unconfigured" }),
     downloadUpdate: vi.fn().mockResolvedValue({ state: "unconfigured" }),
+    installUpdate: vi.fn().mockResolvedValue(null),
     getMidtermDatePolicyStatus: vi.fn().mockResolvedValue({ state: "unconfigured", rules: [] }),
     revealDownloadedUpdate: vi.fn().mockResolvedValue(null),
     openToolLink: vi.fn().mockResolvedValue(null),
@@ -593,7 +591,6 @@ function renderApp() {
 beforeEach(() => {
   vi.mocked(celebrateExportSuccess).mockClear()
   window.localStorage.clear()
-  completeEnvironmentOnboarding()
 })
 
 function replaceRichText(element: HTMLElement, value: string) {
@@ -706,6 +703,25 @@ describe("M3 workbench persistence", () => {
     expect(api.revealDownloadedUpdate).toHaveBeenCalledTimes(1)
   })
 
+  it("installs a downloaded update only after the user confirms", async () => {
+    const api = mockApi()
+    vi.mocked(api.getUpdateStatus).mockResolvedValue({
+      state: "downloaded",
+      version: "0.2.0",
+      downloadedAt: "2026-10-05T00:00:00Z",
+    })
+    installApi(api)
+    renderApp()
+
+    const downloaded = await screen.findByRole("dialog", { name: "更新已就绪" })
+    fireEvent.click(within(downloaded).getByRole("button", { name: "安装并重启" }))
+    expect(api.installUpdate).not.toHaveBeenCalled()
+
+    const confirm = await screen.findByRole("dialog", { name: "安装更新并重启" })
+    fireEvent.click(within(confirm).getByRole("button", { name: "保存并安装" }))
+    await waitFor(() => expect(api.installUpdate).toHaveBeenCalledTimes(1))
+  })
+
   it("allows required update download retries instead of leaving the blocking notice waiting", async () => {
     const api = mockApi()
     const control = { updatePolicy: "required" as const, minimumSupportedVersion: "0.2.0", requiresUpgrade: true, serviceStatus: "normal" as const, helpUrl: null, announcement: null }
@@ -717,6 +733,27 @@ describe("M3 workbench persistence", () => {
     fireEvent.click(within(notice).getByRole("button", { name: "下载更新" }))
     expect(await within(notice).findByRole("button", { name: "重试下载" })).toBeEnabled()
     expect(within(notice).getByText(/下载失败/)).toBeInTheDocument()
+  })
+
+  it("installs a downloaded required update from the blocking notice after confirmation", async () => {
+    const api = mockApi()
+    const control = { updatePolicy: "required" as const, minimumSupportedVersion: "0.2.0", requiresUpgrade: true, serviceStatus: "normal" as const, helpUrl: null, announcement: null }
+    vi.mocked(api.getUpdateStatus).mockResolvedValue({
+      state: "downloaded",
+      version: "0.2.0",
+      downloadedAt: "2026-10-05T00:00:00Z",
+      control,
+    })
+    installApi(api)
+    renderApp()
+
+    const notice = await screen.findByRole("dialog", { name: "需要更新后继续使用" })
+    fireEvent.click(within(notice).getByRole("button", { name: "安装并重启" }))
+    expect(api.installUpdate).not.toHaveBeenCalled()
+
+    const confirm = await screen.findByRole("dialog", { name: "安装更新并重启" })
+    fireEvent.click(within(confirm).getByRole("button", { name: "保存并安装" }))
+    await waitFor(() => expect(api.installUpdate).toHaveBeenCalledTimes(1))
   })
 
   beforeEach(() => {
@@ -789,8 +826,7 @@ describe("M3 workbench persistence", () => {
     expect(api.downloadUpdate).not.toHaveBeenCalled()
   })
 
-  it("opens the setup guide once and keeps it available on demand afterwards", async () => {
-    window.localStorage.clear()
+  it("keeps the setup check available on demand without opening it on launch", async () => {
     const api = mockApi()
     vi.mocked(api.checkEnvironment).mockResolvedValueOnce({
       ...environmentResult,
@@ -801,10 +837,7 @@ describe("M3 workbench persistence", () => {
     renderApp()
 
     await screen.findByLabelText("保存状态：已保存")
-    const onboarding = await screen.findByRole("dialog", { name: "环境检查" })
-    expect(environmentOnboardingIsComplete()).toBe(true)
-    fireEvent.click(within(onboarding).getByRole("button", { name: "返回工作台" }))
-    await waitFor(() => expect(onboarding).not.toBeInTheDocument())
+    expect(screen.queryByRole("dialog", { name: "环境检查" })).not.toBeInTheDocument()
     await openOperationsPanel()
     fireEvent.click(await screen.findByRole("button", { name: "查看环境修复指引" }))
 
@@ -820,8 +853,7 @@ describe("M3 workbench persistence", () => {
     await waitFor(() => expect(dialog).not.toBeInTheDocument())
   })
 
-  it("offers an installation guide when a required environment item is missing", async () => {
-    window.localStorage.clear()
+  it("offers an installation guide when the user opens the check with a missing component", async () => {
     const api = mockApi()
     vi.mocked(api.checkEnvironment).mockResolvedValue({
       ...environmentResult,
@@ -840,6 +872,9 @@ describe("M3 workbench persistence", () => {
 
     renderApp()
     await screen.findByLabelText("保存状态：已保存")
+    expect(screen.queryByRole("dialog", { name: "环境检查" })).not.toBeInTheDocument()
+    await openOperationsPanel()
+    fireEvent.click(await screen.findByRole("button", { name: "查看环境修复指引" }))
 
     const dialog = await screen.findByRole("dialog", {
       name: "环境检查",

@@ -415,6 +415,16 @@ export class UpdateService {
     return this.status.state === "downloaded" ? this.downloadedPath ?? null : null
   }
 
+  installationArtifact(): { installerPath: string; version: string; sha256: string } | null {
+    if (this.status.state !== "downloaded") return null
+    if (!this.downloadedPath || !this.downloadedVersion || !this.downloadedSha256) return null
+    return {
+      installerPath: this.downloadedPath,
+      version: this.downloadedVersion,
+      sha256: this.downloadedSha256,
+    }
+  }
+
   getHelpUrl(): string | null {
     return this.currentControl?.helpUrl ?? null
   }

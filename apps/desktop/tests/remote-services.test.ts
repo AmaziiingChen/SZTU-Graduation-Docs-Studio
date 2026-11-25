@@ -56,6 +56,43 @@ describe("telemetry privacy boundary", () => {
         errorCode: "包含 空格",
       }),
     ).toThrow("invalid")
+    expect(
+      parseTelemetryUsageEvent({
+        name: "document_action",
+        action: "preview",
+        documentType: "proposal",
+        outcome: "failure",
+        errorCode: "REQUIRED_FONT_MISSING",
+        stage: "render",
+        reason: "missing_required_font",
+      }),
+    ).toEqual({
+      name: "document_action",
+      action: "preview",
+      documentType: "proposal",
+      outcome: "failure",
+      errorCode: "REQUIRED_FONT_MISSING",
+      stage: "render",
+      reason: "missing_required_font",
+    })
+    expect(() =>
+      parseTelemetryUsageEvent({
+        name: "document_action",
+        action: "preview",
+        documentType: "proposal",
+        outcome: "failure",
+        stage: "Render Stage",
+      }),
+    ).toThrow("invalid")
+    expect(() =>
+      parseTelemetryUsageEvent({
+        name: "document_action",
+        action: "preview",
+        documentType: "proposal",
+        outcome: "failure",
+        reason: "包含内容",
+      }),
+    ).toThrow("invalid")
   })
 
   it("transmits a bounded schema batch on fresh installs without fabricating acknowledgement", async () => {

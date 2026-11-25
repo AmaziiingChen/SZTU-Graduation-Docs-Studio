@@ -450,6 +450,11 @@ export function parseBibtex(source: string): BibtexParseResult {
         scanner.index += 1
         const value = scanner.readValueParts(close)
         if (value.length === 0) throw new Error(`字段 ${field} 没有值`)
+        // `pages = {}` parses as one empty fragment; the export gate rejects it,
+        // so report it here instead of letting the check pass and the export fail.
+        if (!value.map((part) => part.value).join("").trim()) {
+          throw new Error(`字段 ${field} 是空值：请删除这一行，或填入实际内容。`)
+        }
         fieldExpressions[field] = value
         scanner.skipSpaceAndComments()
         if (scanner.peek() === ",") scanner.index += 1
@@ -1150,19 +1155,15 @@ function publicationDetails(
   const editionValue = edition(fields, title)
   const editionPeriod = editionValue.endsWith(".") ? "" : punctuation.period
   const head = editionValue ? `${editionValue}${editionPeriod} ` : ""
-  return (
-    head +
-    joinNonEmpty(
-      [
-        locationAndPublisher(fields, punctuation),
-        publicationDate(fields),
-        includePages
-          ? trimField(decodeBibtexText(fields.pages ?? "")).replace(/--/g, "-")
-          : "",
-      ],
-      punctuation.comma,
-    )
+  const publication = joinNonEmpty(
+    [locationAndPublisher(fields, punctuation), publicationDate(fields)],
+    punctuation.comma,
   )
+  // GB/T 7714—2025：页码跟在出版年之后，用冒号连接（与期刊卷期后的页码一致）。
+  const pages = includePages
+    ? trimField(decodeBibtexText(fields.pages ?? "")).replace(/--/g, "-")
+    : ""
+  return head + publication + (pages ? `${punctuation.colon}${pages}` : "")
 }
 
 function volumeIssuePages(
@@ -1254,12 +1255,15 @@ export function formatBibtexEntry(
         body = `${prefix}${formattedTitle}[M]//${booktitle}${afterTag}${publicationDetails(fields, booktitle || title, punctuation, true)}`
         break
       case "inproceedings":
-      case "conference":
-        body = `${prefix}${formattedTitle}[C]//${booktitle}${afterTag}${joinNonEmpty(
-          [locationAndPublisher(fields, punctuation), year, pages],
+      case "conference": {
+        // GB/T 7714—2025：会议录析出文献的页码放在出版年之后，用冒号连接。
+        const conferenceYear = joinNonEmpty(
+          [locationAndPublisher(fields, punctuation), year],
           comma,
-        )}`
+        )
+        body = `${prefix}${formattedTitle}[C]//${booktitle}${afterTag}${conferenceYear}${pages ? `${punctuation.colon}${pages}` : ""}`
         break
+      }
       case "proceedings":
         body = `${prefix}${formattedTitle}[C]${afterTag}${publicationDetails(fields, title, punctuation, true)}`
         break

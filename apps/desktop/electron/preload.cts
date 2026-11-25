@@ -11,12 +11,26 @@ type BridgeResponse<T> =
       }
     }
 
+// Electron 的 contextBridge 会把跨桥抛出的 Error 复制成普通 Error，
+// 自定义属性（code/details）在渲染进程一律丢失，只剩 message。
+// 因此把结构化信息编码进 message，由渲染进程的 normalizeDesktopError 解出，
+// 用户看到的正文仍然只是人话。
+const ERROR_ENVELOPE_PREFIX = "\u0001SZTU_DESKTOP_ERROR\u0001"
+
+function encodeDesktopError(
+  code: string,
+  message: string,
+  details?: Record<string, unknown>,
+): string {
+  return `${ERROR_ENVELOPE_PREFIX}${JSON.stringify({ code, message, details: details ?? null })}`
+}
+
 class DesktopApiError extends Error {
   readonly code: string
   readonly details?: Record<string, unknown>
 
   constructor(code: string, message: string, details?: Record<string, unknown>) {
-    super(`${code}: ${message}`)
+    super(encodeDesktopError(code, message, details))
     this.name = "DesktopApiError"
     this.code = code
     this.details = details
@@ -64,6 +78,7 @@ contextBridge.exposeInMainWorld("sztuDesktop", {
   downloadUpdate: () => invoke("sztu:update-download"),
   getMidtermDatePolicyStatus: () => invoke("sztu:midterm-date-policy-status"),
   revealDownloadedUpdate: () => invoke("sztu:update-reveal"),
+  installUpdate: () => invoke("sztu:update-install"),
   openReleaseHelp: () => invoke("sztu:update-open-help"),
   openToolLink: (toolId: unknown) => invoke("sztu:tool-open", toolId),
   writeClipboardText: (text: unknown) => invoke("sztu:clipboard-write-text", text),

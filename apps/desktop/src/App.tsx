@@ -44,10 +44,6 @@ import { AppearanceSettings } from "@/components/workbench/appearance-settings"
 import type { CreateDocumentRequest } from "@/components/workbench/nav-documents"
 import { DiagnosticSupport } from "@/components/workbench/diagnostic-support"
 import { EnvironmentOnboardingDialog } from "@/components/workbench/environment-onboarding-dialog"
-import {
-  completeEnvironmentOnboarding,
-  environmentOnboardingIsComplete,
-} from "@/lib/environment-onboarding"
 import { ExportHistoryStatusBadge } from "@/components/workbench/export-history-status-badge"
 import {
   DocumentSectionNav,
@@ -200,6 +196,7 @@ import type {
   WorkspaceState as WorkspaceSnapshot,
 } from "@/types/desktop-api"
 import type { ToolLinkId } from "@/types/desktop-api"
+import { wrapDesktopApi } from "@/lib/desktop-errors"
 import type {
   ParagraphInput,
   StructuredBodyValue,
@@ -468,7 +465,8 @@ function diagnosticCaseId(error: unknown): string | undefined {
 }
 
 function getDesktopApi(): SztuDesktopApi | undefined {
-  return (window as Window & { sztuDesktop?: SztuDesktopApi }).sztuDesktop
+  const raw = (window as Window & { sztuDesktop?: SztuDesktopApi }).sztuDesktop
+  return raw ? wrapDesktopApi(raw) : undefined
 }
 
 function errorHasCode(error: unknown, code: string): boolean {
@@ -491,6 +489,26 @@ function telemetryErrorCode(error: unknown): string {
     return (error as { code: string }).code
   }
   return "UNKNOWN_ERROR"
+}
+
+/**
+ * 遥测只记录“结构性原因”（后端 details.validation_reason 这类枚举），
+ * 不记录任何用户内容，方便按原因聚合。
+ */
+function telemetryErrorReason(value: unknown): string | undefined {
+  if (typeof value !== "object" || value === null || !("details" in value)) return undefined
+  const details = (value as { details?: unknown }).details
+  if (typeof details !== "object" || details === null || Array.isArray(details)) return undefined
+  const reason = (details as Record<string, unknown>).validation_reason
+  return typeof reason === "string" && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(reason)
+    ? reason
+    : undefined
+}
+
+type ContentCheckFailure = {
+  code: string
+  message?: string
+  reason?: string
 }
 
 function newRequestId(): string {
@@ -3456,6 +3474,7 @@ export default function App() {
   const workspaceReadyRef = useRef(false)
   const [saveState, setRenderedSaveState] = useState<SaveState>("loading")
   const saveStateRef = useRef<SaveState>("loading")
+  const checkFailureMessage = useRef<string | undefined>(undefined)
   const setSaveState = useCallback((next: SaveState) => {
     saveStateRef.current = next
     setRenderedSaveState(next)
@@ -3495,6 +3514,8 @@ export default function App() {
   const [dismissedUpdateVersion, setDismissedUpdateVersion] = useState<string | null>(
     null,
   )
+  const [updateInstallOpen, setUpdateInstallOpen] = useState(false)
+  const [updateInstalling, setUpdateInstalling] = useState(false)
   const [dismissedAnnouncementId, setDismissedAnnouncementId] = useState<string | null>(
     null,
   )
@@ -4359,34 +4380,39 @@ export default function App() {
     commitDraftEdit(current => ({ ...current, taskSchedule: value }), "document")
   }
 
-  const checkContent = async (onDiagnosticCase?: (id: string) => void): Promise<boolean> => {
-    if (activeDocumentType === "thesis") return false
+  const checkContent = async (
+    onDiagnosticCase?: (id: string) => void,
+  ): Promise<{ passed: boolean; failure?: ContentCheckFailure }> => {
+    if (activeDocumentType === "thesis") return { passed: false }
     const api = getDesktopApi()
-    if (!api || !document || workspace.status !== "ready") return false
+    if (!api || !document || workspace.status !== "ready") return { passed: false }
     const documentIdAtStart = document.id
     const versionAtStart = editVersion.current
     setProfileValidationRequested(true)
     if (saveStateRef.current === "conflict") {
+      const message = "草稿存在版本冲突，请重新载入后再检查或预览。"
       recordTelemetry({
         name: "document_action",
         action: "check",
         documentType: activeDocumentType,
         outcome: "failure",
         errorCode: "REVISION_CONFLICT",
+        stage: "content",
       })
-      toast.error("草稿存在版本冲突，请重新载入后再检查或预览。")
-      return false
+      toast.error(message)
+      return { passed: false, failure: { code: "REVISION_CONFLICT", message } }
     }
     if (
       saveStateRef.current === "loading" ||
       saveStateRef.current === "saving"
     ) {
-      return false
+      return { passed: false }
     }
     if (document.profile_id === null && (profiles.length || deletedProfiles.length)) {
+      const message = "这份旧草稿没有档案。请新建同类文档，在「使用档案」选人，在「初始内容」选这份草稿。"
       setPreviewOpen(false)
-      toast.error("这份旧草稿没有档案。请新建同类文档，在「使用档案」选人，在「初始内容」选这份草稿。")
-      return false
+      toast.error(message)
+      return { passed: false, failure: { code: "PROFILE_MISSING", message } }
     }
     if (!(isAssessmentDocumentType(activeDocumentType) ? assessmentProfileIsComplete(draft) : profileIsComplete(draft))) {
       const message = isAssessmentDocumentType(activeDocumentType)
@@ -4399,9 +4425,10 @@ export default function App() {
         documentType: activeDocumentType,
         outcome: "failure",
         errorCode: "PROFILE_INCOMPLETE",
+        stage: "content",
       })
       toast.error(message)
-      return false
+      return { passed: false, failure: { code: "PROFILE_INCOMPLETE", message } }
     }
     const thesisTitle = structuredBodyPlainText(draft.title).trim()
     if (!thesisTitle || thesisTitle.length > THESIS_TITLE_MAX_LENGTH) {
@@ -4415,9 +4442,10 @@ export default function App() {
         documentType: activeDocumentType,
         outcome: "failure",
         errorCode: "THESIS_TITLE_INVALID",
+        stage: "content",
       })
       toast.error(message)
-      return false
+      return { passed: false, failure: { code: "THESIS_TITLE_INVALID", message } }
     }
     if (
       activeDocumentType === "task_book" &&
@@ -4432,9 +4460,10 @@ export default function App() {
         documentType: activeDocumentType,
         outcome: "failure",
         errorCode: "GRADUATION_YEAR_MISSING",
+        stage: "content",
       })
       toast.error(message)
-      return false
+      return { passed: false, failure: { code: "GRADUATION_YEAR_MISSING", message } }
     }
     if (
       saveStateRef.current === "dirty" ||
@@ -4442,17 +4471,18 @@ export default function App() {
     ) {
       const saved = await saveNow("manual")
       if (!saved || !isCurrentSavedRevision(documentIdAtStart, versionAtStart)) {
+        const message = "当前文档还没有保存成功，请先处理保存提示后再检查或预览。"
         if (
           activeDocumentIdRef.current === documentIdAtStart &&
           editVersion.current !== versionAtStart
         ) {
           toast.info("保存期间内容发生了变化，请等待当前内容保存后重新检查。")
         }
-        return false
+        return { passed: false, failure: { code: "SAVE_FAILED", message } }
       }
     }
     if (!isCurrentSavedRevision(documentIdAtStart, versionAtStart)) {
-      return false
+      return { passed: false }
     }
     try {
       const result = await api.checkDocument(documentIdAtStart)
@@ -4460,10 +4490,17 @@ export default function App() {
         if (activeDocumentIdRef.current === documentIdAtStart) {
           toast.info("检查期间内容发生了变化，本次检查结果已丢弃。")
         }
-        return false
+        return { passed: false }
       }
       const passed = result.checks.every((check) => check.status === "pass")
       const failedCheck = result.checks.find((check) => check.status === "fail")
+      const failure = failedCheck
+        ? {
+            code: failedCheck.code ?? "VALIDATION_FAILED",
+            message: failedCheck.message,
+            reason: telemetryErrorReason(failedCheck),
+          }
+        : undefined
       recordTelemetry({
         name: "document_action",
         action: "check",
@@ -4471,9 +4508,11 @@ export default function App() {
         outcome: passed ? "success" : "failure",
         ...(passed
           ? {}
-          : { errorCode: failedCheck?.code ?? "VALIDATION_FAILED" }),
+          : { errorCode: failure?.code ?? "VALIDATION_FAILED", stage: "content",
+              ...(failure?.reason ? { reason: failure.reason } : {}) }),
       })
       if (passed) {
+        checkFailureMessage.current = undefined
         toast.success("内容检查通过。")
       } else {
         const target = failedCheck
@@ -4481,25 +4520,32 @@ export default function App() {
           : null
         if (target) navigateToCheck(target)
         if (result.diagnostic_case_id) onDiagnosticCase?.(result.diagnostic_case_id)
+        checkFailureMessage.current = failedCheck?.message
         toast.error(failedCheck?.message ?? "内容检查未通过。")
       }
-      return passed
+      return { passed, failure: passed ? undefined : failure }
     } catch (error) {
       if (!isCurrentSavedRevision(documentIdAtStart, versionAtStart)) {
-        return false
+        return { passed: false }
       }
       const caseId = diagnosticCaseId(error)
       if (caseId) onDiagnosticCase?.(caseId)
       const message = error instanceof Error ? error.message : "内容检查失败。"
+      const reason = telemetryErrorReason(error)
       recordTelemetry({
         name: "document_action",
         action: "check",
         documentType: activeDocumentType,
         outcome: "failure",
         errorCode: telemetryErrorCode(error),
+        stage: "content",
+        ...(reason ? { reason } : {}),
       })
       toast.error(message)
-      return false
+      return {
+        passed: false,
+        failure: { code: telemetryErrorCode(error), message, reason },
+      }
     }
   }
 
@@ -4527,9 +4573,9 @@ export default function App() {
     const versionAtStart = editVersion.current
     setPreviewState({ status: "checking" })
     let caseId: string | undefined
-    const passed = await checkContent(id => { caseId = id })
+    const check = await checkContent(id => { caseId = id })
     if (
-      !passed ||
+      !check.passed ||
       !isCurrentSavedRevision(documentIdAtStart, versionAtStart)
     ) {
       if (activeDocumentIdRef.current === documentIdAtStart) {
@@ -4538,7 +4584,9 @@ export default function App() {
           caseId,
           message:
             editVersion.current === versionAtStart
-              ? "内容检查未通过，请根据页面提示修正后重试。"
+              ? check.failure?.message ??
+                checkFailureMessage.current ??
+                "内容检查未通过，请根据页面提示修正后重试。"
               : "检查期间内容发生了变化，请等待当前内容保存后重试。",
         })
       }
@@ -4547,7 +4595,9 @@ export default function App() {
         action: "preview",
         documentType: activeDocumentType,
         outcome: "failure",
-        errorCode: "PRECHECK_FAILED",
+        errorCode: check.failure?.code ?? "CHECK_BLOCKED",
+        stage: "content",
+        ...(check.failure?.reason ? { reason: check.failure.reason } : {}),
       })
       return
     }
@@ -4576,6 +4626,7 @@ export default function App() {
         return
       }
       const message = error instanceof Error ? error.message : "排版预览生成失败。"
+      const reason = telemetryErrorReason(error)
       setPreviewState({ status: "error", message, caseId: diagnosticCaseId(error) })
       recordTelemetry({
         name: "document_action",
@@ -4583,6 +4634,8 @@ export default function App() {
         documentType: activeDocumentType,
         outcome: "failure",
         errorCode: telemetryErrorCode(error),
+        stage: "render",
+        ...(reason ? { reason } : {}),
       })
       toast.error(message)
     }
@@ -4751,7 +4804,10 @@ export default function App() {
         action: "export",
         documentType: activeDocumentType,
         outcome: cancelled ? "cancelled" : "failure",
-        ...(cancelled ? {} : { errorCode: telemetryErrorCode(error) }),
+        ...(cancelled
+          ? {}
+          : { errorCode: telemetryErrorCode(error), stage: "export",
+              ...(telemetryErrorReason(error) ? { reason: telemetryErrorReason(error) } : {}) }),
         formatCount: pending.formats.length,
       })
       if (cancelled) toast.info(message)
@@ -4774,9 +4830,9 @@ export default function App() {
     const documentIdAtStart = document.id
     const versionAtStart = editVersion.current
     const previewAtStart = previewState.result
-    const passed = await checkContent()
+    const check = await checkContent()
     if (
-      !passed ||
+      !check.passed ||
       !isCurrentSavedRevision(documentIdAtStart, versionAtStart)
     ) {
       return
@@ -4860,6 +4916,8 @@ export default function App() {
         documentType: activeDocumentType,
         outcome: "failure",
         errorCode: telemetryErrorCode(error),
+        stage: "export",
+        ...(telemetryErrorReason(error) ? { reason: telemetryErrorReason(error) } : {}),
         formatCount: formats.length,
       })
       toast.error(message)
@@ -4910,6 +4968,28 @@ export default function App() {
     }
   }
 
+  const installUpdate = async () => {
+    const api = getDesktopApi()
+    if (!api) return
+    setUpdateInstalling(true)
+    try {
+      if (saveStateRef.current === "dirty" || saveStateRef.current === "error") {
+        const saved = await saveNow("manual")
+        if (!saved) {
+          setUpdateInstalling(false)
+          setUpdateInstallOpen(false)
+          toast.error("当前文档还没有保存成功，请先处理保存提示后再安装更新。")
+          return
+        }
+      }
+      await api.installUpdate()
+    } catch (error) {
+      setUpdateInstalling(false)
+      setUpdateInstallOpen(false)
+      toast.error(error instanceof Error ? error.message : "无法安装更新，请稍后重试。")
+    }
+  }
+
   const openReleaseHelp = async () => {
     const api = getDesktopApi()
     if (!api) return
@@ -4934,14 +5014,7 @@ export default function App() {
   const environmentReady =
     environment.status === "ready" && environment.result.ready
 
-  // Surface the setup guide once per installation. A fresh Mac without MacTeX would otherwise only
-  // learn about the requirement when the first preview fails.
-  useEffect(() => {
-    if (environment.status !== "ready" || environment.result.ready) return
-    if (environmentOnboardingIsComplete()) return
-    completeEnvironmentOnboarding()
-    setEnvironmentGuideOpen(true)
-  }, [environment])
+
   const previewReady =
     previewState.status === "ready" &&
     !previewState.stale &&
@@ -5518,11 +5591,11 @@ export default function App() {
                 ? "请安装最新版本，或查看使用说明了解后续安排。"
                 : releaseRequiresUpdate
                   ? updateStatus.state === "downloaded"
-                    ? `版本 ${updateStatus.version} 已下载，可以安装。`
+                    ? `版本 ${updateStatus.version} 已下载，确认后即可安装并自动重启。`
                     : updateStatus.state === "available"
                       ? updateStatus.downloadFailed
-                        ? "下载失败，请重试。下载完成后需手动安装。"
-                        : `版本 ${updateStatus.version} 可用，请下载并手动安装。`
+                        ? "下载失败，请重试。"
+                        : `版本 ${updateStatus.version} 可用，请先下载更新。`
                       : updateStatus.state === "downloading" ? `正在下载版本 ${updateStatus.version}。` : "正在检查更新…"
                   : releaseAnnouncement?.body}
             </DialogDescription>
@@ -5544,10 +5617,16 @@ export default function App() {
                 {updateStatus.downloadFailed ? "重试下载" : "下载更新"}
               </Button>
             ) : updateStatus.state === "downloaded" ? (
-              <Button onClick={() => void revealDownloadedUpdate()}>
-                <AnimatedActionIcon icon={FolderOpenIconAnimated} />
-                显示更新文件
-              </Button>
+              <>
+                <Button variant="outline" onClick={() => void revealDownloadedUpdate()}>
+                  <AnimatedActionIcon icon={FolderOpenIconAnimated} />
+                  显示更新文件
+                </Button>
+                <Button onClick={() => setUpdateInstallOpen(true)}>
+                  <AnimatedActionIcon icon={DownloadIcon} />
+                  安装并重启
+                </Button>
+              </>
             ) : null}
           </DialogFooter>
         </DialogContent>
@@ -5638,10 +5717,21 @@ export default function App() {
               稍后处理
             </Button>
             {updateStatus.state === "downloaded" ? (
-              <Button onClick={() => void revealDownloadedUpdate()}>
-                <AnimatedActionIcon icon={FolderOpenIconAnimated} />
-                显示更新文件
-              </Button>
+              <>
+                <Button variant="outline" onClick={() => void revealDownloadedUpdate()}>
+                  <AnimatedActionIcon icon={FolderOpenIconAnimated} />
+                  显示更新文件
+                </Button>
+                <Button
+                  onClick={() => {
+                    setDismissedUpdateVersion(updateStatus.version)
+                    setUpdateInstallOpen(true)
+                  }}
+                >
+                  <AnimatedActionIcon icon={DownloadIcon} />
+                  安装并重启
+                </Button>
+              </>
             ) : (
               <Button disabled={updateStatus.state !== "available"} onClick={() => void downloadUpdate()}>
                 <AnimatedActionIcon icon={DownloadIcon} />
@@ -5649,6 +5739,34 @@ export default function App() {
               </Button>
             )}
           </DialogFooter> : null}
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={updateInstallOpen}
+        onOpenChange={(open) => {
+          if (!open && !updateInstalling) setUpdateInstallOpen(false)
+        }}
+      >
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>安装更新并重启</DialogTitle>
+            <DialogDescription>
+              应用会先保存当前文档，然后关闭并静默安装更新，安装完成后自动重新打开。安装期间请不要关闭电脑或断电。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={updateInstalling}
+              onClick={() => setUpdateInstallOpen(false)}
+            >
+              取消
+            </Button>
+            <Button disabled={updateInstalling} onClick={() => void installUpdate()}>
+              <AnimatedActionIcon icon={DownloadIcon} />
+              {updateInstalling ? "正在准备安装…" : "保存并安装"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
       <Toaster />

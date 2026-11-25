@@ -118,7 +118,7 @@ function installationGuide(
       }
     case "office_editor":
       return {
-        description: "请安装 Word 或 WPS，用于检查导出文档的排版。",
+        description: "不影响导出；需要用 Word 打开导出的 DOCX 检查版式时，再安装 Word 或 WPS。",
         linkId: "wps-office",
         linkLabel: "打开 WPS 下载页面",
       }
@@ -137,7 +137,7 @@ function statusBadge(check: EnvironmentCheck) {
   if (check.status === "fail") {
     return <Badge variant="destructive">缺失</Badge>
   }
-  return <Badge variant="outline">建议处理</Badge>
+  return <Badge variant="outline">{check.required ? "建议处理" : "可选"}</Badge>
 }
 
 function platformName(system: string): string {
@@ -177,7 +177,7 @@ export function EnvironmentOnboardingDialog({
         <DialogHeader>
           <DialogTitle>环境检查</DialogTitle>
           <DialogDescription>
-            检查字体、TeX、PDF 工具和 Word/WPS，查看缺失项目及安装方法。
+            检查软件自带组件与本机必要环境。正常安装后通常全部通过，只在排障时查看。
           </DialogDescription>
         </DialogHeader>
 
@@ -201,7 +201,7 @@ export function EnvironmentOnboardingDialog({
                   <AlertDescription>
                     已检查 {platformName(environment.result.platform.system)} 本机环境
                     {warningCount > 0
-                      ? `；另有 ${warningCount} 项提示。`
+                      ? `；另有 ${warningCount} 项可选提示，不影响正常使用。`
                       : "，可以进入工作台。"}
                   </AlertDescription>
                   <AlertAction className="top-1/2 -translate-y-1/2">

@@ -19,6 +19,8 @@ const DIAGNOSTIC_RETENTION_DAYS = 30;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SEMVER_RE = /^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$/;
 const ERROR_CODE_RE = /^[A-Z][A-Z0-9_]{0,63}$/;
+const STAGE_RE = /^[a-z][a-z0-9_]{0,31}$/;
+const REASON_RE = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
 const DATE_TIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
 const EVENT_NAMES = new Set(['app_started', 'heartbeat', 'app_stopped', 'usage_event', 'update_event']);
 const PLATFORMS = new Set(['darwin', 'win32', 'linux']);
@@ -111,10 +113,12 @@ function validAttributes(name, attributes) {
       return exactKeys(attributes, ['event_name', 'view']) && VIEWS.has(attributes.view);
     }
     if (attributes?.event_name === 'document_action') {
-      if (!exactKeys(attributes, ['event_name', 'action', 'document_type', 'outcome'], ['error_code', 'format_count'])) return false;
+      if (!exactKeys(attributes, ['event_name', 'action', 'document_type', 'outcome'], ['error_code', 'format_count', 'stage', 'reason'])) return false;
       if (!ACTIONS.has(attributes.action) || !DOCUMENT_TYPES.has(attributes.document_type) || !OUTCOMES.has(attributes.outcome)) return false;
       if (attributes.error_code !== undefined && (typeof attributes.error_code !== 'string' || !ERROR_CODE_RE.test(attributes.error_code))) return false;
       if (attributes.format_count !== undefined && (!Number.isInteger(attributes.format_count) || attributes.format_count < 1 || attributes.format_count > 3)) return false;
+      if (attributes.stage !== undefined && (typeof attributes.stage !== 'string' || !STAGE_RE.test(attributes.stage))) return false;
+      if (attributes.reason !== undefined && (typeof attributes.reason !== 'string' || !REASON_RE.test(attributes.reason))) return false;
       return true;
     }
     if (attributes?.event_name === 'document_completed') {

@@ -417,7 +417,7 @@ def _check_font_groups(
         "id": check_id,
         "required": required,
         "status": "fail" if required else "warn",
-        "message": "缺少字体：" + "、".join(missing) + "。",
+        "message": "缺少字体：" + "、".join(missing) + "。请重新运行最新安装包修复。",
         "details": {"fonts": resolved, "missing": missing},
     }
 
@@ -694,7 +694,7 @@ def _check_task_book_docx_font() -> dict[str, Any]:
         "message": (
             "任务书 Word 勾选框字体 Wingdings 2 可用。"
             if found is not None
-            else "未找到任务书 Word 勾选框字体 Wingdings 2；仅 Word 导出不可用，PDF 和 LaTeX 不受影响。"
+            else "安装包里缺少任务书 Word 勾选框字体 Wingdings 2；请重新运行最新安装包修复。PDF 和 LaTeX 不受影响。"
         ),
         "details": {
             "document_type": "task_book",
@@ -726,13 +726,22 @@ def _windows_office_registry_candidates() -> list[str]:
     return list(dict.fromkeys(candidates))
 
 
+def _office_path_present(path: str) -> bool:
+    """macOS ships Word and WPS as ``.app`` bundles, which are directories."""
+    candidate = Path(path)
+    if path.casefold().endswith(".app"):
+        return candidate.is_dir()
+    return candidate.is_file()
+
+
 def _office_candidates() -> list[str]:
     system = platform.system()
     if system == "Darwin":
+        roots = ["/Applications", str(Path.home() / "Applications")]
         return [
-            "/Applications/Microsoft Word.app",
-            "/Applications/wpsoffice.app",
-            "/Applications/WPS Office.app",
+            str(Path(root) / name)
+            for root in roots
+            for name in ("Microsoft Word.app", "wpsoffice.app", "WPS Office.app")
         ]
     if system == "Windows":
         roots = [
@@ -757,7 +766,7 @@ def _office_candidates() -> list[str]:
 
 def _check_office_editor() -> dict[str, Any]:
     candidates = _office_candidates()
-    installed = next((path for path in candidates if Path(path).is_file()), None)
+    installed = next((path for path in candidates if _office_path_present(path)), None)
     return {
         "id": "office_editor",
         "required": False,
@@ -765,7 +774,7 @@ def _check_office_editor() -> dict[str, Any]:
         "message": (
             "已检测到 Word/WPS。"
             if installed
-            else "未自动找到 Word/WPS；请确认已安装，或检查应用的安装注册信息。"
+            else "未检测到 Word 或 WPS。不影响 PDF 和 LaTeX 导出；只有需要用 Word 打开导出的 DOCX 检查排版时，才需要安装。"
         ),
         "details": {"path": installed, "candidates": candidates},
     }

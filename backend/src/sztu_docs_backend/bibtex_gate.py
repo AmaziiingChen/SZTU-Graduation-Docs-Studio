@@ -59,9 +59,33 @@ DIRECTIVE_TYPES = frozenset({"comment", "preamble", "string"})
 class BibtexValidationError(ValueError):
     """Sanitized source-validation failure safe to map to an export error."""
 
-    def __init__(self, reason: str) -> None:
+    def __init__(
+        self,
+        reason: str,
+        *,
+        entry: int | None = None,
+        field: str | None = None,
+        entry_type: str | None = None,
+        citation_key: str | None = None,
+    ) -> None:
         super().__init__(reason)
         self.reason = reason
+        self.entry = entry
+        self.field = field
+        self.entry_type = entry_type
+        self.citation_key = citation_key
+
+    def details(self) -> dict[str, object]:
+        """Machine-readable context for export details (no source text)."""
+
+        details: dict[str, object] = {"validation_reason": self.reason}
+        if self.entry is not None:
+            details["entry"] = self.entry
+        if self.field is not None:
+            details["field_name"] = self.field
+        if self.entry_type is not None:
+            details["entry_type"] = self.entry_type
+        return details
 
 
 def _is_identifier_character(character: str) -> bool:
@@ -84,10 +108,13 @@ class _Scanner:
 
     def skip_space_and_comments(self) -> None:
         while not self.done:
-            if self.peek().isspace():
+            character = self.peek()
+            # The desktop parser trims a UTF-8 BOM as whitespace; keep both
+            # sides of the export boundary in agreement about that.
+            if character.isspace() or character == "\ufeff":
                 self.index += 1
                 continue
-            if self.peek() == "%":
+            if character == "%":
                 while not self.done and self.peek() != "\n":
                     self.index += 1
                 continue
@@ -262,14 +289,34 @@ def count_valid_bibtex_entries(source: str) -> int:
             if not field or scanner.peek() != "=":
                 raise BibtexValidationError("field_definition")
             scanner.index += 1
-            fields[field] = scanner.read_value(entry_close)
+            try:
+                fields[field] = scanner.read_value(entry_close)
+            except BibtexValidationError as error:
+                raise BibtexValidationError(
+                    error.reason,
+                    entry=entry_count + 1,
+                    field=field,
+                    entry_type=entry_type,
+                    citation_key=citation_key,
+                ) from None
             scanner.skip_space_and_comments()
             if scanner.peek() == ",":
                 scanner.index += 1
         if not closed:
             raise BibtexValidationError("unclosed_entry")
-        if any(not fields.get(field, "").strip() for field in REQUIRED_FIELDS[entry_type]):
-            raise BibtexValidationError("missing_required_field")
+        missing_fields = sorted(
+            field
+            for field in REQUIRED_FIELDS[entry_type]
+            if not fields.get(field, "").strip()
+        )
+        if missing_fields:
+            raise BibtexValidationError(
+                "missing_required_field",
+                entry=entry_count + 1,
+                field=missing_fields[0],
+                entry_type=entry_type,
+                citation_key=citation_key,
+            )
         entry_count += 1
 
     if entry_count == 0:

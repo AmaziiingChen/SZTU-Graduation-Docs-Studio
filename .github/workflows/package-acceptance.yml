@@ -128,6 +128,24 @@ jobs:
         if: runner.os == 'Windows' && !inputs.compare_windows
         shell: pwsh
         run: node scripts/accept_ci_bundle.mjs "$env:CI_BUNDLE" tmp/ci-acceptance
+      - name: Install Windows package under a Chinese install path
+        if: runner.os == 'Windows' && !inputs.compare_windows
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem release/offline/*-offline.exe | Select-Object -First 1
+          if (!$exe) { throw 'Offline installer was not created' }
+          $target = Join-Path $env:RUNNER_TEMP '中文 安装 目录\SZTU 文档工作台'
+          if ($target -match '^[\x00-\x7f]+$') { throw 'The Chinese install path is unexpectedly ASCII' }
+          # NSIS 的 /D= 必须是最后一个参数且不能带引号，路径里的空格由 NSIS 原样接收。
+          $p = Start-Process -FilePath $exe.FullName -ArgumentList @('/S', "/D=$target") -PassThru
+          if (!$p.WaitForExit(300000)) { throw 'Chinese-path installer timed out' }
+          if ($p.ExitCode -ne 0) { throw "Chinese-path installer exited $($p.ExitCode)" }
+          if (!(Test-Path (Join-Path $target 'resources/app.asar'))) { throw 'Application resources were not installed under the Chinese install path' }
+          "CI_BUNDLE_ZH=$target" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Exercise the installed engine from a Chinese install path
+        if: runner.os == 'Windows' && !inputs.compare_windows
+        shell: pwsh
+        run: node scripts/accept_ci_bundle.mjs "$env:CI_BUNDLE_ZH" tmp/ci-acceptance-chinese
       - name: Compare the reported task-book failure with the installed native engines
         if: inputs.compare_windows
         shell: pwsh
@@ -153,6 +171,7 @@ jobs:
           name: acceptance-evidence-${{ runner.os }}-${{ github.sha }}-${{ github.run_attempt }}
           path: |
             app/tmp/ci-acceptance
+            app/tmp/ci-acceptance-chinese
             app/tmp/windows-failure-verification
           if-no-files-found: warn
           retention-days: 7

@@ -1,0 +1,95 @@
+{
+  "description": "BibTeX verdicts shared by apps/desktop/src/lib/bibtex.ts and backend/src/sztu_docs_backend/bibtex_gate.py. Both parsers must agree on every case.",
+  "cases": [
+    {
+      "id": "plain article",
+      "valid": true,
+      "entries": 1,
+      "source": "@article{smith2020,\n  author = {Smith, John},\n  title = {A Study of Things},\n  journal = {Journal of Stuff},\n  year = {2020},\n  pages = {1--10}\n}\n"
+    },
+    {
+      "id": "crlf line endings",
+      "valid": true,
+      "entries": 1,
+      "source": "@article{smith2020,\r\n  author = {Smith, John},\r\n  title = {A Study of Things},\r\n  journal = {Journal of Stuff},\r\n  year = {2020}\r\n}\r\n"
+    },
+    {
+      "id": "leading utf-8 bom",
+      "valid": true,
+      "entries": 1,
+      "source": "\ufeff@article{smith2020, author = {Smith, John}, title = {A Study}, journal = {J}, year = {2020}}\n"
+    },
+    {
+      "id": "bom between entries",
+      "valid": true,
+      "entries": 2,
+      "source": "@article{a, author = {A}, title = {T}, journal = {J}, year = {2020}}\ufeff\n@article{b, author = {B}, title = {U}, journal = {J}, year = {2021}}\n"
+    },
+    {
+      "id": "percent comments",
+      "valid": true,
+      "entries": 1,
+      "source": "% exported from zotero\n@article{smith2020, author = {Smith, John}, title = {A Study}, journal = {J}, year = {2020}} % trailing note\n"
+    },
+    {
+      "id": "string macro",
+      "valid": true,
+      "entries": 1,
+      "source": "@string{jan = \"January\"}\n@article{smith2020, author = {Smith, John}, title = {A Study}, journal = {J}, year = {2020}, month = jan}\n"
+    },
+    {
+      "id": "doi citation key",
+      "valid": true,
+      "entries": 1,
+      "source": "@article{doi:10.1038/nature12345, author = {Smith, John}, title = {A Study}, journal = {Nature}, year = {2020}}\n"
+    },
+    {
+      "id": "empty braced optional field",
+      "valid": false,
+      "gate_reason": "empty_value",
+      "source": "@article{smith2020,\n  author = {Smith, John},\n  title = {A Study},\n  journal = {J},\n  year = {2020},\n  pages = {},\n  doi = {10.1000/xyz}\n}\n"
+    },
+    {
+      "id": "empty quoted optional field",
+      "valid": false,
+      "gate_reason": "empty_value",
+      "source": "@article{smith2020, author = {Smith, John}, title = {A Study}, journal = {J}, year = {2020}, note = \"\"}\n"
+    },
+    {
+      "id": "empty required title",
+      "valid": false,
+      "gate_reason": "empty_value",
+      "source": "@article{smith2020, author = {Smith, John}, title = {}, journal = {J}, year = {2020}}\n"
+    },
+    {
+      "id": "duplicate citation key",
+      "valid": false,
+      "gate_reason": "duplicate_key",
+      "source": "@article{same, author = {A}, title = {T}, journal = {J}, year = {2020}}\n@article{SAME, author = {B}, title = {U}, journal = {J}, year = {2021}}\n"
+    },
+    {
+      "id": "unsupported entry type",
+      "valid": false,
+      "gate_reason": "unsupported_type",
+      "source": "@thesis{smith2020, author = {Smith, John}, title = {A Study}, school = {SZTU}, year = {2020}}\n"
+    },
+    {
+      "id": "missing required field",
+      "valid": false,
+      "gate_reason": "missing_required_field",
+      "source": "@article{smith2020, author = {Smith, John}, journal = {J}, year = {2020}}\n"
+    },
+    {
+      "id": "unclosed entry",
+      "valid": false,
+      "gate_reason": "unclosed_entry",
+      "source": "@article{smith2020, author = {Smith, John}, title = {A Study}, journal = {J}, year = {2020}\n"
+    },
+    {
+      "id": "second entry has empty field",
+      "valid": false,
+      "gate_reason": "empty_value",
+      "source": "@article{first, author = {A}, title = {T}, journal = {J}, year = {2020}}\n@article{second, author = {B}, title = {U}, journal = {J}, year = {2021}, pages = {}}\n"
+    }
+  ]
+}

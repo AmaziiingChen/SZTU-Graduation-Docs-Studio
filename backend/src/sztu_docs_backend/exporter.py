@@ -69,7 +69,7 @@ OUTPUT_FORMAT_SUFFIXES = {
 }
 UNSAFE_FILENAME_PATTERN = re.compile(r'[\x00-\x1f<>:"/\\|?*]+')
 MAX_EXPORT_TITLE_BYTES = 160
-RENDER_TIMEOUT_SECONDS = 90
+RENDER_TIMEOUT_SECONDS = 180
 PREVIEW_CACHE_SCHEMA_VERSION = "1.0"
 PREVIEW_RENDER_DPI = 240
 ADVISOR_TITLE_PATTERN = re.compile(r"(老师|教授|副教授|讲师|博士|导师)\s*$")
@@ -1733,6 +1733,35 @@ def _without_empty_draft_paragraphs(
     return normalized
 
 
+_BIBTEX_FAILURE_MESSAGES: dict[str, str] = {
+    "entry_prefix": "参考文献里混入了 BibTeX 条目以外的内容。每条文献都要以 @ 开头，请删掉多余的说明文字。",
+    "entry_header": "有参考文献的开头写法不完整，@ 后面的类型或花括号不正确。",
+    "unsupported_type": "有参考文献使用了不支持的 BibTeX 类型。常用类型如 article、book、inproceedings、misc、online 都可以。",
+    "citation_key": "有参考文献缺少引用标识，或引用标识后面少了逗号。",
+    "duplicate_key": "有两条参考文献用了相同的引用标识，请改成不同的名字。",
+    "field_definition": "有参考文献的字段写法不完整，字段名后面要跟等号 =。",
+    "invalid_value": "有参考文献的字段值格式不正确。",
+    "unclosed_value": "有参考文献的字段值没有闭合，缺少右花括号 } 或引号。",
+    "empty_value": "第 {entry} 条参考文献的 {field} 字段是空值。请删掉这一行，或填入实际内容。",
+    "unclosed_entry": "有参考文献条目没有闭合，缺少右花括号 }。",
+    "missing_required_field": "第 {entry} 条参考文献缺少必填字段：{field}。",
+    "no_entries": "参考文献列表里没有识别到 BibTeX 条目，请粘贴形如 @article{key, ...} 的内容。",
+}
+
+
+def _bibtex_failure_message(error: BibtexValidationError) -> str:
+    """Turn a validation reason into a sentence a student can act on."""
+
+    template = _BIBTEX_FAILURE_MESSAGES.get(error.reason)
+    if template is None:
+        return "参考文献格式不正确，请检查后重试。"
+    # Plain replacement: the messages contain literal braces (for example
+    # "缺少右花括号 }"), so str.format would misread them as fields.
+    return template.replace("{entry}", str(error.entry or 1)).replace(
+        "{field}", error.field or "某个"
+    )
+
+
 def _render_content_without_editor_state(
     content: dict[str, Any], document_type: str
 ) -> dict[str, Any]:
@@ -1802,11 +1831,11 @@ def _render_content_without_editor_state(
     except BibtexValidationError as exc:
         raise ExportError(
             "DOCUMENT_NOT_READY",
-            "BibTeX 来源未通过后端一致性检查，请重新粘贴或修正文献条目。",
+            _bibtex_failure_message(exc),
             {
                 "field": "editor_state.bibliography.source_text",
                 "reason": "invalid_bibtex_source",
-                "validation_reason": exc.reason,
+                **exc.details(),
             },
         ) from exc
     if parsed_entry_count != entry_count:
@@ -2200,7 +2229,7 @@ def _require_task_book_docx_font(
         return
     raise ExportError(
         "REQUIRED_FONT_MISSING",
-        "缺少任务书 Word 勾选框要求的 Wingdings 2 字体；请安装该字体，或在本地模板 fonts.local 中提供授权字体文件。PDF 和 LaTeX 导出不受影响。",
+        "安装包已内置任务书 Word 勾选框需要的 Wingdings 2 字体。请重新运行最新安装包修复后再导出；PDF 和 LaTeX 导出不受影响。",
         {
             "document_type": "task_book",
             "format": "docx",
@@ -2260,6 +2289,35 @@ def _external_reason(output: str) -> str:
         if re.search(pattern, output, flags=re.IGNORECASE):
             return reason
     return "tool_nonzero"
+
+
+def _friendly_render_failure(output: str) -> str | None:
+    """Pick the most actionable explanation out of raw TeX output.
+
+    The UI only shows ``message``; the raw tail stays in details.output_tail so
+    diagnostics keep the full evidence without exposing it to the student.
+    """
+
+    reason = _external_reason(output)
+    dependency = re.search(r"File [`']([^'`]+)[`'] not found", output)
+    if reason == "dependency_missing" and dependency:
+        name = dependency.group(1)
+        return f"编译需要的组件 {name} 没有随安装包提供，请重新运行最新安装包修复。"
+    if reason == "dependency_missing":
+        return "编译需要的文件没有随安装包提供，请重新运行最新安装包修复。"
+    if reason == "font_unavailable":
+        return "模板找不到需要的字体。请重新运行最新安装包修复后再试。"
+    if reason == "permission_denied":
+        return "没有权限写入保存位置或临时目录，请换一个文件夹后重试。"
+    if reason == "disk_full":
+        return "磁盘空间不足，请清理空间后重试。"
+    if reason == "output_write_failed":
+        return "无法写入保存位置，请换一个文件夹后重试。"
+    if reason == "tool_path_unsupported":
+        return "保存位置或临时目录包含中文等特殊字符，请改到英文路径后重试。"
+    if re.search(r"TeX capacity exceeded", output, flags=re.IGNORECASE):
+        return "文档内容过多，排版时超出了编译器限制，请精简图片或文字后重试。"
+    return None
 
 
 def _run(
@@ -2364,7 +2422,7 @@ def _run_process(
             evidence["reason"] = failure_reason(exc) or "tool_start_failed"
             raise ExportError(
                 "RENDER_START_FAILED",
-                "文档生成服务启动失败，请查看环境检查结果。",
+                "编译工具没能启动，可能被安全软件拦截，或编译环境不完整。请先运行环境检查；如果提示编译环境异常，请重新运行最新安装包修复。",
             ) from exc
 
         if case is not None and tool_number is not None:
@@ -2390,7 +2448,7 @@ def _run_process(
                     evidence["reason"] = "tool_timeout"
                     raise ExportError(
                         "RENDER_TIMEOUT",
-                        "文档生成超时，导出已终止，请重试。",
+                        "编译时间过长，已停止本次导出。可以重试一次；如果反复超时，请减少图片或拆分文档后再试。",
                     )
         if raw_stdout is not None:
             raw_stdout.seek(0)
@@ -2444,7 +2502,7 @@ def _run_process(
                 raise ExportError("SINGLE_PAGE_OVERFLOW", f"“{label}”栏超出固定区域，请检查该栏内容后重试。")
             raise ExportError("SINGLE_PAGE_OVERFLOW", "填写内容超出这一页的固定区域，请缩短内容后重新导出。")
         if "尚不能编译" in diagnostic or "Required font" in diagnostic or "缺少必需字体" in diagnostic:
-            raise ExportError("REQUIRED_FONT_MISSING", "论文模板缺少规定字体；请在本机安装字体，或在本地模板 fonts.local 中提供已授权字体文件。")
+            raise ExportError("REQUIRED_FONT_MISSING", "安装包已内置论文模板需要的字体。请重新运行最新安装包修复后再导出。")
         if "公式命令不受支持" in diagnostic or "公式包含不支持" in diagnostic or "公式花括号不成对" in diagnostic:
             raise ExportError("THESIS_EQUATION_INVALID", "论文公式包含当前预览不支持的数学命令或括号结构，请修改公式源码。")
         if "引用目标不存在" in diagnostic or "引用标记格式无效" in diagnostic or "来源引用的文献不存在" in diagnostic:
@@ -2456,13 +2514,13 @@ def _run_process(
         if "required checkbox font is missing" in diagnostic:
             raise ExportError(
                 "REQUIRED_FONT_MISSING",
-                "缺少任务书 Word 勾选框要求的 Wingdings 2 字体；请安装该字体，或在本地模板 fonts.local 中提供授权字体文件。PDF 和 LaTeX 导出不受影响。",
+                "安装包已内置任务书 Word 勾选框需要的 Wingdings 2 字体。请重新运行最新安装包修复后再导出；PDF 和 LaTeX 导出不受影响。",
                 {"exit_code": process.returncode},
             )
         if "required official fonts are missing" in diagnostic:
             raise ExportError(
                 "REQUIRED_FONT_MISSING",
-                "缺少当前模板要求的官方字体；请安装字体或在本地模板 fonts.local 中提供授权字体文件。",
+                "安装包已内置当前模板需要的字体。请重新运行最新安装包修复后再导出。",
                 {"exit_code": process.returncode},
             )
         if "No module named 'docx'" in diagnostic or "Pillow is required" in diagnostic:
@@ -2499,7 +2557,8 @@ def _run_process(
             )
         raise ExportError(
             "RENDER_FAILED",
-            "文档生成失败，请重试或发送诊断包。",
+            _friendly_render_failure(diagnostic)
+            or "文档生成失败，请重试；如果反复失败，请创建诊断包发给维护者。",
             {
                 "exit_code": process.returncode,
                 # The tail travels with the error so a failed CI run and a

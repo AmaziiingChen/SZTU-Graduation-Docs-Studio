@@ -70,6 +70,10 @@ export type TelemetryUsageEvent =
       outcome: "success" | "failure" | "cancelled"
       errorCode?: string
       formatCount?: number
+      // 失败阶段（content/render/export/...），只放固定枚举，不含用户内容
+      stage?: string
+      // 结构性原因（如 validation_reason），只放固定枚举，不含用户内容
+      reason?: string
     }
 
 export type DocumentCompletionInput = {
@@ -528,6 +532,7 @@ export type SztuDesktopApi = {
   downloadUpdate: () => Promise<UpdateStatus>
   getMidtermDatePolicyStatus: () => Promise<MidtermDatePolicyStatus>
   revealDownloadedUpdate: () => Promise<null>
+  installUpdate: () => Promise<null>
   openReleaseHelp: () => Promise<null>
   openToolLink: (toolId: ToolLinkId) => Promise<null>
   writeClipboardText: (text: string) => Promise<null>

@@ -17,7 +17,7 @@ extraResources:
   - from: ../../local-fonts
     to: document-fonts
     filter:
-      - FZXiaoBiaoSong-B05S.ttf
+      - "**/*"
   - from: ../../backend/pyproject.toml
     to: backend/pyproject.toml
   - from: ../../template-packs
