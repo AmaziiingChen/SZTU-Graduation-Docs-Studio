@@ -1,7 +1,7 @@
 'use strict';
 
 const http = require('node:http');
-const { createHash } = require('node:crypto');
+const { createHash, randomUUID } = require('node:crypto');
 const { validDiagnosticContext } = require('./diagnostic-context.cjs');
 
 const PORT = 9000;
@@ -15,6 +15,8 @@ const ENV_ID = process.env.CLOUDBASE_ENV_ID;
 const API_KEY = process.env.CLOUDBASE_API_KEY;
 const SERVICE_VERSION = '1.4.0';
 const DIAGNOSTIC_RETENTION_DAYS = 30;
+const FEEDBACK_RETENTION_DAYS = 180;
+const FEEDBACK_CATEGORIES = new Set(['bug', 'suggestion', 'other']);
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SEMVER_RE = /^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$/;
@@ -220,8 +222,28 @@ function scanDiagnosticReport(report) {
   return !forbiddenKeys.test(serialized) && !pathLike.test(serialized) && !credentialLike.test(serialized);
 }
 
-function consumeDiagnosticRateLimit() {
-  const now = Date.now();
+function validateFeedback(value) {
+  if (!exactKeys(value, ['schema_version', 'category', 'message', 'contact', 'app_version', 'platform', 'arch'], ['diagnostic_report_id'])) {
+    return 'INVALID_FEEDBACK_FIELDS';
+  }
+  if (value.schema_version !== '1.0') return 'INVALID_FEEDBACK_VERSION';
+  if (typeof value.category !== 'string' || !FEEDBACK_CATEGORIES.has(value.category)) return 'INVALID_FEEDBACK_CATEGORY';
+  if (typeof value.message !== 'string' || value.message.length < 10 || value.message.length > 2000 || value.message.includes('\0')) {
+    return 'INVALID_FEEDBACK_MESSAGE';
+  }
+  if (typeof value.contact !== 'string' || value.contact.trim().length < 3 || value.contact.length > 200
+    || /[\r\n\0]/.test(value.contact)) return 'INVALID_FEEDBACK_CONTACT';
+  if (typeof value.app_version !== 'string' || !SEMVER_RE.test(value.app_version)) return 'INVALID_FEEDBACK_APP_VERSION';
+  if (typeof value.platform !== 'string' || !DIAGNOSTIC_PLATFORMS.has(value.platform)) return 'INVALID_FEEDBACK_PLATFORM';
+  if (typeof value.arch !== 'string' || !DIAGNOSTIC_ARCHES.has(value.arch)) return 'INVALID_FEEDBACK_ARCH';
+  if (value.diagnostic_report_id !== undefined
+    && (typeof value.diagnostic_report_id !== 'string' || !UUID_RE.test(value.diagnostic_report_id))) {
+    return 'INVALID_FEEDBACK_DIAGNOSTIC_ID';
+  }
+  return null;
+}
+
+function consumeDiagnosticRateLimit() {  const now = Date.now();
   if (now - diagnosticRateWindow.startedAt >= RATE_LIMIT_WINDOW_MS) {
     diagnosticRateWindow = { startedAt: now, count: 0 };
   }
@@ -292,6 +314,27 @@ async function persistFullReport(reportId, archive, checksum) {
     error.code = 'DIAGNOSTIC_FULL_RECEIPT_MISMATCH';
     throw error;
   }
+}
+
+async function persistFeedback(feedback, receiptId) {
+  await databaseRequest('feedback_reports', {
+    method: 'POST',
+    query: '?on_conflict=receipt_id',
+    prefer: 'resolution=ignore-duplicates,return=minimal',
+    body: {
+      receipt_id: receiptId,
+      schema_version: feedback.schema_version,
+      category: feedback.category,
+      message: feedback.message,
+      contact: feedback.contact,
+      app_version: feedback.app_version,
+      platform: feedback.platform,
+      arch: feedback.arch,
+      diagnostic_report_id: feedback.diagnostic_report_id ?? null,
+      expires_at: new Date(Date.now() + FEEDBACK_RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString(),
+    },
+    errorCode: 'FEEDBACK_WRITE_FAILED',
+  });
 }
 
 function sendJson(res, status, payload, extraHeaders = {}) {
@@ -402,11 +445,11 @@ async function persistEvents(events) {
   }
 }
 
-function handleRequest({ persistReport = persistDiagnosticReport, persistFull = persistFullReport, databaseConfigured = Boolean(ENV_ID && API_KEY) } = {}) {
-  return (req, res) => serveRequest(req, res, persistReport, persistFull, databaseConfigured);
+function handleRequest({ persistReport = persistDiagnosticReport, persistFull = persistFullReport, persistUserFeedback = persistFeedback, databaseConfigured = Boolean(ENV_ID && API_KEY) } = {}) {
+  return (req, res) => serveRequest(req, res, persistReport, persistFull, persistUserFeedback, databaseConfigured);
 }
 
-async function serveRequest(req, res, persistReport, persistFull, databaseConfigured) {
+async function serveRequest(req, res, persistReport, persistFull, persistUserFeedback, databaseConfigured) {
   try {
     const url = new URL(req.url || '/', 'http://localhost');
     if (req.method === 'OPTIONS') {
@@ -447,6 +490,38 @@ async function serveRequest(req, res, persistReport, persistFull, databaseConfig
       const checksum = createHash('sha256').update(archive).digest('hex');
       await persistFull(reportId, archive, checksum);
       sendJson(res, 202, { ok: true, report_id: reportId, sha256: checksum, retention_days: DIAGNOSTIC_RETENTION_DAYS });
+      return;
+    }
+    if (req.method === 'POST' && url.pathname.endsWith('/v1/feedback')) {
+      if (!String(req.headers['content-type'] || '').toLowerCase().startsWith('application/json')) {
+        sendJson(res, 415, { ok: false, code: 'UNSUPPORTED_MEDIA_TYPE' });
+        return;
+      }
+      if (!databaseConfigured) {
+        sendJson(res, 503, { ok: false, code: 'SERVICE_UNAVAILABLE' });
+        return;
+      }
+      const retryAfter = consumeDiagnosticRateLimit();
+      if (retryAfter > 0) {
+        sendJson(res, 429, { ok: false, code: 'RATE_LIMITED' }, { 'Retry-After': String(retryAfter) });
+        return;
+      }
+      const rawBody = await readBody(req, 32 * 1024);
+      let feedback;
+      try {
+        feedback = JSON.parse(rawBody);
+      } catch {
+        sendJson(res, 400, { ok: false, code: 'INVALID_JSON' });
+        return;
+      }
+      const validationError = validateFeedback(feedback);
+      if (validationError) {
+        sendJson(res, 422, { ok: false, code: validationError });
+        return;
+      }
+      const receiptId = randomUUID();
+      await persistUserFeedback(feedback, receiptId);
+      sendJson(res, 202, { ok: true, receipt_id: receiptId, retention_days: FEEDBACK_RETENTION_DAYS });
       return;
     }
     if (req.method === 'POST' && url.pathname.endsWith('/v1/reports')) {
@@ -577,6 +652,7 @@ module.exports = {
   handleRequest,
   validateBatch,
   validateDiagnosticReport,
+  validateFeedback,
   scanDiagnosticReport,
   consumeRateLimit,
   consumeDiagnosticRateLimit,

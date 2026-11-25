@@ -49,6 +49,20 @@ export type DiagnosticSendResult = {
   retentionDays: number
 }
 
+export type FeedbackCategory = "bug" | "suggestion" | "other"
+
+export type FeedbackInput = {
+  category: FeedbackCategory
+  message: string
+  contact: string
+  diagnosticReportId?: string
+}
+
+export type FeedbackReceipt = {
+  receiptId: string
+  retentionDays: number
+}
+
 export type PrivacyNoticeStatus = {
   noticeVersion: string
   acknowledged: boolean
@@ -524,6 +538,7 @@ export type SztuDesktopApi = {
   prepareDiagnosticReport: (reportId?: string) => Promise<FullDiagnosticCase>
   saveDiagnosticReport: (reportId: string) => Promise<DiagnosticSaveResult>
   sendDiagnosticReport: (reportId: string) => Promise<DiagnosticSendResult>
+  submitFeedback: (input: FeedbackInput) => Promise<FeedbackReceipt>
   getPrivacyNoticeStatus: () => Promise<PrivacyNoticeStatus>
   acceptPrivacyNotice: () => Promise<PrivacyNoticeStatus>
   quitApp: () => Promise<null>

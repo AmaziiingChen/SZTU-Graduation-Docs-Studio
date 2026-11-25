@@ -39,6 +39,7 @@ CloudBase PostgreSQL currently stores the anonymous function rule as an environm
 - `migrations/20261006090000_accept_diagnostic_reports.sql`: widens the diagnostic report schema-version constraint (deploy before the v1.3 ingest service)
 - `migrations/20261113090000_accept_diagnostic_steps.sql`: accepts diagnostic schema 3 steps before enabling the client-side upgrade
 - `migrations/20261113091500_create_full_diagnostic_reports.sql`: creates `public.full_diagnostic_reports` for full diagnostic packages
+- `migrations/20261126090000_create_feedback_reports.sql`: creates `public.feedback_reports` for user-submitted feedback and its 180-day retention job
 - `queries/telemetry-overview.sql`: read-only queries for recent events, daily activity, action outcomes, errors, and version distribution
 
 Update artifacts are not deployed yet. Static hosting or COS must expose only signed manifests and release packages; never use this telemetry credential in a client or storage URL. Schema 2.0 also carries signed announcements, help links, minimum-version rules, maintenance, and retirement status. The Ed25519 signing key is generated and retained outside the repository; it is unrelated to paid platform code-signing certificates.

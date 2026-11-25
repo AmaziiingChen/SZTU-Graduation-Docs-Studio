@@ -1,4 +1,5 @@
 import { FullDiagnosticError, FullDiagnostics } from "./full-diagnostics.js"
+import { FeedbackError, FeedbackService, type FeedbackCategory } from "./feedback.js"
 import { mkdirSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { diagnosticContext, documentStructure, type DiagnosticContext } from "./diagnostic-context.js"
@@ -71,6 +72,7 @@ let updateService: UpdateService | undefined
 let midtermDatePolicyService: MidtermDatePolicyService | undefined
 let diagnostics: DiagnosticService | undefined
 let fullDiagnostics: FullDiagnostics | undefined
+let feedbackService: FeedbackService | undefined
 let remoteServicesStarted = false
 let shutdownStarted = false
 let quitApproved = false
@@ -494,7 +496,7 @@ function assertExportFormats(value: unknown): asserts value is Array<"docx" | "p
 }
 
 function bridgeFailure(error: unknown): BridgeResponse<never> {
-  if (error instanceof SidecarError || error instanceof IpcValidationError || error instanceof ThesisTemplateError || error instanceof FullDiagnosticError) {
+  if (error instanceof SidecarError || error instanceof IpcValidationError || error instanceof ThesisTemplateError || error instanceof FullDiagnosticError || error instanceof FeedbackError) {
     return {
       ok: false,
       error: {
@@ -699,6 +701,7 @@ async function initializeRemoteServices(): Promise<void> {
   }
   const resolved = config as Awaited<ReturnType<typeof loadRemoteServicesConfig>>
   fullDiagnostics = new FullDiagnostics(app.getPath("userData"), resolved.diagnosticEndpoint)
+  feedbackService = new FeedbackService(resolved.diagnosticEndpoint, app.getVersion(), process.platform, process.arch)
   await fullDiagnostics.removeExpired().catch(() => console.error("Could not remove expired local diagnostic cases."))
   diagnostics = new DiagnosticService({
     userDataPath: app.getPath("userData"),
@@ -850,6 +853,31 @@ function registerIpc(): void {
       assertRequestId(reportId, "故障包编号")
       if (!fullDiagnostics) throw new IpcValidationError("故障包服务尚未初始化。")
       return fullDiagnostics.send(reportId)
+    })
+  })
+
+  ipcMain.handle("sztu:feedback-submit", (event, input: unknown) => {
+    assertTrustedSender(event)
+    return runBridge(async () => {
+      if (!feedbackService) throw new IpcValidationError("反馈服务尚未初始化。")
+      if (!input || typeof input !== "object" || Array.isArray(input)) throw new IpcValidationError("反馈内容无效。")
+      const { category, message, contact, diagnosticReportId } = input as Record<string, unknown>
+      if (typeof category !== "string" || !["bug", "suggestion", "other"].includes(category)) {
+        throw new IpcValidationError("请选择反馈类型。")
+      }
+      if (typeof message !== "string" || message.trim().length < 10 || message.length > 2000 || message.includes("\0")) {
+        throw new IpcValidationError("请把问题描述清楚一些，字数在 10 到 2000 之间。")
+      }
+      if (typeof contact !== "string" || contact.trim().length < 3 || contact.length > 200 || /[\r\n\0]/.test(contact)) {
+        throw new IpcValidationError("请留一个能联系到你的邮箱或手机号。")
+      }
+      if (diagnosticReportId !== undefined) assertRequestId(diagnosticReportId, "诊断包编号")
+      return feedbackService.submit({
+        category: category as FeedbackCategory,
+        message,
+        contact,
+        ...(diagnosticReportId === undefined ? {} : { diagnosticReportId: diagnosticReportId as string }),
+      })
     })
   })
 

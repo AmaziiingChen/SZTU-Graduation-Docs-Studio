@@ -409,6 +409,10 @@ function mockApi(): SztuDesktopApi {
       reportId: "11111111-1111-4111-8111-111111111111",
       retentionDays: 30,
     }),
+    submitFeedback: vi.fn().mockResolvedValue({
+      receiptId: "22222222-2222-4222-8222-222222222222",
+      retentionDays: 180,
+    }),
     getPrivacyNoticeStatus: vi.fn().mockResolvedValue({
       noticeVersion: "1.1",
       acknowledged: true,
@@ -974,6 +978,32 @@ describe("M3 workbench persistence", () => {
     expect(within(help).getByText("粘贴与管理参考文献（BibTeX）")).toBeInTheDocument()
     fireEvent.click(within(help).getByRole("button", { name: /载入演示资料/ }))
     await waitFor(() => expect(api.installDemoDocuments).toHaveBeenCalledTimes(1))
+  })
+
+  it("submits feedback from the help center with contact details", async () => {
+    const api = mockApi()
+    installApi(api)
+    renderApp()
+
+    fireEvent.click(await screen.findByRole("button", { name: "帮助与支持" }))
+    const help = await screen.findByRole("dialog", { name: "帮助与支持" })
+    fireEvent.click(within(help).getByRole("button", { name: "反馈问题" }))
+    const dialog = await screen.findByRole("dialog", { name: "反馈问题" })
+    fireEvent.change(within(dialog).getByLabelText("具体描述"), {
+      target: { value: "预览生成时提示文档生成失败，请帮忙看看。" },
+    })
+    fireEvent.change(within(dialog).getByLabelText("联系方式"), {
+      target: { value: "student@example.com" },
+    })
+    fireEvent.click(within(dialog).getByRole("button", { name: "提交反馈" }))
+    await waitFor(() =>
+      expect(api.submitFeedback).toHaveBeenCalledWith({
+        category: "bug",
+        message: "预览生成时提示文档生成失败，请帮忙看看。",
+        contact: "student@example.com",
+      }),
+    )
+    expect(await within(dialog).findByText(/反馈编号/)).toBeInTheDocument()
   })
 
   it("downloads the bundled thesis template without changing the document or requiring a preview", async () => {

@@ -46,6 +46,7 @@ import { DiagnosticSupport } from "@/components/workbench/diagnostic-support"
 import { EnvironmentOnboardingDialog } from "@/components/workbench/environment-onboarding-dialog"
 import { FirstRunTour } from "@/components/workbench/first-run-tour"
 import { HelpCenterDialog } from "@/components/workbench/help-center-dialog"
+import { FeedbackDialog } from "@/components/workbench/feedback-dialog"
 import { ExportHistoryStatusBadge } from "@/components/workbench/export-history-status-badge"
 import {
   DocumentSectionNav,
@@ -3468,6 +3469,7 @@ export default function App() {
   const [firstRunTourDismissed, setFirstRunTourDismissed] = useState(false)
   const [tourForced, setTourForced] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
+  const [feedbackOpen, setFeedbackOpen] = useState(false)
   const [helpArticleId, setHelpArticleId] = useState<string | null>(null)
   const [demoBusy, setDemoBusy] = useState(false)
   const openHelp = useCallback((articleId: string | null = null) => {
@@ -5730,7 +5732,9 @@ export default function App() {
           setTourForced(true)
           setFirstRunTourDismissed(false)
         }}
+        onOpenFeedback={() => setFeedbackOpen(true)}
       />
+      <FeedbackDialog open={feedbackOpen} onOpenChange={setFeedbackOpen} />
       <Dialog
         open={releaseBlocking}
         onOpenChange={() => undefined}

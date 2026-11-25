@@ -4,6 +4,7 @@ import {
   BookOpenIcon,
   HistoryIcon,
   KeyboardIcon,
+  MessageSquareIcon,
   SearchIcon,
   SparklesIcon,
   TrashIcon,
@@ -64,6 +65,7 @@ export type HelpCenterDialogProps = {
   onInstallDemo: () => void | Promise<void>
   onRemoveDemo: () => void | Promise<void>
   onReplayTour: () => void
+  onOpenFeedback: () => void
 }
 
 export function HelpCenterDialog({
@@ -74,6 +76,7 @@ export function HelpCenterDialog({
   onInstallDemo,
   onRemoveDemo,
   onReplayTour,
+  onOpenFeedback,
 }: HelpCenterDialogProps) {
   const [tab, setTab] = React.useState<HelpTab>("help")
   const [query, setQuery] = React.useState("")
@@ -299,19 +302,33 @@ export function HelpCenterDialog({
         ) : null}
 
         <Separator />
-        <DialogFooter className="flex-row items-center justify-between gap-2 px-4 py-3 sm:justify-between">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              onReplayTour()
-              handleOpenChange(false)
-            }}
-          >
-            <SparklesIcon aria-hidden="true" />
-            重新播放新手引导
-          </Button>
+        <DialogFooter className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 sm:justify-between">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                onReplayTour()
+                handleOpenChange(false)
+              }}
+            >
+              <SparklesIcon aria-hidden="true" />
+              重新播放新手引导
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                onOpenFeedback()
+                handleOpenChange(false)
+              }}
+            >
+              <MessageSquareIcon aria-hidden="true" />
+              反馈问题
+            </Button>
+          </div>
           <Button type="button" size="sm" onClick={() => handleOpenChange(false)}>
             知道了
           </Button>

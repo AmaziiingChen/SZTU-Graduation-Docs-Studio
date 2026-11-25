@@ -55,6 +55,7 @@ contextBridge.exposeInMainWorld("sztuDesktop", {
     invoke("sztu:diagnostic-save", reportId),
   sendDiagnosticReport: (reportId: unknown) =>
     invoke("sztu:diagnostic-send", reportId),
+  submitFeedback: (input: unknown) => invoke("sztu:feedback-submit", input),
   getPrivacyNoticeStatus: () => invoke("sztu:privacy-status"),
   acceptPrivacyNotice: () => invoke("sztu:privacy-accept"),
   quitApp: () => invoke("sztu:app-quit"),

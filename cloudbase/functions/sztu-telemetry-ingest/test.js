@@ -7,6 +7,7 @@ const {
   scanDiagnosticReport,
   validateBatch,
   validateDiagnosticReport,
+  validateFeedback,
 } = require('./index');
 
 function validBatch() {
@@ -164,6 +165,65 @@ test('accepts structured v3 failure evidence and rejects raw reasons and paths',
     report.operations[0].context[key] = value;
     assert.equal(validateDiagnosticReport(report), 'INVALID_DIAGNOSTIC_OPERATION');
     report.operations[0].context[key] = previous;
+  }
+});
+
+function validFeedback() {
+  return {
+    schema_version: '1.0',
+    category: 'bug',
+    message: '预览一直失败，希望帮忙看一下。',
+    contact: 'student@example.com',
+    app_version: '0.2.0',
+    platform: 'win32',
+    arch: 'x64',
+  };
+}
+
+test('accepts a user feedback submission and rejects unsafe shapes', () => {
+  assert.equal(validateFeedback(validFeedback()), null);
+  assert.equal(validateFeedback({ ...validFeedback(), category: 'praise' }), 'INVALID_FEEDBACK_CATEGORY');
+  assert.equal(validateFeedback({ ...validFeedback(), message: '太短' }), 'INVALID_FEEDBACK_MESSAGE');
+  assert.equal(validateFeedback({ ...validFeedback(), contact: 'a\nb' }), 'INVALID_FEEDBACK_CONTACT');
+  assert.equal(validateFeedback({ ...validFeedback(), extra: true }), 'INVALID_FEEDBACK_FIELDS');
+  assert.equal(validateFeedback({ ...validFeedback(), diagnostic_report_id: 'not-a-uuid' }), 'INVALID_FEEDBACK_DIAGNOSTIC_ID');
+});
+
+test('persists an accepted feedback submission with a receipt', async () => {
+  const http = require('node:http');
+  const { handleRequest } = require('./index');
+  const stored = [];
+  const server = http.createServer(handleRequest({
+    databaseConfigured: true,
+    persistUserFeedback: async (feedback, receiptId) => stored.push({ feedback, receiptId }),
+  }));
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const url = `http://127.0.0.1:${server.address().port}/v1/feedback`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(validFeedback()),
+    });
+    const payload = await response.json();
+    assert.equal(response.status, 202);
+    assert.equal(payload.ok, true);
+    assert.match(payload.receipt_id, /^[0-9a-f-]{36}$/);
+    assert.equal(payload.retention_days, 180);
+    assert.equal(stored.length, 1);
+    assert.equal(stored[0].feedback.contact, 'student@example.com');
+    assert.equal(stored[0].receiptId, payload.receipt_id);
+
+    const rejected = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...validFeedback(), message: '太短' }),
+    });
+    assert.equal(rejected.status, 422);
+    assert.equal(stored.length, 1);
+  } finally {
+    server.closeAllConnections();
+    await new Promise(resolve => server.close(resolve));
   }
 });
 
