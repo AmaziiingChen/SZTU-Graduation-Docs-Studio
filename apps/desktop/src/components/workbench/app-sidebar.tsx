@@ -1,4 +1,5 @@
 import { AnimatedActionIcon } from "@/components/animated-action-icon"
+import { BookOpenIcon } from "lucide-react"
 import { RocketIcon } from "@/components/ui/rocket"
 import { QrCodeIcon } from "@/components/ui/qr-code-icon"
 import { DownloadIcon } from "@/components/ui/download"
@@ -57,6 +58,7 @@ export function AppSidebar({
   onSelectTools,
   onSelectAppearance,
   onSelectInspection,
+  onSelectGuide,
   onSelectDocument,
   onSelectThesisTool,
   onCreateDocument,
@@ -92,6 +94,7 @@ export function AppSidebar({
   onSelectTools: () => void
   onSelectAppearance: () => void
   onSelectInspection: () => void
+  onSelectGuide: () => void
   onSelectDocument: (documentId: string) => Promise<void>
   onSelectThesisTool: (toolId: ThesisToolId) => void
   onCreateDocument: (request: CreateDocumentRequest) => Promise<void>
@@ -208,6 +211,12 @@ export function AppSidebar({
             >
               <AnimatedActionIcon icon={QrCodeIcon} />
               <span>联系作者</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton tooltip="使用说明" className="pl-8" onClick={() => finishNavigation(onSelectGuide)}>
+              <BookOpenIcon className="size-4" aria-hidden="true" />
+              <span>使用说明</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>

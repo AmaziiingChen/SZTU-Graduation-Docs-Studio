@@ -44,6 +44,7 @@ import { AppearanceSettings } from "@/components/workbench/appearance-settings"
 import type { CreateDocumentRequest } from "@/components/workbench/nav-documents"
 import { DiagnosticSupport } from "@/components/workbench/diagnostic-support"
 import { EnvironmentOnboardingDialog } from "@/components/workbench/environment-onboarding-dialog"
+import { UsageGuideDialog } from "@/components/workbench/usage-guide-dialog"
 import { ExportHistoryStatusBadge } from "@/components/workbench/export-history-status-badge"
 import {
   DocumentSectionNav,
@@ -3504,6 +3505,15 @@ export default function App() {
     null,
   )
   const [environmentGuideOpen, setEnvironmentGuideOpen] = useState(false)
+  const [usageGuideOpen, setUsageGuideOpen] = useState(false)
+  const [sampleBusy, setSampleBusy] = useState(false)
+  const [welcomeVisible, setWelcomeVisible] = useState(() => {
+    try {
+      return window.localStorage.getItem("sztu-docs.welcome-guide-v1") !== "1"
+    } catch {
+      return false
+    }
+  })
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({
     state: "unconfigured",
   })
@@ -5000,6 +5010,51 @@ export default function App() {
     }
   }
 
+  const dismissWelcome = () => {
+    setWelcomeVisible(false)
+    try {
+      window.localStorage.setItem("sztu-docs.welcome-guide-v1", "1")
+    } catch {
+      // Storage can be unavailable in locked-down profiles; the card just returns next launch.
+    }
+  }
+
+  const installReferenceSample = async () => {
+    const api = getDesktopApi()
+    if (!api) return
+    setSampleBusy(true)
+    try {
+      const result = await api.installReferenceSample()
+      const installed = result.sample?.installed?.length ?? 0
+      await reloadWorkspace()
+      toast.success(
+        installed
+          ? `已载入 ${installed} 份演示文档，标题以「参考样例·」开头。`
+          : "演示资料已经存在，无需重复载入。",
+      )
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "载入演示资料失败，请稍后重试。")
+    } finally {
+      setSampleBusy(false)
+    }
+  }
+
+  const removeReferenceSample = async () => {
+    const api = getDesktopApi()
+    if (!api) return
+    setSampleBusy(true)
+    try {
+      const result = await api.removeReferenceSample()
+      const removed = result.sample?.removed ?? 0
+      await reloadWorkspace()
+      toast.success(removed ? `已清除 ${removed} 份演示文档。` : "没有找到可清除的演示文档。")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "清除演示资料失败，请稍后重试。")
+    } finally {
+      setSampleBusy(false)
+    }
+  }
+
   const workspaceDisabled = workspace.status !== "ready" || documentTransitioning || closing
   const templateCheck = activeDocumentType === "thesis"
     ? undefined
@@ -5415,6 +5470,7 @@ export default function App() {
         onSelectTools={() => setActivePane("tools")}
         onSelectAppearance={() => setActivePane("appearance")}
         onSelectInspection={() => setActivePane("inspection")}
+        onSelectGuide={() => setUsageGuideOpen(true)}
         onSelectDocument={selectDocumentFile}
         onSelectThesisTool={(toolId) => {
           setActiveThesisTool(toolId)
@@ -5457,6 +5513,19 @@ export default function App() {
 
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="@container/main flex min-h-0 flex-1 flex-col gap-2">
+            {activePane === "document" && welcomeVisible ? (
+              <div className="mx-2 mt-2 flex flex-wrap items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-sm">
+                <span className="min-w-0 flex-1">
+                  第一次使用？花一分钟看看四步说明，也可以载入一套演示资料照着改。
+                </span>
+                <Button size="sm" variant="outline" onClick={() => setUsageGuideOpen(true)}>
+                  查看使用说明
+                </Button>
+                <Button size="sm" variant="ghost" onClick={dismissWelcome}>
+                  知道了
+                </Button>
+              </div>
+            ) : null}
             {activePane === "profile" ||
             activePane === "tools" ||
             activePane === "appearance" ? (
@@ -5572,6 +5641,13 @@ export default function App() {
         onRefresh={() => void refreshEnvironment()}
         onComplete={() => setEnvironmentGuideOpen(false)}
         onOpenGuide={(toolId) => void openToolLink(toolId)}
+      />
+      <UsageGuideDialog
+        open={usageGuideOpen}
+        onOpenChange={setUsageGuideOpen}
+        sampleBusy={sampleBusy}
+        onInstallSample={installReferenceSample}
+        onRemoveSample={removeReferenceSample}
       />
       <Dialog
         open={releaseBlocking}

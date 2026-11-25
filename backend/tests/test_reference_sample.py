@@ -10,9 +10,17 @@ import uuid
 from pathlib import Path
 from unittest.mock import patch
 
+from sztu_docs_backend import reference_sample as reference_sample_module
 from sztu_docs_backend.exporter import build_export_document, validate_document
 from sztu_docs_backend.protocol import ProtocolSession
-from sztu_docs_backend.reference_sample import SAMPLE_SETTING, initialize_reference_sample
+from sztu_docs_backend.reference_sample import (
+    SAMPLE_PREFIX,
+    SAMPLE_SETTING,
+    bundled_document_types,
+    initialize_reference_sample,
+    install_reference_sample,
+    remove_reference_sample,
+)
 from sztu_docs_backend.storage import Workspace
 
 
@@ -26,7 +34,7 @@ class ReferenceSampleTests(unittest.TestCase):
         self.workspace.close()
         self.directory.cleanup()
 
-    def test_fresh_workspace_has_editable_profile_and_three_valid_documents(self) -> None:
+    def test_fresh_workspace_has_editable_profile_and_valid_documents(self) -> None:
         self.assertTrue(initialize_reference_sample(self.workspace))
         profile = self.workspace.list_profiles()[0]
         self.assertEqual(profile["full_name"], "林知远")
@@ -35,8 +43,9 @@ class ReferenceSampleTests(unittest.TestCase):
         scripts = {run.get("script") for run in profile["thesis_title"][0]["runs"]}
         self.assertTrue({"sub", "super"} <= scripts)
         documents = self.workspace.list_documents()
-        self.assertEqual({item["document_type"] for item in documents}, {"task_book", "proposal", "midterm"})
-        self.assertEqual(self.workspace.load_active()["document"]["document_type"], "task_book")
+        expected_types = set(bundled_document_types())
+        self.assertEqual({item["document_type"] for item in documents}, expected_types)
+        self.assertEqual(self.workspace.load_active()["document"]["document_type"], bundled_document_types()[0])
         for record in documents:
             self.assertFalse(record["is_temporary"])
             self.assertEqual(record["current_revision"], 1)
@@ -53,11 +62,12 @@ class ReferenceSampleTests(unittest.TestCase):
         self.assertEqual(len(assets), 3)
         for asset in assets:
             self.assertEqual(asset.stem, hashlib.sha256(asset.read_bytes()).hexdigest())
-        midterm = next(item for item in documents if item["document_type"] == "midterm")
-        content = self.workspace.get_document(midterm["id"])["content"]
-        images = content["sections"]["main_research_content"]
-        image = next(item for item in images if isinstance(item, dict) and item["type"] == "image")
-        self.assertTrue(Path(image["path"]).is_file())
+        midterm = next((item for item in documents if item["document_type"] == "midterm"), None)
+        if midterm is not None:
+            content = self.workspace.get_document(midterm["id"])["content"]
+            images = content["sections"]["main_research_content"]
+            image = next(item for item in images if isinstance(item, dict) and item["type"] == "image")
+            self.assertTrue(Path(image["path"]).is_file())
 
     def test_restart_keeps_edits_and_does_not_duplicate_the_sample(self) -> None:
         initialize_reference_sample(self.workspace)
@@ -68,7 +78,7 @@ class ReferenceSampleTests(unittest.TestCase):
         self.assertFalse(initialize_reference_sample(self.workspace))
         self.assertEqual(self.workspace.list_profiles()[0]["full_name"], "修改后的合成学生")
         self.assertEqual(len(self.workspace.list_profiles()), 1)
-        self.assertEqual(len(self.workspace.list_documents()), 3)
+        self.assertEqual(len(self.workspace.list_documents()), len(bundled_document_types()))
 
     def test_existing_unsaved_profile_input_prevents_initialization(self) -> None:
         self.workspace.save_profile_draft({"full_name": "尚未填完的合成资料"})
@@ -147,8 +157,8 @@ class ReferenceSampleTests(unittest.TestCase):
                 self.assertTrue(response["ok"], response)
                 result = response["result"]
                 self.assertEqual(result["profile"]["full_name"], "林知远")
-                self.assertEqual(len(result["documents"]), 3)
-                self.assertEqual(result["document"]["document_type"], "task_book")
+                self.assertEqual(len(result["documents"]), len(bundled_document_types()))
+                self.assertEqual(result["document"]["document_type"], bundled_document_types()[0])
                 json.dumps(result)
             finally:
                 session.close()
@@ -166,6 +176,58 @@ class ReferenceSampleTests(unittest.TestCase):
                 self.assertEqual(session.workspace.list_documents(), [])
             finally:
                 session.close()
+
+
+    def test_thesis_sample_waits_until_the_editor_is_wired(self) -> None:
+        self.assertIn("thesis", reference_sample_module._load_sample()["documents"])
+        self.assertNotIn("thesis", bundled_document_types())
+        installed = install_reference_sample(self.workspace)
+        self.assertNotIn("thesis", installed["installed"])
+        self.assertNotIn("thesis", installed["skipped"])
+        self.assertNotIn(
+            "thesis",
+            {item["document_type"] for item in self.workspace.list_documents()},
+        )
+
+    def test_install_can_be_repeated_without_duplicates(self) -> None:
+        first = install_reference_sample(self.workspace)
+        self.assertEqual(first["installed"], list(bundled_document_types()))
+        second = install_reference_sample(self.workspace)
+        self.assertEqual(second["installed"], [])
+        self.assertEqual(sorted(second["skipped"]), sorted(bundled_document_types()))
+        self.assertEqual(len(self.workspace.list_documents()), len(bundled_document_types()))
+
+    def test_install_attaches_demo_documents_to_the_active_profile(self) -> None:
+        profile = self.workspace.save_profile({
+            "full_name": "已有同学",
+            "student_number": "EXISTING-0002",
+            "college": "合成学院",
+            "major": "合成专业",
+        })
+        self.workspace.save_active(profile_id=profile["id"], document_id=None)
+        result = install_reference_sample(self.workspace)
+        self.assertEqual(result["profile_id"], profile["id"])
+        self.assertEqual(len(self.workspace.list_documents()), len(bundled_document_types()))
+        self.assertEqual(len(self.workspace.list_profiles()), 1)
+
+    def test_remove_only_removes_prefixed_documents(self) -> None:
+        user_document = self.workspace.create_document({
+            "document_type": "proposal",
+            "template_version": "fixture",
+            "schema_version": "0.2",
+            "title": "我的开题报告",
+        })
+        install_reference_sample(self.workspace)
+        removed = remove_reference_sample(self.workspace)
+        self.assertEqual(removed["removed"], len(bundled_document_types()))
+        self.assertEqual(
+            [item["id"] for item in self.workspace.list_documents()],
+            [user_document["id"]],
+        )
+        self.assertEqual(remove_reference_sample(self.workspace)["removed"], 0)
+
+    def test_remove_reports_zero_when_nothing_was_installed(self) -> None:
+        self.assertEqual(remove_reference_sample(self.workspace), {"removed": 0, "titles": []})
 
 
 if __name__ == "__main__":

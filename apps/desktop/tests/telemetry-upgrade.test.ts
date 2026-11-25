@@ -57,7 +57,12 @@ it("keeps diagnostic validators aligned and strips messages, values, paths and f
 it("covers sidecar operations while keeping local fault archive maintenance outside telemetry", async () => {
   const source = await readFile(path.join(process.cwd(), "electron/sidecar-client.ts"), "utf8")
   const methodBlock = source.split("const ALLOWED_METHODS =")[1].split("])")[0]
-  const localMaintenance = new Set(["diagnostic.recover", "diagnostic.finishPreview"])
+  const localMaintenance = new Set([
+    "diagnostic.recover",
+    "diagnostic.finishPreview",
+    "workspace.installReferenceSample",
+    "workspace.removeReferenceSample",
+  ])
   for (const [, method] of methodBlock.matchAll(/"([a-z]+\.[A-Za-z]+)"/g)) {
     if (localMaintenance.has(method)) expect(DIAGNOSTIC_OPERATIONS).not.toContain(method)
     else expect(DIAGNOSTIC_OPERATIONS).toContain(method)

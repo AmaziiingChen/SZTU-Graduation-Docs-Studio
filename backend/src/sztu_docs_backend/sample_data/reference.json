@@ -584,6 +584,562 @@
         ],
         "editable_headings": true
       }
+    },
+    "thesis": {
+      "schema_version": "0.1",
+      "metadata": {
+        "title": {
+          "type": "paragraph",
+          "runs": [
+            {
+              "text": "α-Al"
+            },
+            {
+              "text": "2",
+              "script": "sub"
+            },
+            {
+              "text": "O"
+            },
+            {
+              "text": "3",
+              "script": "sub"
+            },
+            {
+              "text": "–ZrO"
+            },
+            {
+              "text": "2",
+              "script": "sub"
+            },
+            {
+              "text": "复合陶瓷的 Microstructure 与 10"
+            },
+            {
+              "text": "3",
+              "script": "super"
+            },
+            {
+              "text": " 次循环稳定性研究"
+            }
+          ]
+        },
+        "student_name": "林知远",
+        "student_id": "202300302001",
+        "college": "新材料与新能源学院",
+        "major": "新能源材料与工程",
+        "class_name": "2023级新能源材料与工程1班",
+        "advisor": "周明远",
+        "advisor_title": "副教授"
+      },
+      "thesis": {
+        "version": 1,
+        "englishTitle": "Microstructure and 1000-Cycle Stability of alpha-Al2O3-ZrO2 Composite Ceramics",
+        "submissionDate": "2027-05-28",
+        "abstractCn": [
+          "以 α-Al2O3 为基体、ZrO2 为增韧相制备了五组复合陶瓷试样，考察 ZrO2 添加量对致密度、抗弯强度以及循环载荷下强度保持率的影响。文中原料批次、工艺参数与测试数据均为演示用模拟数据。模拟结果表明，ZrO2 添加量由 0% 增至 10%（质量分数）时，试样抗弯强度由 360 MPa 升至 455 MPa；添加量继续增至 20% 后强度回落至 390 MPa。经 1000 次循环加载后，10% 组的强度保持率约为 98.0%，为五组中最高。结合物相与显微形貌分析，认为四方相 ZrO2 的马氏体相变增韧和微裂纹耗能是循环稳定性改善的主要原因，气孔率升高与颗粒团聚则限制了高添加量组的性能。研究结果可为低成本氧化物复合陶瓷的配方优化提供参考，同时说明演示数据能够完整支撑论文写作、图表引用与参考文献编译流程。"
+        ],
+        "keywordsCn": "α-Al2O3–ZrO2 复合陶瓷；循环加载；强度保持率；相变增韧；模拟数据",
+        "abstractEn": [
+          "Five alpha-Al2O3/ZrO2 composite ceramic batches were prepared and characterized to examine how the ZrO2 content affects density, flexural strength and strength retention under cyclic loading. All raw-material lots, processing parameters and test data in this paper are simulated data used for demonstration. In the simulated results, the flexural strength increased from 360 MPa to 455 MPa when the ZrO2 content rose from 0% to 10% by mass, and then decreased to 390 MPa at 20%. After 1000 loading cycles the 10% batch retained about 98.0% of its initial strength, the highest among the five batches. Phase and microstructure analyses suggest that transformation toughening of tetragonal ZrO2 and microcrack dissipation are the main reasons for the improved cyclic stability, while porosity and particle agglomeration limit the highly doped batches. The results provide a reference for the formulation of low-cost oxide composite ceramics and show that the demonstration data can support the complete writing, citation and bibliography workflow of the thesis."
+        ],
+        "keywordsEn": "alpha-Al2O3-ZrO2 composite ceramics; cyclic loading; strength retention; transformation toughening; simulated data",
+        "chapters": [
+          {
+            "id": "ch-intro",
+            "level": 1,
+            "title": "绪论",
+            "body": [
+              "结构陶瓷具有耐高温、耐磨损和化学稳定性好等优点，但脆性大、对缺陷敏感，长期制约其在承受循环载荷部件中的应用{{cite:carter2007ceramic}}。氧化铝基复合陶瓷原料来源广、成本较低，通过引入氧化锆增韧相可以在一定程度上改善断裂韧性，因此成为工程陶瓷研究中的典型体系。"
+            ]
+          },
+          {
+            "id": "ch-intro-background",
+            "level": 2,
+            "title": "研究背景与意义",
+            "body": [
+              "自「陶瓷钢」概念提出以来{{cite:garvie1975ceramicsteel}}，利用四方相氧化锆向单斜相转变时的体积膨胀与剪切应变来阻碍裂纹扩展，已成为氧化物陶瓷强韧化的主要途径之一。相关综述指出，相变增韧效果取决于增韧相尺寸、约束状态和基体弹性模量等因素{{cite:hannink2000toughening}}。",
+              "工程构件往往并非承受单一静载，而是在启停、振动或热循环中反复受载。循环应力会加速表面裂纹扩展，使材料在低于静强度的水平下失效。因此，仅评价初始强度并不足以说明材料是否适合长期服役，还需要考察循环载荷后的强度保持能力{{cite:munz1999ceramics}}。",
+              "本课题以氧化铝–氧化锆复合陶瓷为对象，比较不同增韧相添加量下试样的致密度、抗弯强度与循环后强度保持率，讨论组织特征与性能之间的对应关系。研究结果可为同类材料的配方筛选和寿命评估提供实验依据，对理解陶瓷材料在循环载荷下的损伤演化也具有参考价值{{cite:wachtman2009mechanical}}。"
+            ]
+          },
+          {
+            "id": "ch-intro-status",
+            "level": 2,
+            "title": "国内外研究现状",
+            "body": [
+              "早期研究通过在氧化铝基体中分散未稳定化氧化锆颗粒，显著提高了断裂韧性，并观察到裂纹偏转、桥接与相变增韧的共同作用{{cite:claussen1976}}。随后关于相变增韧机理的评述进一步明确了应力诱导相变的临界条件和增韧区尺寸，为配方设计提供了理论框架{{cite:evans1980}}。",
+              "在微观结构设计方面，研究者系统比较了颗粒、晶须和片晶等增韧方式，指出增韧相的长径比、界面结合和分布均匀性会明显影响强韧化效果{{cite:becher1991}}。压痕法测量断裂韧性的标准化工作，则使不同实验室之间的数据具有了较好的可比性{{cite:anstis1981}}。",
+              "国内相关研究多集中于制备工艺优化、烧结助剂选择和抗热震性能评价，对循环载荷下强度衰减规律的系统数据仍较有限。已有工作表明，气孔、异常晶粒和团聚体是循环加载中的主要裂纹源，控制组织均匀性比单纯提高致密度更为关键{{cite:kingery1976ceramics}}。"
+            ]
+          },
+          {
+            "id": "ch-intro-content",
+            "level": 2,
+            "title": "本文研究内容",
+            "body": [
+              "围绕上述问题，本文开展以下三方面工作。",
+              {
+                "type": "ordered_list",
+                "items": [
+                  {
+                    "content": "设计五组不同 ZrO2 添加量的配方，采用相同的球磨、干压与无压烧结工艺制备试样，测定体积密度与相对致密度。"
+                  },
+                  {
+                    "content": "测试各组试样的初始抗弯强度，并按统一规程施加 1000 次循环载荷，计算循环后的强度保持率。"
+                  },
+                  {
+                    "content": "结合物相分析与断口形貌观察，讨论添加量对强韧化效果和循环稳定性的影响，给出配方优化的建议区间。"
+                  }
+                ]
+              },
+              "需要说明的是，本文所用的原料批次、工艺参数和测试数值均为演示用模拟数据，目的是展示论文写作、图表、公式与参考文献的完整编排流程。"
+            ]
+          },
+          {
+            "id": "ch-methods",
+            "level": 1,
+            "title": "实验材料与方法",
+            "body": [
+              "本章介绍试样制备流程、性能测试方法和数据处理方式。所有组别除 ZrO2 添加量外采用完全相同的工艺条件，以便比较添加量的影响。"
+            ]
+          },
+          {
+            "id": "ch-methods-materials",
+            "level": 2,
+            "title": "原材料与试样制备",
+            "body": [
+              "以商业 α-Al2O3 粉体为基体原料，平均粒径约 0.5 μm；增韧相为单斜相 ZrO2 粉体，平均粒径约 0.3 μm。按质量分数配制 ZrO2 添加量为 0%、5%、10%、15% 和 20% 的五组混合粉体，分别记为 Z0、Z5、Z10、Z15 和 Z20。",
+              "混合粉体以无水乙醇为介质球磨 12 h，干燥过筛后干压成形，冷等静压进一步致密化，随后在 1550 ℃ 保温 2 h 进行无压烧结。烧结后的试样经研磨抛光，用于密度、力学性能和显微结构测试。"
+            ]
+          },
+          {
+            "id": "ch-methods-testing",
+            "level": 2,
+            "title": "性能测试与表征",
+            "body": [
+              "体积密度采用阿基米德排水法测定，相对致密度以理论密度为基准计算。抗弯强度采用三点弯曲法测试，跨距 30 mm，加载速率 0.5 mm/min，每组测试 5 根试样并取平均值。",
+              {
+                "type": "ordered_list",
+                "items": [
+                  {
+                    "content": "循环加载在伺服液压试验机上进行，应力比 0.1、频率 5 Hz、室温空气环境，循环次数为 1000 次。"
+                  },
+                  {
+                    "content": "循环结束后重新测试残余抗弯强度，按第 2.3 节给出的公式计算强度保持率。"
+                  },
+                  {
+                    "content": "物相分析使用 X 射线衍射仪，断口与表面形貌使用扫描电子显微镜观察，加速电压 15 kV。"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "ch-methods-data",
+            "level": 2,
+            "title": "数据处理",
+            "body": [
+              "各组强度数据以平均值加减标准差表示，保留三位有效数字。强度保持率按式（{{eq:eq-demo-retention01}}）计算，即循环后残余抗弯强度与初始抗弯强度之比。为便于比较，所有组别的初始强度均在同一天、同一试验机上测得。",
+              "对异常数据先检查断口位置与试样加工质量，确认属于制备缺陷的试样予以剔除并补做；剔除数量在结果部分单独说明。"
+            ]
+          },
+          {
+            "id": "ch-results",
+            "level": 1,
+            "title": "结果与讨论",
+            "body": [
+              "本章依次给出致密度、抗弯强度和循环稳定性结果，并结合物相与断口形貌讨论添加量的影响机制。"
+            ]
+          },
+          {
+            "id": "ch-results-density",
+            "level": 2,
+            "title": "致密度与显微结构",
+            "body": [
+              "五组试样的相对致密度均在 97% 以上。Z0 组相对致密度约为 98.6%，随 ZrO2 添加量增加，致密度小幅下降，Z20 组降至约 97.1%。这主要是因为增韧相与基体的烧结活性存在差异，添加量较高时颗粒团聚倾向增强，局部气孔不易排除。",
+              "显微形貌观察显示，低添加量组的 ZrO2 颗粒分布较均匀，晶粒尺寸差异较小；添加量达到 20% 时可见少量团聚体和尺寸较大的气孔。团聚体与基体交界处容易形成应力集中，是循环加载中的潜在裂纹源。"
+            ]
+          },
+          {
+            "id": "ch-results-strength",
+            "level": 2,
+            "title": "抗弯强度与循环稳定性",
+            "body": [
+              "各组试样的初始抗弯强度与 1000 次循环后的残余强度如表 1 所示。随添加量增加，初始强度先升高后降低，Z10 组达到最大值 455 MPa，比 Z0 组提高约 26.4%；Z20 组回落至 390 MPa，仍高于未添加组。",
+              {
+                "type": "data_table",
+                "caption": "不同 ZrO2 添加量试样的抗弯强度与强度保持率（模拟数据）",
+                "columns": [
+                  {
+                    "header": "ZrO2 添加量/%"
+                  },
+                  {
+                    "header": "初始抗弯强度/MPa"
+                  },
+                  {
+                    "header": "1000 次循环后强度/MPa"
+                  },
+                  {
+                    "header": "强度保持率/%"
+                  }
+                ],
+                "rows": [
+                  {
+                    "cells": [
+                      "0",
+                      "360",
+                      "342",
+                      "95.0"
+                    ]
+                  },
+                  {
+                    "cells": [
+                      "5",
+                      "405",
+                      "392",
+                      "96.8"
+                    ]
+                  },
+                  {
+                    "cells": [
+                      "10",
+                      "455",
+                      "446",
+                      "98.0"
+                    ]
+                  },
+                  {
+                    "cells": [
+                      "15",
+                      "430",
+                      "414",
+                      "96.3"
+                    ]
+                  },
+                  {
+                    "cells": [
+                      "20",
+                      "390",
+                      "369",
+                      "94.6"
+                    ]
+                  }
+                ]
+              },
+              "循环后的强度保持率同样以 Z10 组最高，约为 98.0%；Z20 组虽具有较高的初始强度，但保持率降至 94.6%，说明高添加量试样对循环损伤更敏感。其原因可能与团聚体周围的气孔和微裂纹在循环应力下逐步扩展有关。",
+              {
+                "type": "equation",
+                "id": "eq-demo-retention01",
+                "latex": "R_{N} = \\frac{\\sigma_{N}}{\\sigma_{0}}"
+              },
+              "式中 RN 为第 N 次循环后的强度保持率，σN 为循环后残余抗弯强度，σ0 为初始抗弯强度。按上式计算时，各组均使用同组 5 根试样的平均值，以减小试样间离散的影响。"
+            ]
+          },
+          {
+            "id": "ch-results-mechanism",
+            "level": 2,
+            "title": "强韧化机制讨论",
+            "body": [
+              "适量 ZrO2 的引入带来三方面作用：一是应力诱导相变在裂纹尖端形成压应力区，消耗扩展驱动力{{cite:evans1980}}；二是相变伴随的体积膨胀使裂纹发生偏转与桥接，增加裂纹扩展路径{{cite:becher1991}}；三是细小的增韧相颗粒能够细化基体晶粒，提高裂纹扩展的临界应力{{cite:anstis1981}}。三者共同作用使 Z10 组获得最高的初始强度。",
+              "当添加量超过 15% 后，团聚体尺寸增大，局部约束减弱，可相变四方相的利用率下降；同时气孔率上升抵消了增韧收益，导致强度与保持率同时回落。Z20 组的断口可见较多沿晶断裂特征，也支持这一判断。",
+              "综合来看，在本模拟工艺条件下，10% 左右是强度与循环稳定性的较优折中区间。后续工作将通过透射电镜观察相变区尺寸，并增加不同应力幅值的循环试验，以进一步验证上述机制。与已有研究相比{{cite:claussen1976}}，本文结果在趋势上一致，但最优添加量区间还需结合真实粉体批次和烧结制度重新标定{{cite:hannink2000toughening}}。"
+            ]
+          }
+        ],
+        "referencesBibtex": "@article{hannink2000toughening,\n  author = {Hannink, Richard H. J. and Kelly, Patrick M. and Muddle, Barry C.},\n  title = {Transformation Toughening in Zirconia-Containing Ceramics},\n  journal = {Journal of the American Ceramic Society},\n  year = {2000}, volume = {83}, number = {3}, pages = {461--487},\n  doi = {10.1111/j.1151-2916.2000.tb01221.x}\n}\n@article{garvie1975ceramicsteel,\n  author = {Garvie, R. C. and Hannink, R. H. and Pascoe, R. T.},\n  title = {Ceramic steel?}, journal = {Nature},\n  year = {1975}, volume = {258}, number = {5537}, pages = {703--704},\n  doi = {10.1038/258703a0}\n}\n@book{kingery1976ceramics,\n  author = {Kingery, W. David and Bowen, H. Kent and Uhlmann, Donald R.},\n  title = {Introduction to Ceramics}, edition = {2},\n  address = {New York}, publisher = {Wiley}, year = {1976}\n}\n@article{claussen1976,\n  author = {Claussen, Nils},\n  title = {Fracture Toughness of Al2O3 with an Unstabilized ZrO2 Dispersed Phase},\n  journal = {Journal of the American Ceramic Society},\n  year = {1976}, volume = {59}, number = {1-2}, pages = {49--51},\n  doi = {10.1111/j.1151-2916.1976.tb09386.x}\n}\n@article{evans1980,\n  author = {Evans, Anthony G. and Heuer, Arthur H.},\n  title = {Review: Transformation Toughening in Ceramics},\n  journal = {Journal of the American Ceramic Society},\n  year = {1980}, volume = {63}, number = {5-6}, pages = {241--248},\n  doi = {10.1111/j.1151-2916.1980.tb10712.x}\n}\n@article{becher1991,\n  author = {Becher, Paul F.},\n  title = {Microstructural Design of Toughened Ceramics},\n  journal = {Journal of the American Ceramic Society},\n  year = {1991}, volume = {74}, number = {2}, pages = {255--269},\n  doi = {10.1111/j.1151-2916.1991.tb06872.x}\n}\n@article{anstis1981,\n  author = {Anstis, G. R. and Chantikul, P. and Lawn, Brian R. and Marshall, D. B.},\n  title = {A Critical Evaluation of Indentation Techniques for Measuring Fracture Toughness},\n  journal = {Journal of the American Ceramic Society},\n  year = {1981}, volume = {64}, number = {9}, pages = {533--538},\n  doi = {10.1111/j.1151-2916.1981.tb10320.x}\n}\n@book{carter2007ceramic,\n  author = {Carter, C. Barry and Norton, M. Grant},\n  title = {Ceramic Materials: Science and Engineering},\n  address = {New York}, publisher = {Springer}, year = {2007}\n}\n@book{munz1999ceramics,\n  author = {Munz, Dietrich and Fett, Theo},\n  title = {Ceramics: Mechanical Properties, Failure Behaviour, Materials Selection},\n  address = {Berlin}, publisher = {Springer}, year = {1999}\n}\n@book{wachtman2009mechanical,\n  author = {Wachtman, John B. and Cannon, W. Roger and Matthewson, M. John},\n  title = {Mechanical Properties of Ceramics},\n  edition = {2}, address = {Hoboken}, publisher = {Wiley}, year = {2009}\n}\n",
+        "acknowledgements": [
+          "感谢指导教师周明远副教授在选题、实验方案和论文修改中的悉心指导，感谢课题组同学在试样制备与测试中的帮助。本文数据与结论仅用于软件演示，不代表真实实验结果。"
+        ],
+        "appendix": []
+      }
+    },
+    "advisor_review": {
+      "schema_version": "0.1",
+      "metadata": {
+        "title": {
+          "type": "paragraph",
+          "runs": [
+            {
+              "text": "α-Al"
+            },
+            {
+              "text": "2",
+              "script": "sub"
+            },
+            {
+              "text": "O"
+            },
+            {
+              "text": "3",
+              "script": "sub"
+            },
+            {
+              "text": "–ZrO"
+            },
+            {
+              "text": "2",
+              "script": "sub"
+            },
+            {
+              "text": "复合陶瓷的 Microstructure 与 10"
+            },
+            {
+              "text": "3",
+              "script": "super"
+            },
+            {
+              "text": " 次循环稳定性研究"
+            }
+          ]
+        },
+        "student_name": "林知远",
+        "student_id": "202300302001",
+        "college": "新材料与新能源学院",
+        "major": "新能源材料与工程",
+        "advisor": "周明远",
+        "advisor_title": "副教授",
+        "reviewer": "",
+        "reviewer_title": "",
+        "defense_time": "",
+        "defense_location": "",
+        "recorder": "",
+        "leader": ""
+      },
+      "sections": {
+        "comments": [
+          "该生选题面向氧化物复合陶瓷的循环服役问题，目标任务明确，研究方案可行。毕业设计期间能够独立完成文献调研、试样制备与力学测试，实验记录规范，数据处理认真，遇到问题时能主动分析原因并提出改进措施。论文结构完整，图表与论证基本对应，文字表达较清晰，已具备从事本专业研究工作的基本能力。建议在答辩中重点说明循环载荷下强度保持率的统计口径与误差来源。"
+        ],
+        "division_of_work": [
+          "指导教师负责选题方向、文献调研范围与实验方案审核，定期检查进度并审阅论文初稿；学生负责试样制备、性能测试、数据整理、图表绘制与论文撰写。评阅与答辩环节由学院统一组织。"
+        ],
+        "suggested_grade": "优秀",
+        "questions": [],
+        "members": [],
+        "final_grade": "",
+        "date": "2027-05-20"
+      }
+    },
+    "reviewer_review": {
+      "schema_version": "0.1",
+      "metadata": {
+        "title": {
+          "type": "paragraph",
+          "runs": [
+            {
+              "text": "α-Al"
+            },
+            {
+              "text": "2",
+              "script": "sub"
+            },
+            {
+              "text": "O"
+            },
+            {
+              "text": "3",
+              "script": "sub"
+            },
+            {
+              "text": "–ZrO"
+            },
+            {
+              "text": "2",
+              "script": "sub"
+            },
+            {
+              "text": "复合陶瓷的 Microstructure 与 10"
+            },
+            {
+              "text": "3",
+              "script": "super"
+            },
+            {
+              "text": " 次循环稳定性研究"
+            }
+          ]
+        },
+        "student_name": "林知远",
+        "student_id": "202300302001",
+        "college": "新材料与新能源学院",
+        "major": "新能源材料与工程",
+        "advisor": "周明远",
+        "advisor_title": "副教授",
+        "reviewer": "郑文博",
+        "reviewer_title": "教授",
+        "defense_time": "",
+        "defense_location": "",
+        "recorder": "",
+        "leader": ""
+      },
+      "sections": {
+        "comments": [
+          "论文以 α-Al2O3–ZrO2 复合陶瓷为对象，考察 ZrO2 添加量对致密度、抗弯强度及 1000 次循环后强度保持率的影响，选题具有工程应用背景。全文结构合理，实验方法描述较完整，图表规范，结论与数据基本一致。主要不足：循环加载的波形、频率和环境条件描述不够详尽；强度保持率的误差分析偏简略；部分机制讨论与显微形貌证据的对应关系可以加强。建议作者在答辩中补充说明模拟数据的适用范围，并进一步明确后续验证实验的边界条件。"
+        ],
+        "division_of_work": [],
+        "suggested_grade": "良好",
+        "questions": [],
+        "members": [],
+        "final_grade": "",
+        "date": "2027-05-25"
+      }
+    },
+    "defense_record": {
+      "schema_version": "0.1",
+      "metadata": {
+        "title": {
+          "type": "paragraph",
+          "runs": [
+            {
+              "text": "α-Al"
+            },
+            {
+              "text": "2",
+              "script": "sub"
+            },
+            {
+              "text": "O"
+            },
+            {
+              "text": "3",
+              "script": "sub"
+            },
+            {
+              "text": "–ZrO"
+            },
+            {
+              "text": "2",
+              "script": "sub"
+            },
+            {
+              "text": "复合陶瓷的 Microstructure 与 10"
+            },
+            {
+              "text": "3",
+              "script": "super"
+            },
+            {
+              "text": " 次循环稳定性研究"
+            }
+          ]
+        },
+        "student_name": "林知远",
+        "student_id": "202300302001",
+        "college": "新材料与新能源学院",
+        "major": "新能源材料与工程",
+        "advisor": "周明远",
+        "advisor_title": "副教授",
+        "reviewer": "",
+        "reviewer_title": "",
+        "defense_time": "2027年6月3日 14:00—14:30",
+        "defense_location": "新材料与新能源学院 B305 会议室",
+        "recorder": "沈雨辰",
+        "leader": "陈立衡"
+      },
+      "sections": {
+        "comments": [],
+        "division_of_work": [],
+        "suggested_grade": "",
+        "questions": [
+          {
+            "question": [
+              "论文中 ZrO2 添加量选取 0%、5%、10%、15%、20% 的依据是什么？如果继续提高添加量，预期强度会如何变化？"
+            ],
+            "answer": [
+              "五组添加量覆盖了从单相氧化铝到接近渗流阈值的范围，便于观察强度先升后降的趋势。根据现有模拟结果，添加量超过 20% 后团聚与气孔增多，预计强度继续下降；后续将补充 25% 与 30% 两组验证。"
+            ]
+          },
+          {
+            "question": [
+              "1000 次循环后强度保持率的测试条件是什么？如何保证不同试样之间的可比性？"
+            ],
+            "answer": [
+              "循环采用三点弯曲加载，应力比 0.1、频率 5 Hz、室温空气环境；每组 5 根试样，统一跨距与加载速率，取平均值并以标准差表示离散程度。"
+            ]
+          },
+          {
+            "question": [
+              "你如何解释 10% 组在强度与循环稳定性上同时取得最优？"
+            ],
+            "answer": [
+              "该添加量下四方相 ZrO2 分布较均匀，相变增韧贡献较大，同时气孔率较低、晶界结合较好，因此初始强度与循环后的保持率均较高；这一解释仍需透射电镜与断口分析进一步验证。"
+            ]
+          }
+        ],
+        "members": [
+          "陈立衡　教授（答辩委员会主席）",
+          "郑文博　教授",
+          "赵启航　副教授",
+          "苏若彤　副教授",
+          "沈雨辰　讲师（答辩秘书）"
+        ],
+        "final_grade": "",
+        "date": "2027-06-03"
+      }
+    },
+    "grade_assessment": {
+      "schema_version": "0.1",
+      "metadata": {
+        "title": {
+          "type": "paragraph",
+          "runs": [
+            {
+              "text": "α-Al"
+            },
+            {
+              "text": "2",
+              "script": "sub"
+            },
+            {
+              "text": "O"
+            },
+            {
+              "text": "3",
+              "script": "sub"
+            },
+            {
+              "text": "–ZrO"
+            },
+            {
+              "text": "2",
+              "script": "sub"
+            },
+            {
+              "text": "复合陶瓷的 Microstructure 与 10"
+            },
+            {
+              "text": "3",
+              "script": "super"
+            },
+            {
+              "text": " 次循环稳定性研究"
+            }
+          ]
+        },
+        "student_name": "林知远",
+        "student_id": "202300302001",
+        "college": "新材料与新能源学院",
+        "major": "新能源材料与工程",
+        "advisor": "周明远",
+        "advisor_title": "副教授",
+        "reviewer": "",
+        "reviewer_title": "",
+        "defense_time": "",
+        "defense_location": "",
+        "recorder": "",
+        "leader": ""
+      },
+      "sections": {
+        "comments": [
+          "该生毕业设计（论文）工作按计划完成，选题合理，实验方案与测试方法基本正确，能够独立完成试样制备、性能测试和数据处理。论文结构完整，图表清晰，结论有数据支撑，答辩陈述条理清楚，回答问题较准确。综合指导教师评阅、评阅人评阅及答辩表现，同意通过答辩，成绩评定为 90 分。"
+        ],
+        "division_of_work": [],
+        "suggested_grade": "",
+        "questions": [],
+        "members": [],
+        "final_grade": "90",
+        "date": "2027-06-10"
+      }
     }
   },
   "bibtex": "@article{hannink2000toughening,\n  author = {Hannink, Richard H. J. and Kelly, Patrick M. and Muddle, Barry C.},\n  title = {Transformation Toughening in Zirconia-Containing Ceramics},\n  journal = {Journal of the American Ceramic Society},\n  year = {2000}, volume = {83}, number = {3}, pages = {461--487},\n  doi = {10.1111/j.1151-2916.2000.tb01221.x}\n}\n@article{garvie1975ceramicsteel,\n  author = {Garvie, R. C. and Hannink, R. H. and Pascoe, R. T.},\n  title = {Ceramic steel?}, journal = {Nature},\n  year = {1975}, volume = {258}, number = {5537}, pages = {703--704},\n  doi = {10.1038/258703a0}\n}\n@book{kingery1976ceramics,\n  author = {Kingery, W. David and Bowen, H. Kent and Uhlmann, Donald R.},\n  title = {Introduction to Ceramics}, edition = {2},\n  address = {New York}, publisher = {Wiley}, year = {1976}\n}\n"

@@ -117,6 +117,8 @@ contextBridge.exposeInMainWorld("sztuDesktop", {
   deleteDocument: (documentId: unknown) => invoke("sztu:workspace-delete-document", documentId),
   restoreDocument: (documentId: unknown) => invoke("sztu:workspace-restore-document", documentId),
   purgeDocument: (documentId: unknown) => invoke("sztu:workspace-purge-document", documentId),
+  installReferenceSample: () => invoke("sztu:workspace-install-reference-sample"),
+  removeReferenceSample: () => invoke("sztu:workspace-remove-reference-sample"),
   saveDraft: (input: unknown) => invoke("sztu:workspace-save-draft", input),
   closeTemporary: (documentId: unknown) => invoke("sztu:workspace-close-temporary", documentId),
   checkDocument: (documentId: unknown) => invoke("sztu:document-check", documentId),

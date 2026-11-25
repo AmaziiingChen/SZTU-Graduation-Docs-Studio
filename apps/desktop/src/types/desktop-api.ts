@@ -274,6 +274,15 @@ export type WorkspaceState = {
   deleted_documents_page?: DocumentListPageState
 }
 
+export type ReferenceSampleResult = WorkspaceState & {
+  sample: {
+    installed: string[]
+    skipped: string[]
+    removed?: number
+    titles?: string[]
+  }
+}
+
 export type RenameDocumentInput = {
   documentId: string
   title: string
@@ -556,6 +565,8 @@ export type SztuDesktopApi = {
   deleteDocument: (documentId: string) => Promise<WorkspaceState>
   restoreDocument: (documentId: string) => Promise<WorkspaceState>
   purgeDocument: (documentId: string) => Promise<WorkspaceState>
+  installReferenceSample: () => Promise<ReferenceSampleResult>
+  removeReferenceSample: () => Promise<ReferenceSampleResult>
   saveDraft: (input: SaveDraftInput) => Promise<SaveDraftResult>
   closeTemporary: (documentId: string) => Promise<WorkspaceState>
   checkDocument: (documentId: string) => Promise<DocumentCheckResult>

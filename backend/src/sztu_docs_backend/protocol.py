@@ -446,6 +446,8 @@ class ProtocolSession:
             "workspace.deleteDocument": self._delete_document,
             "workspace.restoreDocument": self._restore_document,
             "workspace.purgeDocument": self._purge_document,
+            "workspace.installReferenceSample": self._install_reference_sample,
+            "workspace.removeReferenceSample": self._remove_reference_sample,
             "workspace.saveDraft": self._save_draft,
             "workspace.closeTemporary": self._close_temporary,
             "document.check": self._check_document,
@@ -540,7 +542,6 @@ class ProtocolSession:
         self.mode = mode
         if mode == "persistent" and initialize_reference:
             from .reference_sample import initialize_reference_sample
-
             initialize_reference_sample(self.workspace)
         return self._selection()
 
@@ -744,6 +745,20 @@ class ProtocolSession:
         document_scope(workspace, document_id, deleted=True)
         workspace.purge_document(document_id)
         return self._selection()
+
+    def _install_reference_sample(self, params: dict[str, Any]) -> dict[str, Any]:
+        _no_params(params)
+        workspace = self._require_workspace()
+        from .reference_sample import install_reference_sample
+        result = install_reference_sample(workspace)
+        return {**self._selection(), "sample": result}
+
+    def _remove_reference_sample(self, params: dict[str, Any]) -> dict[str, Any]:
+        _no_params(params)
+        workspace = self._require_workspace()
+        from .reference_sample import remove_reference_sample
+        result = remove_reference_sample(workspace)
+        return {**self._selection(), "sample": result}
 
     def _select_document(self, params: dict[str, Any]) -> dict[str, Any]:
         _shape_params(params, required={"document_id"})
