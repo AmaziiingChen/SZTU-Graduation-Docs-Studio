@@ -127,13 +127,14 @@ export const helpArticles: HelpArticle[] = [
     id: "export-fonts",
     category: "export",
     title: "字体与 Word/WPS 显示",
-    summary: "安装包已内置模板字体；PDF 不受本机字体影响，Word 仍需要本机有对应字体。",
+    summary: "安装包内置论文模板字体（宋体、黑体、楷体使用 Windows 自带）；PDF 不受本机字体影响，Word 仍需要本机有对应字体。",
     keywords: ["字体", "华文中宋", "楷体", "Wingdings", "Word", "WPS"],
     body: [
       "打包时已把论文模板与任务书需要的字体收进安装包，首次启动会注册到当前 Windows 用户，所以 PDF 导出不依赖你手动安装字体。",
+      "宋体、黑体、楷体是 Windows 系统自带字体，不再随安装包分发；极少数精简系统如果缺少，请先给系统安装中文字体。",
       "Word 文档只记录字体名称，打开时由 Word/WPS 使用本机字体显示。如果本机没有对应字体，Word 里可能看到替代字形；这不影响 PDF。",
       "任务书的勾选框使用 Wingdings 2；安装包已内置，缺失时会提示重新运行安装包修复。",
-      "如果导出 PDF 时提示缺少字体，请重新运行最新安装包修复后再试。",
+      "如果导出 PDF 时提示随包字体缺失，请重新运行最新安装包修复后再试。",
     ],
   },
   {

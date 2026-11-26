@@ -2372,7 +2372,7 @@ def _friendly_render_failure(output: str) -> str | None:
     if reason == "dependency_missing":
         return "编译需要的文件没有随安装包提供，请重新运行最新安装包修复。"
     if reason == "font_unavailable":
-        return "模板找不到需要的字体。请重新运行最新安装包修复后再试。"
+        return "模板需要的字体在本机找不到（宋体、黑体、楷体由 Windows 自带）。请先安装中文字体；随包字体丢失时，重新运行最新安装包修复。"
     if reason == "permission_denied":
         return "没有权限写入保存位置或临时目录，请换一个文件夹后重试。"
     if reason == "disk_full":
@@ -2568,7 +2568,10 @@ def _run_process(
                 raise ExportError("SINGLE_PAGE_OVERFLOW", f"“{label}”栏超出固定区域，请检查该栏内容后重试。")
             raise ExportError("SINGLE_PAGE_OVERFLOW", "填写内容超出这一页的固定区域，请缩短内容后重新导出。")
         if "尚不能编译" in diagnostic or "Required font" in diagnostic or "缺少必需字体" in diagnostic:
-            raise ExportError("REQUIRED_FONT_MISSING", "安装包已内置论文模板需要的字体。请重新运行最新安装包修复后再导出。")
+            raise ExportError(
+                "REQUIRED_FONT_MISSING",
+                "这台电脑缺少论文模板需要的字体（宋体、黑体、楷体由 Windows 自带；Times New Roman 等随安装包提供）。请先安装中文字体；若仍失败，请重新运行最新安装包修复后再导出。",
+            )
         if "公式命令不受支持" in diagnostic or "公式包含不支持" in diagnostic or "公式花括号不成对" in diagnostic:
             raise ExportError("THESIS_EQUATION_INVALID", "论文公式包含当前预览不支持的数学命令或括号结构，请修改公式源码。")
         if "引用目标不存在" in diagnostic or "引用标记格式无效" in diagnostic or "来源引用的文献不存在" in diagnostic:
@@ -2586,7 +2589,7 @@ def _run_process(
         if "required official fonts are missing" in diagnostic:
             raise ExportError(
                 "REQUIRED_FONT_MISSING",
-                "安装包已内置当前模板需要的字体。请重新运行最新安装包修复后再导出。",
+                "这台电脑缺少当前模板需要的字体（宋体、黑体、楷体由 Windows 自带；Times New Roman 等随安装包提供）。请先安装中文字体；若仍失败，请重新运行最新安装包修复后再导出。",
                 {"exit_code": process.returncode},
             )
         if "No module named 'docx'" in diagnostic or "Pillow is required" in diagnostic:
