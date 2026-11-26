@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import type { FullDiagnosticCase, SztuDesktopApi } from "@/types/desktop-api"
+import { writeClipboardText } from "@/lib/desktop-clipboard"
 
 function desktopApi(): SztuDesktopApi | undefined {
   return (window as Window & { sztuDesktop?: SztuDesktopApi }).sztuDesktop
@@ -30,6 +31,7 @@ export function DiagnosticSupport({ caseId, showSummary = false }: { caseId?: st
   const [pending, setPending] = useState<"prepare" | "save" | "send" | null>(null)
   const [message, setMessage] = useState("")
   const [sent, setSent] = useState(false)
+  const [caseIdCopied, setCaseIdCopied] = useState(false)
 
   const prepare = async () => {
     setFullOpen(true)
@@ -80,10 +82,12 @@ export function DiagnosticSupport({ caseId, showSummary = false }: { caseId?: st
             size="sm"
             className="h-auto px-2 py-1 text-xs"
             onClick={() => {
-              void navigator.clipboard.writeText(caseId)
+              void writeClipboardText(caseId)
+                .then(() => setCaseIdCopied(true))
+                .catch(() => setCaseIdCopied(false))
             }}
           >
-            复制编号
+            {caseIdCopied ? "已复制" : "复制编号"}
           </Button>
         </div>
       ) : null}

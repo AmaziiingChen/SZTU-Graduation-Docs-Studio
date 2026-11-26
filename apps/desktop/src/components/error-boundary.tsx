@@ -11,6 +11,7 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { enableSafeMode } from "@/lib/safe-mode"
+import { writeClipboardText } from "@/lib/desktop-clipboard"
 
 type ErrorBoundaryState = {
   error: Error | null
@@ -98,7 +99,7 @@ export class ErrorBoundary extends React.Component<
       `错误: ${describeError(this.state.error ?? this.state.asyncNote)}`,
     ].join("\n")
     try {
-      await navigator.clipboard.writeText(details)
+      await writeClipboardText(details)
       this.setState({ copied: true })
     } catch {
       this.setState({ copied: false })
