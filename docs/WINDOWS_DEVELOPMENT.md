@@ -77,7 +77,7 @@ pnpm package:win
 
 ## 离线安装包：分享给 Windows 使用者
 
-从发布页下载 `SZTU-Docs-Studio-<版本>-win-x64-offline.exe`（0.2.0 因内置全部模板字体，体积比 0.1.19 的约 410 MB 更大）。用户双击安装，应用自动优先使用 `resources/offline-runtime` 中的工具；无需单独安装 Node.js、Python、TeX Live 或 Poppler，无需修改系统 PATH，无需联网下载宏包。
+从发布页下载 `SZTU-Docs-Studio-<版本>-win-x64-offline.exe`（0.2.0 因内置全部模板字体，体积 449,028,286 B / 428.2 MiB，比 0.1.19 的 439,613,820 B / 419.2 MiB 增加约 9 MiB）。用户双击安装，应用自动优先使用 `resources/offline-runtime` 中的工具；无需单独安装 Node.js、Python、TeX Live 或 Poppler，无需修改系统 PATH，无需联网下载宏包。
 
 离线版包含 TeX Live 2025 的 176 个所需宏包及其依赖、XeLaTeX、BibTeX、latexmk/Perl 和 Poppler 26.09.0；保留相关许可、可用宏包源文件及 Poppler 源码归档。TeX Live 的开源字体随其包保留。论文模板与任务书需要的文档字体由打包脚本复制到 `resources/document-fonts`，不进入 Git 仓库，详见下文。
 
