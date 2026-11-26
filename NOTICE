@@ -31,9 +31,16 @@ The following must not be committed or distributed until their redistribution
 rights are confirmed and documented:
 
 - official school DOCX/PDF files and seals;
-- commercial or system font files;
 - real student data, signatures, supervisor comments, or private samples;
 - credentials, signing certificates, notarization materials, and tokens.
+
+Font files are a separate decision. The project maintainer decided on
+2026-11-26 that the commercial fonts used by the document templates
+(STZhongsong, STXingkai, FZXiaoBiaoSong and the bundled East Asian fallbacks)
+are shipped with the offline installer for a non-commercial, free-of-charge
+product, and accepted responsibility for that redistribution. This notice
+records the maintainer's decision; it is not a statement that a font license
+review has been completed.
 
 For release packaging only, the project maintainer confirmed redistribution
 authorization on 2026-09-04 for these three process-document template copies:

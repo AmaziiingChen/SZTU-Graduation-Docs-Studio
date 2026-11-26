@@ -6,13 +6,13 @@
 
 ## 主要变化
 
-### 1. 模板字体全部随包内置，首次启动自动注册
+### 1. 模板字体随包内置，首次启动自动注册
 
-- 打包前由 `scripts/stage_document_fonts.py` 把模板需要的 11 个字体文件收进 `local-fonts/`（约 65.5 MB）：
-  宋体、黑体、楷体、Times New Roman 四款、华文中宋、华文行楷、方正小标宋与 Wingdings 2。
+- 打包前由 `scripts/stage_document_fonts.py` 收进随包字体（`local-fonts/` 约 24.1 MB）：Times New Roman 四款、华文中宋、华文行楷、方正小标宋与 Wingdings 2。
+- 宋体、黑体、楷体改用 Windows 自带字体，不再随包分发；华文行楷与方正小标宋由 `scripts/subset_document_fonts.py` 裁成只含模板用字的子集（原始字体保留在 `local-fonts/full/`）。
 - 普通与离线打包配置都把整个 `local-fonts/` 复制到 `resources/document-fonts/`；离线配置不再重复声明字体，避免 Windows 上同一目标写入失败。
 - 应用首次启动时 `apps/desktop/electron/document-fonts.ts` 的 `registerWindowsDocumentFonts()` 把字体复制到 `%LOCALAPPDATA%\Microsoft\Windows\Fonts` 并写入 `HKCU\Software\Microsoft\Windows NT\CurrentVersion\Fonts`，只影响当前用户、不需要管理员权限；失败只记日志，不阻塞启动。
-- 结果：论文、任务书和中期检查表在纯净电脑上不再报 `REQUIRED_FONT_MISSING`，Word/WPS 打开导出的 DOCX 也能看到正确字形。
+- 结果：论文、任务书和中期检查表在标准 Windows 上不再报 `REQUIRED_FONT_MISSING`，Word/WPS 打开导出的 DOCX 也能看到正确字形。
 
 ### 2. 下载完成后可以一键安装并重启
 
@@ -63,7 +63,7 @@
 | 桌面测试 | 70 文件 / 691 测试通过，150.33 s |
 | 类型检查 | `tsc -b` 与 `tsc -p tsconfig.electron.json` 均通过 |
 | 代码检查 | 0 error / 40 warning（均为既有 React Compiler 建议） |
-| 打包预检 | `Packaging Plan OK`：18 个目标文件、11 个字体、模板固定提交 `1c9b692` |
+| 打包预检 | `Packaging Plan OK`：18 个目标文件、8 个字体（2 个子集）、模板固定提交 `1c9b692` |
 | 安装脚本 | Windows PowerShell 5.1 解析通过；端到端干跑退出码 0 并写出结果文件 |
 | 文献渲染比对 | 7 个 golden 用例通过（6 条样本文献） |
 | 中文安装目录 | 验收步骤已加入 CI，待首次打包流水线运行确认 |

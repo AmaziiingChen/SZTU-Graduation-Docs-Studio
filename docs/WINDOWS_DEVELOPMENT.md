@@ -77,13 +77,25 @@ pnpm package:win
 
 ## 离线安装包：分享给 Windows 使用者
 
-从发布页下载 `SZTU-Docs-Studio-<版本>-win-x64-offline.exe`（0.2.0 因内置全部模板字体，体积比 0.1.19 的约 410 MB 更大）。用户双击安装，应用自动优先使用 `resources/offline-runtime` 中的工具；无需单独安装 Node.js、Python、TeX Live 或 Poppler，无需修改系统 PATH，无需联网下载宏包。
+从发布页下载 `SZTU-Docs-Studio-<版本>-win-x64-offline.exe`。用户双击安装，应用自动优先使用 `resources/offline-runtime` 中的工具；无需单独安装 Node.js、Python、TeX Live 或 Poppler，无需修改系统 PATH，无需联网下载宏包。
 
-离线版包含 TeX Live 2025 的 176 个所需宏包及其依赖、XeLaTeX、BibTeX、latexmk/Perl 和 Poppler 26.09.0；保留相关许可、可用宏包源文件及 Poppler 源码归档。TeX Live 的开源字体随其包保留。论文模板与任务书需要的文档字体由打包脚本复制到 `resources/document-fonts`，不进入 Git 仓库，详见下文。
+离线版包含 TeX Live 2025 的 176 个所需宏包及其依赖、XeLaTeX、BibTeX、latexmk/Perl 和 Poppler 26.09.0；只保留许可与 Poppler 源码归档，TeX 宏包不再携带 `.dtx/.ins` 源文件。TeX Live 的开源字体随其包保留。论文模板与任务书需要的文档字体由打包脚本复制到 `resources/document-fonts`，不进入 Git 仓库，详见下文。
+
+### 安装包体积
+
+离线安装包的体积主要来自三块：内置 TeX/Poppler 运行时、Electron 与 Python 引擎、随包字体。当前采取的减重措施：
+
+- 字体：宋体、黑体、楷体改用 Windows 自带字体；华文行楷与方正小标宋只保留模板用字的子集（`scripts/subset_document_fonts.py`，原始字体留在 `local-fonts/full/`）。`local-fonts/` 从 61.3 MiB 降到 24.1 MiB。
+- Electron：Windows 只打 `zh_CN`、`en` 两个语言包（`electronLanguages`）。
+- 压缩：`electron-builder.yml` 设 `compression: maximum`。
+- TeX：只复制运行文件，不再复制 `.dtx/.ins` 源码。
+- Python 引擎：PyInstaller 排除 `tkinter`、`unittest`、`pip`、`setuptools` 等运行期用不到的模块。
+
+仍在评估、尚未实施的候选：Poppler 只保留实际调用的 exe/DLL、sidecar 进一步裁剪。任何裁剪都要跑完整离线验收（`verify_windows_offline_runtime.py` + 七类文档 + 中文路径）后再合入。
 
 **安装路径可以包含中文，但在新用例通过前仍建议使用默认目录。** 引擎固定安装在 `C:\ProgramData\SZTU-Docs\engine\<id>`，与用户选择的安装目录无关。打包验收新增了中文安装目录用例：把安装包静默装到含中文和空格的目录（`中文 安装 目录\SZTU 文档工作台`）后跑完整验收（`.github/workflows/package-acceptance.yml`），结果以首次 CI 运行为准；在此之前，安装时仍建议选择如 `D:\SZTU-Docs-Studio` 的英文路径。含空格的英文目录移动后已通过宏包、工具和中文 PDF 测试。应用为 TeX 启动器设置当前运行根目录，并在可用时使用 Windows 短路径；不更改系统语言或安全设置。
 
-编辑导出的 Word 文档仍需要本机安装 Word/WPS。方正小标宋简体仅用于中期检查表的两行 18 pt 大标题。0.2.0 起，打包环节把论文模板和任务书用到的全部字体（宋体、黑体、楷体、Times New Roman 四款、华文中宋、华文行楷、方正小标宋、Wingdings 2）收进安装包，应用首次启动时自动注册到当前 Windows 用户，用户无需手动安装字体。字体用途见 [工作台字体集](../font-sets/README.md)。
+编辑导出的 Word 文档仍需要本机安装 Word/WPS。方正小标宋简体仅用于中期检查表的两行 18 pt 大标题。0.2.0 起，打包环节把论文模板和任务书用到的华文中宋、华文行楷（只含模板用字的子集）、方正小标宋（子集）、Times New Roman 四款与 Wingdings 2 收进安装包，应用首次启动时自动注册到当前 Windows 用户；宋体、黑体、楷体改用 Windows 自带字体，不再随包分发。字体用途见 [工作台字体集](../font-sets/README.md)。
 
 开发者可从明确的本机来源准备离线环境：
 
@@ -123,4 +135,4 @@ pnpm package:win
 
 退出旧应用进程后启动新版本，检查 Word/WPS 状态是否通过。随后使用虚构数据检查档案保存、文档切换、分页预览及三种格式导出，最后在本机 Word/WPS 中逐页核对版式。本次不使用 Computer Use 继续操作界面。
 
-本地开发从 Git 忽略的 `local-fonts/` 读取私有字体；打包时 `scripts/stage_document_fonts.py` 把论文模板与任务书需要的 11 个字体文件收进 `local-fonts/`（不进 Git），再由 electron-builder 复制到 `resources/document-fonts/`。自动检查和 PDF 字形检查通过，不代表规定字体验收或 Word/WPS 人工验收已完成。
+本地开发从 Git 忽略的 `local-fonts/` 读取私有字体；打包时 `scripts/stage_document_fonts.py` 把论文模板与任务书需要的 8 个字体文件（其中华文行楷与方正小标宋为子集）收进 `local-fonts/`（不进 Git），再由 electron-builder 复制到 `resources/document-fonts/`。自动检查和 PDF 字形检查通过，不代表规定字体验收或 Word/WPS 人工验收已完成。

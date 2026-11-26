@@ -87,7 +87,9 @@ def main() -> int:
     files = set()
     for name in selected:
         files.update(packages[name]["run"])
-        files.update(packages[name]["source"])
+        # Package sources (.dtx/.ins) are only needed to rebuild a package from
+        # scratch; the installed run files already contain the generated .sty
+        # and .fd files, so omit the sources from the shipped runtime.
         files.update(p for p in packages[name]["doc"] if any(token in Path(p).name.lower() for token in ("license", "copying", "copyright", "readme")))
     files.update({"LICENSE.TL", "LICENSE.CTAN", "release-texlive.txt", "texmf-var/web2c/xetex/xelatex.fmt"})
     # Runtime DLLs are not all expressed as dependencies in the TeX package database.

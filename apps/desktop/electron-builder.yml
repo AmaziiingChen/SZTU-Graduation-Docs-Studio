@@ -2,6 +2,10 @@ appId: org.sztu.docs.studio
 productName: SZTU文档工作台
 asar: true
 npmRebuild: false
+# Offline installer carries a TeX/Poppler/Python runtime, so the installer size
+# depends on the compression level; `maximum` cuts roughly a tenth with a
+# slightly slower build.
+compression: maximum
 
 directories:
   output: ../../release
@@ -14,10 +18,21 @@ files:
   - package.json
 
 extraResources:
+  - from: ../../LICENSE
+    to: LICENSE
+  - from: ../../NOTICE
+    to: NOTICE
+  - from: ../../third-party-licenses
+    to: third-party-licenses
+  - from: ../../build/third-party-licenses
+    to: third-party-licenses/generated
   - from: ../../local-fonts
     to: document-fonts
     filter:
       - "**/*"
+      # local-fonts/full keeps the originals for regenerating the subsets; the
+      # shipped runtime only needs the (much smaller) files at the root.
+      - "!full/**"
   - from: ../../backend/pyproject.toml
     to: backend/pyproject.toml
   - from: ../../template-packs
@@ -61,6 +76,11 @@ artifactName: "SZTU-Docs-Studio-${version}-mac-${arch}.${ext}"
 win:
   executableName: SZTU-Docs-Studio
   icon: build/icon.ico
+  # Ship only the two locales the app can display; the default bundle carries
+  # every Electron locale and costs several megabytes.
+  electronLanguages:
+    - zh_CN
+    - en
   artifactName: "SZTU-Docs-Studio-${version}-win-${arch}.${ext}"
   extraResources:
     - from: ../../build/sidecar/win32-${arch}

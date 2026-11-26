@@ -1,13 +1,15 @@
-"""Collect every document font into local-fonts before packaging.
+"""Collect the document fonts into local-fonts before packaging.
 
-模板只使用一组固定的字体：宋体、黑体、楷体、华文中宋、华文行楷、方正小标宋、
-Times New Roman 四款样式，以及任务书 Word 勾选框用的 Wingdings 2。这些字体在
-新装的 Windows 或精简系统上不一定齐全（例如未安装中文补充字体时没有楷体，没装
-Office 时没有华文中宋、华文行楷），因此全部随安装包分发，并在首次启动时注册到
-当前用户字体目录，用户不需要再自己安装任何字体。
+模板只使用一组固定的字体：华文中宋、华文行楷、方正小标宋、Times New Roman
+四款样式，以及任务书 Word 勾选框用的 Wingdings 2；正文的宋体、黑体、楷体
+改用 Windows 自带字体（中文版 Windows 均随系统安装），不再随安装包分发。
 
-宋体、黑体、楷体、Times New Roman 与 Wingdings 2 从本机系统字体目录取；华文中宋、
-华文行楷、方正小标宋从 local-fonts/ 或模板仓库取。字体文件不进入 git。
+华文中宋、华文行楷、方正小标宋从 local-fonts/ 或模板仓库取；Times New Roman
+与 Wingdings 2 从本机系统字体目录取。字体文件不进入 git。
+
+华文行楷与方正小标宋只排固定封面/表头文字，收进来后会由
+scripts/subset_document_fonts.py 裁成只含模板用字的子集，原始字体留在
+local-fonts/full/ 以便重新生成。
 """
 from __future__ import annotations
 
@@ -15,6 +17,8 @@ import os
 import shutil
 import sys
 from pathlib import Path
+
+from subset_document_fonts import FULL_FONTS, SUBSET_FONTS, ensure_subsets
 
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE_ROOT = ROOT.parent / "Thesis"
@@ -42,10 +46,7 @@ FONTS: dict[str, tuple[str, ...]] = {
         "方正小标宋简体.ttf",
         "FZXBSJW.TTF",
     ),
-    # Windows 自带、但精简系统可能缺失的中文与西文字体。
-    "simsun.ttc": ("simsun.ttc", "simsun.ttf"),
-    "simhei.ttf": ("simhei.ttf",),
-    "simkai.ttf": ("simkai.ttf", "KaiTi.ttf", "Kaiti.ttc"),
+    # Windows 自带；宋体/黑体/楷体不随包分发。
     "times.ttf": ("times.ttf", "Times New Roman.ttf"),
     "timesbd.ttf": ("timesbd.ttf", "Times New Roman Bold.ttf"),
     "timesi.ttf": ("timesi.ttf", "Times New Roman Italic.ttf"),
@@ -70,17 +71,19 @@ def _index(directories: list[Path]) -> dict[str, Path]:
 
 def main() -> int:
     LOCAL_FONTS.mkdir(parents=True, exist_ok=True)
-    directories = [LOCAL_FONTS, TEMPLATE_ROOT, *_system_font_directories()]
+    FULL_FONTS.mkdir(parents=True, exist_ok=True)
+    directories = [LOCAL_FONTS, FULL_FONTS, TEMPLATE_ROOT, *_system_font_directories()]
     index = _index(directories)
     missing: list[str] = []
     staged: list[str] = []
     for target, names in FONTS.items():
-        if os.name != "nt" and target in WINDOWS_ONLY_FONTS:
-            # macOS and Linux builds cannot read the Windows font directory;
-            # the renderer falls back to the fonts installed on that machine.
-            continue
-        destination = LOCAL_FONTS / target
+        destination = (FULL_FONTS if target in SUBSET_FONTS else LOCAL_FONTS) / target
         if destination.is_file():
+            staged.append(target)
+            continue
+        subset = LOCAL_FONTS / target
+        if target in SUBSET_FONTS and subset.is_file() and subset.stat().st_size >= 1_500_000:
+            subset.replace(destination)
             staged.append(target)
             continue
         source = next(
@@ -102,8 +105,9 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
+    subset_status = ensure_subsets(LOCAL_FONTS)
     print(f"document fonts ready ({len(staged)}): {', '.join(sorted(staged))}")
-    return 0
+    return subset_status
 
 
 if __name__ == "__main__":
