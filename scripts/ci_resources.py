@@ -116,7 +116,19 @@ def main() -> None:
             [tlmgr, 'option', 'repository', 'https://mirror.ctan.org/systems/texlive/tlnet'],
             check=False,
         )
-        subprocess.run([tlmgr, 'install', *config['macos_tex_packages']], check=True)
+        # Some TeX Live entries report a non-zero exit from a post-install
+        # action (for example the mptopdf format step) even after every
+        # requested package was installed. The export step below is the real
+        # check, so only warn here and let it fail loudly if something is
+        # genuinely missing.
+        installed = subprocess.run(
+            [tlmgr, 'install', *config['macos_tex_packages']], check=False
+        )
+        if installed.returncode != 0:
+            print(
+                'tlmgr reported an error after installing TeX packages; '
+                'continuing to the export check',
+            )
 
 
 if __name__ == '__main__':
