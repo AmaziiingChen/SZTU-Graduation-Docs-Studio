@@ -22,6 +22,8 @@ export const DIAGNOSTIC_OPERATIONS = [
   "environment.check",
   "workspace.open",
   "workspace.listDocuments",
+  "workspace.installDemoDocuments",
+  "workspace.removeDemoDocuments",
   "workspace.renameDocument",
   "workspace.deleteDocument",
   "workspace.restoreDocument",
