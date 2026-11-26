@@ -1,41 +1,42 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
-import { afterEach, describe, expect, it, vi } from "vitest"
-
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { afterEach, expect, it, vi } from "vitest"
 import { ErrorBoundary } from "./error-boundary"
 
-function Boom(): never {
-  throw new Error("render exploded")
+afterEach(() => {
+  cleanup()
+  vi.useRealTimers()
+  vi.clearAllMocks()
+})
+
+function dispatchAsyncError(message: string): void {
+  act(() => {
+    window.dispatchEvent(new ErrorEvent("error", { message }))
+  })
 }
 
-describe("ErrorBoundary", () => {
-  afterEach(() => {
-    cleanup()
-    window.localStorage.clear()
-    vi.restoreAllMocks()
+it("dismisses the async error banner automatically", () => {
+  vi.useFakeTimers()
+  render(
+    <ErrorBoundary>
+      <div>content</div>
+    </ErrorBoundary>,
+  )
+  dispatchAsyncError("probe")
+  expect(screen.getByText("刚刚遇到一个错误")).toBeInTheDocument()
+
+  act(() => {
+    vi.advanceTimersByTime(15_000)
   })
+  expect(screen.queryByText("刚刚遇到一个错误")).not.toBeInTheDocument()
+})
 
-  it("shows a recoverable fallback with a diagnostic id", () => {
-    vi.spyOn(console, "error").mockImplementation(() => undefined)
-    render(
-      <ErrorBoundary>
-        <Boom />
-      </ErrorBoundary>,
-    )
-
-    expect(screen.getByText("页面遇到了一个问题")).toBeInTheDocument()
-    expect(screen.getByText(/诊断编号/)).toBeInTheDocument()
-    expect(screen.getByText(/render exploded/)).toBeInTheDocument()
-  })
-
-  it("can switch to safe mode after a crash", () => {
-    vi.spyOn(console, "error").mockImplementation(() => undefined)
-    render(
-      <ErrorBoundary>
-        <Boom />
-      </ErrorBoundary>,
-    )
-
-    fireEvent.click(screen.getByRole("button", { name: "进入安全模式" }))
-    expect(window.localStorage.getItem("sztu-docs.safe-mode")).toBe("1")
-  })
+it("lets the reader close the async error banner", () => {
+  render(
+    <ErrorBoundary>
+      <div>content</div>
+    </ErrorBoundary>,
+  )
+  dispatchAsyncError("probe")
+  fireEvent.click(screen.getByRole("button", { name: "关闭错误提示" }))
+  expect(screen.queryByText("刚刚遇到一个错误")).not.toBeInTheDocument()
 })

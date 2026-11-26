@@ -1,5 +1,5 @@
 import * as React from "react"
-import { AlertTriangleIcon, CopyIcon, RefreshCwIcon, ShieldCheckIcon } from "lucide-react"
+import { AlertTriangleIcon, CopyIcon, RefreshCwIcon, ShieldCheckIcon, XIcon } from "lucide-react"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -37,6 +37,8 @@ function describeError(error: unknown): string {
   return String(error)
 }
 
+const ASYNC_NOTE_DISMISS_MS = 15_000
+
 export class ErrorBoundary extends React.Component<
   { children: React.ReactNode },
   ErrorBoundaryState
@@ -47,6 +49,8 @@ export class ErrorBoundary extends React.Component<
     asyncNote: null,
     copied: false,
   }
+
+  private asyncNoteTimer: ReturnType<typeof setTimeout> | null = null
 
   static getDerivedStateFromError(error: Error): Partial<ErrorBoundaryState> {
     return { error, errorId: newErrorId() }
@@ -64,20 +68,39 @@ export class ErrorBoundary extends React.Component<
   componentWillUnmount(): void {
     window.removeEventListener("error", this.handleWindowError)
     window.removeEventListener("unhandledrejection", this.handleRejection)
+    if (this.asyncNoteTimer) {
+      clearTimeout(this.asyncNoteTimer)
+      this.asyncNoteTimer = null
+    }
+  }
+
+  private showAsyncNote(note: string): void {
+    if (this.asyncNoteTimer) clearTimeout(this.asyncNoteTimer)
+    this.setState((state) =>
+      state.error ? state : { ...state, asyncNote: note, copied: false },
+    )
+    this.asyncNoteTimer = setTimeout(() => {
+      this.asyncNoteTimer = null
+      this.setState({ asyncNote: null, copied: false })
+    }, ASYNC_NOTE_DISMISS_MS)
+  }
+
+  private dismissAsyncNote = (): void => {
+    if (this.asyncNoteTimer) {
+      clearTimeout(this.asyncNoteTimer)
+      this.asyncNoteTimer = null
+    }
+    this.setState({ asyncNote: null, copied: false })
   }
 
   private handleWindowError = (event: ErrorEvent): void => {
     console.error("Unhandled renderer error", event.error ?? event.message)
-    this.setState((state) =>
-      state.error ? state : { ...state, asyncNote: describeError(event.error ?? event.message) },
-    )
+    this.showAsyncNote(describeError(event.error ?? event.message))
   }
 
   private handleRejection = (event: PromiseRejectionEvent): void => {
     console.error("Unhandled renderer rejection", event.reason)
-    this.setState((state) =>
-      state.error ? state : { ...state, asyncNote: describeError(event.reason) },
-    )
+    this.showAsyncNote(describeError(event.reason))
   }
 
   private reload = (): void => {
@@ -113,14 +136,23 @@ export class ErrorBoundary extends React.Component<
         <>
           {this.props.children}
           {asyncNote ? (
-            <Alert className="fixed inset-x-4 bottom-4 z-50 mx-auto max-w-2xl shadow-lg">
+            <Alert role="status" className="fixed inset-x-4 bottom-4 z-50 mx-auto max-w-2xl shadow-lg">
               <AlertTriangleIcon />
               <AlertTitle>刚刚遇到一个错误</AlertTitle>
               <AlertDescription className="flex flex-wrap items-center gap-2">
-                <span>已记录，可以继续使用；如果反复出现，请通过「帮助支持 → 反馈问题」告诉我们。</span>
+                <span>已记录，可以继续使用；这条提示 15 秒后自动收起。如果反复出现，请通过「帮助支持 → 反馈问题」告诉我们。</span>
                 <Button type="button" variant="ghost" size="sm" onClick={() => void this.copyDetails()}>
                   <CopyIcon aria-hidden="true" />
                   {copied ? "已复制" : "复制信息"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="关闭错误提示"
+                  onClick={this.dismissAsyncNote}
+                >
+                  <XIcon aria-hidden="true" />
                 </Button>
               </AlertDescription>
             </Alert>
