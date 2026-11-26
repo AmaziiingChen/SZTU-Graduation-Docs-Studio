@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button"
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -79,9 +78,6 @@ export function MessageCenterDialog({
             <BellIcon className="size-4" aria-hidden="true" />
             消息通知
           </DialogTitle>
-          <DialogDescription>
-            来自维护者的通知与新功能说明。消息只在版本与时间范围内显示。
-          </DialogDescription>
         </DialogHeader>
 
         {selected ? (
