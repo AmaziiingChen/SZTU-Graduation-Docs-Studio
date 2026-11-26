@@ -36,16 +36,19 @@ const EXIT_CODE_APP_STILL_RUNNING = 3
 const MAX_EXIT_CODE = 2_147_483_647
 
 export function updateInstallPaths(userDataPath: string): UpdateInstallPaths {
-  const directory = path.join(userDataPath, "updates")
+  // These paths are only consumed by the Windows installer flow. Using win32
+  // semantics keeps behavior identical on Windows and makes the helpers
+  // testable on macOS/Linux CI runners.
+  const directory = path.win32.join(userDataPath, "updates")
   return {
     directory,
-    resultPath: path.join(directory, "install-result.json"),
-    scriptPath: path.join(directory, "install-update.ps1"),
+    resultPath: path.win32.join(directory, "install-result.json"),
+    scriptPath: path.win32.join(directory, "install-update.ps1"),
   }
 }
 
 export function installDirectoryForExecutable(executablePath: string): string {
-  return path.dirname(executablePath)
+  return path.win32.dirname(executablePath)
 }
 
 /**

@@ -82,7 +82,7 @@ def _index(directories: list[Path]) -> dict[str, Path]:
 
 def main() -> int:
     LOCAL_FONTS.mkdir(parents=True, exist_ok=True)
-    directories = [LOCAL_FONTS, TEMPLATE_ROOT, *_system_font_directories()]
+    directories = [LOCAL_FONTS, TEMPLATE_ROOT, ROOT / "build" / "ci-fonts", *_system_font_directories()]
     index = _index(directories)
     missing: list[str] = []
     staged: list[str] = []
