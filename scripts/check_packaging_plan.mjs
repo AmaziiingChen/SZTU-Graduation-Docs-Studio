@@ -168,11 +168,12 @@ function checkTemplatePins() {
 
 function checkDocumentFonts() {
   // The three Office fonts come from local-fonts or the template repository on
-  // every platform. 宋体/黑体/楷体 are Windows system fonts and are no longer
-  // bundled; the remaining Windows-only fonts are required only on Windows.
+  // every platform. The remaining fonts exist only on Windows, so they are
+  // required only when the Windows bundle is actually built.
   const required = ["FZXiaoBiaoSong-B05S.ttf", "STXingkai.ttf", "STZhongsong.ttf"];
   if (process.platform === "win32") {
     required.push(
+      "simsun.ttc", "simhei.ttf", "simkai.ttf",
       "times.ttf", "timesbd.ttf", "timesi.ttf", "timesbi.ttf",
       "Wingdings2.ttf",
     );
