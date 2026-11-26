@@ -56,7 +56,7 @@ export class FeedbackService {
     if (message.length < 10 || message.length > 2000) throw new FeedbackError("请把问题描述清楚一些，字数在 10 到 2000 之间。")
     const contact = input.contact.trim()
     if (contact.length > 200 || /[\r\n\0]/.test(contact) || !isValidContact(contact)) {
-      throw new FeedbackError("请填写有效的邮箱或手机号，例如 name@example.com 或 13800138000。")
+      throw new FeedbackError("请填写有效的邮箱或手机号。")
     }
     if (input.diagnosticReportId && !UUID_RE.test(input.diagnosticReportId)) {
       throw new FeedbackError("诊断包编号无效，请重新创建诊断包。")

@@ -166,7 +166,7 @@ export function FeedbackDialog({ open, onOpenChange, diagnosticReportId, onSubmi
                 className={contactInvalid ? "text-xs text-destructive" : "text-xs text-muted-foreground"}
               >
                 {contactInvalid
-                  ? "请填写有效的邮箱或手机号，例如 name@example.com 或 13800138000。"
+                  ? "请填写有效的邮箱或手机号。"
                   : "只用于回访，不会公开；手机号可写 13800138000 或 +86 138 0013 8000。"}
               </p>
             </div>
