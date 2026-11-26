@@ -30,9 +30,6 @@ extraResources:
     to: document-fonts
     filter:
       - "**/*"
-      # local-fonts/full keeps the originals for regenerating the subsets; the
-      # shipped runtime only needs the (much smaller) files at the root.
-      - "!full/**"
   - from: ../../backend/pyproject.toml
     to: backend/pyproject.toml
   - from: ../../template-packs

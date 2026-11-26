@@ -33,6 +33,18 @@ def _system_font_directories() -> list[Path]:
 
 
 # 分发名称 -> 候选文件名（大小写不敏感）。目录里的任意同名文件都算命中。
+WINDOWS_ONLY_FONTS = frozenset(
+    {
+        "simsun.ttc",
+        "simhei.ttf",
+        "simkai.ttf",
+        "times.ttf",
+        "timesbd.ttf",
+        "timesi.ttf",
+        "timesbi.ttf",
+        "Wingdings2.ttf",
+    }
+)
 FONTS: dict[str, tuple[str, ...]] = {
     # Office 字体：模板题名、校名、封面使用。
     "STZhongsong.ttf": ("STZhongsong.ttf", "华文中宋.ttf"),
