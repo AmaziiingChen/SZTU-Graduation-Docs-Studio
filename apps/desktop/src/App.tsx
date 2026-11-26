@@ -2483,7 +2483,13 @@ function DocumentEditor({
                   className="h-auto p-0 text-xs"
                   onClick={() => {
                     const api = getDesktopApi()
-                    if (api) void api.openExternalUrl(THESIS_TEMPLATE_UPSTREAM_URL)
+                    if (!api) {
+                      toast.error("请在桌面应用中打开上游仓库。")
+                      return
+                    }
+                    void api.openExternalUrl(THESIS_TEMPLATE_UPSTREAM_URL).catch((error: unknown) => {
+                      toast.error(error instanceof Error ? error.message : "打开链接失败，请重试。")
+                    })
                   }}
                 >
                   SZTU-ACM/SZTU-Thesis-Latex-Template
