@@ -25,15 +25,15 @@ export function NavMain({
           <SidebarMenuItem>
             <SidebarMenuButton
               data-tour="nav-profile"
-              tooltip="档案与基本信息"
-              aria-label="档案与基本信息"
+              tooltip="基本信息"
+              aria-label="基本信息"
               className="pl-8"
               isActive={profileActive}
               disabled={disabled}
               onClick={onSelectProfile}
             >
               <AnimatedActionIcon icon={IdCardIcon} />
-              <span>档案与基本信息</span>
+              <span>基本信息</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

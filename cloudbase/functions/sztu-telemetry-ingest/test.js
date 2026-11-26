@@ -185,6 +185,9 @@ test('accepts a user feedback submission and rejects unsafe shapes', () => {
   assert.equal(validateFeedback({ ...validFeedback(), category: 'praise' }), 'INVALID_FEEDBACK_CATEGORY');
   assert.equal(validateFeedback({ ...validFeedback(), message: '太短' }), 'INVALID_FEEDBACK_MESSAGE');
   assert.equal(validateFeedback({ ...validFeedback(), contact: 'a\nb' }), 'INVALID_FEEDBACK_CONTACT');
+  assert.equal(validateFeedback({ ...validFeedback(), contact: 'abc' }), 'INVALID_FEEDBACK_CONTACT');
+  assert.equal(validateFeedback({ ...validFeedback(), contact: '12800138000' }), 'INVALID_FEEDBACK_CONTACT');
+  assert.equal(validateFeedback({ ...validFeedback(), contact: '138-0013-8000' }), null);
   assert.equal(validateFeedback({ ...validFeedback(), extra: true }), 'INVALID_FEEDBACK_FIELDS');
   assert.equal(validateFeedback({ ...validFeedback(), diagnostic_report_id: 'not-a-uuid' }), 'INVALID_FEEDBACK_DIAGNOSTIC_ID');
 });

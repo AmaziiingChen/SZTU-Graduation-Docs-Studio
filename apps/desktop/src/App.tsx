@@ -2374,7 +2374,7 @@ function DocumentEditor({
           <Alert>
             <UserRoundIcon />
             <AlertTitle>基本信息尚未补全</AlertTitle>
-            <AlertDescription>可先写正文，预览或导出前在左侧补全「档案与基本信息」。</AlertDescription>
+            <AlertDescription>可先写正文，预览或导出前在左侧补全「基本信息」。</AlertDescription>
           </Alert>
         ) : null}
 
@@ -4543,8 +4543,8 @@ export default function App({ safeMode = false }: { safeMode?: boolean } = {}) {
     }
     if (!(isAssessmentDocumentType(activeDocumentType) ? assessmentProfileIsComplete(draft) : profileIsComplete(draft))) {
       const message = isAssessmentDocumentType(activeDocumentType)
-        ? "请先打开左侧“档案与基本信息”，补全姓名、学号、学院和专业。"
-        : "请先打开左侧“档案与基本信息”，补全姓名、学号、毕业届别、学院、专业、班级、指导教师和职称。"
+        ? "请先打开左侧“基本信息”，补全姓名、学号、学院和专业。"
+        : "请先打开左侧“基本信息”，补全姓名、学号、毕业届别、学院、专业、班级、指导教师和职称。"
       setActivePane("profile")
       recordTelemetry({
         name: "document_action",
@@ -4560,7 +4560,7 @@ export default function App({ safeMode = false }: { safeMode?: boolean } = {}) {
     const thesisTitle = structuredBodyPlainText(draft.title).trim()
     if (!thesisTitle || thesisTitle.length > THESIS_TITLE_MAX_LENGTH) {
       const message = !thesisTitle
-        ? "请先打开左侧“档案与基本信息”，填写论文题目。"
+        ? "请先打开左侧“基本信息”，填写论文题目。"
         : `基本信息中的论文题目最多 ${THESIS_TITLE_MAX_LENGTH} 个字符。`
       navigateToCheck({ pane: "profile", selector: '[aria-label="中文题目"]' })
       recordTelemetry({

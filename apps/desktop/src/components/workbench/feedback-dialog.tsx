@@ -14,6 +14,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { isValidContact } from "@/lib/contact-validation"
 import type { FeedbackCategory, SztuDesktopApi } from "@/types/desktop-api"
 
 const CATEGORIES: { id: FeedbackCategory; label: string }[] = [
@@ -97,7 +98,9 @@ export function FeedbackDialog({ open, onOpenChange, diagnosticReportId, onSubmi
     }
   }
 
-  const canSubmit = message.trim().length >= 10 && contact.trim().length >= 3 && !pending
+  const contactValid = isValidContact(contact)
+  const contactInvalid = contact.trim().length > 0 && !contactValid
+  const canSubmit = message.trim().length >= 10 && contactValid && !pending
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -154,8 +157,18 @@ export function FeedbackDialog({ open, onOpenChange, diagnosticReportId, onSubmi
                 id="feedback-contact"
                 placeholder="邮箱或手机号，便于回访"
                 value={contact}
+                aria-invalid={contactInvalid}
+                aria-describedby="feedback-contact-hint"
                 onChange={(event) => setContact(event.target.value)}
               />
+              <p
+                id="feedback-contact-hint"
+                className={contactInvalid ? "text-xs text-destructive" : "text-xs text-muted-foreground"}
+              >
+                {contactInvalid
+                  ? "请填写有效的邮箱或手机号，例如 name@example.com 或 13800138000。"
+                  : "只用于回访，不会公开；手机号可写 13800138000 或 +86 138 0013 8000。"}
+              </p>
             </div>
 
             <div className="grid gap-2 rounded-md border p-3">

@@ -16,6 +16,15 @@ export type FeedbackReceipt = {
   retentionDays: number
 }
 
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
+const MOBILE_PATTERN = /^1[3-9]\d{9}$/
+
+function isValidContact(value: string): boolean {
+  if (EMAIL_PATTERN.test(value)) return true
+  const normalized = value.replace(/[\s\-()]/g, "").replace(/^\+?86/, "")
+  return MOBILE_PATTERN.test(normalized)
+}
+
 export class FeedbackError extends Error {
   readonly code = "FEEDBACK_FAILED"
 }
@@ -46,8 +55,8 @@ export class FeedbackService {
     const message = input.message.trim()
     if (message.length < 10 || message.length > 2000) throw new FeedbackError("请把问题描述清楚一些，字数在 10 到 2000 之间。")
     const contact = input.contact.trim()
-    if (contact.length < 3 || contact.length > 200 || /[\r\n\0]/.test(contact)) {
-      throw new FeedbackError("请留一个能联系到你的邮箱或手机号。")
+    if (contact.length > 200 || /[\r\n\0]/.test(contact) || !isValidContact(contact)) {
+      throw new FeedbackError("请填写有效的邮箱或手机号，例如 name@example.com 或 13800138000。")
     }
     if (input.diagnosticReportId && !UUID_RE.test(input.diagnosticReportId)) {
       throw new FeedbackError("诊断包编号无效，请重新创建诊断包。")

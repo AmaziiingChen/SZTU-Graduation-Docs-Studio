@@ -341,7 +341,7 @@ export function HelpCenterDialog({
                 handleOpenChange(false)
               }}
             >
-              关于与许可
+              关于
             </Button>
           </div>
           <Button type="button" size="sm" onClick={() => handleOpenChange(false)}>

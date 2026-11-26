@@ -222,6 +222,12 @@ function scanDiagnosticReport(report) {
   return !forbiddenKeys.test(serialized) && !pathLike.test(serialized) && !credentialLike.test(serialized);
 }
 
+function isValidFeedbackContact(value) {
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value)) return true;
+  const normalized = value.replace(/[\s\-()]/g, '').replace(/^\+?86/, '');
+  return /^1[3-9]\d{9}$/.test(normalized);
+}
+
 function validateFeedback(value) {
   if (!exactKeys(value, ['schema_version', 'category', 'message', 'contact', 'app_version', 'platform', 'arch'], ['diagnostic_report_id'])) {
     return 'INVALID_FEEDBACK_FIELDS';
@@ -231,8 +237,8 @@ function validateFeedback(value) {
   if (typeof value.message !== 'string' || value.message.length < 10 || value.message.length > 2000 || value.message.includes('\0')) {
     return 'INVALID_FEEDBACK_MESSAGE';
   }
-  if (typeof value.contact !== 'string' || value.contact.trim().length < 3 || value.contact.length > 200
-    || /[\r\n\0]/.test(value.contact)) return 'INVALID_FEEDBACK_CONTACT';
+  if (typeof value.contact !== 'string' || value.contact.length > 200
+    || /[\r\n\0]/.test(value.contact) || !isValidFeedbackContact(value.contact.trim())) return 'INVALID_FEEDBACK_CONTACT';
   if (typeof value.app_version !== 'string' || !SEMVER_RE.test(value.app_version)) return 'INVALID_FEEDBACK_APP_VERSION';
   if (typeof value.platform !== 'string' || !DIAGNOSTIC_PLATFORMS.has(value.platform)) return 'INVALID_FEEDBACK_PLATFORM';
   if (typeof value.arch !== 'string' || !DIAGNOSTIC_ARCHES.has(value.arch)) return 'INVALID_FEEDBACK_ARCH';
