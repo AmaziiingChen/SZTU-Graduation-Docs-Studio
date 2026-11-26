@@ -1,0 +1,397 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SZTU 文档工作台 0.2.0 · Windows 离线版下载</title>
+<meta name="description" content="SZTU 文档工作台 0.2.0 离线版：任务书、开题报告、中期检查与四类评审表共用一份档案、一套版式；安装包内置字体与排版工具，装完离线可用。">
+<meta name="theme-color" content="#eff1ee">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%23191a17'/%3E%3Ctext x='32' y='43' font-family='Songti SC,SimSun,serif' font-size='30' font-weight='700' fill='%23f2f2ed' text-anchor='middle'%3E档%3C/text%3E%3C/svg%3E">
+<style>
+  :root {
+    color-scheme: light;
+    --paper: #eff1ee;
+    --ink: #191a17;
+    --muted: #62655c;
+    --rule: #cfd2c8;
+    --rule-strong: #a9ada1;
+    --seal: #a63a2b;
+    --seal-soft: #f3e7e3;
+    --serif: "Source Han Serif SC", "Songti SC", "Noto Serif CJK SC", "SimSun", serif;
+    --sans: "Source Han Sans SC", "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --paper: #131511;
+      --ink: #ececdf;
+      --muted: #a2a597;
+      --rule: #34372f;
+      --rule-strong: #52564b;
+      --seal: #e07a66;
+      --seal-soft: #2a1d19;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.8;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  ::selection { background: var(--seal); color: var(--paper); }
+  a { color: inherit; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  a:hover { color: var(--seal); }
+  :focus-visible { outline: 2px solid var(--seal); outline-offset: 3px; }
+  img { max-width: 100%; height: auto; }
+  .skip {
+    position: absolute; left: 12px; top: -60px; z-index: 10;
+    background: var(--ink); color: var(--paper); padding: 10px 16px; text-decoration: none;
+  }
+  .skip:focus { top: 12px; }
+  .sheet { max-width: 1140px; margin: 0 auto; padding: 0 32px 0; }
+  @media (max-width: 640px) { .sheet { padding: 0 20px; } }
+
+  /* running head */
+  .head {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 16px;
+    padding: 22px 0 14px; border-bottom: 1px solid var(--rule-strong);
+    font-family: var(--sans); font-size: 12.5px; letter-spacing: .01em; color: var(--muted);
+  }
+  .head .mark { display: flex; align-items: baseline; gap: 10px; color: var(--ink); }
+  .head .seal-mark {
+    display: inline-grid; place-items: center; width: 30px; height: 30px;
+    border: 1px solid var(--seal); color: var(--seal);
+    font-family: var(--serif); font-size: 17px; font-weight: 700; line-height: 1;
+    transform: translateY(4px);
+  }
+  .head .name { font-family: var(--sans); font-size: 14px; font-weight: 700; letter-spacing: .02em; color: var(--ink); }
+  .head nav { display: flex; gap: 18px; font-family: var(--sans); font-size: 13px; }
+  .head nav a { text-decoration: none; }
+  .head nav a:hover { color: var(--seal); }
+  @media (max-width: 760px) { .head nav { display: none; } }
+
+  /* hero */
+  .hero { position: relative; display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 4fr); gap: 56px; padding: 74px 0 58px; }
+  @media (max-width: 900px) { .hero { grid-template-columns: 1fr; gap: 36px; padding: 48px 0 40px; } }
+  .kicker { font-family: var(--sans); font-size: 13px; letter-spacing: 0; color: var(--muted); margin: 0 0 18px; }
+  h1 {
+    font-family: var(--serif); font-weight: 600;
+    font-size: clamp(38px, 6.2vw, 76px); line-height: 1.18; letter-spacing: -.01em;
+    margin: 0 0 26px; max-width: 15ch;
+  }
+    .lede { font-size: 16.5px; line-height: 1.9; color: var(--ink); max-width: 34em; margin: 0 0 34px; }
+  .lede strong { font-weight: 600; }
+  .dl-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px 22px; }
+  .dl-main {
+    display: inline-flex; align-items: center; gap: 12px;
+    font-family: var(--sans); font-weight: 600; font-size: 16.5px;
+    padding: 13px 20px 14px; background: var(--seal); color: #f7f3ee;
+    text-decoration: none; border: 1px solid var(--seal); border-radius: 2px;
+  }
+  .dl-main:hover { background: var(--ink); border-color: var(--ink); color: #f7f3ee; }
+  .dl-main .arrow { font-family: var(--sans); font-weight: 400; font-size: 13.5px; opacity: .85; }
+  .dl-meta { font-family: var(--mono); font-size: 12.5px; color: var(--muted); letter-spacing: .02em; }
+  .sub-link { font-size: 14.5px; color: var(--muted); }
+  .sub-link:hover { color: var(--seal); }
+  .sign-note { margin: 22px 0 0; font-size: 13.5px; color: var(--muted); max-width: 36em; }
+
+  /* proof block */
+  .proof {
+    position: relative; align-self: start; margin-top: 34px;
+    border: 1px solid var(--rule-strong); padding: 22px 20px 16px; background: transparent;
+  }
+  .proof::before, .proof::after {
+    content: ""; position: absolute; width: 14px; height: 14px; pointer-events: none;
+  }
+  .proof::before { left: -1px; top: -1px; border-left: 2px solid var(--ink); border-top: 2px solid var(--ink); }
+  .proof::after { right: -1px; bottom: -1px; border-right: 2px solid var(--ink); border-bottom: 2px solid var(--ink); }
+  .proof h2 { font-family: var(--sans); font-size: 12px; font-weight: 600; letter-spacing: .02em; color: var(--muted); margin: 0 0 14px; }
+  .proof dl { margin: 0; display: grid; grid-template-columns: 5.5em minmax(0, 1fr); row-gap: 9px; column-gap: 10px; font-size: 13px; }
+  .proof dt { font-family: var(--sans); font-size: 12px; color: var(--muted); letter-spacing: .03em; padding-top: 2px; }
+  .proof dd { margin: 0; font-family: var(--sans); font-size: 12.5px; overflow-wrap: anywhere; }
+  .proof dd.wrap { font-family: var(--sans); font-size: 13px; }
+  .stamp {
+    position: absolute; right: -14px; top: -18px; width: 92px; height: 92px;
+    border: 2px solid var(--seal); border-radius: 50%;
+    display: grid; place-content: center; text-align: center;
+    color: var(--seal); transform: rotate(-9deg); opacity: .92;
+    background: var(--paper);
+    font-family: var(--serif); line-height: 1.15;
+  }
+  .stamp b { display: block; font-size: 17px; letter-spacing: .02em; }
+  .stamp span { display: block; font-size: 10.5px; letter-spacing: .18em; margin-top: 3px; }
+  @media (max-width: 900px) { .stamp { right: 4px; top: -16px; width: 78px; height: 78px; } .stamp b { font-size: 15px; } }
+  .copy {
+    border: 0; border-bottom: 1px solid var(--rule-strong); background: none; color: var(--muted);
+    font-family: var(--mono); font-size: 11.5px; cursor: pointer; padding: 0 0 1px; margin-left: 2px;
+  }
+  .copy:hover { color: var(--seal); border-color: var(--seal); }
+
+  /* section scaffolding */
+  section { border-top: 1px solid var(--rule); padding: 54px 0; }
+  .sec-head { margin-bottom: 28px; }
+  .sec-head .no { display: block; font-family: var(--sans); font-size: 12.5px; color: var(--muted); letter-spacing: .06em; margin-bottom: 8px; }
+  .sec-head h2 { font-family: var(--serif); font-size: clamp(24px, 3vw, 32px); font-weight: 600; margin: 0; line-height: 1.35; }
+  .sec-head p { margin: 8px 0 0; color: var(--muted); font-size: 14.5px; }
+  
+
+  /* plates */
+  figure { margin: 0; }
+  .plate { border: 1px solid var(--rule-strong); padding: 10px; background: transparent; }
+  .plate img { display: block; width: 100%; }
+  figcaption { margin-top: 10px; font-size: 13px; color: var(--muted); font-family: var(--mono); letter-spacing: .01em; }
+  figcaption b { font-family: var(--sans); font-weight: 600; color: var(--ink); }
+  .plates-two { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; margin-top: 30px; }
+  @media (max-width: 820px) { .plates-two { grid-template-columns: 1fr; } }
+
+  /* materials */
+  .materials { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 48px; }
+  @media (max-width: 820px) { .materials { grid-template-columns: 1fr; gap: 24px; } }
+  .materials h3 { font-family: var(--serif); font-size: 20px; margin: 0 0 10px; font-weight: 600; }
+  .materials p { margin: 0 0 14px; color: var(--muted); font-size: 14.5px; }
+  .doc-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--rule-strong); }
+  .doc-list li { display: flex; justify-content: space-between; gap: 18px; padding: 9px 0; border-bottom: 1px solid var(--rule); font-size: 14.5px; }
+  .doc-list span { color: var(--muted); font-family: var(--mono); font-size: 11.5px; letter-spacing: .04em; white-space: nowrap; }
+
+  /* install */
+  .steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; border-top: 1px solid var(--rule-strong); }
+  .steps li { padding: 18px 18px 18px 0; border-right: 1px solid var(--rule); }
+  .steps li:last-child { border-right: 0; padding-right: 0; }
+  .steps .n { display: block; font-family: var(--mono); font-size: 12px; color: var(--seal); margin-bottom: 8px; }
+  .steps strong { display: block; font-size: 15.5px; margin-bottom: 4px; }
+  .steps p { margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.7; }
+  @media (max-width: 900px) { .steps { grid-template-columns: 1fr 1fr; } .steps li:nth-child(2) { border-right: 0; } }
+  @media (max-width: 560px) { .steps { grid-template-columns: 1fr; } .steps li { border-right: 0; border-bottom: 1px solid var(--rule); padding-right: 0; } .steps li:last-child { border-bottom: 0; } }
+
+  /* faq */
+  .qa { border-top: 1px solid var(--rule-strong); }
+  details { border-bottom: 1px solid var(--rule); }
+  summary {
+    cursor: pointer; list-style: none; padding: 15px 0;
+    display: flex; justify-content: space-between; gap: 24px; align-items: baseline;
+    font-size: 15.5px; font-weight: 600;
+  }
+  summary::-webkit-details-marker { display: none; }
+  summary::after { content: "+"; font-family: var(--mono); font-weight: 400; color: var(--muted); font-size: 18px; line-height: 1; }
+  details[open] summary::after { content: "−"; }
+  details p { margin: 0 0 16px; color: var(--muted); font-size: 14.5px; max-width: 62em; }
+
+  .closing { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 18px; padding: 40px 0 8px; }
+  .closing .dl-main { font-size: 17px; }
+
+  footer { border-top: 1px solid var(--rule-strong); margin-top: 40px; padding: 22px 0 46px; }
+  footer .inner { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px 28px; font-family: var(--mono); font-size: 11.5px; color: var(--muted); letter-spacing: .03em; }
+  footer a { text-decoration: none; }
+  footer a:hover { color: var(--seal); }
+
+</style>
+</head>
+<body>
+<a class="skip" href="#main">跳到主要内容</a>
+
+<div class="sheet">
+  <header class="head">
+    <div class="mark">
+      <span class="seal-mark" aria-hidden="true">档</span>
+      <span class="name">SZTU 文档工作台</span>
+      <span>下载 / 0.2.0</span>
+    </div>
+    <nav aria-label="页面导航">
+      <a href="#shots">界面</a>
+      <a href="#materials">材料</a>
+      <a href="#install">安装</a>
+      <a href="#faq">问题</a>
+      <a href="/guide/">使用说明</a>
+    </nav>
+  </header>
+
+  <main id="main">
+    <section class="hero" aria-labelledby="hero-title" style="border-top:0; padding-top:74px;">
+      <div class="hero-copy">
+        <p class="kicker">Windows 10 / 11，64 位，离线安装包</p>
+        <h1 id="hero-title">把格式交给模板，<br>把时间留给内容。</h1>
+        <p class="lede">任务书、开题报告、中期检查与四类评审表，共用<strong>一份档案、一套版式</strong>。安装包内置字体、排版引擎与 PDF 工具，装完即可离线使用。</p>
+        <div class="dl-row">
+          <a class="dl-main" href="/releases/0.2.0/SZTU-Docs-Studio-0.2.0-win-x64-offline.exe" download>
+            下载安装包 <span class="arrow" aria-hidden="true">↓ 428.2 MiB</span>
+          </a>
+          <a class="sub-link" href="/guide/">先看使用说明</a>
+        </div>
+        <p class="sign-note">安装包没有代码签名证书，Windows 可能提示「未知发布者」；点「更多信息 → 仍要运行」即可。介意的同学可对照右侧 SHA-256 校验文件。</p>
+      </div>
+
+      <aside class="proof" aria-labelledby="proof-title">
+        <div class="stamp" aria-hidden="true"><b>0.2.0</b><span>校样</span></div>
+        <h2 id="proof-title">下载校样单</h2>
+        <dl>
+          <dt>版本</dt><dd>0.2.0</dd>
+          <dt>发布</dt><dd>2026-11-26</dd>
+          <dt>体积</dt><dd>449,028,286 B</dd>
+          <dt>系统</dt><dd>Windows 10 / 11 x64</dd>
+          <dt>文件</dt><dd>SZTU-Docs-Studio-0.2.0-win-x64-offline.exe</dd>
+          <dt>SHA-256</dt>
+          <dd>85aa451dfe0707619a15a0b46024194ee5b305d8ded78e09fa038abbddac644d<button class="copy" type="button" data-copy="85aa451dfe0707619a15a0b46024194ee5b305d8ded78e09fa038abbddac644d" aria-label="复制 SHA-256">复制</button></dd>
+          <dt>说明</dt><dd class="wrap">本地保存，不上传云端；匿名统计与诊断包由你决定是否发送。</dd>
+        </dl>
+      </aside>
+    </section>
+
+    <section id="shots" aria-labelledby="shots-title">
+      <div class="sec-head">
+        <span class="no">图版 01–03</span>
+        <div>
+          <h2 id="shots-title">它在屏幕上是什么样</h2>
+          <p>填写、预览、导出在同一个窗口完成；截图取自 0.2.0 实际界面。</p>
+        </div>
+      </div>
+
+      <figure>
+        <div class="plate"><img src="assets/workspace.jpg" alt="任务书编辑界面：左侧材料导航，中间按章节填写，右侧显示完成情况" width="1440" height="882" loading="eager"></div>
+        <figcaption><b>图版 01</b>　任务书编辑：左侧选材料，中间按章节写，右侧提示缺什么。</figcaption>
+      </figure>
+
+      <div class="plates-two">
+        <figure>
+          <div class="plate"><img src="assets/preview.jpg" alt="预览与导出面板：右侧显示与最终 PDF 一致的分页预览" width="1440" height="882" loading="lazy"></div>
+          <figcaption><b>图版 02</b>　预览即最终版式，确认后再导出 Word 或 PDF。</figcaption>
+        </figure>
+        <figure>
+          <div class="plate"><img src="assets/help.jpg" alt="帮助中心：常见问题、快捷键、更新说明与演示资料" width="1440" height="882" loading="lazy"></div>
+          <figcaption><b>图版 03</b>　常见问题、快捷键与更新说明都在应用内。</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section id="materials" aria-labelledby="materials-title">
+      <div class="sec-head">
+        <span class="no">材料</span>
+        <div>
+          <h2 id="materials-title">一次填写，七类材料共用</h2>
+          <p>姓名、学号、学院、专业、导师与论文题目只填一次，之后每份材料自动带出。</p>
+        </div>
+      </div>
+
+      <div class="materials">
+        <div>
+          <h3>格式不是靠人对，是靠模板定</h3>
+          <p>字号、行距、标题层级、图表编号与参考文献体例由模板统一处理。换电脑、换 Word 版本，版式不会跑。</p>
+          <p>导出前会先做内容检查：缺章节、超页数、文献字段为空，会指出具体位置，而不是只报一个「导出失败」。</p>
+        </div>
+        <div>
+          <ul class="doc-list">
+            <li>任务书<span>过程材料</span></li>
+            <li>开题报告<span>过程材料</span></li>
+            <li>中期检查<span>过程材料</span></li>
+            <li>指导教师评审表<span>评审材料</span></li>
+            <li>评阅人评审表<span>评审材料</span></li>
+            <li>答辩记录表<span>评审材料</span></li>
+            <li>成绩考核表<span>评审材料</span></li>
+            <li>毕业论文<span>LaTeX 模板</span></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="install" aria-labelledby="install-title">
+      <div class="sec-head">
+        <span class="no">安装</span>
+        <div>
+          <h2 id="install-title">安装顺序</h2>
+          <p>整个过程大约五分钟；第一次打开会看到分步引导。</p>
+        </div>
+      </div>
+
+      <ol class="steps">
+        <li><span class="n">第一步</span><strong>下载并运行</strong><p>双击安装包。遇到 SmartScreen 提示，点「更多信息 → 仍要运行」。</p></li>
+        <li><span class="n">第二步</span><strong>选择安装位置</strong><p>保留默认目录即可；覆盖安装会升级程序，已有文档保留。</p></li>
+        <li><span class="n">第三步</span><strong>填一次基本信息</strong><p>姓名、学号、学院、专业、导师与论文题目，之后所有材料共用。</p></li>
+        <li><span class="n">第四步</span><strong>新建、预览、导出</strong><p>左侧选材料类型，右侧按提示填写；预览确认版式后导出 PDF 或 Word。</p></li>
+      </ol>
+    </section>
+
+    <section id="faq" aria-labelledby="faq-title">
+      <div class="sec-head">
+        <span class="no">问答</span>
+        <div>
+          <h2 id="faq-title">常见问题</h2>
+          <p>没覆盖到的问题，可以在应用内「帮助支持 → 反馈问题」直接发给我们。</p>
+        </div>
+      </div>
+
+      <div class="qa">
+        <details open>
+          <summary>Windows 提示「未知发布者」，是文件坏了吗？</summary>
+          <p>不是。这是没有购买代码签名证书导致的。点提示框里的「更多信息」，再点「仍要运行」即可。想确认下载完整，可以用校样单里的 SHA-256 与文件对比。</p>
+        </details>
+        <details>
+          <summary>需要一直联网吗？</summary>
+          <p>编辑、预览、导出全部离线完成。只有检查更新、接收消息通知、发送反馈时需要联网；这些不使用也不影响写文档。</p>
+        </details>
+        <details>
+          <summary>文档存在哪里？卸载会删掉吗？</summary>
+          <p>文档保存在本机的应用数据目录，不上传云端。卸载程序默认不删除文档；要彻底清理，需要手动删除应用数据目录。</p>
+        </details>
+        <details>
+          <summary>支持 Windows 7 或 32 位系统吗？</summary>
+          <p>不支持。当前版本面向 Windows 10 / 11 的 64 位系统，因为内置的排版引擎与 PDF 工具只提供 64 位版本。</p>
+        </details>
+        <details>
+          <summary>可以覆盖安装旧版本吗？</summary>
+          <p>可以。装到同一目录会升级程序，档案与文档保留。跨大版本升级前仍建议备份应用数据目录。</p>
+        </details>
+        <details>
+          <summary>毕业论文也在这里排版吗？</summary>
+          <p>论文正文使用独立的 LaTeX 模板：在应用里下载模板，解压后在 LaTeX 编辑器或 Agent 中打开工程。过程材料与评审表在工作台里直接填。</p>
+        </details>
+      </div>
+    </section>
+
+    <div class="closing">
+      <p style="margin:0; color:var(--muted); font-size:14px;">准备好开始，直接下载；想先了解操作，读使用说明。</p>
+      <div class="dl-row">
+        <a class="dl-main" href="/releases/0.2.0/SZTU-Docs-Studio-0.2.0-win-x64-offline.exe" download>下载安装包 <span class="arrow" aria-hidden="true">↓</span></a>
+        <a class="sub-link" href="/guide/">使用说明</a>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <div class="inner">
+      <span>SZTU 文档工作台 0.2.0 2026-11-26</span>
+      <span>
+        <a href="https://github.com/AmaziiingChen/SZTU-Graduation-Docs-Studio" rel="noopener">GitHub</a>　
+        <a href="https://github.com/AmaziiingChen/SZTU-Graduation-Docs-Studio/blob/main/LICENSE" rel="noopener">GPL-3.0</a>　
+        <a href="/guide/">使用说明</a>
+      </span>
+    </div>
+  </footer>
+</div>
+
+<script>
+  for (const button of document.querySelectorAll(".copy")) {
+    button.addEventListener("click", async () => {
+      const value = button.dataset.copy || "";
+      try {
+        await navigator.clipboard.writeText(value);
+        const original = button.textContent;
+        button.textContent = "已复制";
+        setTimeout(() => { button.textContent = original; }, 1600);
+      } catch {
+        window.prompt("复制 SHA-256：", value);
+      }
+    });
+  }
+</script>
+</body>
+</html>
+
+
+
+
