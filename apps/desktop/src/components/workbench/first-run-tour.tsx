@@ -84,7 +84,7 @@ export function FirstRunTour({ open, onClose }: { open: boolean; onClose: () => 
 
   useEffect(() => {
     if (!open) return
-    if (!step.requiresClick || !rect) return
+    if (!step.requiresClick) return
     const onClick = (event: MouseEvent) => {
       const target = event.target instanceof Element ? event.target : null
       if (target?.closest(step.selector ?? "")) {
@@ -93,7 +93,7 @@ export function FirstRunTour({ open, onClose }: { open: boolean; onClose: () => 
     }
     document.addEventListener("click", onClick, true)
     return () => document.removeEventListener("click", onClick, true)
-  }, [open, rect, step.requiresClick, step.selector])
+  }, [open, step.requiresClick, step.selector])
 
   useEffect(() => {
     if (!open) return

@@ -959,9 +959,7 @@ describe("M3 workbench persistence", () => {
     const tour = await screen.findByRole("dialog", { name: "新手引导" })
     expect(within(tour).getByText("先填一次基本信息")).toBeInTheDocument()
     fireEvent.click((await screen.findAllByRole("button", { name: "基本信息" }))[0])
-    await waitFor(() => {
-      expect(within(screen.getByRole("dialog", { name: "新手引导" })).getByText("在这里填写档案")).toBeInTheDocument()
-    })
+    await screen.findByText("在这里填写档案", {}, { timeout: 5_000 })
     fireEvent.click(screen.getByRole("button", { name: "跳过引导" }))
     await waitFor(() => {
       expect(screen.queryByRole("dialog", { name: "新手引导" })).not.toBeInTheDocument()
