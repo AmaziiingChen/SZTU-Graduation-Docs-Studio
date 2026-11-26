@@ -44,20 +44,6 @@ SPECIAL_DOCUMENT_FONT_GROUPS = {
     "楷体": ("simkai.ttf", "KaiTi.ttf", "楷体.ttf", "Kaiti.ttc"),
     "华文中宋": ("STZHONGS.TTF", "STZhongsong.ttf", "华文中宋.ttf"),
 }
-SYSTEM_CJK_FONT_LABELS = frozenset({"宋体", "黑体", "楷体"})
-
-
-def _font_missing_hint(missing: list[str]) -> str:
-    system = [label for label in missing if label in SYSTEM_CJK_FONT_LABELS]
-    bundled = [label for label in missing if label not in SYSTEM_CJK_FONT_LABELS]
-    hints: list[str] = []
-    if system:
-        hints.append("宋体、黑体、楷体由 Windows 自带，请安装中文字体后重试")
-    if bundled:
-        hints.append("随安装包提供的字体丢失，请重新运行最新安装包修复")
-    return "；".join(hints) + "。"
-
-
 FONT_OVERRIDE_ENVIRONMENTS = (
     "SZTU_STXINGKAI_FONT",
     "SZTU_FZXIAOBIAOSONG_FONT",
@@ -431,7 +417,7 @@ def _check_font_groups(
         "id": check_id,
         "required": required,
         "status": "fail" if required else "warn",
-        "message": "缺少字体：" + "、".join(missing) + "。" + _font_missing_hint(missing),
+        "message": "缺少字体：" + "、".join(missing) + "。请重新运行最新安装包修复。",
         "details": {"fonts": resolved, "missing": missing},
     }
 

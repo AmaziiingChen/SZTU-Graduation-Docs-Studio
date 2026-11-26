@@ -99,18 +99,6 @@ class EnvironmentTests(unittest.TestCase):
         self.assertFalse(optional["required"])
         self.assertEqual(optional["status"], "warn")
 
-    def test_missing_font_message_distinguishes_system_and_bundled_fonts(self) -> None:
-        missing_all = environment_module._check_core_document_fonts({})
-        self.assertEqual(missing_all["status"], "fail")
-        self.assertIn("宋体、黑体、楷体由 Windows 自带", missing_all["message"])
-
-        system_fonts = {
-            name: Path("fonts") / name for name in ("simsun.ttc", "simhei.ttf")
-        }
-        missing_bundled = environment_module._check_core_document_fonts(system_fonts)
-        self.assertIn("Times New Roman 常规", missing_bundled["details"]["missing"])
-        self.assertIn("随安装包提供的字体丢失", missing_bundled["message"])
-
     def test_tex_package_check_reports_the_exact_missing_package(self) -> None:
         with patch.object(
             environment_module.shutil,
