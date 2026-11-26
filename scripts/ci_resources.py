@@ -107,8 +107,16 @@ def main() -> None:
         bindir = managers[0].parent
         with Path(os.environ['GITHUB_PATH']).open('a', encoding='utf-8') as stream:
             stream.write(f'{bindir}\n')
-        subprocess.run([str(managers[0]), 'update', '--self'], check=True)
-        subprocess.run([str(managers[0]), 'install', *config['macos_tex_packages']], check=True)
+        tlmgr = str(managers[0])
+        subprocess.run([tlmgr, 'update', '--self'], check=True)
+        # The bundled TinyTeX archive points tlmgr at a mirror that can lag
+        # behind the package set (it briefly lacked fandol), so pin a full
+        # CTAN mirror for the install step.
+        subprocess.run(
+            [tlmgr, 'option', 'repository', 'https://mirror.ctan.org/systems/texlive/tlnet'],
+            check=False,
+        )
+        subprocess.run([tlmgr, 'install', *config['macos_tex_packages']], check=True)
 
 
 if __name__ == '__main__':
