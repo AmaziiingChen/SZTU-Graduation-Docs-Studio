@@ -34,7 +34,7 @@ import {
   useState,
   type ReactNode,
 } from "react"
-import { ChevronDownIcon, HelpCircleIcon, LoaderCircleIcon, PackageCheckIcon, SaveIcon, ShieldCheckIcon, TriangleAlertIcon, UserRoundIcon } from "lucide-react"
+import { ChevronDownIcon, ExternalLinkIcon, HelpCircleIcon, LoaderCircleIcon, PackageCheckIcon, SaveIcon, ShieldCheckIcon, TriangleAlertIcon, UserRoundIcon } from "lucide-react"
 import { ThinkingOrb } from "thinking-orbs"
 
 import { AppSidebar } from "@/components/workbench/app-sidebar"
@@ -213,6 +213,7 @@ import type {
 
 const THESIS_SEED_FLAG = "sztu-docs.thesis-seeded-v1"
 const FIRST_RUN_TOUR_FLAG = "sztu-docs.first-run-tour-v1"
+const THESIS_TEMPLATE_UPSTREAM_URL = "https://github.com/SZTU-ACM/SZTU-Thesis-Latex-Template"
 
 type Draft = {
   assessment: AssessmentDraft
@@ -2473,6 +2474,22 @@ function DocumentEditor({
                 <AnimatedActionIcon icon={DownloadIcon} />
                 {templateDownloading ? "正在保存模板…" : "下载 LaTeX 模板"}
               </Button>
+              <p className="text-xs leading-5 text-muted-foreground">
+                模板参考 GitHub 上游仓库{" "}
+                <Button
+                  type="button"
+                  variant="link"
+                  size="sm"
+                  className="h-auto p-0 text-xs"
+                  onClick={() => {
+                    const api = getDesktopApi()
+                    if (api) void api.openExternalUrl(THESIS_TEMPLATE_UPSTREAM_URL)
+                  }}
+                >
+                  SZTU-ACM/SZTU-Thesis-Latex-Template
+                  <ExternalLinkIcon className="ml-1 size-3" aria-hidden="true" />
+                </Button>
+              </p>
             </CardContent>
           </Card>
         ) : null}

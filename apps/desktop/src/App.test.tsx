@@ -1115,6 +1115,8 @@ describe("M3 workbench persistence", () => {
     expect(await screen.findByRole("heading", { name: "毕业论文" })).toBeInTheDocument()
     expect(screen.getByText("下载后解压，在 LaTeX 编辑器或 Agent 中打开工程文件夹。")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "下载 LaTeX 模板" })).toBeEnabled()
+    fireEvent.click(screen.getByRole("button", { name: "SZTU-ACM/SZTU-Thesis-Latex-Template" }))
+    expect(api.openExternalUrl).toHaveBeenCalledWith("https://github.com/SZTU-ACM/SZTU-Thesis-Latex-Template")
     expect(screen.queryByRole("textbox", { name: "章节正文" })).not.toBeInTheDocument()
     expect(api.saveDraft).not.toHaveBeenCalled()
   })
