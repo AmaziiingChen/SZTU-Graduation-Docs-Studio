@@ -4,9 +4,12 @@
 
 - 文件大小：449,028,286 B（428.2 MiB）
 - SHA-256：`85aa451dfe0707619a15a0b46024194ee5b305d8ded78e09fa038abbddac644d`
-- 下载地址：`https://amazingapp-d5giro9ac73398410-1412347033.tcloudbaseapp.com/releases/0.2.0/SZTU-Docs-Studio-0.2.0-win-x64-offline.exe`
-- 更新清单（schema 2.0，服务 0.1.13 起的旧客户端）：`https://amazingapp-d5giro9ac73398410-1412347033.tcloudbaseapp.com/releases/stable/manifest.json`
-- 更新清单（schema 3.0，含应用内消息，0.1.16 起）：`https://amazingapp-d5giro9ac73398410-1412347033.tcloudbaseapp.com/releases/stable/manifest-v3.json`
+- 下载页：`https://docs.amaziiiing.com/download/`
+- 安装包：`https://docs.amaziiiing.com/releases/0.2.0/SZTU-Docs-Studio-0.2.0-win-x64-offline.exe`
+- 更新清单（schema 2.0，服务 0.1.13 起的旧客户端）：`https://docs.amaziiiing.com/releases/stable/manifest.json`
+- 更新清单（schema 3.0，含应用内消息，0.1.16 起）：`https://docs.amaziiiing.com/releases/stable/manifest-v3.json`
+- 旧测试域名 `https://amazingapp-d5giro9ac73398410-1412347033.tcloudbaseapp.com` 继续提供同一份文件，只作为镜像。
+- 自定义域名：`docs.amaziiiing.com` 绑定到 CloudBase HTTP 访问服务（`/` 路由转发 `STATIC_STORE`），证书 `cgFGC7lM`（TrustAsia DV，2027-02-25 到期）。
 - 签名：两份清单均用 Ed25519 私钥 `~/.sztu-docs-release/update-private.pem` 签名，公钥与客户端内置值一致。
 
 ## 主要变化

@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SZTU 文档工作台 · 使用说明</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif; color: #1f2328; background: #f6f7f9; line-height: 1.75; }
+  main { max-width: 860px; margin: 0 auto; padding: 40px 24px 80px; }
+  header { margin-bottom: 28px; }
+  h1 { font-size: 28px; margin: 0 0 6px; }
+  .sub { color: #59636e; margin: 0; }
+  section { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 22px 24px; margin: 18px 0; }
+  h2 { font-size: 19px; margin: 0 0 12px; }
+  h3 { font-size: 16px; margin: 18px 0 6px; }
+  p { margin: 8px 0; }
+  ul, ol { margin: 8px 0; padding-left: 22px; }
+  li { margin: 4px 0; }
+  .download { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
+  .button { display: inline-block; background: #1d6ff2; color: #fff; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 600; }
+  .button.secondary { background: #fff; color: #1d6ff2; border: 1px solid #1d6ff2; }
+  .meta { color: #59636e; font-size: 14px; }
+  .note { background: #f3f6fb; border-left: 3px solid #1d6ff2; padding: 10px 14px; margin: 12px 0; color: #33404d; font-size: 14px; }
+  .faq h3 { margin-top: 20px; }
+  code { background: #f1f3f5; padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+  .footer { color: #6b7280; font-size: 13px; text-align: center; margin-top: 26px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>SZTU 文档工作台 · 使用说明</h1>
+    <p class="sub">任务书、开题报告、中期检查与四类评审表，填写后直接导出可提交的 PDF 或 Word。</p>
+  </header>
+
+  <section>
+    <h2>下载与更新</h2>
+    <div class="download">
+      <a id="download" class="button" href="https://docs.amaziiiing.com/download/">下载 Windows 安装包</a>
+      <a class="button secondary" href="https://github.com/AmaziiingChen/SZTU-Graduation-Docs-Studio">查看项目主页</a>
+      <span id="download-meta" class="meta">正在读取最新版本…</span>
+    </div>
+    <div class="note">
+      安装包已内置 TeX 引擎、PDF 工具和全部模板字体，纯净 Windows 不需要另外安装任何环境。<br>
+      0.1.16 及以上版本可以在应用内检查更新；0.2.0 起支持下载后「安装并重启」，自动替换当前版本。
+    </div>
+  </section>
+
+  <section>
+    <h2>三步上手</h2>
+    <ol>
+      <li><strong>先填档案。</strong>打开「档案与基本信息」，填写姓名、学号、学院、专业、班级与指导教师。这些信息会带进之后创建的每一份材料，只填一次。</li>
+      <li><strong>再选材料。</strong>左侧选择任务书、开题报告或中期检查，点「新建」。按右侧的结构提示逐项填写；正文、列表、三线表、图片、公式都可以在编辑器里完成，保存会自动进行。</li>
+      <li><strong>预览后导出。</strong>点右上角「预览&导出」，先确认分页与版式，再导出 PDF（推荐）或 Word。预览和导出使用同一套模板，看到的就是最终结果。</li>
+    </ol>
+    <p>毕业论文不做正文编辑：左侧「毕业论文」会默认创建一份记录，点开后下载 LaTeX 模板，在自己的编辑器里排版。模板里已经配好字体、页边距、页眉与参考文献样式，标题支持上下标。</p>
+  </section>
+
+  <section class="faq">
+    <h2>常见问题</h2>
+
+    <h3>第一次打开需要安装 TeX、Poppler 或字体吗？</h3>
+    <p>不需要。安装包已经内置编译引擎、PDF 工具和全部模板字体；首次启动时字体会自动注册到当前 Windows 用户，不需要管理员权限，也不会改动系统字体目录。</p>
+
+    <h3>预览一直失败怎么办？</h3>
+    <p>先看提示里的原因：缺字段、超页数、图片找不到、文献格式不对，都会指到具体位置。处理后再点「重新生成预览」。如果仍失败：</p>
+    <ul>
+      <li>到「导出记录」里点「查看环境修复指引」，看看是不是安装不完整；</li>
+      <li>重新运行最新安装包修复（覆盖安装不会删除文档）；</li>
+      <li>还是不行，就在「导出记录」里点「创建诊断包」→「发送诊断包」。诊断包只在你确认后上传，包含这次操作的文档内容、运行日志和文件路径，维护者可以据此定位问题。</li>
+    </ul>
+
+    <h3>提示缺少字体，或导出的 Word 字形不对？</h3>
+    <p>安装包已内置论文模板和任务书需要的字体。出现缺字体提示时，先重新运行最新安装包，再重启应用。用 Word 打开 DOCX 时，Word 需要本机存在同一个字体名；如果只是自己查看，优先用 PDF，PDF 里的字形已经定稿。</p>
+
+    <h3>文献检查说没问题，导出却报错？</h3>
+    <p>这是旧版本（0.1.19 及以前）前后端检查规则不一致导致的，0.2.0 已修复：空字段（例如 <code>pages = {}</code>）在导入时就会指出「第几条、哪个字段」，不会等到导出才失败。旧草稿里的参考文献如果还是“段落”格式，导入 BibTeX 后会整份替换为新的文献列表，替换前建议先导出一份 PDF 备份。</p>
+
+    <h3>点了更新没反应，或者下载失败？</h3>
+    <p>0.1.13–0.1.15 存在下载超时缺陷，基本无法在应用内更新，请直接下载安装包覆盖安装。0.1.16 及以上可以正常下载；0.2.0 起下载完成后会出现「安装并重启」，确认后自动完成替换。安装包尚未做系统代码签名，Windows 可能提示“未知发布者”，按系统提示允许运行即可。</p>
+
+    <h3>可以装在中文路径下吗？</h3>
+    <p>可以。编译引擎固定在 <code>C:\ProgramData\SZTU-Docs\engine</code>，与安装目录无关；文档、图片与修订记录保存在 <code>%APPDATA%\SZTU文档工作台</code>。升级只替换程序文件，不会搬动或删除你的文档。</p>
+
+    <h3>我的文档会上传吗？</h3>
+    <p>不会自动上传。文档保存在本机；匿名遥测只包含版本、系统、操作结果和学院/专业，不包含姓名、学号、题目或正文。只有你主动点「发送诊断包」时，诊断材料才会上传，并在云端保留 30 天。</p>
+
+    <h3>Word 和 PDF 的排版看起来不一样？</h3>
+    <p>Word 和 PDF 由两套渲染器生成，PDF 是最终版式，适合直接提交；Word 便于继续修改，但版式可能随本机 Word 字体与版本浮动。提交前请用 Word 或 WPS 打开检查一遍。</p>
+
+    <h3>怎么彻底卸载、清除本机数据？</h3>
+    <p>先在 Windows「应用和功能」里卸载程序；如果确认不再需要旧文档，再手动删除 <code>%APPDATA%\SZTU文档工作台</code>（文档、修订、导出记录）和 <code>C:\ProgramData\SZTU-Docs</code>（内置引擎与临时文件）。删除后无法恢复，请先导出需要的文件。</p>
+  </section>
+
+  <section>
+    <h2>版本与反馈</h2>
+    <p>应用内「导出记录」可以看到每次导出的结果与失败原因。更新通过签名清单分发，发布记录在项目的 <a href="https://github.com/AmaziiingChen/SZTU-Graduation-Docs-Studio/tree/codex/thesis-workbench/docs/evidence">docs/evidence</a> 目录。</p>
+    <p>遇到说明里没有覆盖的问题，欢迎在项目主页提 issue，或把诊断包编号一起发给我们。</p>
+  </section>
+
+  <p class="footer">SZTU 文档工作台 · 深圳技术大学新材料与新能源学院</p>
+</main>
+<script>
+  (async () => {
+    const meta = document.getElementById("download-meta");
+    const button = document.getElementById("download");
+    try {
+      const response = await fetch("/releases/stable/manifest.json", { cache: "no-store" });
+      if (!response.ok) throw new Error(String(response.status));
+      const manifest = await response.json();
+      const payload = manifest.payload || {};
+      const artifact = (payload.artifacts || []).find((item) => item.platform === "win32" && item.arch === "x64");
+      if (!artifact) throw new Error("no windows artifact");
+      button.href = artifact.url;
+      const size = artifact.size_bytes ? `${(artifact.size_bytes / 1024 / 1024).toFixed(0)} MB` : "";
+      meta.textContent = `最新版本 ${payload.version} · Windows x64 离线安装包${size ? " · " + size : ""}`;
+    } catch (error) {
+      meta.textContent = "暂时无法读取最新版本，请使用上方按钮下载，或稍后刷新页面。";
+    }
+  })();
+</script>
+</body>
+</html>
+
+
+
